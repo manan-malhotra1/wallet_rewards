@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose *)",
+      "Bash(docker exec *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8080/realms/master)",
+      "Bash(bash kafka/topics.sh)",
+      "Bash(psql -U manan -d postgres -tAc \"SELECT rolname FROM pg_roles WHERE rolname IN \\('wallet', 'manan'\\);\")",
+      "Bash(psql -U manan -d postgres -tAc \"SELECT datname FROM pg_database WHERE datname = 'wallet_platform';\")",
+      "Bash(psql -U manan -d postgres -c \"CREATE USER wallet WITH PASSWORD 'wallet';\")",
+      "Bash(psql -U manan -d postgres -c \"CREATE DATABASE wallet_platform OWNER wallet;\")",
+      "Bash(PGPASSWORD=wallet psql -U wallet -d wallet_platform -h localhost -c \"SELECT current_user, current_database\\(\\);\")",
+      "Bash(curl -s -o /dev/null -w \"  http://localhost:8080  HTTP %{http_code}\\\\n\" http://localhost:8080/realms/master)",
+      "Bash(PGPASSWORD=wallet psql -U wallet -d wallet_platform -h localhost -tAc \"SELECT 'wallet_platform DB reachable as user wallet';\")",
+      "Bash(chmod +x /Users/manan/Documents/Sasai_Wallet/scripts/bootstrap_keycloak.py)",
+      "Bash(python3 /Users/manan/Documents/Sasai_Wallet/scripts/bootstrap_keycloak.py)",
+      "Bash(python3 -m venv .venv)",
+      "Bash(.venv/bin/pip install *)",
+      "Bash(psql -U manan -d postgres -c \"DROP DATABASE IF EXISTS wallet_platform_test;\")",
+      "Bash(psql -U manan -d postgres -c \"CREATE DATABASE wallet_platform_test OWNER wallet;\")",
+      "Bash(PGPASSWORD=wallet psql -U wallet -d wallet_platform_test -h localhost -c \"SELECT current_database\\(\\);\")",
+      "Bash(PGPASSWORD=wallet psql -U wallet -d wallet_platform -h localhost -c ' *)",
+      "Bash(git reset *)"
+    ]
+  }
+}

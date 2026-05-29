@@ -15,11 +15,19 @@ TRUNCATE-between-tests pattern avoids that entirely.
 """
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Callable
+from typing import Any
 from uuid import uuid4
 
+import pytest
 import pytest_asyncio
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import ASGITransport, AsyncClient
+from jose import jwt as jose_jwt
+from jose.utils import long_to_base64
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -27,6 +35,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
+
+from app.auth.keycloak import keycloak_client
+
+# Stable test key id — used by every signed test JWT.
+TEST_KID = "test-key-1"
 
 from app.config import settings
 from app.database import get_async_session
@@ -238,3 +251,123 @@ async def user_points(
     await db_session.commit()
     await db_session.refresh(account)
     return account
+
+
+# -----------------------------------------------------------------------------
+# Auth fixtures (Phase F.1) — in-process RSA keypair + JWT factory
+# -----------------------------------------------------------------------------
+# We generate one RSA keypair per session, seed the global keycloak_client
+# cache with the matching JWK, and block any real JWKS HTTP fetch. Tests then
+# sign JWTs with the private key and send them through the real verifier.
+
+
+@pytest.fixture(scope="session")
+def rsa_keypair() -> tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
+    """One RSA-2048 keypair per session (generation is ~200ms; do it once)."""
+    private_key = rsa.generate_private_key(
+        public_exponent=65537, key_size=2048, backend=default_backend()
+    )
+    return private_key, private_key.public_key()
+
+
+@pytest.fixture(scope="session")
+def private_key_pem(rsa_keypair: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> bytes:
+    """PEM-encoded private key for signing test JWTs."""
+    private_key, _ = rsa_keypair
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+
+@pytest.fixture(scope="session")
+def test_jwks(rsa_keypair: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> dict:
+    """JWKS document derived from the test public key."""
+    _, public_key = rsa_keypair
+    public_numbers = public_key.public_numbers()
+    return {
+        "keys": [
+            {
+                "kid": TEST_KID,
+                "kty": "RSA",
+                "alg": "RS256",
+                "use": "sig",
+                "n": long_to_base64(public_numbers.n).decode("utf-8"),
+                "e": long_to_base64(public_numbers.e).decode("utf-8"),
+            }
+        ]
+    }
+
+
+@pytest.fixture(autouse=True)
+def seed_keycloak_jwks(monkeypatch: pytest.MonkeyPatch, test_jwks: dict) -> None:
+    """Autouse: prime the verifier's JWKS cache, block any real HTTP fetch.
+
+    The `_refetch` patch keeps the seeded cache stable even when
+    `verify_jwt` decides to refetch on unknown-kid — important so the
+    "unknown kid → 401" test doesn't accidentally hit the real Keycloak
+    running on localhost:8080.
+    """
+    keycloak_client._seed_cache_for_tests(test_jwks)
+
+    async def _no_real_refetch() -> None:
+        keycloak_client._seed_cache_for_tests(test_jwks)
+
+    monkeypatch.setattr(keycloak_client, "_refetch", _no_real_refetch)
+
+
+@pytest.fixture
+def make_admin_token(private_key_pem: bytes) -> Callable[..., str]:
+    """Factory for signed Keycloak-shaped admin JWTs.
+
+    Override defaults to test specific failure modes (expired, wrong issuer,
+    wrong kid, missing roles).
+    """
+    from app.config import settings
+
+    def _build(
+        roles: list[str] | None = None,
+        sub: str = "00000000-0000-4000-8000-000000000001",
+        username: str = "admin-test",
+        exp_seconds: int = 60,
+        iss_override: str | None = None,
+        alg: str = "RS256",
+        kid: str | None = TEST_KID,
+        extra_claims: dict[str, Any] | None = None,
+    ) -> str:
+        now = int(time.time())
+        issuer = (
+            iss_override
+            if iss_override is not None
+            else f"{settings.KEYCLOAK_URL}/realms/{settings.KEYCLOAK_REALM}"
+        )
+        claims: dict[str, Any] = {
+            "iss": issuer,
+            "sub": sub,
+            "preferred_username": username,
+            "iat": now,
+            "exp": now + exp_seconds,
+            "realm_access": {"roles": roles or []},
+            "typ": "Bearer",
+        }
+        if extra_claims:
+            claims.update(extra_claims)
+        headers = {"kid": kid} if kid is not None else {}
+        return jose_jwt.encode(
+            claims, private_key_pem, algorithm=alg, headers=headers
+        )
+
+    return _build
+
+
+@pytest.fixture
+def admin_token(make_admin_token: Callable[..., str]) -> str:
+    """A ready-to-use platform-admin token."""
+    return make_admin_token(roles=["platform-admin"])
+
+
+@pytest.fixture
+def admin_auth_header(admin_token: str) -> dict[str, str]:
+    """Authorization header dict ready for httpx requests."""
+    return {"Authorization": f"Bearer {admin_token}"}

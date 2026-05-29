@@ -298,3 +298,60 @@ class InvalidResolveOutcome(AppHTTPException):
             "invalid_resolve_outcome",
             "Outcome must be COMPLETED or REVERSED.",
         )
+
+
+# --- Auth (Phase F.1) -------------------------------------------------------
+
+
+class InvalidAuthorizationHeader(AppHTTPException):
+    """Missing or malformed Authorization header (Bearer scheme expected)."""
+
+    def __init__(self, detail: str = "Missing or malformed Authorization header.") -> None:
+        super().__init__(401, "invalid_authorization_header", detail)
+
+
+class InvalidToken(AppHTTPException):
+    """JWT signature failed, header malformed, or claims invalid."""
+
+    def __init__(self, detail: str = "Token validation failed.") -> None:
+        super().__init__(401, "invalid_token", detail)
+
+
+class InvalidAlgorithm(AppHTTPException):
+    """Token alg is 'none' or outside the RS256 whitelist."""
+
+    def __init__(self, alg: str) -> None:
+        super().__init__(
+            401,
+            "invalid_algorithm",
+            f"Token algorithm '{alg}' is not accepted.",
+        )
+
+
+class TokenExpired(AppHTTPException):
+    """JWT `exp` claim is in the past."""
+
+    def __init__(self) -> None:
+        super().__init__(401, "token_expired", "Token has expired.")
+
+
+class UnknownSigningKey(AppHTTPException):
+    """The `kid` in the token header doesn't match any key in the realm's JWKS."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            401,
+            "unknown_signing_key",
+            "Token was signed with an unrecognised key.",
+        )
+
+
+class InsufficientRole(AppHTTPException):
+    """The authenticated principal doesn't hold the required realm role."""
+
+    def __init__(self, required: str) -> None:
+        super().__init__(
+            403,
+            "insufficient_role",
+            f"This action requires the '{required}' role.",
+        )

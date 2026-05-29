@@ -31,6 +31,11 @@ BACKEND_SERVICE_SECRET = "dev-backend-service-secret-local-only"
 
 REALM_ROLES = ["platform-admin", "finance-reviewer", "support-agent"]
 
+# Local-dev test admin user — rotate / remove for any non-local environment.
+TEST_ADMIN_USERNAME = "admin-test"
+TEST_ADMIN_PASSWORD = "admin-test-pass"  # noqa: S105 — local-dev only
+TEST_ADMIN_ROLES = ["platform-admin"]
+
 
 def http(
     method: str,
@@ -114,9 +119,25 @@ def find_client(token: str, client_id: str) -> str | None:
 
 
 def ensure_client(token: str, client_id: str, config: dict) -> str:
+    """Create the client if missing, or update its config in place.
+
+    Idempotent — re-running with a different config (e.g. flipping
+    `directAccessGrantsEnabled`) brings Keycloak into sync.
+    """
     kc_id = find_client(token, client_id)
     if kc_id:
-        print(f"  - Client '{client_id}' already exists ({kc_id})")
+        # Update the existing client so config drift in the script propagates.
+        update_code, update_body = http(
+            "PUT",
+            f"{KEYCLOAK_URL}/admin/realms/{REALM}/clients/{kc_id}",
+            token=token,
+            json_body={**config, "id": kc_id},
+        )
+        if update_code not in (200, 204):
+            sys.exit(
+                f"Failed to update client {client_id}: {update_code} {update_body}"
+            )
+        print(f"  ~ Client '{client_id}' updated ({kc_id})")
         return kc_id
 
     code, body = http(
@@ -144,6 +165,101 @@ def get_client_secret(token: str, kc_id: str) -> str:
     if code != 200 or not isinstance(body, dict):
         sys.exit(f"Failed to read client secret: {code} {body}")
     return body.get("value", "<unknown>")
+
+
+def _find_user_id(token: str, username: str) -> str | None:
+    """Return Keycloak's UUID for a username in our realm, or None."""
+    code, body = http(
+        "GET",
+        f"{KEYCLOAK_URL}/admin/realms/{REALM}/users?username={username}&exact=true",
+        token=token,
+    )
+    if code == 200 and isinstance(body, list) and body:
+        return body[0]["id"]
+    return None
+
+
+def ensure_test_admin_user(token: str) -> str:
+    """Idempotently create the local-dev test admin user.
+
+    The user is created in the wallet-platform realm with a known password
+    and assigned the platform-admin realm role. Used by the Phase F.1 demo
+    + any future smoke tests that need a real Keycloak-issued JWT.
+
+    Returns:
+        The Keycloak UUID of the user.
+    """
+    existing = _find_user_id(token, TEST_ADMIN_USERNAME)
+    if existing is not None:
+        print(f"  - User '{TEST_ADMIN_USERNAME}' already exists ({existing})")
+        user_id = existing
+    else:
+        code, body = http(
+            "POST",
+            f"{KEYCLOAK_URL}/admin/realms/{REALM}/users",
+            token=token,
+            json_body={
+                "username": TEST_ADMIN_USERNAME,
+                "enabled": True,
+                "email": f"{TEST_ADMIN_USERNAME}@example.test",
+                "emailVerified": True,
+                "firstName": "Admin",
+                "lastName": "Test",
+                "credentials": [
+                    {
+                        "type": "password",
+                        "value": TEST_ADMIN_PASSWORD,
+                        "temporary": False,
+                    }
+                ],
+            },
+        )
+        if code not in (201, 204):
+            sys.exit(f"Failed to create test admin user: {code} {body}")
+        user_id = _find_user_id(token, TEST_ADMIN_USERNAME)
+        if user_id is None:
+            sys.exit("Failed to look up newly-created test admin user")
+        print(f"  + User '{TEST_ADMIN_USERNAME}' created ({user_id})")
+
+    # Always (re-)set the password — keeps the demo deterministic.
+    code, body = http(
+        "PUT",
+        f"{KEYCLOAK_URL}/admin/realms/{REALM}/users/{user_id}/reset-password",
+        token=token,
+        json_body={
+            "type": "password",
+            "value": TEST_ADMIN_PASSWORD,
+            "temporary": False,
+        },
+    )
+    # 204 No Content on success.
+    if code not in (200, 204):
+        sys.exit(f"Failed to reset test admin password: {code} {body}")
+
+    # Assign realm roles. Keycloak ignores duplicates so this is idempotent.
+    for role_name in TEST_ADMIN_ROLES:
+        role_code, role_body = http(
+            "GET",
+            f"{KEYCLOAK_URL}/admin/realms/{REALM}/roles/{role_name}",
+            token=token,
+        )
+        if role_code != 200 or not isinstance(role_body, dict):
+            sys.exit(f"Could not fetch role '{role_name}' to assign: {role_body}")
+        assign_code, assign_body = http(
+            "POST",
+            f"{KEYCLOAK_URL}/admin/realms/{REALM}/users/{user_id}/role-mappings/realm",
+            token=token,
+            json_body=[role_body],
+        )
+        if assign_code not in (200, 204):
+            sys.exit(
+                f"Failed to assign role '{role_name}' to user: "
+                f"{assign_code} {assign_body}"
+            )
+    print(
+        f"  + User '{TEST_ADMIN_USERNAME}' has roles: {', '.join(TEST_ADMIN_ROLES)}"
+    )
+    return user_id
 
 
 def ensure_role(token: str, role_name: str) -> None:
@@ -183,8 +299,8 @@ def main() -> None:
             "clientId": "admin-ui",
             "enabled": True,
             "publicClient": False,
-            "standardFlowEnabled": True,         # Authorization Code Flow
-            "directAccessGrantsEnabled": False,
+            "standardFlowEnabled": True,         # Authorization Code Flow (real admin UI login)
+            "directAccessGrantsEnabled": True,   # Password grant — for CLI/test token issuance (Phase F.1 demo)
             "serviceAccountsEnabled": False,
             "redirectUris": [
                 "http://localhost:3000/*",
@@ -216,6 +332,10 @@ def main() -> None:
         ensure_role(token, role)
     print()
 
+    print("Test admin user (local-dev only):")
+    ensure_test_admin_user(token)
+    print()
+
     # Fetch effective secrets (in case Keycloak regenerated)
     admin_ui_effective = get_client_secret(token, admin_ui_id)
     backend_effective = get_client_secret(token, backend_id)
@@ -238,6 +358,19 @@ def main() -> None:
     print(f"   KEYCLOAK_REALM={REALM}")
     print(f"   KEYCLOAK_CLIENT_ID=admin-ui")
     print(f"   KEYCLOAK_CLIENT_SECRET={admin_ui_effective}")
+    print()
+    print(" Get a test admin JWT (local-dev only):")
+    print()
+    print("   TOKEN=$(curl -s -X POST \\")
+    print(f"     http://localhost:8080/realms/{REALM}/protocol/openid-connect/token \\")
+    print("     -d grant_type=password \\")
+    print("     -d client_id=admin-ui \\")
+    print(f"     -d client_secret={admin_ui_effective} \\")
+    print(f"     -d username={TEST_ADMIN_USERNAME} \\")
+    print(f"     -d password={TEST_ADMIN_PASSWORD} \\")
+    print("     | python3 -c 'import sys,json;print(json.load(sys.stdin)[\"access_token\"])')")
+    print()
+    print("   curl -H \"Authorization: Bearer $TOKEN\" http://localhost:8000/api/v1/reconciliation/pending?tenant_id=...")
     print()
 
 

@@ -1,4 +1,4 @@
-"""Reconciliation FastAPI router — Phase E.1 test-only endpoints.
+"""Reconciliation FastAPI router (auth-gated in Phase F.1).
 
 Endpoints:
   - POST /api/v1/reconciliation/sweep                  — trigger a sweep
@@ -6,6 +6,10 @@ Endpoints:
   - GET  /api/v1/reconciliation/manual-review          — list MANUAL_REVIEW
   - POST /api/v1/reconciliation/{redemption_id}/resolve — operator decides
   - GET  /api/v1/reconciliation/audit                  — read audit_log
+
+Phase F.1: every endpoint requires a valid Keycloak JWT. State-changing
+endpoints additionally require the `platform-admin` realm role; read
+endpoints accept `finance-reviewer` or `platform-admin`.
 """
 from __future__ import annotations
 
@@ -14,7 +18,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AdminPrincipal
 from app.database import get_async_session
+from app.dependencies import get_current_admin, require_admin_role
 from app.modules.reconciliation.schemas import (
     AuditEntry,
     ManualReviewItem,
@@ -31,19 +37,41 @@ from app.modules.reconciliation.service import (
     sweep_pending,
 )
 from app.modules.redemption.schemas import RedemptionOut
+from app.shared.exceptions import InsufficientRole
 
 router = APIRouter(
     prefix="/api/v1/reconciliation",
-    tags=["reconciliation (test-only)"],
+    tags=["reconciliation"],
 )
+
+
+def _require_finance_or_admin(
+    admin: AdminPrincipal = Depends(get_current_admin),
+) -> AdminPrincipal:
+    """Read-side role gate — accept finance-reviewer OR platform-admin.
+
+    Reconciliation reads (pending list, manual-review queue, audit log) are
+    fine for finance-reviewer; state-changing routes use the stricter
+    platform-admin gate via `require_admin_role`.
+    """
+    if not (
+        admin.has_role("platform-admin") or admin.has_role("finance-reviewer")
+    ):
+        raise InsufficientRole("finance-reviewer")
+    return admin
 
 
 @router.post("/sweep", response_model=SweepOutcome)
 async def post_sweep(
     request: SweepRequest,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> SweepOutcome:
-    """Sweep stale PENDING redemptions — bump retry, escalate after max (Pay-PRD-0750)."""
+    """Sweep stale PENDING redemptions — bump retry, escalate after max (Pay-PRD-0750).
+
+    Requires `platform-admin` role.
+    """
+    _ = admin  # noqa: F841 — F.5 will use admin.id when audit_log writes are wired everywhere
     return await sweep_pending(
         session,
         tenant_id=request.tenant_id,
@@ -55,9 +83,14 @@ async def post_sweep(
 async def get_pending(
     tenant_id: UUID,
     threshold_minutes: int = Query(default=5, ge=0, le=60 * 24 * 7),
+    admin: AdminPrincipal = Depends(_require_finance_or_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[PendingItem]:
-    """List PENDING redemptions older than `threshold_minutes` (Pay-PRD-0750)."""
+    """List PENDING redemptions older than `threshold_minutes` (Pay-PRD-0750).
+
+    Read-only — accepts `finance-reviewer` or `platform-admin`.
+    """
+    _ = admin
     return await list_pending(
         session, tenant_id=tenant_id, threshold_minutes=threshold_minutes
     )
@@ -66,9 +99,11 @@ async def get_pending(
 @router.get("/manual-review", response_model=list[ManualReviewItem])
 async def get_manual_review(
     tenant_id: UUID,
+    admin: AdminPrincipal = Depends(_require_finance_or_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[ManualReviewItem]:
     """List MANUAL_REVIEW redemptions awaiting operator (Pay-PRD-0790)."""
+    _ = admin
     return await list_manual_review(session, tenant_id=tenant_id)
 
 
@@ -76,10 +111,17 @@ async def get_manual_review(
 async def post_resolve(
     redemption_id: UUID,
     request: ResolveRequest,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> RedemptionOut:
-    """Operator manually resolves a MANUAL_REVIEW redemption (Pay-PRD-0780)."""
-    redemption = await manually_resolve(session, redemption_id, request)
+    """Operator manually resolves a MANUAL_REVIEW redemption (Pay-PRD-0780).
+
+    Requires `platform-admin` role. The admin's `sub` is passed to the audit
+    log as the actor (rest of the audit-everywhere wiring lands in F.5).
+    """
+    redemption = await manually_resolve(
+        session, redemption_id, request, actor_id=admin.id
+    )
     return RedemptionOut.model_validate(redemption)
 
 
@@ -89,9 +131,11 @@ async def get_audit(
     entity_type: str | None = None,
     entity_id: str | None = None,
     limit: int = Query(default=100, ge=1, le=500),
+    admin: AdminPrincipal = Depends(_require_finance_or_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[AuditEntry]:
     """Read the audit_log, tenant-scoped, newest first."""
+    _ = admin
     return await query_audit_log(
         session,
         tenant_id=tenant_id,

@@ -1,0 +1,300 @@
+"""Custom HTTP exception classes.
+
+All exceptions raised from services should subclass `AppHTTPException`. The
+FastAPI exception handler converts them into the standard error envelope:
+
+    { "error_code": "...", "message": "..." }
+
+Never include PII, stack traces, or internal IDs in the message — see
+NFR-0170 and `.claude/rules/compliance-fintech.md`.
+"""
+from __future__ import annotations
+
+from fastapi import HTTPException
+
+
+class AppHTTPException(HTTPException):
+    """Base class for all app-defined HTTP exceptions.
+
+    Args:
+        status_code: HTTP status (e.g. 404, 409, 422).
+        error_code: Stable machine-readable code (e.g. "user_not_found").
+        message: Human-readable summary safe for API consumers.
+    """
+
+    def __init__(self, status_code: int, error_code: str, message: str) -> None:
+        self.error_code = error_code
+        self.message = message
+        super().__init__(
+            status_code=status_code,
+            detail={"error_code": error_code, "message": message},
+        )
+
+
+# --- Identity ---------------------------------------------------------------
+
+
+class UserNotFound(AppHTTPException):
+    """No user found for the resolved identifier in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "user_not_found", "No user found for that identifier.")
+
+
+class IdentifierAlreadyInUse(AppHTTPException):
+    """An identifier already maps to a different user in this tenant (Pay-PRD-0070)."""
+
+    def __init__(self, identifier_type: str) -> None:
+        super().__init__(
+            409,
+            "identifier_already_in_use",
+            f"This {identifier_type} is already registered to another user.",
+        )
+
+
+# --- Tenants ----------------------------------------------------------------
+
+
+class TenantNotFound(AppHTTPException):
+    """The provided tenant_id does not exist or is inactive."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "tenant_not_found", "Tenant not found.")
+
+
+# --- Accounts ---------------------------------------------------------------
+
+
+class AccountNotFound(AppHTTPException):
+    """No account with the given id in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "account_not_found", "Account not found.")
+
+
+class InvalidAccountType(AppHTTPException):
+    """An unsupported account_type was supplied."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422, "invalid_account_type", "Account type is not one of the allowed values."
+        )
+
+
+# --- Ledger -----------------------------------------------------------------
+
+
+class UnbalancedTransaction(AppHTTPException):
+    """The ledger entries on a transaction do not sum to zero (NFR-0100)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "unbalanced_transaction",
+            "Debits and credits must sum to zero.",
+        )
+
+
+class DuplicateIdempotencyKey(AppHTTPException):
+    """The idempotency key was reused with a different payload.
+
+    Per Pay-PRD-0200, identical replays return the original transaction;
+    this exception is raised only when the replay has a CONFLICTING body.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "idempotency_conflict",
+            "Idempotency key already used with a different request body.",
+        )
+
+
+# --- Payments ---------------------------------------------------------------
+
+
+class InsufficientFunds(AppHTTPException):
+    """Sender's available balance is less than the requested amount (Pay-PRD-0220)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "insufficient_funds",
+            "The sender's available balance is insufficient for this transfer.",
+        )
+
+
+class CurrencyMismatch(AppHTTPException):
+    """Sender and recipient wallets are in different currencies.
+
+    Phase 1 does not perform FX conversion (PRD §5 non-goal). The transaction's
+    currency must match both account currencies.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "currency_mismatch",
+            "Sender and recipient accounts must hold the same currency.",
+        )
+
+
+class SelfTransferNotAllowed(AppHTTPException):
+    """A user cannot transfer funds to themselves.
+
+    Not explicitly in the PRD, but a sane invariant — self-transfer is a no-op
+    that pollutes the ledger and confuses balance derivation.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "self_transfer_not_allowed",
+            "Cannot transfer funds to the same user.",
+        )
+
+
+# --- Events & Rules ---------------------------------------------------------
+
+
+class SourceNotRegistered(AppHTTPException):
+    """The event's source_key is not registered in `external_event_sources`."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            404,
+            "source_not_registered",
+            "Event source is not registered.",
+        )
+
+
+class SourceKeyAlreadyInUse(AppHTTPException):
+    """Attempt to register a source_key that already exists globally."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "source_key_already_in_use",
+            "Another source is already registered with this source_key.",
+        )
+
+
+class SourceTenantMismatch(AppHTTPException):
+    """Event's tenant_id does not match the registered source's tenant_id."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            403,
+            "source_tenant_mismatch",
+            "Event tenant does not match registered source tenant.",
+        )
+
+
+class RuleNotFound(AppHTTPException):
+    """No rule with the given id in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "rule_not_found", "Rule not found.")
+
+
+class InvalidRuleConfig(AppHTTPException):
+    """A rule's fields are inconsistent (e.g. milestone without count_threshold)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(422, "invalid_rule_config", detail)
+
+
+class UserPointsAccountMissing(AppHTTPException):
+    """User has no points_account in this tenant — cannot issue points rewards."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "user_points_account_missing",
+            "Recipient user does not have a points account.",
+        )
+
+
+class SystemPointsIssuanceMissing(AppHTTPException):
+    """Tenant has no system_points_issuance account — cannot issue points rewards."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            500,
+            "system_points_issuance_missing",
+            "Tenant is missing its system_points_issuance account.",
+        )
+
+
+# --- Redemption -------------------------------------------------------------
+
+
+class RedemptionProviderNotFound(AppHTTPException):
+    """No redemption provider with the given id in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            404, "provider_not_found", "Redemption provider not found."
+        )
+
+
+class RedemptionProviderInactive(AppHTTPException):
+    """Provider exists but is inactive — cannot accept new redemptions."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "provider_inactive",
+            "Redemption provider is inactive.",
+        )
+
+
+class RedemptionNotFound(AppHTTPException):
+    """No redemption with the given id in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            404, "redemption_not_found", "Redemption not found."
+        )
+
+
+class RedemptionNotPending(AppHTTPException):
+    """Caller tried to confirm/fail a redemption that's no longer PENDING.
+
+    Terminal statuses (COMPLETED, FAILED, REVERSED) are final.
+    """
+
+    def __init__(self, current_status: str) -> None:
+        super().__init__(
+            409,
+            "redemption_not_pending",
+            f"Redemption is in status {current_status}, cannot transition.",
+        )
+
+
+# --- Reconciliation ---------------------------------------------------------
+
+
+class RedemptionNotInManualReview(AppHTTPException):
+    """Manual resolve was called on a redemption that's not in MANUAL_REVIEW."""
+
+    def __init__(self, current_status: str) -> None:
+        super().__init__(
+            409,
+            "redemption_not_in_manual_review",
+            (
+                f"Redemption is in status {current_status}; manual resolve only "
+                "permitted when status is MANUAL_REVIEW."
+            ),
+        )
+
+
+class InvalidResolveOutcome(AppHTTPException):
+    """Manual resolve outcome wasn't one of COMPLETED or REVERSED."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "invalid_resolve_outcome",
+            "Outcome must be COMPLETED or REVERSED.",
+        )

@@ -1,0 +1,77 @@
+"""AuditLog model — PRD §6.13.
+
+Immutable audit trail for every administrator action, state transition, and
+reconciliation event (NFR-0160, NFR-0250). The table has NO `updated_at`
+column — entries are written once and never modified.
+
+In Phase E.1 the only writer is the reconciliation service. Phase F will add
+audit writes from every state-changing endpoint (user suspension, rule
+activation, redemption confirm/fail, etc.).
+"""
+import uuid
+from datetime import datetime
+
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.shared.models.base import Base, created_at_col, uuid_pk
+
+# Actor type constants — keep in sync with the CHECK constraint.
+ACTOR_USER = "user"
+ACTOR_ADMIN = "admin"
+ACTOR_SYSTEM = "system"
+
+# Common action names — convention: "<entity>.<verb>".
+ACTION_RECON_SWEPT = "recon.swept"
+ACTION_RECON_ESCALATED = "recon.escalated"
+ACTION_RECON_RESOLVED_COMPLETED = "recon.resolved.completed"
+ACTION_RECON_RESOLVED_REVERSED = "recon.resolved.reversed"
+
+
+class AuditLog(Base):
+    """One row per administratively interesting event.
+
+    The before_state and after_state JSONB columns hold a snapshot of the
+    affected entity. For state transitions, this lets reviewers see exactly
+    what changed (e.g. redemption.status went PENDING -> MANUAL_REVIEW with
+    retry_count 3 -> 4).
+    """
+
+    __tablename__ = "audit_log"
+    __table_args__ = (
+        CheckConstraint(
+            "actor_type IN ('user', 'admin', 'system')",
+            name="ck_audit_log_actor_type",
+        ),
+        Index(
+            "idx_audit_entity", "entity_type", "entity_id", "created_at"
+        ),
+        Index("idx_audit_actor", "actor_id", "created_at"),
+        # No idx_audit_tenant separately — entity_type+entity_id usually narrow enough.
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    # NULL when the action is platform-wide (no tenant scope).
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True
+    )
+    # Free-form identifier: user_id, admin Keycloak sub, or 'system' for jobs.
+    actor_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    before_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    after_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    # Free-text note for human-readable context (e.g. reconciliation reason).
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = created_at_col()
+    # NO updated_at — audit entries are immutable (NFR-0160).

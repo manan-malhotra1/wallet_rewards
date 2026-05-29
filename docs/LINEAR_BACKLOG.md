@@ -407,24 +407,29 @@ operators a UI to see and act on the data.
 
 ---
 
-## Epic 6 — Authentication & Roles · **Backlog**
+## Epic 6 — Authentication & Roles · **In Progress**
 
 Phase F. Wires Keycloak JWT validation on admin endpoints, builds PIN/OTP
 flow for end users, adds HMAC verification on provider callbacks, lands
 Module 7 (Roles & Permissions).
 
-### Story 6.1 — Keycloak JWT validation dependency · Backlog
+### Story 6.1 — Keycloak JWT validation dependency (Phase F.1) · Done
 
-**Description:** `get_current_admin()` validates Keycloak JWT signature, audience, expiry. Extracts realm roles.
+**Description:** `get_current_admin()` validates Keycloak JWT signature + exp + iss. Extracts realm roles into a typed `AdminPrincipal`. `require_admin_role(role)` is the per-endpoint gate. Applied to all reconciliation endpoints as the pilot.
 
 **Acceptance criteria:**
-- Invalid signature → 401
-- Expired token → 401
-- `alg: none` → 401
-- Public keys cached in-memory with 24h TTL
-- Extracted role available in request context
+- ✓ Invalid signature → 401 `invalid_token`
+- ✓ Expired token → 401 `token_expired`
+- ✓ `alg: none` → 401 `invalid_algorithm`
+- ✓ Unknown signing key → 401 `unknown_signing_key`
+- ✓ Issuer mismatch → 401 `invalid_token`
+- ✓ Public keys cached in-memory with 24h TTL + 60s refetch floor (DoS guard)
+- ✓ Extracted role available via `AdminPrincipal.has_role()`
+- ✓ Tested with real Keycloak-issued JWT end-to-end (`admin-test` user)
 
-**PRD:** Pay-PRD-0100 · **NFR:** 0170, 0180
+**Delivered:** 19 new auth tests + 32 existing reconciliation tests pre-authed via per-directory conftest. **110/110 total tests pass.**
+
+**PRD:** Pay-PRD-0100 · **NFR:** 0170, 0180, 0210, 0260
 
 ### Story 6.2 — PIN/OTP user authentication flow · Backlog
 
@@ -617,13 +622,15 @@ The remaining 5 of 7 rule types from PRD Module 9.
 | 3. Kafka Rewards Inflow | Done | 5 | 5 | 0 |
 | 4. Redemption + Catalog | Done | 7 | 7 | 0 |
 | 5. Reconciliation + Admin UI | In Progress | 7 | 3 | 4 |
-| 6. Auth & Roles | Backlog | 6 | 0 | 6 |
+| 6. Auth & Roles | In Progress | 6 | 1 | 5 |
 | 7. Money Controls | Backlog | 4 | 0 | 4 |
 | 8. Notifications & Engagement | Backlog | 3 | 0 | 3 |
 | 9. Catalog Expansion | Backlog | 5 | 0 | 5 |
 | 10. Rules Engine Expansion | Backlog | 7 | 0 | 7 |
-| **Total** | — | **53** | **24** | **29** |
+| **Total** | — | **53** | **25** | **28** |
 
-Roughly **45% delivered** by story count — the foundational money-movement
-loop (earn → hold → redeem → reconcile) is complete; remaining work is
-auth, money controls, UX, and rule-type breadth.
+**~47% delivered** by story count. Money-movement loop (earn → hold →
+redeem → reconcile) is complete and the first auth gate (Keycloak admin JWT
+validation, Phase F.1) is live on reconciliation endpoints. Remaining
+auth work covers user PIN/OTP, roles module, HMAC, and applying auth gates
+across the rest of the admin surface.

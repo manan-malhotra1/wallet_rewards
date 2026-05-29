@@ -613,6 +613,97 @@ The remaining 5 of 7 rule types from PRD Module 9.
 
 ---
 
+## Epic 11 — Hot-path Balance & Ledger Partitioning · **Backlog**
+
+Phase H. Denormalised live balance for fast mobile-app reads + monthly
+partitioning so the ledger can be archived/dropped without losing balance
+correctness. Build this BEFORE the first real-tenant onboarding so we don't
+re-architect under production traffic.
+
+**Trigger conditions** (build when ANY is true):
+- Median balance read > 50ms
+- Any single account > 10k ledger entries
+- Planning to drop ledger history for cost or regulatory reasons
+- First real-tenant onboarding is imminent
+
+### Story 11.1 — Live balance columns on accounts table · Backlog
+
+**Description:** Add `balance` + `reserved_balance` as denormalised columns on `accounts`. These hold authoritative live state for user-owned accounts (`user_id IS NOT NULL`); system-owned accounts (`system_points_issuance`, `system_cash_inflow`, `provider_redemption_wallet`) keep the columns for symmetry but are best-effort — operator queries hit `derive_balance()` directly when they want truth.
+
+**Acceptance criteria:**
+- Migration adds `balance NUMERIC(20,6) NOT NULL DEFAULT 0` and `reserved_balance NUMERIC(20,6) NOT NULL DEFAULT 0` to `accounts`
+- One-time backfill from `ledger_entries` per account (idempotent script)
+- Convention documented: "user-owned accounts are authoritative; system accounts are advisory"
+
+**PRD:** NFR-0030 (balance read < 2s) — this enables sub-50ms
+
+### Story 11.2 — Atomic write-path refactor: post_transaction updates accounts.balance · Backlog
+
+**Description:** Replace `SELECT FOR UPDATE → derive_balance → check → INSERT` with `UPDATE accounts SET balance = balance - X WHERE id = ? AND balance - reserved >= X` followed by `INSERT INTO ledger_entries`. Both in one DB transaction. Credits use the same UPDATE pattern but without the WHERE-clause overdraft check (additions are commutative — no lock needed beyond row-level UPDATE).
+
+**Acceptance criteria:**
+- Debit path: `UPDATE` is the overdraft check; 0 rows affected → `InsufficientFunds` raised, no ledger entry written
+- Credit path: `UPDATE ... SET balance = balance + X` (no explicit lock)
+- PENDING → COMPLETED transition: decrements `reserved_balance`
+- PENDING → REVERSED transition: increments `balance` AND decrements `reserved_balance`
+- All four cases in a single DB transaction
+- Concurrent double-spend test from Phase B still passes (the new UPDATE pattern handles concurrency natively)
+
+**PRD:** Pay-PRD-0220 (overdraft), Pay-PRD-0210 (reservation) · **NFR:** 0100
+
+### Story 11.3 — Drift-detection invariant + daily Celery job · Backlog
+
+**Description:** A daily background job that compares `accounts.balance` to `SUM(ledger_entries)` per account. Any mismatch is a P0 incident — page the on-call. Same query also runs as an invariant test at the end of every test session.
+
+**Acceptance criteria:**
+- Invariant test `test_accounts_balance_matches_ledger_sum` in `tests/invariants/`
+- Celery beat job `reconcile_account_balances` runs every 24h
+- Mismatch → write `audit_log` row with `action='balance.drift'` + before/after states
+- Mismatch → emit alert (Slack/email — wired when notifications phase lands)
+- Job NEVER auto-corrects — humans review every drift event
+
+**PRD:** NFR-0100 (sum-to-zero) · **NFR:** 0160 (audit)
+
+### Story 11.4 — PostgreSQL declarative partitioning on ledger_entries · Backlog
+
+**Description:** Convert `ledger_entries` to a partitioned table by `created_at` (monthly). Existing data migrates into the current month's partition; new entries are routed automatically. Indexes are recreated per partition.
+
+**Acceptance criteria:**
+- Migration converts `ledger_entries` to `PARTITION BY RANGE (created_at)`
+- 12 months of partitions pre-created (rolling window)
+- `pg_partman` extension OR a Celery beat job creates next month's partition on the 1st of each month
+- All existing tests pass against the partitioned table
+- Query plan check: `EXPLAIN` on balance derivation shows partition pruning when `created_at` is in WHERE
+
+**Operational note:** This is the most invasive migration in the project. Run on a maintenance window with a tested rollback.
+
+### Story 11.5 — Partition-drop runbook + ledger archive summaries · Backlog
+
+**Description:** Documented procedure for dropping old partitions safely. Before drop, the partition's per-account net effect is folded into a new `ledger_archive_summaries` table (account_id, period_start, period_end, net_change, debits_total, credits_total). After drop, this summary is the only record of activity in that period.
+
+**Acceptance criteria:**
+- New `ledger_archive_summaries` table (migration)
+- Script `scripts/archive_partition.py` (idempotent, dry-run mode by default):
+  1. SUM net effect per account for partition
+  2. Verify total reconciles with `accounts.balance` ± delta of newer partitions
+  3. Insert summary rows
+  4. `DROP TABLE ledger_entries_<period>`
+- Runbook in `docs/runbooks/partition-drop.md`
+- Test: drop a partition, verify `accounts.balance` still correct and summary rows match
+
+### Story 11.6 — Mobile balance read endpoint uses denormalised column · Backlog
+
+**Description:** The `GET /api/v1/accounts/{id}/balance` endpoint (and `GET /catalog/{user}/summary`) reads `accounts.balance` directly instead of calling `derive_balance()`. 5×–100× faster on hot accounts.
+
+**Acceptance criteria:**
+- Endpoint latency benchmark: < 20ms at p95 even with 100k ledger entries on the account
+- Tests verify the response matches `derive_balance()` (drift-test as a unit test)
+- Caching layer (Redis) added as a thin wrapper IF the direct read isn't fast enough — measured first, not pre-cached
+
+**PRD:** NFR-0030 (balance read < 2s — easily met) · **PRD:** Pay-PRD-0140
+
+---
+
 ## Summary
 
 | Epic | Status | Stories | Done | Backlog |
@@ -627,9 +718,10 @@ The remaining 5 of 7 rule types from PRD Module 9.
 | 8. Notifications & Engagement | Backlog | 3 | 0 | 3 |
 | 9. Catalog Expansion | Backlog | 5 | 0 | 5 |
 | 10. Rules Engine Expansion | Backlog | 7 | 0 | 7 |
-| **Total** | — | **53** | **25** | **28** |
+| 11. Hot-path Balance & Ledger Partitioning | Backlog | 6 | 0 | 6 |
+| **Total** | — | **59** | **25** | **34** |
 
-**~47% delivered** by story count. Money-movement loop (earn → hold →
+**~42% delivered** by story count. Money-movement loop (earn → hold →
 redeem → reconcile) is complete and the first auth gate (Keycloak admin JWT
 validation, Phase F.1) is live on reconciliation endpoints. Remaining
 auth work covers user PIN/OTP, roles module, HMAC, and applying auth gates

@@ -20,7 +20,14 @@
       "Bash(psql -U manan -d postgres -c \"CREATE DATABASE wallet_platform_test OWNER wallet;\")",
       "Bash(PGPASSWORD=wallet psql -U wallet -d wallet_platform_test -h localhost -c \"SELECT current_database\\(\\);\")",
       "Bash(PGPASSWORD=wallet psql -U wallet -d wallet_platform -h localhost -c ' *)",
-      "Bash(git reset *)"
+      "Bash(git reset *)",
+      "Bash(git push *)",
+      "Bash(gh --version)",
+      "Bash(gh auth *)",
+      "Bash(ssh -o BatchMode=yes -o ConnectTimeout=5 -T git@github.com)",
+      "mcp__mcp-registry__search_mcp_registry",
+      "mcp__0f977435-94d7-43a5-afda-4cdb5e12186a__create_issue_label",
+      "mcp__0f977435-94d7-43a5-afda-4cdb5e12186a__save_issue"
     ]
   }
 }

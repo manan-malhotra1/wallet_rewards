@@ -10,14 +10,20 @@ from typing import Any
 
 from fastapi import Depends, Header
 
-from app.auth import AdminPrincipal, verify_jwt
+from app.auth import AdminPrincipal, UserPrincipal, verify_jwt
+from app.auth.sessions import read_session
 from app.auth.tokens import extract_bearer_token
 from app.database import get_async_session
-from app.shared.exceptions import InsufficientRole
+from app.shared.exceptions import (
+    InsufficientRole,
+    InvalidAuthorizationHeader,
+    InvalidSession,
+)
 
 __all__ = [
     "get_async_session",
     "get_current_admin",
+    "get_current_user",
     "require_admin_role",
 ]
 
@@ -88,3 +94,36 @@ def require_admin_role(
         return admin
 
     return _checker
+
+
+async def get_current_user(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> UserPrincipal:
+    """Validate the session_token on the request and return the typed user.
+
+    This is the user-side equivalent of `get_current_admin`. It looks up the
+    session in Redis (sliding TTL — every authenticated request extends the
+    session). Sessions are issued by `/auth/pin` and invalidated by
+    `/auth/logout`.
+
+    Raises:
+        InvalidAuthorizationHeader: 401 — missing/malformed header.
+        InvalidSession: 401 — token unknown or expired.
+    """
+    # Extract Bearer token using the same helper as admin auth (it raises
+    # InvalidAuthorizationHeader on malformed input).
+    token = extract_bearer_token(authorization)
+
+    payload = await read_session(token, refresh_ttl=True)
+    if payload is None:
+        raise InvalidSession()
+
+    return UserPrincipal(
+        id=payload["user_id"],
+        tenant_id=payload["tenant_id"],
+        channel=payload["channel"],
+    )
+
+
+# Silence unused-import linting on extract_bearer_token (it's used above).
+_ = (InvalidAuthorizationHeader,)

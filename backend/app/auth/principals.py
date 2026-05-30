@@ -25,3 +25,17 @@ class AdminPrincipal:
     def has_role(self, role: str) -> bool:
         """True if the principal holds the given realm role."""
         return role in self.roles
+
+
+@dataclass(frozen=True)
+class UserPrincipal:
+    """The authenticated end-user behind a user-facing endpoint call.
+
+    Built from a valid Redis-backed session_token (issued by `/auth/pin`).
+    `id` and `tenant_id` are platform UUIDs; `channel` is 'mobile' or 'ussd'
+    (Phase F.2 emits 'mobile' only).
+    """
+
+    id: str
+    tenant_id: str
+    channel: str

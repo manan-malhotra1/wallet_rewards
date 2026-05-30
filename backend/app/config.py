@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     OTP_EXPIRY_SECONDS: int = 300
     PIN_MAX_ATTEMPTS: int = 5
     PIN_LOCKOUT_MINUTES: int = 30
+    # Local-dev only: return the generated OTP in /otp/send response so tests
+    # and manual demos can verify without an SMS gateway. MUST be False
+    # outside local dev (NFR-0170 — OTPs are credentials and never leave the
+    # server in production).
+    OTP_DEV_RETURN: bool = True
     LOG_LEVEL: str = "INFO"
 
 

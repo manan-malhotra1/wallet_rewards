@@ -8,12 +8,13 @@ process-wide. `verify_jwt` is the validation entry point. `AdminPrincipal`
 is the typed result handed to route handlers.
 """
 from app.auth.keycloak import KeycloakClient, keycloak_client
-from app.auth.principals import AdminPrincipal
+from app.auth.principals import AdminPrincipal, UserPrincipal
 from app.auth.tokens import verify_jwt
 
 __all__ = [
     "AdminPrincipal",
     "KeycloakClient",
+    "UserPrincipal",
     "keycloak_client",
     "verify_jwt",
 ]

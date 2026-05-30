@@ -72,3 +72,68 @@ class ResolveResponse(BaseModel):
     user_id: UUID
     tenant_id: UUID
     identifier_type: str
+
+
+# --- Phase F.2 — PIN/OTP/session flow --------------------------------------
+
+
+class OtpSendRequest(BaseModel):
+    """Request body for `POST /identity/otp/send`."""
+
+    tenant_id: UUID
+    phone: str = Field(min_length=5, max_length=20)
+
+
+class OtpSendResponse(BaseModel):
+    """`POST /otp/send` response.
+
+    `otp` is populated ONLY when the server is configured with
+    `OTP_DEV_RETURN=true` (local dev only) — see Settings. In production the
+    field is omitted and SMS gateway delivers the code.
+    """
+
+    delivered: bool
+    otp: str | None = None  # local-dev only
+
+
+class OtpVerifyRequest(BaseModel):
+    """Request body for `POST /identity/otp/verify`."""
+
+    tenant_id: UUID
+    phone: str = Field(min_length=5, max_length=20)
+    otp: str = Field(min_length=4, max_length=10)
+
+
+class OtpVerifyResponse(BaseModel):
+    """`POST /otp/verify` returns the short-lived registration token."""
+
+    registration_token: str
+    expires_in: int
+
+
+class PinSetRequest(BaseModel):
+    """Request body for `POST /identity/pin/set`."""
+
+    registration_token: str = Field(min_length=8)
+    pin: str = Field(min_length=4, max_length=6)
+
+
+class PinAuthRequest(BaseModel):
+    """Request body for `POST /identity/auth/pin`."""
+
+    tenant_id: UUID
+    phone: str = Field(min_length=5, max_length=20)
+    pin: str = Field(min_length=4, max_length=6)
+
+
+class SessionTokenResponse(BaseModel):
+    """`POST /auth/pin` returns the opaque bearer token."""
+
+    session_token: str
+    expires_in: int
+
+
+class LogoutResponse(BaseModel):
+    """`POST /auth/logout` ack."""
+
+    ok: bool = True

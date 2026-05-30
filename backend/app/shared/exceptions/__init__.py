@@ -355,3 +355,107 @@ class InsufficientRole(AppHTTPException):
             "insufficient_role",
             f"This action requires the '{required}' role.",
         )
+
+
+# --- PIN / OTP / Session (Phase F.2) ---------------------------------------
+
+
+class OtpRateLimited(AppHTTPException):
+    """Too many OTP-send requests for this phone within the window."""
+
+    def __init__(self, retry_after: int) -> None:
+        super().__init__(
+            429,
+            "otp_rate_limited",
+            f"Too many OTP requests. Try again in {retry_after} seconds.",
+        )
+
+
+class InvalidOtp(AppHTTPException):
+    """OTP wrong, expired, already used, or no active OTP for this phone.
+
+    Intentionally identical message for all four — we never reveal which.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(401, "invalid_otp", "OTP is invalid or has expired.")
+
+
+class OtpExpired(AppHTTPException):
+    """OTP exists but is past its expiry. Same surfaced error as InvalidOtp
+    when the verifier sees a single failed branch, but here for clarity in
+    code paths that explicitly check expiry first."""
+
+    def __init__(self) -> None:
+        super().__init__(401, "otp_expired", "OTP has expired.")
+
+
+class InvalidRegistrationToken(AppHTTPException):
+    """Token from /otp/verify is missing, expired, or already consumed."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            401,
+            "invalid_registration_token",
+            "Registration token is invalid or has expired.",
+        )
+
+
+class PinAlreadySet(AppHTTPException):
+    """User already has a PIN — use PIN reset flow instead (deferred)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "pin_already_set",
+            "PIN is already set. Use PIN reset flow to change it.",
+        )
+
+
+class PinNotSet(AppHTTPException):
+    """User exists but has no PIN — caller must complete registration first."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            401,
+            "pin_not_set",
+            "No PIN configured for this account.",
+        )
+
+
+class InvalidCredentials(AppHTTPException):
+    """PIN doesn't match. Generic message — never leak which side was wrong."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            401, "invalid_credentials", "Phone or PIN is incorrect."
+        )
+
+
+class AccountLocked(AppHTTPException):
+    """Too many failed PIN attempts. Locked for `retry_after` seconds (NFR-0190)."""
+
+    def __init__(self, retry_after: int) -> None:
+        super().__init__(
+            423,
+            "account_locked",
+            f"Account locked. Try again in {retry_after} seconds.",
+        )
+
+
+class InvalidSession(AppHTTPException):
+    """Session token is missing, unknown, or expired."""
+
+    def __init__(self) -> None:
+        super().__init__(401, "invalid_session", "Session is invalid or has expired.")
+
+
+class InvalidPinFormat(AppHTTPException):
+    """PIN doesn't meet the 4–6 digit numeric format."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "invalid_pin_format",
+            "PIN must be 4 to 6 numeric digits.",
+        )

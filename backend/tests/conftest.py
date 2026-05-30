@@ -371,3 +371,47 @@ def admin_token(make_admin_token: Callable[..., str]) -> str:
 def admin_auth_header(admin_token: str) -> dict[str, str]:
     """Authorization header dict ready for httpx requests."""
     return {"Authorization": f"Bearer {admin_token}"}
+
+
+# -----------------------------------------------------------------------------
+# Per-test Redis client (Phase F.2)
+# -----------------------------------------------------------------------------
+# OTP rate-limits, lockouts, sessions, and registration_tokens live in Redis.
+# The redis-py async client is bound to an event loop at construction time.
+# pytest-asyncio uses a fresh loop per test, so we MUST also recreate the
+# Redis client per test — otherwise the second test hits
+# `RuntimeError: Event loop is closed`.
+#
+# This fixture monkey-patches the `redis_client` name in every module that
+# imported it so all production code paths use the per-test client. It also
+# flushes the DB so lockout / rate-limit state doesn't leak between tests.
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _redis_per_test(
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[None]:
+    """Fresh Redis client per test, flushed at start."""
+    import redis.asyncio as redis_lib
+
+    from app import redis_client as redis_module
+    from app.auth import lockout as lockout_module
+    from app.auth import rate_limit as rate_limit_module
+    from app.auth import sessions as sessions_module
+
+    client = redis_lib.from_url(
+        settings.REDIS_URL, encoding="utf-8", decode_responses=True
+    )
+    await client.flushdb()
+
+    # Patch every importer. Without this, the modules still reference the
+    # ORIGINAL singleton that was bound to a now-closed loop.
+    monkeypatch.setattr(redis_module, "redis_client", client)
+    monkeypatch.setattr(sessions_module, "redis_client", client)
+    monkeypatch.setattr(lockout_module, "redis_client", client)
+    monkeypatch.setattr(rate_limit_module, "redis_client", client)
+
+    try:
+        yield
+    finally:
+        await client.aclose()

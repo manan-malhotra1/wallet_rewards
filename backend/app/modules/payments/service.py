@@ -26,6 +26,7 @@ from app.modules.ledger import (
     post_transaction,
 )
 from app.modules.payments.schemas import IdentifierType
+from app.modules.roles.service import require_permission
 from app.shared.exceptions import (
     AccountNotFound,
     CurrencyMismatch,
@@ -150,6 +151,11 @@ async def p2p_transfer(
         InsufficientFunds: sender's available balance < amount.
     """
     await _assert_tenant_exists(session, tenant_id)
+
+    # 1. Role check (Pay-PRD-0260 step 1, Pay-PRD-0440/0450/0460).
+    # Sender must hold an active role permitting "p2p". Fails BEFORE any
+    # further work — no lock acquired, no ledger touched.
+    await require_permission(session, sender_user_id, "p2p")
 
     # 2. Resolve recipient identifier (tenant-scoped — Pay-PRD-0060).
     recipient_id_row = await resolve_identifier(

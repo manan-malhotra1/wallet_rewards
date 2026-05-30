@@ -50,9 +50,12 @@ from app.shared.models import (
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
     Base,
+    Role,
+    RolePermission,
     Tenant,
     User,
     UserIdentifier,
+    UserRole,
 )
 
 # -----------------------------------------------------------------------------
@@ -181,8 +184,14 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
 
 
 @pytest_asyncio.fixture
-async def test_user(db_session: AsyncSession, test_tenant: Tenant) -> User:
-    """A simple active user with one phone identifier."""
+async def test_user(
+    db_session: AsyncSession, test_tenant: Tenant, default_user_role: Role
+) -> User:
+    """A simple active user with one phone identifier + default role.
+
+    The default role grants p2p + redemption + top_up — exercises Phase F.3
+    role check without each test having to wire it manually.
+    """
     user = User(tenant_id=test_tenant.id)
     db_session.add(user)
     await db_session.flush()
@@ -195,9 +204,65 @@ async def test_user(db_session: AsyncSession, test_tenant: Tenant) -> User:
             verified=True,
         )
     )
+    db_session.add(UserRole(user_id=user.id, role_id=default_user_role.id))
     await db_session.commit()
     await db_session.refresh(user, attribute_names=["identifiers"])
     return user
+
+
+@pytest_asyncio.fixture
+async def default_user_role(
+    db_session: AsyncSession, test_tenant: Tenant
+) -> Role:
+    """Per-tenant default role granting common user transaction types.
+
+    Phase F.3 requires every user to hold an active role permitting a
+    transaction_type before initiating it (Pay-PRD-0440 / 0450). Without
+    this fixture every P2P / redemption test would 403.
+    """
+    role = Role(
+        tenant_id=test_tenant.id,
+        name="standard_user",
+        description="Default test role — grants p2p, redemption, top_up.",
+    )
+    db_session.add(role)
+    await db_session.flush()
+    for txn_type in ("p2p", "redemption", "top_up"):
+        db_session.add(
+            RolePermission(
+                role_id=role.id,
+                transaction_type=txn_type,
+                permitted=True,
+            )
+        )
+    await db_session.commit()
+    await db_session.refresh(role)
+    return role
+
+
+@pytest_asyncio.fixture
+async def default_user_role_other_tenant(
+    db_session: AsyncSession, other_tenant: Tenant
+) -> Role:
+    """Default role for `other_tenant` — same shape as default_user_role."""
+    role = Role(
+        tenant_id=other_tenant.id,
+        name="standard_user",
+        description="Default test role for the other tenant.",
+    )
+    db_session.add(role)
+    await db_session.flush()
+    for txn_type in ("p2p", "redemption", "top_up"):
+        db_session.add(
+            RolePermission(
+                role_id=role.id,
+                transaction_type=txn_type,
+                permitted=True,
+            )
+        )
+    await db_session.commit()
+    await db_session.refresh(role)
+    return role
 
 
 @pytest_asyncio.fixture

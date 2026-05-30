@@ -29,14 +29,50 @@ def idempotency_header() -> dict[str, str]:
     return {"Idempotency-Key": uuid4().hex}
 
 
+async def _ensure_default_role(session: AsyncSession, tenant: Tenant):
+    """Get or create the tenant's standard_user role with common permissions.
+
+    Phase F.3 added a role check at step 1 of payment orchestration. Without
+    a permitted role, P2P returns 403. This helper makes user creation
+    self-contained — every helper-created user gets a default role.
+    """
+    from sqlalchemy import select
+
+    from app.shared.models import Role, RolePermission
+
+    result = await session.execute(
+        select(Role).where(Role.tenant_id == tenant.id, Role.name == "standard_user")
+    )
+    role = result.scalar_one_or_none()
+    if role is not None:
+        return role
+    role = Role(tenant_id=tenant.id, name="standard_user")
+    session.add(role)
+    await session.flush()
+    for txn_type in ("p2p", "redemption", "top_up"):
+        session.add(
+            RolePermission(role_id=role.id, transaction_type=txn_type, permitted=True)
+        )
+    await session.commit()
+    return role
+
+
 async def _make_user_with_wallet(
     session: AsyncSession,
     tenant: Tenant,
     *,
     phone: str,
     currency: str = "ZAR",
+    assign_default_role: bool = True,
 ) -> tuple[User, Account]:
-    """Helper — create a user with one phone identifier + one ZAR wallet."""
+    """Helper — create a user with one phone identifier + one ZAR wallet.
+
+    By default also assigns the tenant's standard_user role so P2P passes the
+    Phase F.3 role check. Pass `assign_default_role=False` to test the
+    "no role → 403" path.
+    """
+    from app.shared.models import UserRole
+
     user = User(tenant_id=tenant.id)
     session.add(user)
     await session.flush()
@@ -56,6 +92,9 @@ async def _make_user_with_wallet(
         currency=currency,
     )
     session.add(wallet)
+    if assign_default_role:
+        role = await _ensure_default_role(session, tenant)
+        session.add(UserRole(user_id=user.id, role_id=role.id))
     await session.commit()
     await session.refresh(user)
     await session.refresh(wallet)

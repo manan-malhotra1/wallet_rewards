@@ -57,6 +57,13 @@ from app.shared.models.redemption import (
     RedemptionProvider,
 )
 from app.shared.models.rewards import RewardEvent
+from app.shared.models.roles import (
+    ROLE_STATUS_ACTIVE,
+    ROLE_STATUS_INACTIVE,
+    Role,
+    RolePermission,
+    UserRole,
+)
 from app.shared.models.rules import (
     PROGRESS_STATUS_ACTIVE,
     PROGRESS_STATUS_COMPLETED,
@@ -153,6 +160,12 @@ __all__ = [
     "REDEMPTION_STATUS_REVERSED",
     "REDEMPTION_STATUS_MANUAL_REVIEW",
     "REDEMPTION_TERMINAL_STATUSES",
+    # Platform roles (Module 7)
+    "Role",
+    "RolePermission",
+    "UserRole",
+    "ROLE_STATUS_ACTIVE",
+    "ROLE_STATUS_INACTIVE",
     # Audit
     "AuditLog",
     "ACTOR_USER",

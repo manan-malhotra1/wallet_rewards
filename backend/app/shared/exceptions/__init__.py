@@ -459,3 +459,39 @@ class InvalidPinFormat(AppHTTPException):
             "invalid_pin_format",
             "PIN must be 4 to 6 numeric digits.",
         )
+
+
+# --- Roles & Permissions (Phase F.3 / Module 7) ----------------------------
+
+
+class RoleNotFound(AppHTTPException):
+    """No role with the given id in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "role_not_found", "Role not found.")
+
+
+class RoleAlreadyExists(AppHTTPException):
+    """Duplicate (tenant_id, name) — role names are unique within a tenant."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(
+            409,
+            "role_already_exists",
+            f"A role named '{name}' already exists in this tenant.",
+        )
+
+
+class NotAuthorised(AppHTTPException):
+    """The user has no active role permitting this transaction_type.
+
+    Step 1 of the Pay-PRD-0260 orchestration sequence (Pay-PRD-0440 / 0450 /
+    0460). Rejected BEFORE any limits / pricing / ledger evaluation.
+    """
+
+    def __init__(self, transaction_type: str) -> None:
+        super().__init__(
+            403,
+            "not_authorised",
+            f"You are not authorised to initiate a '{transaction_type}' transaction.",
+        )

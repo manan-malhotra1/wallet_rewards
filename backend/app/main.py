@@ -15,6 +15,7 @@ from app.modules.identity import router as identity_router
 from app.modules.payments import router as payments_router
 from app.modules.reconciliation import router as reconciliation_router
 from app.modules.redemption import router as redemption_router
+from app.modules.roles import router as roles_router
 from app.modules.rules import router as rules_router
 from app.shared.exceptions import AppHTTPException
 
@@ -69,3 +70,4 @@ app.include_router(events_router)
 app.include_router(redemption_router)
 app.include_router(catalog_router)
 app.include_router(reconciliation_router)
+app.include_router(roles_router)

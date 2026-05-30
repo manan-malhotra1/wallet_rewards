@@ -32,6 +32,7 @@ from app.modules.redemption.schemas import (
     InitiateRedemptionRequest,
     ProviderRegistrationRequest,
 )
+from app.modules.roles.service import require_permission
 from app.shared.exceptions import (
     InsufficientFunds,
     RedemptionNotFound,
@@ -214,6 +215,12 @@ async def initiate_redemption(
         InsufficientFunds: 409 — available balance < points_amount.
     """
     await _assert_tenant_exists(session, request.tenant_id)
+
+    # Step 1 (Pay-PRD-0260, Pay-PRD-0440/0450/0460): the user must hold an
+    # active role permitting "redemption". Reject BEFORE any wallet lookup,
+    # lock, or ledger write.
+    await require_permission(session, request.user_id, "redemption")
+
     provider = await _find_provider(session, request.provider_id, request.tenant_id)
     if provider.status != "active":
         raise RedemptionProviderInactive()

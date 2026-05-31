@@ -3,6 +3,9 @@
 These verify step 1 of the Pay-PRD-0260 orchestration sequence — the role
 check rejects unauthorized users BEFORE any wallet lookup, lock, or ledger
 write.
+
+Phase F.4 layered session-token auth on top. These tests mint a session for
+the test user (Alice) and assert the role-gate still fires correctly.
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ from app.shared.models import (
     UserIdentifier,
     UserRole,
 )
+from tests.conftest import create_session_token_for_user
 
 
 async def _make_user_with_phone(
@@ -60,6 +64,12 @@ async def _make_user_with_phone(
     return user
 
 
+async def _user_header(user: User) -> dict[str, str]:
+    """Mint a Bearer session header for a user."""
+    token = await create_session_token_for_user(user.id, user.tenant_id)
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.mark.asyncio
 async def test_p2p_rejects_user_with_no_role(
     async_client: AsyncClient,
@@ -68,11 +78,9 @@ async def test_p2p_rejects_user_with_no_role(
     default_user_role: Role,
 ) -> None:
     """User without any role → 403 not_authorised at step 1. No ledger write."""
-    # Alice has no role assigned (skip default_user_role).
     alice = await _make_user_with_phone(
         db_session, test_tenant, phone="+27 82 999 1001"
     )
-    # Bob has the default role.
     await _make_user_with_phone(
         db_session,
         test_tenant,
@@ -80,8 +88,6 @@ async def test_p2p_rejects_user_with_no_role(
         assign_role=default_user_role,
     )
 
-    # Give Alice some money so we can isolate the role check from the
-    # overdraft check.
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -93,10 +99,8 @@ async def test_p2p_rejects_user_with_no_role(
 
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={**(await _user_header(alice)), "Idempotency-Key": uuid4().hex},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {
                 "identifier_type": "phone",
                 "identifier_value": "+27 82 999 1002",
@@ -116,7 +120,6 @@ async def test_p2p_rejects_user_whose_role_lacks_p2p_permission(
     test_tenant: Tenant,
 ) -> None:
     """User has a role, but the role doesn't permit p2p → 403."""
-    # A role that explicitly only permits "redemption" — no p2p.
     from app.shared.models import RolePermission
 
     redemption_only = Role(
@@ -155,10 +158,8 @@ async def test_p2p_rejects_user_whose_role_lacks_p2p_permission(
 
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={**(await _user_header(alice)), "Idempotency-Key": uuid4().hex},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {
                 "identifier_type": "phone",
                 "identifier_value": "+27 82 999 2002",
@@ -179,7 +180,6 @@ async def test_p2p_rejects_when_role_is_inactive(
     default_user_role: Role,
 ) -> None:
     """User has the default role but it's inactive → 403."""
-    # Deactivate the default role.
     default_user_role.status = "inactive"
     await db_session.commit()
 
@@ -206,10 +206,8 @@ async def test_p2p_rejects_when_role_is_inactive(
 
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={**(await _user_header(alice)), "Idempotency-Key": uuid4().hex},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {
                 "identifier_type": "phone",
                 "identifier_value": "+27 82 999 3002",
@@ -229,7 +227,6 @@ async def test_p2p_allowed_when_any_role_grants_permission(
     default_user_role: Role,
 ) -> None:
     """User holds multiple roles — any one granting p2p is enough."""
-    # default_user_role grants p2p. Also give the user an inert "viewer" role.
     viewer = Role(tenant_id=test_tenant.id, name="viewer")
     db_session.add(viewer)
     await db_session.flush()
@@ -242,7 +239,6 @@ async def test_p2p_allowed_when_any_role_grants_permission(
         phone="+27 82 999 4001",
         assign_role=default_user_role,
     )
-    # Also assign the inert viewer role — should not affect anything.
     db_session.add(UserRole(user_id=alice.id, role_id=viewer.id))
     await db_session.commit()
 
@@ -263,10 +259,8 @@ async def test_p2p_allowed_when_any_role_grants_permission(
 
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={**(await _user_header(alice)), "Idempotency-Key": uuid4().hex},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {
                 "identifier_type": "phone",
                 "identifier_value": "+27 82 999 4002",
@@ -291,19 +285,17 @@ async def test_redemption_initiate_also_gated(
     points-account lookup happens.
     """
     from app.modules.rewards.service import issue_points_reward
-    from app.shared.models import Account as AcctModel
     from app.shared.models import (
         ACCOUNT_TYPE_POINTS,
         ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+        RolePermission,
         Rule,
     )
+    from app.shared.models import Account as AcctModel
 
-    # Create a role that does NOT grant redemption.
     p2p_only = Role(tenant_id=test_tenant.id, name="p2p-only")
     db_session.add(p2p_only)
     await db_session.flush()
-    from app.shared.models import RolePermission
-
     db_session.add(
         RolePermission(
             role_id=p2p_only.id, transaction_type="p2p", permitted=True
@@ -315,10 +307,6 @@ async def test_redemption_initiate_also_gated(
     alice = await _make_user_with_phone(
         db_session, test_tenant, phone="+27 82 999 5001", assign_role=p2p_only
     )
-    # Alice needs a points account + balance + a provider for the test
-    # to reach the role check (which is step 1, so actually it doesn't
-    # need to reach further — but giving her a balance proves the rejection
-    # happens before any ledger debit).
     db_session.add(
         AcctModel(
             tenant_id=test_tenant.id,
@@ -336,7 +324,6 @@ async def test_redemption_initiate_also_gated(
     )
     await db_session.commit()
 
-    # Give Alice some points via a rule firing so we know she has balance.
     rule = Rule(
         tenant_id=test_tenant.id,
         name="grant-pts",
@@ -357,7 +344,7 @@ async def test_redemption_initiate_also_gated(
         reward_value=Decimal("100"),
     )
 
-    # Register a provider — uses admin auth.
+    # Provider register requires admin (Phase F.4).
     provider_resp = await async_client.post(
         "/api/v1/redemption/providers",
         headers=admin_auth_header,
@@ -365,13 +352,11 @@ async def test_redemption_initiate_also_gated(
     )
     provider_id = provider_resp.json()["id"]
 
-    # Alice attempts to redeem — role check rejects before anything else.
+    # Alice attempts to redeem with her own session — role check rejects.
     response = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={**(await _user_header(alice)), "Idempotency-Key": uuid4().hex},
         json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(alice.id),
             "provider_id": provider_id,
             "points_amount": "10",
         },

@@ -1,8 +1,5 @@
-"""Role tests — pre-authed async_client with platform-admin JWT.
-
-Same pattern as `tests/reconciliation/conftest.py`. Every role CRUD endpoint
-requires the `platform-admin` realm role (Phase F.1 gate), so the default
-client must carry that token.
+"""Events tests override `async_client` to be pre-authed with a
+platform-admin JWT — both events endpoints are admin-only after Phase F.4.
 """
 from __future__ import annotations
 
@@ -20,7 +17,7 @@ from app.main import app
 async def async_client(
     admin_auth_header: dict[str, str],
 ) -> AsyncIterator[AsyncClient]:
-    """Pre-authed httpx client — admin JWT attached by default."""
+    """Pre-authed httpx client — every request sends the admin JWT by default."""
     from tests.conftest import TestSessionLocal
 
     async def _override_session() -> AsyncIterator[AsyncSession]:

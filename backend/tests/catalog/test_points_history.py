@@ -1,4 +1,9 @@
-"""Tests for GET /api/v1/catalog/{user_id}/points-history (Pay-PRD-0980)."""
+"""Tests for GET /api/v1/catalog/me/points-history (Pay-PRD-0980).
+
+Phase F.4 made the route `/me/` — user_id + tenant_id come from the
+session token. Cross-tenant isolation is now structural (a tenant-A session
+literally cannot address tenant-B data).
+"""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -14,7 +19,10 @@ from app.shared.models import (
     Rule,
     Tenant,
     User,
+    UserIdentifier,
+    UserRole,
 )
+from tests.conftest import create_session_token_for_user
 
 
 async def _seed_reward(
@@ -49,16 +57,21 @@ async def _seed_reward(
     return rule
 
 
+async def _user_header(user: User) -> dict[str, str]:
+    """Mint a Bearer session header for a user."""
+    token = await create_session_token_for_user(user.id, user.tenant_id)
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.mark.asyncio
 async def test_points_history_empty_for_user_without_account(
     async_client: AsyncClient,
-    test_tenant: Tenant,
     test_user: User,
 ) -> None:
     """User has no points_account → empty array, NOT 404."""
     response = await async_client.get(
-        f"/api/v1/catalog/{test_user.id}/points-history",
-        params={"tenant_id": str(test_tenant.id)},
+        "/api/v1/catalog/me/points-history",
+        headers=await _user_header(test_user),
     )
     assert response.status_code == 200
     assert response.json() == []
@@ -70,8 +83,8 @@ async def test_points_history_includes_rule_name_for_rewards(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001 — ensures points account exists
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Reward-issuance entries surface the firing rule's name."""
     await _seed_reward(
@@ -84,8 +97,8 @@ async def test_points_history_includes_rule_name_for_rewards(
     )
 
     response = await async_client.get(
-        f"/api/v1/catalog/{test_user.id}/points-history",
-        params={"tenant_id": str(test_tenant.id)},
+        "/api/v1/catalog/me/points-history",
+        headers=await _user_header(test_user),
     )
     assert response.status_code == 200
     items = response.json()
@@ -105,8 +118,9 @@ async def test_points_history_orders_newest_first(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    admin_auth_header: dict[str, str],
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Two rewards then a redemption → 3 entries, newest first."""
     await _seed_reward(
@@ -126,26 +140,26 @@ async def test_points_history_orders_newest_first(
         event_key="evt-2",
     )
 
-    # Initiate a redemption (DEBIT 30 PENDING).
+    # Provider register (admin) + initiate (user).
     pr = await async_client.post(
         "/api/v1/redemption/providers",
+        headers=admin_auth_header,
         json={"tenant_id": str(test_tenant.id), "name": "P"},
     )
     provider_id = pr.json()["id"]
+    user_header = await _user_header(test_user)
     await async_client.post(
         "/api/v1/redemption/initiate",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={**user_header, "Idempotency-Key": uuid4().hex},
         json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
             "provider_id": provider_id,
             "points_amount": "30",
         },
     )
 
     response = await async_client.get(
-        f"/api/v1/catalog/{test_user.id}/points-history",
-        params={"tenant_id": str(test_tenant.id)},
+        "/api/v1/catalog/me/points-history",
+        headers=user_header,
     )
     items = response.json()
     # 3 entries on the user's points_account: 2 CREDIT (rewards) + 1 DEBIT (redemption).
@@ -168,10 +182,14 @@ async def test_points_history_cross_tenant_isolated(
     test_tenant: Tenant,
     other_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
-    """Querying the user's history under a different tenant returns []."""
+    """A user in other_tenant cannot see rewards earned in test_tenant.
+
+    Phase F.4 makes this structural — tenant comes from the session, so
+    a tenant-B user simply has no rewards in their own tenant's history.
+    """
     await _seed_reward(
         db_session,
         test_tenant,
@@ -181,10 +199,39 @@ async def test_points_history_cross_tenant_isolated(
         event_key="evt-xt",
     )
 
-    # test_user belongs to test_tenant; ask other_tenant for their history.
+    # A second user in other_tenant — should see nothing.
+    other_user = User(tenant_id=other_tenant.id)
+    db_session.add(other_user)
+    await db_session.flush()
+    db_session.add(
+        UserIdentifier(
+            user_id=other_user.id,
+            tenant_id=other_tenant.id,
+            identifier_type="phone",
+            identifier_value="+27 82 555 9000",
+            verified=True,
+        )
+    )
+    # Default role for other_tenant lives in `default_user_role_other_tenant`
+    # fixture; reproduce inline to keep the test self-contained.
+    from app.shared.models import Role, RolePermission
+
+    role = Role(
+        tenant_id=other_tenant.id,
+        name="standard_user_xt",
+        description="cross-tenant test role",
+    )
+    db_session.add(role)
+    await db_session.flush()
+    db_session.add(
+        RolePermission(role_id=role.id, transaction_type="p2p", permitted=True)
+    )
+    db_session.add(UserRole(user_id=other_user.id, role_id=role.id))
+    await db_session.commit()
+
     response = await async_client.get(
-        f"/api/v1/catalog/{test_user.id}/points-history",
-        params={"tenant_id": str(other_tenant.id)},
+        "/api/v1/catalog/me/points-history",
+        headers=await _user_header(other_user),
     )
     assert response.status_code == 200
     assert response.json() == []

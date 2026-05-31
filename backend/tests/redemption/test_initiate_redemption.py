@@ -1,6 +1,8 @@
 """Tests for POST /api/v1/redemption/initiate.
 
 Covers the overdraft-prevention scenarios from Phase D threat model §5.
+Phase F.4 removed `tenant_id` + `user_id` from the body — both come from
+the user's session token. Provider registration remains admin-only.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from app.shared.models import (
     Tenant,
     User,
 )
-
+from tests.conftest import create_session_token_for_user
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -36,7 +38,7 @@ def idempotency_header() -> dict[str, str]:
 async def _register_provider(
     async_client: AsyncClient, tenant: Tenant, *, name: str = "Test Provider"
 ) -> str:
-    """Register a provider via the API and return its id."""
+    """Register a provider via the admin-authed API; return its id."""
     resp = await async_client.post(
         "/api/v1/redemption/providers",
         json={"tenant_id": str(tenant.id), "name": name},
@@ -53,7 +55,7 @@ async def _credit_user_points(
     *,
     seed_key: str = "seed-pts",
 ) -> None:
-    """Give the user some points by routing an ad-hoc reward through issue_points_reward."""
+    """Give the user points via a synthetic first_time rule reward."""
     rule = Rule(
         tenant_id=tenant.id,
         name=f"seed-rule-{seed_key}",
@@ -75,6 +77,12 @@ async def _credit_user_points(
     )
 
 
+async def _user_auth_header(user: User) -> dict[str, str]:
+    """Mint a session token for `user` and wrap in a Bearer header."""
+    token = await create_session_token_for_user(user.id, user.tenant_id)
+    return {"Authorization": f"Bearer {token}"}
+
+
 # -----------------------------------------------------------------------------
 # Tests
 # -----------------------------------------------------------------------------
@@ -87,7 +95,7 @@ async def test_initiate_happy_path(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001 — required for issuance
+    system_points_account: Account,
     idempotency_header: dict[str, str],
 ) -> None:
     """Alice 150 pts → redeem 100 → PENDING redemption, available drops to 50."""
@@ -98,10 +106,8 @@ async def test_initiate_happy_path(
 
     response = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers=idempotency_header,
+        headers={**(await _user_auth_header(test_user)), **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
             "provider_id": provider_id,
             "points_amount": "100",
         },
@@ -125,7 +131,7 @@ async def test_initiate_rejects_insufficient_points(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
     idempotency_header: dict[str, str],
 ) -> None:
     """Redeeming more than available → 409 insufficient_funds, no ledger write."""
@@ -136,10 +142,8 @@ async def test_initiate_rejects_insufficient_points(
 
     response = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers=idempotency_header,
+        headers={**(await _user_auth_header(test_user)), **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
             "provider_id": provider_id,
             "points_amount": "200",
         },
@@ -147,7 +151,6 @@ async def test_initiate_rejects_insufficient_points(
     assert response.status_code == 409
     assert response.json()["error_code"] == "insufficient_funds"
 
-    # Balance untouched, no reserved.
     balance, reserved = await derive_balance(db_session, user_points.id)
     assert balance == Decimal("50")
     assert reserved == Decimal("0")
@@ -159,8 +162,8 @@ async def test_initiate_rejects_unknown_provider(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
     idempotency_header: dict[str, str],
 ) -> None:
     """Unknown provider_id → 404."""
@@ -169,10 +172,8 @@ async def test_initiate_rejects_unknown_provider(
     )
     response = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers=idempotency_header,
+        headers={**(await _user_auth_header(test_user)), **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
             "provider_id": str(uuid4()),
             "points_amount": "10",
         },
@@ -188,29 +189,28 @@ async def test_initiate_idempotent_replay(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Same Idempotency-Key returns same redemption_id — no double-debit."""
     await _credit_user_points(
         db_session, test_tenant, test_user, Decimal("100"), seed_key="idem"
     )
     provider_id = await _register_provider(async_client, test_tenant)
+    user_header = await _user_auth_header(test_user)
     key = uuid4().hex
     payload = {
-        "tenant_id": str(test_tenant.id),
-        "user_id": str(test_user.id),
         "provider_id": provider_id,
         "points_amount": "30",
     }
 
     first = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers={"Idempotency-Key": key},
+        headers={**user_header, "Idempotency-Key": key},
         json=payload,
     )
     second = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers={"Idempotency-Key": key},
+        headers={**user_header, "Idempotency-Key": key},
         json=payload,
     )
 
@@ -218,7 +218,6 @@ async def test_initiate_idempotent_replay(
     assert second.status_code == 201
     assert first.json()["id"] == second.json()["id"]
 
-    # Only ONE reserved 30 — not 60.
     _, reserved = await derive_balance(db_session, user_points.id)
     assert reserved == Decimal("30")
 
@@ -230,25 +229,21 @@ async def test_initiate_concurrent_double_spend_blocked(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
-    """Two simultaneous full-balance redemptions: only ONE succeeds.
-
-    The SELECT FOR UPDATE on user.points_account serialises them.
-    """
+    """Two simultaneous full-balance redemptions: only ONE succeeds."""
     await _credit_user_points(
         db_session, test_tenant, test_user, Decimal("100"), seed_key="race"
     )
     provider_id = await _register_provider(async_client, test_tenant)
+    user_header = await _user_auth_header(test_user)
 
     def request(key: str):
         return asyncio.create_task(
             async_client.post(
                 "/api/v1/redemption/initiate",
-                headers={"Idempotency-Key": key},
+                headers={**user_header, "Idempotency-Key": key},
                 json={
-                    "tenant_id": str(test_tenant.id),
-                    "user_id": str(test_user.id),
                     "provider_id": provider_id,
                     "points_amount": "100",
                 },
@@ -269,11 +264,16 @@ async def test_initiate_cross_tenant_provider_rejects(
     test_tenant: Tenant,
     other_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
     idempotency_header: dict[str, str],
 ) -> None:
-    """Provider exists in other_tenant; request in test_tenant → 404 (no leak)."""
+    """Provider exists in other_tenant; test_tenant user → 404 (no leak).
+
+    Tenant comes from Alice's session (test_tenant). She references a
+    provider_id that belongs to other_tenant — the tenant-scoped lookup
+    returns 404, no existence leak across tenants.
+    """
     await _credit_user_points(
         db_session, test_tenant, test_user, Decimal("100"), seed_key="xt"
     )
@@ -283,10 +283,8 @@ async def test_initiate_cross_tenant_provider_rejects(
 
     response = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers=idempotency_header,
+        headers={**(await _user_auth_header(test_user)), **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
             "provider_id": other_provider_id,
             "points_amount": "10",
         },

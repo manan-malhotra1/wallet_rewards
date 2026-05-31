@@ -1,4 +1,9 @@
-"""Tests for GET /api/v1/catalog/{user_id}/summary + redemption-history."""
+"""Tests for GET /api/v1/catalog/me/summary + redemption-history.
+
+Phase F.4: catalog endpoints are user-only. tenant_id + user_id come from
+the session token — there is no longer a `/{user_id}/` path. Provider
+register + redemption confirm in setup helpers stay admin-only.
+"""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -15,6 +20,7 @@ from app.shared.models import (
     Tenant,
     User,
 )
+from tests.conftest import create_session_token_for_user
 
 
 async def _seed_reward(
@@ -47,6 +53,11 @@ async def _seed_reward(
     )
 
 
+async def _user_header(user: User) -> dict[str, str]:
+    token = await create_session_token_for_user(user.id, user.tenant_id)
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.mark.asyncio
 async def test_summary_for_user_with_no_points_account(
     async_client: AsyncClient,
@@ -55,8 +66,8 @@ async def test_summary_for_user_with_no_points_account(
 ) -> None:
     """User with no points_account → response with points: null."""
     response = await async_client.get(
-        f"/api/v1/catalog/{test_user.id}/summary",
-        params={"tenant_id": str(test_tenant.id)},
+        "/api/v1/catalog/me/summary",
+        headers=await _user_header(test_user),
     )
     assert response.status_code == 200, response.text
     assert response.json()["points"] is None
@@ -68,16 +79,16 @@ async def test_summary_reflects_lifetime_earned(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """After two reward issuances: available + lifetime_earned both = sum."""
     await _seed_reward(db_session, test_tenant, test_user, Decimal("100"), key="a")
     await _seed_reward(db_session, test_tenant, test_user, Decimal("50"), key="b")
 
     response = await async_client.get(
-        f"/api/v1/catalog/{test_user.id}/summary",
-        params={"tenant_id": str(test_tenant.id)},
+        "/api/v1/catalog/me/summary",
+        headers=await _user_header(test_user),
     )
     assert response.status_code == 200
     points = response.json()["points"]
@@ -92,24 +103,29 @@ async def test_summary_reflects_lifetime_redeemed(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    admin_auth_header: dict[str, str],
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
-    """After redeem + confirm, lifetime_redeemed reflects the COMPLETED debit."""
+    """After redeem + confirm, lifetime_redeemed reflects the COMPLETED debit.
+
+    Mixes auth contexts: admin for provider + confirm, user for initiate +
+    catalog read.
+    """
     await _seed_reward(db_session, test_tenant, test_user, Decimal("200"), key="r1")
 
     pr = await async_client.post(
         "/api/v1/redemption/providers",
+        headers=admin_auth_header,
         json={"tenant_id": str(test_tenant.id), "name": "P"},
     )
     provider_id = pr.json()["id"]
 
+    user_header = await _user_header(test_user)
     init = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={**user_header, "Idempotency-Key": uuid4().hex},
         json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
             "provider_id": provider_id,
             "points_amount": "80",
         },
@@ -117,12 +133,13 @@ async def test_summary_reflects_lifetime_redeemed(
     redemption_id = init.json()["id"]
     await async_client.post(
         f"/api/v1/redemption/{redemption_id}/confirm",
+        headers=admin_auth_header,
         json={"tenant_id": str(test_tenant.id)},
     )
 
     response = await async_client.get(
-        f"/api/v1/catalog/{test_user.id}/summary",
-        params={"tenant_id": str(test_tenant.id)},
+        "/api/v1/catalog/me/summary",
+        headers=user_header,
     )
     points = response.json()["points"]
     assert Decimal(points["available"]) == Decimal("120")
@@ -136,33 +153,34 @@ async def test_redemption_history_returns_user_redemptions(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    admin_auth_header: dict[str, str],
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
-    """Redemption history is newest-first and tenant-scoped."""
+    """Redemption history is newest-first and tenant-scoped via session."""
     await _seed_reward(db_session, test_tenant, test_user, Decimal("100"), key="h")
     pr = await async_client.post(
         "/api/v1/redemption/providers",
+        headers=admin_auth_header,
         json={"tenant_id": str(test_tenant.id), "name": "P"},
     )
     provider_id = pr.json()["id"]
 
+    user_header = await _user_header(test_user)
     # Two redemptions.
     for amount in ("10", "20"):
         await async_client.post(
             "/api/v1/redemption/initiate",
-            headers={"Idempotency-Key": uuid4().hex},
+            headers={**user_header, "Idempotency-Key": uuid4().hex},
             json={
-                "tenant_id": str(test_tenant.id),
-                "user_id": str(test_user.id),
                 "provider_id": provider_id,
                 "points_amount": amount,
             },
         )
 
     response = await async_client.get(
-        f"/api/v1/catalog/{test_user.id}/redemption-history",
-        params={"tenant_id": str(test_tenant.id)},
+        "/api/v1/catalog/me/redemption-history",
+        headers=user_header,
     )
     assert response.status_code == 200
     items = response.json()

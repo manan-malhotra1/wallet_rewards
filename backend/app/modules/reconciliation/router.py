@@ -71,7 +71,7 @@ async def post_sweep(
 
     Requires `platform-admin` role.
     """
-    _ = admin  # noqa: F841 — F.5 will use admin.id when audit_log writes are wired everywhere
+    _ = admin
     return await sweep_pending(
         session,
         tenant_id=request.tenant_id,

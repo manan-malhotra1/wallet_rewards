@@ -13,8 +13,7 @@ available balance because REVERSED entries don't count in derive_balance.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from decimal import Decimal
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
@@ -63,7 +62,6 @@ from app.shared.models import (
     Tenant,
     Transaction,
 )
-
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -181,6 +179,9 @@ async def _find_provider(
 
 async def initiate_redemption(
     session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
     request: InitiateRedemptionRequest,
     idempotency_key: str,
 ) -> Redemption:
@@ -201,7 +202,9 @@ async def initiate_redemption(
 
     Args:
         session: Async DB session.
-        request: Validated InitiateRedemptionRequest.
+        tenant_id: From the session token via get_current_user (Phase F.4).
+        user_id: From the session token via get_current_user (Phase F.4).
+        request: Validated InitiateRedemptionRequest (body — provider + amount).
         idempotency_key: Client-supplied unique key (Pay-PRD-0200).
 
     Returns:
@@ -214,26 +217,24 @@ async def initiate_redemption(
         UserPointsAccountMissing: 422 — user has no points_account.
         InsufficientFunds: 409 — available balance < points_amount.
     """
-    await _assert_tenant_exists(session, request.tenant_id)
+    await _assert_tenant_exists(session, tenant_id)
 
-    # Step 1 (Pay-PRD-0260, Pay-PRD-0440/0450/0460): the user must hold an
-    # active role permitting "redemption". Reject BEFORE any wallet lookup,
-    # lock, or ledger write.
-    await require_permission(session, request.user_id, "redemption")
+    # Pay-PRD-0260, Pay-PRD-0440/0450/0460: the user must hold an active role
+    # permitting "redemption". Reject BEFORE any wallet lookup, lock, or
+    # ledger write.
+    await require_permission(session, user_id, "redemption")
 
-    provider = await _find_provider(session, request.provider_id, request.tenant_id)
+    provider = await _find_provider(session, request.provider_id, tenant_id)
     if provider.status != "active":
         raise RedemptionProviderInactive()
 
-    user_points = await _find_user_points_account(
-        session, request.tenant_id, request.user_id
-    )
+    user_points = await _find_user_points_account(session, tenant_id, user_id)
 
     # Idempotency fast-path: if a redemption with this key already exists in
     # this tenant, return it (no second ledger write).
     existing = (await session.execute(
         select(Redemption).where(
-            Redemption.tenant_id == request.tenant_id,
+            Redemption.tenant_id == tenant_id,
             Redemption.idempotency_key == idempotency_key,
         )
     )).scalar_one_or_none()
@@ -254,7 +255,7 @@ async def initiate_redemption(
     txn = await post_transaction(
         session,
         PostTransactionRequest(
-            tenant_id=request.tenant_id,
+            tenant_id=tenant_id,
             idempotency_key=idempotency_key,
             transaction_type="redemption",
             currency=user_points.currency,
@@ -271,14 +272,14 @@ async def initiate_redemption(
                     amount=request.points_amount,
                 ),
             ],
-            initiated_by=request.user_id,
+            initiated_by=user_id,
             amount=request.points_amount,
         ),
     )
 
     redemption = Redemption(
-        tenant_id=request.tenant_id,
-        user_id=request.user_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
         provider_id=provider.id,
         transaction_id=txn.id,
         points_amount=request.points_amount,
@@ -355,7 +356,7 @@ async def confirm_redemption(
 
     redemption.status = REDEMPTION_STATUS_COMPLETED
     redemption.external_reference = request.external_reference
-    redemption.completed_at = datetime.now(timezone.utc)
+    redemption.completed_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(redemption)
     return redemption

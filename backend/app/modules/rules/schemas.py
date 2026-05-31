@@ -41,7 +41,7 @@ class RuleCreateRequest(BaseModel):
     resets_after_trigger: bool = True
 
     @model_validator(mode="after")
-    def _validate_consistency(self) -> "RuleCreateRequest":
+    def _validate_consistency(self) -> RuleCreateRequest:
         """Cross-field validation that matches the evaluator's assumptions."""
         if self.rule_type == "milestone" and self.count_threshold is None:
             raise ValueError(

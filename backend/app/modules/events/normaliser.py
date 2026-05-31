@@ -33,7 +33,7 @@ def normalise(
     # Phase C: the RawExternalEvent already validates and parses everything
     # via Pydantic. The mapping argument is reserved for future use when
     # partners send their own field names.
-    _ = field_mapping  # noqa: F841 (intentionally unused in Phase C)
+    _ = field_mapping
 
     return NormalisedEvent(
         event_id=raw.event_id,

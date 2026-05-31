@@ -10,7 +10,7 @@ overnight without trusting application logs.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
@@ -109,7 +109,7 @@ async def sweep_pending(
     """
     await _assert_tenant_exists(session, tenant_id)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)
+    cutoff = datetime.now(UTC) - timedelta(minutes=threshold_minutes)
     pending = (await session.execute(
         select(Redemption, RedemptionProvider)
         .join(RedemptionProvider, RedemptionProvider.id == Redemption.provider_id)
@@ -129,7 +129,7 @@ async def sweep_pending(
     for redemption, provider in pending:
         before = _redemption_snapshot(redemption)
         redemption.retry_count += 1
-        redemption.last_checked_at = datetime.now(timezone.utc)
+        redemption.last_checked_at = datetime.now(UTC)
 
         if redemption.retry_count >= provider.max_retries:
             redemption.status = REDEMPTION_STATUS_MANUAL_REVIEW
@@ -181,7 +181,7 @@ async def list_pending(
     """List PENDING redemptions older than the threshold (Pay-PRD-0750)."""
     await _assert_tenant_exists(session, tenant_id)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)
+    cutoff = datetime.now(UTC) - timedelta(minutes=threshold_minutes)
     rows = (await session.execute(
         select(Redemption)
         .where(
@@ -297,7 +297,7 @@ async def manually_resolve(
         )
         redemption.status = REDEMPTION_STATUS_COMPLETED
         redemption.external_reference = request.external_reference
-        redemption.completed_at = datetime.now(timezone.utc)
+        redemption.completed_at = datetime.now(UTC)
         action = ACTION_RECON_RESOLVED_COMPLETED
     elif request.outcome == "REVERSED":
         await _flip_entries(session, redemption.transaction_id, ENTRY_STATUS_REVERSED)

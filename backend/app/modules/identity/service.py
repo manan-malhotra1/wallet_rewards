@@ -6,7 +6,7 @@ file.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -296,7 +296,7 @@ async def send_otp(
 
     otp = hashing.generate_otp()
     otp_hash = hashing.hash_otp(otp)
-    expires_at = datetime.now(timezone.utc) + timedelta(
+    expires_at = datetime.now(UTC) + timedelta(
         seconds=settings.OTP_EXPIRY_SECONDS
     )
     session.add(
@@ -344,7 +344,7 @@ async def verify_otp(
         raise InvalidOtp()
 
     # Find the latest unused, unexpired OTP for this phone.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = await session.execute(
         select(OtpRequest)
         .where(

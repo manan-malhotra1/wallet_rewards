@@ -1,4 +1,8 @@
-"""Tests for confirm + fail lifecycle of a redemption."""
+"""Tests for confirm + fail lifecycle of a redemption.
+
+Phase F.4: confirm + fail are admin-only. Initiate (used in setup) is
+user-only — the helper mints a session token for the test user.
+"""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -16,6 +20,7 @@ from app.shared.models import (
     Tenant,
     User,
 )
+from tests.conftest import create_session_token_for_user
 
 
 async def _credit_and_initiate(
@@ -28,7 +33,11 @@ async def _credit_and_initiate(
     redeem_amount: Decimal,
     seed_key: str,
 ) -> str:
-    """Seed points + register provider + initiate redemption. Return redemption_id."""
+    """Seed points + register provider + initiate redemption.
+
+    Returns the redemption_id. Uses the admin-authed async_client for the
+    provider register call, and a user session token for the initiate call.
+    """
     rule = Rule(
         tenant_id=tenant.id,
         name=f"seed-rule-{seed_key}",
@@ -55,12 +64,15 @@ async def _credit_and_initiate(
     )
     provider_id = pr.json()["id"]
 
+    # Initiate requires a user session — admin auth would 401.
+    user_token = await create_session_token_for_user(user.id, user.tenant_id)
     rs = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={
+            "Idempotency-Key": uuid4().hex,
+            "Authorization": f"Bearer {user_token}",
+        },
         json={
-            "tenant_id": str(tenant.id),
-            "user_id": str(user.id),
             "provider_id": provider_id,
             "points_amount": str(redeem_amount),
         },
@@ -76,7 +88,7 @@ async def test_confirm_marks_completed_and_drops_balance(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Confirm: PENDING entries flip to COMPLETED, balance permanently drops."""
     redemption_id = await _credit_and_initiate(
@@ -115,7 +127,7 @@ async def test_fail_restores_balance(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Fail: PENDING entries flip to REVERSED, balance restored."""
     redemption_id = await _credit_and_initiate(
@@ -152,8 +164,8 @@ async def test_confirm_then_confirm_rejects(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Cannot confirm a redemption that's already terminal."""
     redemption_id = await _credit_and_initiate(
@@ -184,8 +196,8 @@ async def test_confirm_cross_tenant_rejects(
     test_tenant: Tenant,
     other_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Cross-tenant confirm → 404 (no existence leak)."""
     redemption_id = await _credit_and_initiate(
@@ -213,8 +225,8 @@ async def test_fail_cross_tenant_rejects(
     test_tenant: Tenant,
     other_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Cross-tenant fail → 404 (mirror of cross-tenant confirm)."""
     redemption_id = await _credit_and_initiate(
@@ -244,8 +256,8 @@ async def test_confirm_then_fail_rejects(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Once COMPLETED a redemption is terminal — cannot transition to FAILED."""
     redemption_id = await _credit_and_initiate(

@@ -17,7 +17,6 @@ from httpx import AsyncClient
 
 from app.shared.models import Tenant
 
-
 PHONE = "+27 82 555 9001"
 
 

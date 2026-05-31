@@ -1,7 +1,11 @@
-"""Tests for manual resolve + audit log query (Phase E.1)."""
+"""Tests for manual resolve + audit log query (Phase E.1).
+
+Phase F.4: helper calls `/initiate` (user-only) with a freshly-minted
+session token, overriding the admin Bearer from the reconciliation conftest.
+"""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -22,6 +26,7 @@ from app.shared.models import (
     Tenant,
     User,
 )
+from tests.conftest import create_session_token_for_user
 
 
 async def _push_redemption_into_manual_review(
@@ -64,23 +69,27 @@ async def _push_redemption_into_manual_review(
     )
     provider_id = provider_resp.json()["id"]
 
+    # /initiate is user-only (Phase F.4) — mint a one-shot session token.
+    user_token = await create_session_token_for_user(user.id, user.tenant_id)
     init = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={
+            "Idempotency-Key": uuid4().hex,
+            "Authorization": f"Bearer {user_token}",
+        },
         json={
-            "tenant_id": str(tenant.id),
-            "user_id": str(user.id),
             "provider_id": provider_id,
             "points_amount": str(amount),
         },
     )
+    assert init.status_code == 201, init.text
     redemption_id = init.json()["id"]
 
     # Backdate + sweep so the sweep escalates it.
     redemption = (await db_session.execute(
         select(Redemption).where(Redemption.id == redemption_id)
     )).scalar_one()
-    redemption.created_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+    redemption.created_at = datetime.now(UTC) - timedelta(minutes=10)
     await db_session.commit()
 
     await async_client.post(
@@ -99,7 +108,7 @@ async def test_manual_resolve_completed_finalises_redemption(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Manual resolve COMPLETED: ledger PENDING -> COMPLETED, balance drops."""
     redemption = await _push_redemption_into_manual_review(
@@ -139,7 +148,7 @@ async def test_manual_resolve_reversed_restores_balance(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Manual resolve REVERSED: ledger PENDING -> REVERSED, balance restored."""
     redemption = await _push_redemption_into_manual_review(
@@ -174,8 +183,8 @@ async def test_manual_resolve_rejects_non_manual_review(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Resolve only works against MANUAL_REVIEW — PENDING redemption rejects."""
     # Make a PENDING redemption WITHOUT pushing into MANUAL_REVIEW.
@@ -203,16 +212,21 @@ async def test_manual_resolve_rejects_non_manual_review(
         "/api/v1/redemption/providers",
         json={"tenant_id": str(test_tenant.id), "name": "P-pending"},
     )
+    user_token = await create_session_token_for_user(
+        test_user.id, test_user.tenant_id
+    )
     init = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={
+            "Idempotency-Key": uuid4().hex,
+            "Authorization": f"Bearer {user_token}",
+        },
         json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
             "provider_id": provider_resp.json()["id"],
             "points_amount": "10",
         },
     )
+    assert init.status_code == 201, init.text
     redemption_id = init.json()["id"]
 
     response = await async_client.post(
@@ -234,8 +248,8 @@ async def test_manual_resolve_cross_tenant_rejects(
     test_tenant: Tenant,
     other_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Cross-tenant resolve -> 404 (no existence leak)."""
     redemption = await _push_redemption_into_manual_review(
@@ -265,8 +279,8 @@ async def test_manual_resolve_writes_audit_entry(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Resolve writes an audit_log row with before/after state + actor=admin."""
     redemption = await _push_redemption_into_manual_review(
@@ -309,8 +323,8 @@ async def test_audit_query_tenant_scoped(
     test_tenant: Tenant,
     other_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Audit endpoint only returns rows for the requested tenant."""
     redemption = await _push_redemption_into_manual_review(

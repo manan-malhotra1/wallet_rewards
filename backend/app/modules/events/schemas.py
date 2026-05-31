@@ -38,10 +38,11 @@ class SourceOut(BaseModel):
 
 
 class RawExternalEvent(BaseModel):
-    """The shape of an event posted to the test-only ingestion endpoint.
+    """The shape of an externally-sourced event ingested into the platform.
 
-    A real Kafka consumer would deserialise from JSON to the same shape.
-    Field naming follows PRD Pay-PRD-0480 (the standard schema).
+    Used by both the admin HTTP endpoint (Phase F.4 — `platform-admin` gated)
+    and the Kafka consumer (`scripts/run_consumer.py`) — both code paths
+    deserialise to this schema. Field naming follows PRD Pay-PRD-0480.
     """
 
     event_id: str = Field(min_length=1, max_length=255)

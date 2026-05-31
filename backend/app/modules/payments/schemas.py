@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# UUID is still used by P2PResponse (sender_user_id / recipient_user_id).
+
 IdentifierType = Literal["phone", "email", "account_number", "card_number"]
 
 
@@ -19,14 +21,13 @@ class RecipientIdentifier(BaseModel):
 
 
 class P2PRequest(BaseModel):
-    """Test-only P2P transfer payload.
+    """P2P transfer payload (Phase F.4 — auth-gated).
 
-    `sender_user_id` is in the body for Phase B (no auth). Phase 2 resolves
-    it from the authenticated session and removes this field from the schema.
+    `tenant_id` and `sender_user_id` are no longer accepted in the body —
+    both come from the session token via `get_current_user`. Spoofing the
+    sender is no longer possible.
     """
 
-    tenant_id: UUID
-    sender_user_id: UUID
     recipient: RecipientIdentifier
     # Decimal preserves precision; FastAPI accepts JSON strings or numbers.
     amount: Decimal = Field(gt=Decimal("0"))

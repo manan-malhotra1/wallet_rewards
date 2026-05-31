@@ -1,7 +1,9 @@
 """Tests for POST /api/v1/payments/p2p.
 
 Covers the Phase B threat-model scenarios from
-docs/security/threat-models/phase-b-p2p.md §5.
+docs/security/threat-models/phase-b-p2p.md §5, updated for Phase F.4
+which removed `tenant_id` + `sender_user_id` from the body and gates the
+endpoint on `get_current_user` (user session token).
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.accounts.service import derive_balance
 from app.modules.payments.service import top_up
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -21,6 +24,7 @@ from app.shared.models import (
     User,
     UserIdentifier,
 )
+from tests.conftest import create_session_token_for_user
 
 
 @pytest.fixture
@@ -67,8 +71,8 @@ async def _make_user_with_wallet(
 ) -> tuple[User, Account]:
     """Helper — create a user with one phone identifier + one ZAR wallet.
 
-    By default also assigns the tenant's standard_user role so P2P passes the
-    Phase F.3 role check. Pass `assign_default_role=False` to test the
+    By default also assigns the tenant's standard_user role so P2P passes
+    the Phase F.3 role check. Pass `assign_default_role=False` to test the
     "no role → 403" path.
     """
     from app.shared.models import UserRole
@@ -101,6 +105,12 @@ async def _make_user_with_wallet(
     return user, wallet
 
 
+async def _auth_header_for(user: User) -> dict[str, str]:
+    """Build a Bearer header for a freshly-created user (Phase F.4)."""
+    token = await create_session_token_for_user(user.id, user.tenant_id)
+    return {"Authorization": f"Bearer {token}"}
+
+
 # -----------------------------------------------------------------------------
 # Happy path & balance assertions
 # -----------------------------------------------------------------------------
@@ -131,12 +141,11 @@ async def test_p2p_happy_path_moves_balance(
         idempotency_key="seed-alice-1",
     )
 
+    alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers=idempotency_header,
+        headers={**alice_auth, **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 2222"},
             "amount": "250",
             "currency": "ZAR",
@@ -149,17 +158,12 @@ async def test_p2p_happy_path_moves_balance(
     assert body["recipient_user_id"] == str(bob.id)
     assert Decimal(body["amount"]) == Decimal("250")
 
-    # Verify the balances changed accordingly.
-    alice_bal = await async_client.get(
-        f"/api/v1/accounts/{alice_wallet.id}/balance",
-        params={"tenant_id": str(test_tenant.id)},
-    )
-    bob_bal = await async_client.get(
-        f"/api/v1/accounts/{bob_wallet.id}/balance",
-        params={"tenant_id": str(test_tenant.id)},
-    )
-    assert Decimal(alice_bal.json()["balance"]) == Decimal("750")
-    assert Decimal(bob_bal.json()["balance"]) == Decimal("250")
+    # Verify balances directly from the ledger — admin balance endpoint is
+    # tested separately. derive_balance hits the test DB through db_session.
+    alice_bal, _ = await derive_balance(db_session, alice_wallet.id)
+    bob_bal, _ = await derive_balance(db_session, bob_wallet.id)
+    assert alice_bal == Decimal("750")
+    assert bob_bal == Decimal("250")
 
 
 # -----------------------------------------------------------------------------
@@ -190,12 +194,11 @@ async def test_p2p_rejects_overdraft(
         idempotency_key="seed-alice-2",
     )
 
+    alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers=idempotency_header,
+        headers={**alice_auth, **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 2222"},
             "amount": "200",
             "currency": "ZAR",
@@ -204,12 +207,8 @@ async def test_p2p_rejects_overdraft(
     assert response.status_code == 409
     assert response.json()["error_code"] == "insufficient_funds"
 
-    # Balance must be unchanged.
-    bal = await async_client.get(
-        f"/api/v1/accounts/{alice_wallet.id}/balance",
-        params={"tenant_id": str(test_tenant.id)},
-    )
-    assert Decimal(bal.json()["balance"]) == Decimal("100")
+    bal, _ = await derive_balance(db_session, alice_wallet.id)
+    assert bal == Decimal("100")
 
 
 @pytest.mark.asyncio
@@ -232,12 +231,11 @@ async def test_p2p_rejects_self_transfer(
         idempotency_key="seed-alice-self",
     )
 
+    alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers=idempotency_header,
+        headers={**alice_auth, **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 1111"},
             "amount": "10",
             "currency": "ZAR",
@@ -267,12 +265,11 @@ async def test_p2p_rejects_unknown_recipient(
         idempotency_key="seed-alice-unknown",
     )
 
+    alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers=idempotency_header,
+        headers={**alice_auth, **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 9999"},
             "amount": "10",
             "currency": "ZAR",
@@ -293,16 +290,15 @@ async def test_p2p_rejects_sender_without_wallet_in_currency(
     alice, _ = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111", currency="ZAR"
     )
-    bob, _ = await _make_user_with_wallet(
+    await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 2222", currency="ZAR"
     )
 
+    alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers=idempotency_header,
+        headers={**alice_auth, **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 2222"},
             "amount": "10",
             "currency": "USD",  # neither party has a USD wallet
@@ -322,7 +318,9 @@ async def test_p2p_cross_tenant_recipient_returns_404(
 ) -> None:
     """Recipient identifier exists only in other_tenant; request in test_tenant → 404.
 
-    Critical no-existence-leak check (NFR-0220).
+    Critical no-existence-leak check (NFR-0220). With Phase F.4 the sender's
+    tenant comes from the session token, so a tenant-A user genuinely cannot
+    address a tenant-B recipient even if they share the phone.
     """
     alice, _ = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111"
@@ -340,12 +338,11 @@ async def test_p2p_cross_tenant_recipient_returns_404(
         db_session, other_tenant, phone="+27 82 555 2222"
     )
 
+    alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers=idempotency_header,
+        headers={**alice_auth, **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(alice.id),
             "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 2222"},
             "amount": "10",
             "currency": "ZAR",
@@ -357,16 +354,19 @@ async def test_p2p_cross_tenant_recipient_returns_404(
 @pytest.mark.asyncio
 async def test_p2p_rejects_zero_amount(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
     idempotency_header: dict[str, str],
 ) -> None:
     """Pydantic gt=0 constraint rejects zero/negative amounts → 422."""
+    alice, _ = await _make_user_with_wallet(
+        db_session, test_tenant, phone="+27 82 555 0001"
+    )
+    alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
-        headers=idempotency_header,
+        headers={**alice_auth, **idempotency_header},
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(uuid4()),
             "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 0000"},
             "amount": "0",
             "currency": "ZAR",
@@ -378,20 +378,47 @@ async def test_p2p_rejects_zero_amount(
 @pytest.mark.asyncio
 async def test_p2p_requires_idempotency_key(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
     """Missing Idempotency-Key header → 422 (FastAPI's missing-header default)."""
+    alice, _ = await _make_user_with_wallet(
+        db_session, test_tenant, phone="+27 82 555 0001"
+    )
+    alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
+        headers=alice_auth,
         json={
-            "tenant_id": str(test_tenant.id),
-            "sender_user_id": str(uuid4()),
             "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 0000"},
             "amount": "10",
             "currency": "ZAR",
         },
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_p2p_rejects_unauthenticated_caller(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    idempotency_header: dict[str, str],
+) -> None:
+    """No Authorization header → 401 (Phase F.4)."""
+    await _make_user_with_wallet(
+        db_session, test_tenant, phone="+27 82 555 2222"
+    )
+    response = await async_client.post(
+        "/api/v1/payments/p2p",
+        headers=idempotency_header,
+        json={
+            "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 2222"},
+            "amount": "10",
+            "currency": "ZAR",
+        },
+    )
+    assert response.status_code == 401
 
 
 # -----------------------------------------------------------------------------
@@ -409,7 +436,7 @@ async def test_p2p_idempotent_replay(
     alice, alice_wallet = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
-    bob, bob_wallet = await _make_user_with_wallet(
+    _, bob_wallet = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 2222"
     )
     await top_up(
@@ -423,18 +450,21 @@ async def test_p2p_idempotent_replay(
 
     key = uuid4().hex
     payload = {
-        "tenant_id": str(test_tenant.id),
-        "sender_user_id": str(alice.id),
         "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 2222"},
         "amount": "100",
         "currency": "ZAR",
     }
+    alice_auth = await _auth_header_for(alice)
 
     first = await async_client.post(
-        "/api/v1/payments/p2p", headers={"Idempotency-Key": key}, json=payload
+        "/api/v1/payments/p2p",
+        headers={**alice_auth, "Idempotency-Key": key},
+        json=payload,
     )
     second = await async_client.post(
-        "/api/v1/payments/p2p", headers={"Idempotency-Key": key}, json=payload
+        "/api/v1/payments/p2p",
+        headers={**alice_auth, "Idempotency-Key": key},
+        json=payload,
     )
 
     assert first.status_code == 201, first.text
@@ -442,16 +472,10 @@ async def test_p2p_idempotent_replay(
     assert first.json()["transaction_id"] == second.json()["transaction_id"]
 
     # Balances reflect ONE transfer, not two.
-    alice_bal = await async_client.get(
-        f"/api/v1/accounts/{alice_wallet.id}/balance",
-        params={"tenant_id": str(test_tenant.id)},
-    )
-    bob_bal = await async_client.get(
-        f"/api/v1/accounts/{bob_wallet.id}/balance",
-        params={"tenant_id": str(test_tenant.id)},
-    )
-    assert Decimal(alice_bal.json()["balance"]) == Decimal("400")
-    assert Decimal(bob_bal.json()["balance"]) == Decimal("100")
+    alice_bal, _ = await derive_balance(db_session, alice_wallet.id)
+    bob_bal, _ = await derive_balance(db_session, bob_wallet.id)
+    assert alice_bal == Decimal("400")
+    assert bob_bal == Decimal("100")
 
 
 @pytest.mark.asyncio
@@ -479,15 +503,14 @@ async def test_p2p_concurrent_double_spend_blocked(
         currency="ZAR",
         idempotency_key="seed-race",
     )
+    alice_auth = await _auth_header_for(alice)
 
-    def request(idemp_key: str) -> "asyncio.Task[object]":
+    def request(idemp_key: str) -> asyncio.Task[object]:
         return asyncio.create_task(
             async_client.post(
                 "/api/v1/payments/p2p",
-                headers={"Idempotency-Key": idemp_key},
+                headers={**alice_auth, "Idempotency-Key": idemp_key},
                 json={
-                    "tenant_id": str(test_tenant.id),
-                    "sender_user_id": str(alice.id),
                     "recipient": {
                         "identifier_type": "phone",
                         "identifier_value": "+27 82 555 2222",

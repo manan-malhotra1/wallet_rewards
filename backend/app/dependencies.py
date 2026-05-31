@@ -104,12 +104,16 @@ async def get_current_user(
     This is the user-side equivalent of `get_current_admin`. It looks up the
     session in Redis (sliding TTL — every authenticated request extends the
     session). Sessions are issued by `/auth/pin` and invalidated by
-    `/auth/logout`.
+    `/auth/logout`. Identifiers are coerced from the JSON string payload to
+    typed UUIDs before construction — services compare these against
+    SQLAlchemy-returned UUIDs.
 
     Raises:
         InvalidAuthorizationHeader: 401 — missing/malformed header.
         InvalidSession: 401 — token unknown or expired.
     """
+    from uuid import UUID
+
     # Extract Bearer token using the same helper as admin auth (it raises
     # InvalidAuthorizationHeader on malformed input).
     token = extract_bearer_token(authorization)
@@ -119,8 +123,8 @@ async def get_current_user(
         raise InvalidSession()
 
     return UserPrincipal(
-        id=payload["user_id"],
-        tenant_id=payload["tenant_id"],
+        id=UUID(payload["user_id"]),
+        tenant_id=UUID(payload["tenant_id"]),
         channel=payload["channel"],
     )
 

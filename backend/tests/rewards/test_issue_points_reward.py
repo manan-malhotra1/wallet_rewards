@@ -77,8 +77,8 @@ async def test_issue_reward_is_idempotent_on_replay(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Same (user, rule, triggering_event_id) replayed → no second reward."""
     rule = _make_first_time_rule(test_tenant)
@@ -126,7 +126,7 @@ async def test_issue_reward_fails_when_points_account_missing(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """User without a points_account → UserPointsAccountMissing."""
     rule = _make_first_time_rule(test_tenant)

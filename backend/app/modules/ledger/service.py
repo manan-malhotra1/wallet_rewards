@@ -33,7 +33,6 @@ from app.shared.models import (
     ENTRY_STATUS_COMPLETED,
     ENTRY_STATUS_PENDING,
     TXN_STATUS_COMPLETED,
-    TXN_STATUS_PENDING,
     Account,
     LedgerEntry,
     Transaction,

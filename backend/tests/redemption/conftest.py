@@ -1,8 +1,9 @@
-"""Role tests — pre-authed async_client with platform-admin JWT.
+"""Redemption tests share an async_client pre-authed with a platform-admin
+JWT — provider registration, confirm, and fail are admin-only after Phase F.4.
 
-Same pattern as `tests/reconciliation/conftest.py`. Every role CRUD endpoint
-requires the `platform-admin` realm role (Phase F.1 gate), so the default
-client must carry that token.
+The user-facing `/initiate` endpoint and `/{redemption_id}` GET are user-auth
+— individual tests override the Authorization header per call with the
+`alice_auth_header` fixture from the top-level conftest.
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ from app.main import app
 async def async_client(
     admin_auth_header: dict[str, str],
 ) -> AsyncIterator[AsyncClient]:
-    """Pre-authed httpx client — admin JWT attached by default."""
+    """Pre-authed httpx client — every request sends the admin JWT by default."""
     from tests.conftest import TestSessionLocal
 
     async def _override_session() -> AsyncIterator[AsyncSession]:

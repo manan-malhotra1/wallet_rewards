@@ -1,8 +1,12 @@
 """Identity module FastAPI router.
 
-Phase A endpoints (test-only registration, identifier resolution) remain.
-Phase F.2 adds the OTP / PIN / session flow for end-user authentication:
+Public endpoints (no auth) — the OTP / PIN / session flow for end-user
+authentication (Phase F.2):
   - POST /otp/send, /otp/verify, /pin/set, /auth/pin, /auth/logout
+
+Admin endpoints (require `platform-admin`) — direct user registration and
+identifier resolution (Phase F.4):
+  - POST /users, GET /resolve/{type}/{value}
 """
 from __future__ import annotations
 
@@ -11,9 +15,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AdminPrincipal
 from app.auth.sessions import invalidate_session
 from app.auth.tokens import extract_bearer_token
 from app.database import get_async_session
+from app.dependencies import require_admin_role
 from app.modules.identity.schemas import (
     CreateUserRequest,
     IdentifierType,
@@ -41,19 +47,23 @@ router = APIRouter(prefix="/api/v1/identity", tags=["identity"])
 
 
 # =============================================================================
-# Phase A — test-only endpoints (registration helper + identifier resolve)
+# Admin-only endpoints — direct user registration + identifier resolution
 # =============================================================================
 
 
-@router.post("/users", response_model=UserOut, status_code=201, tags=["identity (test-only)"])
+@router.post("/users", response_model=UserOut, status_code=201)
 async def post_user(
     request: CreateUserRequest,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> UserOut:
-    """Register a new user (TEST-ONLY — no auth in Phase A).
+    """Directly register a user (admin-only).
 
-    Replaced by the OTP-verified flow in Phase F.2 below for production.
+    End-users register themselves via the OTP/PIN flow (/otp/send →
+    /otp/verify → /pin/set). This endpoint is reserved for admin tooling
+    (seeding, support recovery flows). Requires `platform-admin` role.
     """
+    _ = admin  # F.5 will use admin.id for audit_log writes
     user = await create_user(session, request)
     return UserOut.model_validate(user)
 
@@ -66,9 +76,15 @@ async def get_resolve(
     identifier_type: IdentifierType,
     identifier_value: str,
     tenant_id: UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> ResolveResponse:
-    """Resolve an identifier to a canonical user_id (Pay-PRD-0060)."""
+    """Resolve an identifier to a canonical user_id (Pay-PRD-0060).
+
+    Admin-only — exposes user identity across the tenant. End-users do not
+    need this endpoint (P2P resolves the recipient internally).
+    """
+    _ = admin
     row = await resolve_identifier(
         session, tenant_id, identifier_type, identifier_value
     )

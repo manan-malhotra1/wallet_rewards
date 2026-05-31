@@ -9,10 +9,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProviderRegistrationRequest(BaseModel):
-    """Test-only request to register a redemption provider.
+    """Admin request to register a redemption provider (Phase F.4 — admin-gated).
 
     Creates the provider row AND the associated provider_redemption_wallet
-    account (in PTS) atomically.
+    account (in PTS) atomically. `tenant_id` is in the body because
+    Keycloak admins span tenants (matches the reconciliation router pattern).
     """
 
     tenant_id: UUID
@@ -40,27 +41,33 @@ class ProviderOut(BaseModel):
 
 
 class InitiateRedemptionRequest(BaseModel):
-    """Test-only redemption initiation payload.
+    """Redemption initiation payload (Phase F.4 — auth-gated).
 
-    `user_id` is in the body because Phase D has no auth (carried over from
-    Phase B). Phase F resolves it from the authenticated session.
+    `tenant_id` and `user_id` come from the session token via
+    `get_current_user`. Body carries only the provider + amount.
     """
 
-    tenant_id: UUID
-    user_id: UUID
     provider_id: UUID
     points_amount: Decimal = Field(gt=Decimal("0"))
 
 
 class ConfirmRedemptionRequest(BaseModel):
-    """Test endpoint payload simulating provider success callback (Pay-PRD-0690)."""
+    """Admin payload simulating provider success callback (Pay-PRD-0690).
+
+    Phase F.5 will replace this with HMAC-verified provider callbacks. For
+    Phase F.4 the endpoint is admin-gated; tenant scopes the lookup.
+    """
 
     tenant_id: UUID
     external_reference: str | None = Field(default=None, max_length=255)
 
 
 class FailRedemptionRequest(BaseModel):
-    """Test endpoint payload simulating provider failure (Pay-PRD-0700)."""
+    """Admin payload simulating provider failure (Pay-PRD-0700).
+
+    Same auth gate as ConfirmRedemptionRequest. Phase F.5 replaces this with
+    real provider HMAC.
+    """
 
     tenant_id: UUID
     reason: str = Field(min_length=1, max_length=500)

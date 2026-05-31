@@ -7,7 +7,7 @@ to prevent DoS via forced refetches on unknown kids.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -49,14 +49,14 @@ class KeycloakClient:
         """True if the JWKS cache is populated and within TTL."""
         if self._jwks is None or self._fetched_at is None:
             return False
-        return datetime.now(timezone.utc) - self._fetched_at < _JWKS_TTL
+        return datetime.now(UTC) - self._fetched_at < _JWKS_TTL
 
     def _can_refetch(self) -> bool:
         """Floor refetches to one per minute — DoS guard."""
         if self._last_refetch_attempt is None:
             return True
         return (
-            datetime.now(timezone.utc) - self._last_refetch_attempt
+            datetime.now(UTC) - self._last_refetch_attempt
             > _JWKS_REFETCH_FLOOR
         )
 
@@ -65,12 +65,12 @@ class KeycloakClient:
 
         Caller must hold `self._lock`.
         """
-        self._last_refetch_attempt = datetime.now(timezone.utc)
+        self._last_refetch_attempt = datetime.now(UTC)
         async with httpx.AsyncClient(timeout=10.0) as http:
             resp = await http.get(self.jwks_url)
             resp.raise_for_status()
             self._jwks = resp.json()
-            self._fetched_at = datetime.now(timezone.utc)
+            self._fetched_at = datetime.now(UTC)
 
     async def get_public_key(self, kid: str) -> dict[str, Any] | None:
         """Return the JWK with the given `kid` or None.
@@ -122,7 +122,7 @@ class KeycloakClient:
         verification works against an in-process signing key.
         """
         self._jwks = jwks
-        self._fetched_at = fetched_at or datetime.now(timezone.utc)
+        self._fetched_at = fetched_at or datetime.now(UTC)
 
 
 # Process-wide singleton. Settings are read once at import — KEYCLOAK_URL and

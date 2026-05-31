@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/identity/users.
+"""Tests for POST /api/v1/identity/users (admin-only after Phase F.4).
 
 Covers happy path, validation, duplicate identifier rejection (Pay-PRD-0070),
 and cross-tenant identifier reuse (allowed — Pay-PRD-0070 is per-tenant).
@@ -15,11 +15,14 @@ from app.shared.models import Tenant
 
 @pytest.mark.asyncio
 async def test_create_user_happy_path(
-    async_client: AsyncClient, test_tenant: Tenant
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
 ) -> None:
     """A valid payload creates a user with the requested identifier."""
     response = await async_client.post(
         "/api/v1/identity/users",
+        headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
             "identifiers": [
@@ -40,10 +43,14 @@ async def test_create_user_happy_path(
 
 
 @pytest.mark.asyncio
-async def test_create_user_rejects_unknown_tenant(async_client: AsyncClient) -> None:
+async def test_create_user_rejects_unknown_tenant(
+    async_client: AsyncClient,
+    admin_auth_header: dict[str, str],
+) -> None:
     """Unknown tenant_id returns 404 tenant_not_found."""
     response = await async_client.post(
         "/api/v1/identity/users",
+        headers=admin_auth_header,
         json={
             "tenant_id": str(uuid4()),
             "identifiers": [
@@ -57,11 +64,14 @@ async def test_create_user_rejects_unknown_tenant(async_client: AsyncClient) -> 
 
 @pytest.mark.asyncio
 async def test_create_user_validates_empty_identifiers(
-    async_client: AsyncClient, test_tenant: Tenant
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
 ) -> None:
     """Empty identifiers list fails Pydantic validation (422)."""
     response = await async_client.post(
         "/api/v1/identity/users",
+        headers=admin_auth_header,
         json={"tenant_id": str(test_tenant.id), "identifiers": []},
     )
     assert response.status_code == 422
@@ -69,11 +79,14 @@ async def test_create_user_validates_empty_identifiers(
 
 @pytest.mark.asyncio
 async def test_create_user_validates_identifier_type(
-    async_client: AsyncClient, test_tenant: Tenant
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
 ) -> None:
     """Unknown identifier_type fails Pydantic Literal validation."""
     response = await async_client.post(
         "/api/v1/identity/users",
+        headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
             "identifiers": [
@@ -86,7 +99,9 @@ async def test_create_user_validates_identifier_type(
 
 @pytest.mark.asyncio
 async def test_create_user_rejects_duplicate_phone_in_same_tenant(
-    async_client: AsyncClient, test_tenant: Tenant
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
 ) -> None:
     """Re-registering the same phone within one tenant returns 409 (Pay-PRD-0070)."""
     payload = {
@@ -95,10 +110,14 @@ async def test_create_user_rejects_duplicate_phone_in_same_tenant(
             {"identifier_type": "phone", "identifier_value": "+27 82 555 0001"}
         ],
     }
-    first = await async_client.post("/api/v1/identity/users", json=payload)
+    first = await async_client.post(
+        "/api/v1/identity/users", headers=admin_auth_header, json=payload
+    )
     assert first.status_code == 201
 
-    second = await async_client.post("/api/v1/identity/users", json=payload)
+    second = await async_client.post(
+        "/api/v1/identity/users", headers=admin_auth_header, json=payload
+    )
     assert second.status_code == 409
     body = second.json()
     assert body["error_code"] == "identifier_already_in_use"
@@ -106,12 +125,16 @@ async def test_create_user_rejects_duplicate_phone_in_same_tenant(
 
 @pytest.mark.asyncio
 async def test_create_user_allows_same_phone_in_different_tenant(
-    async_client: AsyncClient, test_tenant: Tenant, other_tenant: Tenant
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    other_tenant: Tenant,
+    admin_auth_header: dict[str, str],
 ) -> None:
     """The unique constraint is per-tenant, not global."""
     phone = "+27 82 555 0002"
     a = await async_client.post(
         "/api/v1/identity/users",
+        headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
             "identifiers": [
@@ -123,6 +146,7 @@ async def test_create_user_allows_same_phone_in_different_tenant(
 
     b = await async_client.post(
         "/api/v1/identity/users",
+        headers=admin_auth_header,
         json={
             "tenant_id": str(other_tenant.id),
             "identifiers": [
@@ -136,11 +160,14 @@ async def test_create_user_allows_same_phone_in_different_tenant(
 
 @pytest.mark.asyncio
 async def test_create_user_with_profile(
-    async_client: AsyncClient, test_tenant: Tenant
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
 ) -> None:
     """Optional profile data is accepted and persisted."""
     response = await async_client.post(
         "/api/v1/identity/users",
+        headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
             "identifiers": [
@@ -154,3 +181,21 @@ async def test_create_user_with_profile(
         },
     )
     assert response.status_code == 201, response.text
+
+
+@pytest.mark.asyncio
+async def test_create_user_rejects_unauthenticated_caller(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+) -> None:
+    """No Authorization header → 401 (Phase F.4 admin gate)."""
+    response = await async_client.post(
+        "/api/v1/identity/users",
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifiers": [
+                {"identifier_type": "phone", "identifier_value": "+27 82 555 0888"}
+            ],
+        },
+    )
+    assert response.status_code == 401

@@ -7,6 +7,7 @@ the principal — the JWT has been signature-checked and unexpired.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from uuid import UUID
 
 
 @dataclass(frozen=True)
@@ -32,10 +33,12 @@ class UserPrincipal:
     """The authenticated end-user behind a user-facing endpoint call.
 
     Built from a valid Redis-backed session_token (issued by `/auth/pin`).
-    `id` and `tenant_id` are platform UUIDs; `channel` is 'mobile' or 'ussd'
-    (Phase F.2 emits 'mobile' only).
+    `id` and `tenant_id` are typed `UUID` so comparisons against
+    SQLAlchemy-returned UUIDs are correct (string vs UUID always compares
+    unequal in Python, which silently broke self-transfer checks before
+    Phase F.4). `channel` is 'mobile' or 'ussd' (Phase F.2 emits 'mobile').
     """
 
-    id: str
-    tenant_id: str
+    id: UUID
+    tenant_id: UUID
     channel: str

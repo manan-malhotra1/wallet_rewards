@@ -480,3 +480,37 @@ async def _redis_per_test(
         yield
     finally:
         await client.aclose()
+
+
+# -----------------------------------------------------------------------------
+# User session fixtures (Phase F.4)
+# -----------------------------------------------------------------------------
+# Phase F.2 issues session tokens via /auth/pin. For other test modules, we
+# need a quick way to fabricate a session token for an existing user without
+# running the full OTP+PIN dance. This helper bypasses the auth flow and
+# directly creates a session in Redis — fine for tests that aren't exercising
+# the auth flow itself.
+
+
+async def create_session_token_for_user(user_id, tenant_id, channel: str = "mobile") -> str:
+    """Test helper — directly create a Redis-backed session for a user.
+
+    Used by P2P / redemption / catalog tests that need to act AS a user
+    without running the F.2 OTP+PIN flow per test. Returns the opaque token
+    suitable for `Authorization: Bearer <token>`.
+    """
+    from app.auth.sessions import create_session
+
+    return await create_session(user_id, tenant_id, channel)
+
+
+@pytest_asyncio.fixture
+async def alice_session_token(test_user) -> str:
+    """A session token for the default test_user (auto-assigned standard_user role)."""
+    return await create_session_token_for_user(test_user.id, test_user.tenant_id)
+
+
+@pytest_asyncio.fixture
+async def alice_auth_header(alice_session_token: str) -> dict[str, str]:
+    """Authorization header dict bound to test_user's session."""
+    return {"Authorization": f"Bearer {alice_session_token}"}

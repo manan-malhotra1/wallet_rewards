@@ -1,7 +1,12 @@
-"""Tests for the reconciliation sweep + listing endpoints (Phase E.1)."""
+"""Tests for the reconciliation sweep + listing endpoints (Phase E.1).
+
+Phase F.4: the redemption `/initiate` endpoint is user-only. The helper
+that creates pending redemptions mints a one-shot session token for the
+test user before calling it.
+"""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -18,12 +23,11 @@ from app.shared.models import (
     Account,
     AuditLog,
     Redemption,
-    RedemptionProvider,
     Rule,
     Tenant,
     User,
 )
-
+from tests.conftest import create_session_token_for_user
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -90,23 +94,28 @@ async def _make_pending_redemption(
     )
     provider_id = provider_resp.json()["id"]
 
+    # /initiate is user-only (Phase F.4) — mint a session token; this
+    # overrides the admin Bearer set by the reconciliation conftest.
+    user_token = await create_session_token_for_user(user.id, user.tenant_id)
     init = await async_client.post(
         "/api/v1/redemption/initiate",
-        headers={"Idempotency-Key": uuid4().hex},
+        headers={
+            "Idempotency-Key": uuid4().hex,
+            "Authorization": f"Bearer {user_token}",
+        },
         json={
-            "tenant_id": str(tenant.id),
-            "user_id": str(user.id),
             "provider_id": provider_id,
             "points_amount": str(amount),
         },
     )
+    assert init.status_code == 201, init.text
     redemption_id = init.json()["id"]
 
     # Backdate created_at so the sweep sees it as stale.
     redemption = (await db_session.execute(
         select(Redemption).where(Redemption.id == redemption_id)
     )).scalar_one()
-    redemption.created_at = datetime.now(timezone.utc) - timedelta(minutes=age_minutes)
+    redemption.created_at = datetime.now(UTC) - timedelta(minutes=age_minutes)
     await db_session.commit()
     await db_session.refresh(redemption)
     return redemption
@@ -123,8 +132,8 @@ async def test_sweep_bumps_retry_for_stale_pending(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """A PENDING redemption older than threshold gets retry_count incremented."""
     redemption = await _make_pending_redemption(
@@ -161,8 +170,8 @@ async def test_sweep_ignores_recent_pending(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """A PENDING redemption inside the threshold window is NOT swept."""
     redemption = await _make_pending_redemption(
@@ -193,8 +202,8 @@ async def test_sweep_ignores_completed(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Only PENDING redemptions are candidates — COMPLETED ones are skipped."""
     redemption = await _make_pending_redemption(
@@ -230,8 +239,8 @@ async def test_sweep_escalates_after_max_retries(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """When retry_count reaches provider.max_retries, status -> MANUAL_REVIEW."""
     redemption = await _make_pending_redemption(
@@ -274,8 +283,8 @@ async def test_sweep_writes_audit_log_per_item(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """Every sweep action produces exactly one audit_log row."""
     redemption = await _make_pending_redemption(
@@ -315,8 +324,8 @@ async def test_pending_list_tenant_scoped(
     test_tenant: Tenant,
     other_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
-    system_points_account: Account,  # noqa: ARG001
+    user_points: Account,
+    system_points_account: Account,
 ) -> None:
     """The pending list under another tenant returns []."""
     await _make_pending_redemption(

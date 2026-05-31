@@ -31,8 +31,6 @@ from app.modules.rules.evaluator import (
 )
 from app.shared.exceptions import (
     SourceKeyAlreadyInUse,
-    SourceNotRegistered,
-    SourceTenantMismatch,
     TenantNotFound,
 )
 from app.shared.models import (
@@ -43,7 +41,6 @@ from app.shared.models import (
     ExternalEventSource,
     Tenant,
 )
-
 
 # -----------------------------------------------------------------------------
 # Source registration

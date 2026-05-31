@@ -5,8 +5,7 @@ docs/security/threat-models/phase-c-rewards-inflow.md §5.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from decimal import Decimal
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -15,17 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.models import (
+    ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+    Account,
     EventIngestionLog,
     RewardEvent,
     Tenant,
     User,
-    Account,
 )
-from app.shared.models import (
-    ACCOUNT_TYPE_POINTS,
-    ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
-)
-
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -113,7 +108,7 @@ def _make_event(
         "transaction_type": transaction_type,
         "amount": amount,
         "currency": "ZAR",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -191,7 +186,7 @@ async def test_ingest_dedupes_replayed_event(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001 — ensures points account exists
+    user_points: Account,
 ) -> None:
     """Same (source_key, event_id) replay → outcome 'duplicate', no new reward."""
     await _ensure_system_points_issuance(db_session, test_tenant)
@@ -226,7 +221,7 @@ async def test_first_time_rule_fires_exactly_once(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
+    user_points: Account,
 ) -> None:
     """First-time rule fires on event 1; second qualifying event yields no reward."""
     await _ensure_system_points_issuance(db_session, test_tenant)
@@ -259,7 +254,7 @@ async def test_milestone_rule_fires_at_threshold_and_resets(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
+    user_points: Account,
 ) -> None:
     """Milestone(threshold=3) fires on the 3rd event, then resets — 6th event fires again."""
     await _ensure_system_points_issuance(db_session, test_tenant)
@@ -293,7 +288,7 @@ async def test_rule_only_matches_correct_transaction_type(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
+    user_points: Account,
 ) -> None:
     """Rule bound to 'top_up' does not fire on 'p2p' events."""
     await _ensure_system_points_issuance(db_session, test_tenant)
@@ -316,7 +311,7 @@ async def test_ingestion_log_records_outcome(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    user_points: Account,  # noqa: ARG001
+    user_points: Account,
 ) -> None:
     """Every received event leaves an event_ingestion_log row."""
     await _ensure_system_points_issuance(db_session, test_tenant)

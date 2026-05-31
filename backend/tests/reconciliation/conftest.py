@@ -28,7 +28,7 @@ async def async_client(
     Individual tests can still override by passing `headers={...}` per call.
     """
     # Lazy import to avoid loading test infrastructure at collection time.
-    from tests.conftest import TestSessionLocal  # noqa: PLC0415
+    from tests.conftest import TestSessionLocal
 
     async def _override_session() -> AsyncIterator[AsyncSession]:
         async with TestSessionLocal() as session:

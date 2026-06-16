@@ -13,8 +13,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import AdminPrincipal
 from app.database import get_async_session
 from app.dependencies import require_admin_role
-from app.modules.rules.schemas import RuleCreateRequest, RuleOut
-from app.modules.rules.service import create_rule, list_rules_for_tenant
+from app.modules.rules.schemas import (
+    RuleCreateRequest,
+    RuleOut,
+    RulePerformanceOut,
+)
+from app.modules.rules.service import (
+    create_rule,
+    get_rule_performance,
+    list_rules_for_tenant,
+)
 
 router = APIRouter(prefix="/api/v1/rules", tags=["rules"])
 
@@ -50,3 +58,21 @@ async def get_rules(
     _ = admin
     rules = await list_rules_for_tenant(session, tenant_id)
     return [RuleOut.model_validate(r) for r in rules]
+
+
+@router.get("/{rule_id}/performance", response_model=RulePerformanceOut)
+async def get_performance(
+    rule_id: UUID,
+    tenant_id: UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> RulePerformanceOut:
+    """Return campaign performance metrics for a rule.
+
+    Admin-only. Tenant-scoped — cross-tenant lookups return 404 to avoid
+    leaking the rule's existence.
+    """
+    _ = admin
+    return await get_rule_performance(
+        session, tenant_id=tenant_id, rule_id=rule_id
+    )

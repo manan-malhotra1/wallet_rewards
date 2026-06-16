@@ -98,6 +98,20 @@ export interface Rule {
   created_at: string;
 }
 
+/**
+ * Campaign (rule) performance metrics — backend computes these from
+ * `reward_events`. Surfaces on the campaigns list as Fires + Unique
+ * users columns, and on the campaign detail drawer.
+ */
+export interface RulePerformance {
+  rule_id: string;
+  total_fires: number;
+  unique_users_rewarded: number;
+  total_reward_value: string;
+  first_fired_at: string | null;
+  last_fired_at: string | null;
+}
+
 export interface RedemptionProvider {
   id: string;
   tenant_id: string;

@@ -24,6 +24,7 @@ import type {
   RedemptionProvider,
   RewardBudget,
   Rule,
+  RulePerformance,
   SweepOutcome,
   Tenant,
   User,
@@ -98,6 +99,16 @@ export interface CreateRulePayload {
 
 export const createRule = (payload: CreateRulePayload) =>
   apiPost<Rule>("/api/v1/rules", payload);
+
+/**
+ * Campaign performance metrics — total fires, unique users rewarded,
+ * total reward value, and first/last fire timestamps. Backend computes
+ * these live from `reward_events`.
+ */
+export const getRulePerformance = (rule_id: string, tenant_id: string) =>
+  apiGet<RulePerformance>(`/api/v1/rules/${rule_id}/performance`, {
+    query: { tenant_id },
+  });
 
 // ---- Redemption ----------------------------------------------------------
 

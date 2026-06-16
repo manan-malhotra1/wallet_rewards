@@ -1,6 +1,7 @@
 """Pydantic v2 schemas for the rules module."""
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -78,3 +79,31 @@ class RuleOut(BaseModel):
     stop_after_n_triggers: int | None
     resets_after_trigger: bool
     status: str
+
+
+class RulePerformanceOut(BaseModel):
+    """Campaign performance metrics for a single rule.
+
+    Computed live from `reward_events` — no separate counter table. The
+    UI surfaces these on the campaigns list and detail drawer.
+
+    Fields:
+        rule_id: The rule (campaign) these metrics describe.
+        total_fires: Count of every issuance for this rule. A user who
+            triggered the rule 3 times contributes 3 to this number.
+        unique_users_rewarded: DISTINCT user_id count — how many separate
+            people have been rewarded at least once.
+        total_reward_value: SUM of every reward_value issued. Sum is
+            in the rule's reward_type unit (points or cashback currency).
+        first_fired_at / last_fired_at: Earliest and latest reward_event
+            timestamps. Null when the rule has never fired.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    rule_id: UUID
+    total_fires: int = Field(ge=0)
+    unique_users_rewarded: int = Field(ge=0)
+    total_reward_value: Decimal
+    first_fired_at: datetime | None
+    last_fired_at: datetime | None

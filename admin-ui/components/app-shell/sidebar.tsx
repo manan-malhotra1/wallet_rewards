@@ -10,9 +10,9 @@ import {
   Coins,
   CreditCard,
   Gauge,
-  GitMerge,
   Layers,
   ListChecks,
+  Megaphone,
   PiggyBank,
   Receipt,
   ScanLine,
@@ -40,7 +40,7 @@ const OPERATIONS: NavItem[] = [
 ];
 
 const CONFIG: NavItem[] = [
-  { label: "Rules", href: "/rules", icon: GitMerge },
+  { label: "Campaigns", href: "/campaigns", icon: Megaphone },
   { label: "Segments", href: "/segments", icon: Layers },
   { label: "Budgets", href: "/budgets", icon: PiggyBank },
   { label: "Limits", href: "/limits", icon: ListChecks },

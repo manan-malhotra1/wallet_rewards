@@ -1,47 +1,48 @@
 /**
- * Button primitive — variants match the design tokens.
+ * Button primitive — shadcn/ui shape, Sasai Fintech navy + sky palette.
  *
- * Variants:
- *   - default: brand-tinted, used for primary actions
- *   - ghost:   subtle hover, used for secondary actions
- *   - outline: border + transparent bg, used for tertiary actions
- *   - danger:  red, used for destructive actions
- *   - link:    underlined text, used for in-table actions
- *
- * Sizes:
- *   - sm: 28px tall, dense tables
- *   - md: 32px tall, default
- *   - lg: 40px tall, modal CTAs
+ * Variants: default | secondary | destructive | outline | ghost | link.
+ * Sizes:    default | xs | sm | lg | icon | icon-xs | icon-sm | icon-lg.
  */
-import { cva, type VariantProps } from "class-variance-authority";
+"use client";
+
 import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--color-brand] disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default:
-          "bg-[--color-brand] text-white hover:opacity-90 active:opacity-100",
-        ghost:
-          "bg-transparent text-[--color-text-1] hover:bg-[--color-surface-2]",
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
         outline:
-          "border border-[--color-border] bg-transparent text-[--color-text-1] hover:bg-[--color-surface-2]",
+          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost:
+          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        link: "text-primary underline-offset-4 hover:underline",
         danger:
-          "bg-[--color-danger] text-white hover:opacity-90",
-        link: "text-[--color-accent] underline-offset-2 hover:underline",
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
       },
       size: {
-        sm: "h-7 px-2.5 text-[12px]",
-        md: "h-8 px-3 text-[13px]",
-        lg: "h-10 px-4 text-[14px]",
-        icon: "h-8 w-8",
+        default: "h-9 px-4 py-2 has-[>svg]:px-3",
+        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
+        md: "h-9 px-4 py-2 has-[>svg]:px-3",
+        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-9",
+        "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-8",
+        "icon-lg": "size-10",
       },
     },
-    defaultVariants: { variant: "default", size: "md" },
+    defaultVariants: { variant: "default", size: "default" },
   },
 );
 
@@ -51,16 +52,15 @@ export interface ButtonProps
   asChild?: boolean;
 }
 
-/**
- * Polymorphic button. Pass `asChild` to render the variant styles on a
- * child element (e.g. a Next.js `<Link>`) instead of a `<button>`.
- */
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     return (
       <Comp
         ref={ref}
+        data-slot="button"
+        data-variant={variant}
+        data-size={size}
         className={cn(buttonVariants({ variant, size }), className)}
         {...props}
       />

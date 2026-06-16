@@ -1,6 +1,5 @@
 /**
- * Label primitive — wraps a form control's text in semantic <label>.
- * Aligned with our 12px caption type token. Use `htmlFor` to associate.
+ * Label primitive — semantic Tailwind tokens.
  */
 import * as React from "react";
 
@@ -12,8 +11,9 @@ export const Label = React.forwardRef<HTMLLabelElement, LabelProps>(
   ({ className, ...props }, ref) => (
     <label
       ref={ref}
+      data-slot="label"
       className={cn(
-        "text-[12px] font-medium text-[--color-text-2]",
+        "text-sm font-medium leading-none text-foreground select-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
         className,
       )}
       {...props}

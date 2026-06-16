@@ -1,7 +1,5 @@
 /**
- * Tabs primitive — Radix Tabs wrapped in our tokens. Used as the secondary
- * navigation inside each page (e.g. Pending / Manual review / Recently
- * resolved on the reconciliation page).
+ * Tabs primitive — Radix Tabs + Sasai semantic tokens.
  */
 "use client";
 
@@ -18,8 +16,9 @@ export const TabsList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
+    data-slot="tabs-list"
     className={cn(
-      "inline-flex h-9 items-center gap-4 border-b border-[--color-border]",
+      "bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px]",
       className,
     )}
     {...props}
@@ -33,11 +32,9 @@ export const TabsTrigger = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Trigger
     ref={ref}
+    data-slot="tabs-trigger"
     className={cn(
-      "relative -mb-px inline-flex h-9 items-center border-b-2 border-transparent px-1 text-[13px] text-[--color-text-2] transition-colors",
-      "hover:text-[--color-text-1]",
-      "data-[state=active]:border-[--color-brand] data-[state=active]:text-[--color-text-1]",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--color-brand]",
+      "data-[state=active]:bg-background data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring text-foreground dark:text-muted-foreground dark:data-[state=active]:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-3 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
       className,
     )}
     {...props}
@@ -51,7 +48,8 @@ export const TabsContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
-    className={cn("pt-4 focus-visible:outline-none", className)}
+    data-slot="tabs-content"
+    className={cn("mt-4 flex-1 outline-none", className)}
     {...props}
   />
 ));

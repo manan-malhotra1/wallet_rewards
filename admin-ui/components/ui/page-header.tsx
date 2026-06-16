@@ -1,6 +1,5 @@
 /**
- * <PageHeader> — top of every page. Title + optional subtitle + actions.
- * Keeps spacing consistent across the admin UI.
+ * <PageHeader> — top-of-page title bar with optional subtitle + actions.
  */
 import { cn } from "@/lib/utils";
 
@@ -15,14 +14,14 @@ export function PageHeader({ title, subtitle, actions, className }: PageHeaderPr
   return (
     <div
       className={cn(
-        "flex flex-wrap items-end justify-between gap-3 border-b border-[--color-border] px-6 py-4",
+        "flex flex-wrap items-end justify-between gap-4 border-b bg-background px-6 py-5",
         className,
       )}
     >
       <div>
-        <h1 className="text-[20px] font-semibold text-[--color-text-1]">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
         {subtitle && (
-          <p className="mt-0.5 text-[12px] text-[--color-text-3]">{subtitle}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
         )}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}

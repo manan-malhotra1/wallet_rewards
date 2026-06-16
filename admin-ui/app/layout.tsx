@@ -1,6 +1,5 @@
 /**
- * Root layout. Wraps every route. Loads fonts, sets html lang, mounts the
- * AppShell at this level so navigation persists across route transitions.
+ * Root layout — fonts, theme provider, toast viewport. Wraps every route.
  */
 import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
@@ -8,6 +7,7 @@ import { GeistSans } from "geist/font/sans";
 import { Suspense } from "react";
 
 import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 
 export const metadata: Metadata = {
@@ -24,18 +24,23 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      // Dark by default; light only when the user's OS opts in (media query
-      // in globals.css handles the actual variable swap).
       className={`${GeistSans.variable} ${GeistMono.variable}`}
       suppressHydrationWarning
     >
-      <body>
-        {/* Toaster owns the React context provider for `useToast()` and
-            also renders the floating viewport. It MUST wrap children so
-            descendants find the provider in the tree. */}
-        <Toaster>
-          <Suspense>{children}</Suspense>
-        </Toaster>
+      <body className="min-h-screen bg-background font-sans antialiased">
+        {/* next-themes injects `.dark` on <html>; globals.css token block
+            overrides on that class. `system` follows the OS preference;
+            users can override per-session via a toggle (future). */}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <Toaster>
+            <Suspense>{children}</Suspense>
+          </Toaster>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -1,9 +1,5 @@
 /**
- * Command palette (⌘K) — keyboard-first navigation across the admin UI.
- *
- * Listens for the global `open-command-palette` event dispatched by
- * <Topbar>. Mounts a dialog with navigation actions + tenant switcher
- * shortcuts. Single source of truth for the keyboard map.
+ * Command palette (⌘K). Styled with Sasai semantic tokens.
  */
 "use client";
 
@@ -57,10 +53,6 @@ export interface CommandPaletteProps {
   activeTenantId: string | null;
 }
 
-/**
- * Renders the cmdk dialog. Listens for `open-command-palette` events and a
- * keyboard shortcut suite (⌘K to open, then G+D / G+U / G+R for quick nav).
- */
 export function CommandPalette({ tenants, activeTenantId }: CommandPaletteProps) {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
@@ -72,9 +64,6 @@ export function CommandPalette({ tenants, activeTenantId }: CommandPaletteProps)
   }, []);
 
   React.useEffect(() => {
-    // G + D / G + U / G + R / G + A — Linear-style sequential nav. Each
-    // press of G arms a 600ms window during which the next key picks a
-    // page.
     let armed: ReturnType<typeof setTimeout> | null = null;
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLElement) {
@@ -127,45 +116,51 @@ export function CommandPalette({ tenants, activeTenantId }: CommandPaletteProps)
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="top-[20%] max-w-2xl translate-y-0 p-0">
+      <DialogContent className="top-[20%] max-w-2xl translate-y-0 gap-0 p-0">
         <Command label="Command palette" className="w-full">
           <Command.Input
             placeholder="Type a command or search…"
-            className="h-12 w-full border-b border-[--color-border] bg-transparent px-4 text-[14px] text-[--color-text-1] placeholder:text-[--color-text-3] focus:outline-none"
+            className="h-12 w-full border-b bg-transparent px-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
           <Command.List className="max-h-[420px] overflow-y-auto p-2">
-            <Command.Empty className="px-3 py-6 text-center text-[12px] text-[--color-text-3]">
+            <Command.Empty className="px-3 py-6 text-center text-xs text-muted-foreground">
               No results.
             </Command.Empty>
-            <Command.Group heading="Navigate">
+            <Command.Group
+              heading="Navigate"
+              className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground"
+            >
               {NAV.map((item) => (
                 <Command.Item
                   key={item.href}
                   value={item.label}
                   onSelect={() => handleNav(item.href)}
-                  className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-[13px] data-[selected=true]:bg-[--color-surface-2]"
+                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
                 >
-                  <item.icon className="h-4 w-4 text-[--color-text-2]" />
+                  <item.icon className="h-4 w-4 text-muted-foreground" />
                   <span className="flex-1">{item.label}</span>
-                  <ArrowRight className="h-3 w-3 text-[--color-text-3]" />
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
                 </Command.Item>
               ))}
             </Command.Group>
             {tenants.length > 1 && (
-              <Command.Group heading="Switch tenant">
+              <Command.Group
+                heading="Switch tenant"
+                className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground"
+              >
                 {tenants.map((tenant) => (
                   <Command.Item
                     key={tenant.id}
                     value={`switch tenant ${tenant.name}`}
                     onSelect={() => handleTenantSwitch(tenant.id)}
-                    className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-[13px] data-[selected=true]:bg-[--color-surface-2]"
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
                   >
                     <span className="flex-1">{tenant.name}</span>
-                    <span className="text-[11px] text-[--color-text-3]">
+                    <span className="text-[11px] text-muted-foreground">
                       {tenant.baseCurrency}
                     </span>
                     {tenant.id === activeTenantId && (
-                      <span className="text-[11px] text-[--color-success]">●</span>
+                      <span className="text-[11px] text-emerald-500">●</span>
                     )}
                   </Command.Item>
                 ))}

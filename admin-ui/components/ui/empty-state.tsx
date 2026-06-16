@@ -1,6 +1,5 @@
 /**
- * <EmptyState> — large centred "nothing here yet" surface for list pages.
- * Used both for first-time-empty and filtered-no-results.
+ * <EmptyState> — centred "nothing here yet" surface.
  */
 import { cn } from "@/lib/utils";
 
@@ -22,19 +21,19 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-[--color-border] bg-[--color-surface-1] px-6 py-12 text-center",
+        "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-card px-6 py-12 text-center",
         className,
       )}
     >
       {Icon && (
-        <div className="rounded-full bg-[--color-surface-2] p-3">
-          <Icon className="h-5 w-5 text-[--color-text-2]" />
+        <div className="rounded-full bg-muted p-3">
+          <Icon className="h-5 w-5 text-muted-foreground" />
         </div>
       )}
       <div>
-        <h3 className="text-[14px] font-semibold text-[--color-text-1]">{title}</h3>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         {description && (
-          <p className="mt-1 max-w-md text-[12px] text-[--color-text-2]">{description}</p>
+          <p className="mt-1 max-w-md text-xs text-muted-foreground">{description}</p>
         )}
       </div>
       {action}

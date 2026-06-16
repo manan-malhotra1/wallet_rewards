@@ -1,6 +1,5 @@
 /**
- * <ErrorBanner> — inline error surface above a table or form when a
- * server call fails. Keeps the UI rendered (vs throwing).
+ * <ErrorBanner> — inline error surface above a table or form.
  */
 import { AlertCircle } from "lucide-react";
 
@@ -17,14 +16,14 @@ export function ErrorBanner({ title, description, className }: ErrorBannerProps)
     <div
       role="alert"
       className={cn(
-        "flex items-start gap-2 rounded-md border border-[--color-danger]/40 bg-[--color-danger]/10 px-3 py-2 text-[12px] text-[--color-danger]",
+        "flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive dark:text-red-400",
         className,
       )}
     >
       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
       <div>
         <div className="font-semibold">{title}</div>
-        {description && <div className="text-[11px] opacity-80">{description}</div>}
+        {description && <div className="mt-0.5 text-xs opacity-90">{description}</div>}
       </div>
     </div>
   );

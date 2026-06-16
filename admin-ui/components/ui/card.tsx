@@ -1,6 +1,5 @@
 /**
- * <Card> primitives — surface-1 background with 16px padding. The header,
- * body, footer subcomponents help compose dense dashboard layouts.
+ * Card primitives — shadcn/ui shape, Sasai brand tokens.
  */
 import * as React from "react";
 
@@ -10,8 +9,9 @@ export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
+      data-slot="card"
       className={cn(
-        "rounded-lg border border-[--color-border] bg-[--color-surface-1]",
+        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
         className,
       )}
       {...props}
@@ -24,39 +24,57 @@ export const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("border-b border-[--color-border] px-4 py-3", className)}
+      data-slot="card-header"
+      className={cn(
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        className,
+      )}
       {...props}
     />
   ),
 );
 CardHeader.displayName = "CardHeader";
 
-export const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
+export const CardTitle = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <h2
+    <div
       ref={ref}
-      className={cn("text-[14px] font-semibold text-[--color-text-1]", className)}
+      data-slot="card-title"
+      className={cn("leading-none font-semibold", className)}
       {...props}
     />
   ),
 );
 CardTitle.displayName = "CardTitle";
 
+export const CardDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div
+      ref={ref}
+      data-slot="card-description"
+      className={cn("text-muted-foreground text-sm", className)}
+      {...props}
+    />
+  ),
+);
+CardDescription.displayName = "CardDescription";
+
+// Alias for compatibility with existing callers (CardBody / CardContent).
 export const CardBody = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("p-4", className)} {...props} />
+    <div ref={ref} data-slot="card-content" className={cn("px-6", className)} {...props} />
   ),
 );
 CardBody.displayName = "CardBody";
+
+export const CardContent = CardBody;
 
 export const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn(
-        "flex items-center justify-end gap-2 border-t border-[--color-border] px-4 py-3",
-        className,
-      )}
+      data-slot="card-footer"
+      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
       {...props}
     />
   ),

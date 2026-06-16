@@ -1,8 +1,6 @@
 /**
- * Side-drawer primitive — Radix Dialog reshaped as a right slide-over.
- *
- * Used for user detail, audit diff viewer, reconciliation inspector.
- * Width is 480px on desktop; full-width on narrow viewports.
+ * Side drawer — Radix Dialog reshaped as a right slide-over.
+ * Refreshed with Sasai semantic tokens.
  */
 "use client";
 
@@ -22,7 +20,10 @@ const DrawerOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-40 bg-black/50 backdrop-blur-sm", className)}
+    className={cn(
+      "fixed inset-0 z-40 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      className,
+    )}
     {...props}
   />
 ));
@@ -37,18 +38,19 @@ export const DrawerContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed right-0 top-0 z-50 flex h-full w-full max-w-[480px] flex-col border-l border-[--color-border] bg-[--color-surface-1] shadow-2xl",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "bg-background fixed right-0 top-0 z-50 flex h-full w-full max-w-[480px] flex-col border-l shadow-xl",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
         className,
       )}
       {...props}
     >
       {children}
       <DialogPrimitive.Close
-        className="absolute right-3 top-3 rounded-md p-1 text-[--color-text-2] opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--color-brand]"
+        className="ring-offset-background focus:ring-ring absolute top-4 right-4 rounded-xs text-muted-foreground opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden [&_svg]:size-4"
         aria-label="Close drawer"
       >
-        <X className="h-4 w-4" />
+        <X />
+        <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPrimitive.Portal>
@@ -56,32 +58,17 @@ export const DrawerContent = React.forwardRef<
 DrawerContent.displayName = "DrawerContent";
 
 export const DrawerHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn(
-      "flex flex-col gap-1 border-b border-[--color-border] px-5 py-4",
-      className,
-    )}
-    {...props}
-  />
+  <div className={cn("flex flex-col gap-1 border-b px-5 py-4", className)} {...props} />
 );
 DrawerHeader.displayName = "DrawerHeader";
 
 export const DrawerBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn("flex-1 overflow-y-auto px-5 py-4", className)}
-    {...props}
-  />
+  <div className={cn("flex-1 overflow-y-auto px-5 py-4", className)} {...props} />
 );
 DrawerBody.displayName = "DrawerBody";
 
 export const DrawerFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn(
-      "flex items-center justify-end gap-2 border-t border-[--color-border] px-5 py-3",
-      className,
-    )}
-    {...props}
-  />
+  <div className={cn("flex items-center justify-end gap-2 border-t px-5 py-3", className)} {...props} />
 );
 DrawerFooter.displayName = "DrawerFooter";
 
@@ -91,7 +78,7 @@ export const DrawerTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-[16px] font-semibold text-[--color-text-1]", className)}
+    className={cn("text-base font-semibold text-foreground", className)}
     {...props}
   />
 ));
@@ -103,7 +90,7 @@ export const DrawerDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-[12px] text-[--color-text-2]", className)}
+    className={cn("text-xs text-muted-foreground", className)}
     {...props}
   />
 ));

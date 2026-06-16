@@ -1,99 +1,63 @@
 /**
- * Toast notifications — bottom-right stack. Used for action confirmations
- * and inline error surfacing.
+ * Toast notifications — backed by sonner (matches FinOps Studio).
  *
- * Backed by Radix Toast. Two pieces:
- *   - `<Toaster>` — wraps the entire React tree so descendants can call
- *     `useToast()`. Mount it once in `app/layout.tsx` AROUND `{children}`.
- *   - `useToast()` — imperative trigger for client components.
- *
- * Three toasts max, FIFO (oldest evicted when a 4th lands).
+ * Two exports for backward compatibility with existing call sites:
+ *   - `<Toaster>` — render once at the root layout.
+ *   - `useToast()` — imperative shim: returns `{ toast }` that wraps sonner
+ *     so existing components (`useToast()` + `toast({title, description})`)
+ *     keep working.
  */
 "use client";
 
-import * as ToastPrimitive from "@radix-ui/react-toast";
-import { X } from "lucide-react";
-import * as React from "react";
+import { useTheme } from "next-themes";
+import { Toaster as SonnerToaster, toast as sonnerToast } from "sonner";
 
-import { cn } from "@/lib/utils";
-
-type Toast = {
-  id: string;
+export interface ToastInput {
   title: string;
   description?: string;
   variant?: "default" | "danger";
-};
-
-const ToastContext = React.createContext<{
-  toast: (input: Omit<Toast, "id">) => void;
-} | null>(null);
-
-/**
- * Imperative toast trigger — usable from any client component that lives
- * inside <Toaster>. Throws if the provider isn't an ancestor.
- */
-export function useToast() {
-  const ctx = React.useContext(ToastContext);
-  if (!ctx) throw new Error("useToast must be used inside <Toaster>");
-  return ctx;
 }
 
 /**
- * Mount once at the root layout, AROUND `{children}` — the context
- * provider needs to be an ancestor of every component that calls
- * `useToast()`. The viewport (the floating stack of visible toasts) is
- * rendered alongside the children inside the provider.
+ * Mount once at the root layout — sonner needs its viewport in the DOM.
+ * Picks up the active theme via next-themes so dark mode renders correctly.
  */
-export function Toaster({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = React.useState<Toast[]>([]);
-
-  const toast = React.useCallback((input: Omit<Toast, "id">) => {
-    const id = crypto.randomUUID();
-    setToasts((current) => [...current.slice(-2), { id, ...input }]);
-  }, []);
-
+export function Toaster({ children }: { children?: React.ReactNode }) {
+  const { theme = "system" } = useTheme();
   return (
-    <ToastContext.Provider value={{ toast }}>
-      <ToastPrimitive.Provider swipeDirection="right" duration={5000}>
-        {children}
-        {toasts.map((t) => (
-          <ToastPrimitive.Root
-            key={t.id}
-            onOpenChange={(open) => {
-              if (!open) {
-                setToasts((current) => current.filter((toast) => toast.id !== t.id));
-              }
-            }}
-            className={cn(
-              "rounded-md border border-[--color-border] bg-[--color-surface-1] p-3 shadow-xl",
-              "data-[state=open]:animate-in data-[state=closed]:animate-out",
-              "data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)]",
-              "data-[swipe=cancel]:translate-x-0",
-              t.variant === "danger" && "border-[--color-danger]/40",
-            )}
-          >
-            <div className="flex items-start gap-3">
-              <div className="flex-1">
-                <ToastPrimitive.Title className="text-[13px] font-semibold text-[--color-text-1]">
-                  {t.title}
-                </ToastPrimitive.Title>
-                {t.description && (
-                  <ToastPrimitive.Description className="mt-1 text-[12px] text-[--color-text-2]">
-                    {t.description}
-                  </ToastPrimitive.Description>
-                )}
-              </div>
-              <ToastPrimitive.Close
-                className="rounded p-0.5 text-[--color-text-2] opacity-70 transition-opacity hover:opacity-100"
-                aria-label="Dismiss"
-              >
-                <X className="h-4 w-4" />
-              </ToastPrimitive.Close>
-            </div>
-          </ToastPrimitive.Root>
-        ))}
-        <ToastPrimitive.Viewport className="fixed bottom-4 right-4 z-[100] flex w-full max-w-sm flex-col gap-2 outline-none" />
-      </ToastPrimitive.Provider>
-    </ToastContext.Provider>
+    <>
+      {children}
+      <SonnerToaster
+        theme={theme as "light" | "dark" | "system"}
+        position="bottom-right"
+        toastOptions={{
+          classNames: {
+            toast:
+              "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
+            description: "group-[.toast]:text-muted-foreground",
+            actionButton:
+              "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
+            cancelButton:
+              "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+          },
+        }}
+      />
+    </>
   );
+}
+
+/**
+ * Imperative hook compatible with the prior `useToast()` API. Forwards to
+ * sonner's `toast()` so call sites don't need changes.
+ */
+export function useToast() {
+  return {
+    toast: (input: ToastInput) => {
+      if (input.variant === "danger") {
+        sonnerToast.error(input.title, { description: input.description });
+      } else {
+        sonnerToast(input.title, { description: input.description });
+      }
+    },
+  };
 }

@@ -1,12 +1,10 @@
 /**
- * Tenant switcher — combobox in the topbar that swaps the active tenant
- * cookie. The selection persists across page reloads via the
- * `sasai_active_tenant` cookie; server components read it to scope queries.
+ * Tenant switcher — combobox in the topbar. Styled with semantic tokens.
  */
 "use client";
 
-import { Check, ChevronsUpDown } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
+import { Building2, Check, ChevronsUpDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -20,11 +18,6 @@ export interface TenantSwitcherProps {
   activeTenantId: string | null;
 }
 
-/**
- * Renders the active tenant button + a popover with the full list.
- * Clicking an entry calls a server action that updates the cookie and then
- * triggers a full router refresh so server components re-fetch.
- */
 export function TenantSwitcher({ tenants, activeTenantId }: TenantSwitcherProps) {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
@@ -32,7 +25,7 @@ export function TenantSwitcher({ tenants, activeTenantId }: TenantSwitcherProps)
 
   if (!active) {
     return (
-      <span className="text-[12px] text-[--color-text-3]">No tenants</span>
+      <span className="text-xs text-muted-foreground">No tenants</span>
     );
   }
 
@@ -47,41 +40,42 @@ export function TenantSwitcher({ tenants, activeTenantId }: TenantSwitcherProps)
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="inline-flex h-8 items-center gap-2 rounded-md border border-[--color-border] bg-[--color-surface-0] px-2.5 text-[13px] text-[--color-text-1] hover:bg-[--color-surface-2]"
+          className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         >
-          <span className="font-medium">{active.name}</span>
-          <span className="text-[--color-text-3]">{active.baseCurrency}</span>
-          <ChevronsUpDown className="h-3 w-3 text-[--color-text-3]" />
+          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-foreground">{active.name}</span>
+          <span className="text-xs text-muted-foreground">{active.baseCurrency}</span>
+          <ChevronsUpDown className="h-3 w-3 text-muted-foreground" />
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
           align="start"
-          sideOffset={4}
-          className="z-50 w-[240px] rounded-md border border-[--color-border] bg-[--color-surface-1] p-1 shadow-xl"
+          sideOffset={6}
+          className="z-50 w-[260px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
         >
-          <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[--color-text-3]">
+          <div className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Switch tenant
           </div>
-          <ul className="space-y-px">
+          <ul className="space-y-0.5">
             {tenants.map((t) => (
               <li key={t.id}>
                 <button
                   type="button"
                   onClick={() => handleSwitch(t.id)}
                   className={cn(
-                    "flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[13px] hover:bg-[--color-surface-2]",
-                    t.id === active.id && "bg-[--color-surface-2]",
+                    "flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+                    t.id === active.id && "bg-accent text-accent-foreground",
                   )}
                 >
                   <div>
                     <div className="font-medium">{t.name}</div>
-                    <div className="text-[11px] text-[--color-text-3]">
+                    <div className="text-[11px] text-muted-foreground">
                       {t.baseCurrency}
                     </div>
                   </div>
                   {t.id === active.id && (
-                    <Check className="h-3.5 w-3.5 text-[--color-success]" />
+                    <Check className="h-3.5 w-3.5 text-emerald-500" />
                   )}
                 </button>
               </li>

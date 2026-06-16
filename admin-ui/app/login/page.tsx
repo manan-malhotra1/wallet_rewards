@@ -1,9 +1,5 @@
 /**
- * Login page. Single button — delegates to Keycloak via next-auth signIn().
- *
- * Public route — the middleware whitelists `/login` so unauthenticated
- * browsers can reach it. After successful sign-in we redirect back to
- * `?from=…` if provided, otherwise `/dashboard`.
+ * Login page — single Keycloak sign-in button. Sasai brand colours.
  */
 import { Building2, KeyRound } from "lucide-react";
 
@@ -19,21 +15,27 @@ export default async function LoginPage({
 }) {
   const { from = "/dashboard", reason } = await searchParams;
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[--color-surface-0] p-6">
-      <div className="w-full max-w-md rounded-xl border border-[--color-border] bg-[--color-surface-1] p-8 shadow-2xl">
-        <div className="mb-6 flex items-center gap-2">
-          <Building2 className="h-5 w-5 text-[--color-brand]" />
-          <h1 className="text-[18px] font-semibold">Sasai Wallet · Admin</h1>
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-md rounded-2xl border bg-card p-8 shadow-xl">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+            <Building2 className="h-4 w-4 text-primary-foreground" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold leading-tight text-foreground">
+              Sasai Wallet
+            </h1>
+            <p className="text-xs text-muted-foreground">Admin Console</p>
+          </div>
         </div>
-        <p className="mb-6 text-[13px] text-[--color-text-2]">
-          Sign in with your Sasai operator account. Authentication is handled
-          by the platform's Keycloak realm — your roles determine what you
-          can see and do here.
+        <p className="mb-6 text-sm text-muted-foreground">
+          Sign in with your Sasai operator account. Authentication runs through
+          the platform's Keycloak realm — your roles determine what you can see
+          and do here.
         </p>
         {reason === "refresh_failed" && (
-          <div className="mb-4 rounded border border-[--color-warning]/40 bg-[--color-warning]/10 p-3 text-[12px] text-[--color-warning]">
-            Your session expired and could not be refreshed. Please sign in
-            again.
+          <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            Your session expired and could not be refreshed. Please sign in again.
           </div>
         )}
         <form
@@ -47,9 +49,9 @@ export default async function LoginPage({
             Sign in with Keycloak
           </Button>
         </form>
-        <div className="mt-6 text-center text-[11px] text-[--color-text-3]">
-          For local dev, the bootstrap script creates a default admin user.
-          See <code className="text-[--color-text-2]">sasai-wallet-infra/.claude.md</code>.
+        <div className="mt-6 text-center text-[11px] text-muted-foreground">
+          Local dev creates a default <code className="text-foreground">admin-test</code> user.
+          See <code className="text-foreground">sasai-wallet-infra/.claude.md</code>.
         </div>
       </div>
     </div>

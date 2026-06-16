@@ -1,6 +1,5 @@
 /**
- * Bare HTML <table> primitives styled to our density tokens. The DataTable
- * client component (TanStack Table) renders into these.
+ * Table primitives — shadcn/ui shape, semantic tokens.
  */
 import * as React from "react";
 
@@ -8,10 +7,11 @@ import { cn } from "@/lib/utils";
 
 export const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="w-full overflow-x-auto">
+    <div data-slot="table-container" className="relative w-full overflow-x-auto">
       <table
         ref={ref}
-        className={cn("w-full caption-bottom border-collapse text-[13px]", className)}
+        data-slot="table"
+        className={cn("w-full caption-bottom text-sm", className)}
         {...props}
       />
     </div>
@@ -23,10 +23,8 @@ export const TableHead = React.forwardRef<HTMLTableSectionElement, React.HTMLAtt
   ({ className, ...props }, ref) => (
     <thead
       ref={ref}
-      className={cn(
-        "border-b border-[--color-border] bg-[--color-surface-1] text-[12px] text-[--color-text-2]",
-        className,
-      )}
+      data-slot="table-header"
+      className={cn("[&_tr]:border-b bg-muted/40", className)}
       {...props}
     />
   ),
@@ -37,7 +35,8 @@ export const TableBody = React.forwardRef<HTMLTableSectionElement, React.HTMLAtt
   ({ className, ...props }, ref) => (
     <tbody
       ref={ref}
-      className={cn("divide-y divide-[--color-border]", className)}
+      data-slot="table-body"
+      className={cn("[&_tr:last-child]:border-0", className)}
       {...props}
     />
   ),
@@ -48,8 +47,9 @@ export const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttribut
   ({ className, ...props }, ref) => (
     <tr
       ref={ref}
+      data-slot="table-row"
       className={cn(
-        "transition-colors hover:bg-[--color-surface-2] data-[selected=true]:bg-[--color-surface-3]",
+        "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
         className,
       )}
       {...props}
@@ -62,8 +62,9 @@ export const TableHeaderCell = React.forwardRef<HTMLTableCellElement, React.ThHT
   ({ className, ...props }, ref) => (
     <th
       ref={ref}
+      data-slot="table-head"
       className={cn(
-        "h-9 px-3 text-left font-medium uppercase tracking-wide text-[11px]",
+        "text-muted-foreground h-10 px-3 text-left align-middle font-medium text-xs uppercase tracking-wide [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className,
       )}
       {...props}
@@ -76,7 +77,11 @@ export const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttr
   ({ className, ...props }, ref) => (
     <td
       ref={ref}
-      className={cn("h-9 px-3 align-middle text-[--color-text-1]", className)}
+      data-slot="table-cell"
+      className={cn(
+        "p-3 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        className,
+      )}
       {...props}
     />
   ),
@@ -87,7 +92,7 @@ export const TableEmpty = ({ message, colSpan }: { message: string; colSpan: num
   <tr>
     <td
       colSpan={colSpan}
-      className="px-3 py-6 text-center text-[--color-text-3]"
+      className="px-3 py-8 text-center text-sm text-muted-foreground"
     >
       {message}
     </td>

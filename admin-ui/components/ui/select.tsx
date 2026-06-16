@@ -1,6 +1,5 @@
 /**
- * Select primitive — Radix Select wrapped in our tokens. Used in filter
- * bars and create forms (rule transaction_type, reward_type, etc).
+ * Select primitive — Radix Select + Sasai semantic tokens.
  */
 "use client";
 
@@ -20,17 +19,16 @@ export const SelectTrigger = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <SelectPrimitive.Trigger
     ref={ref}
+    data-slot="select-trigger"
     className={cn(
-      "inline-flex h-8 w-full items-center justify-between gap-2 rounded-md border border-[--color-border] bg-[--color-surface-1] px-2.5 text-[13px]",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--color-brand]",
-      "disabled:cursor-not-allowed disabled:opacity-50",
+      "border-input bg-background ring-offset-background data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 inline-flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className,
     )}
     {...props}
   >
     {children}
     <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 text-[--color-text-2]" />
+      <ChevronDown className="size-4 opacity-60" />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ));
@@ -45,12 +43,20 @@ export const SelectContent = React.forwardRef<
       ref={ref}
       position={position}
       className={cn(
-        "z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-[--color-border] bg-[--color-surface-1] shadow-xl",
+        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 relative z-50 max-h-(--radix-select-content-available-height) min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border shadow-md",
+        position === "popper" &&
+          "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className,
       )}
       {...props}
     >
-      <SelectPrimitive.Viewport className="p-1">
+      <SelectPrimitive.Viewport
+        className={cn(
+          "p-1",
+          position === "popper" &&
+            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1",
+        )}
+      >
         {children}
       </SelectPrimitive.Viewport>
     </SelectPrimitive.Content>
@@ -64,17 +70,16 @@ export const SelectItem = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <SelectPrimitive.Item
     ref={ref}
+    data-slot="select-item"
     className={cn(
-      "relative flex h-8 cursor-pointer select-none items-center gap-2 rounded px-2 text-[13px] outline-none",
-      "data-[highlighted]:bg-[--color-surface-2]",
-      "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "focus:bg-accent focus:text-accent-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
       className,
     )}
     {...props}
   >
-    <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="absolute right-2 flex size-3.5 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
+        <Check className="size-4" />
       </SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

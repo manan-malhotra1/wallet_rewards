@@ -1,6 +1,5 @@
 /**
- * Dialog primitive — Radix Dialog wrapped in our token-aware styles.
- * Used for create forms (rules, providers, etc) and confirmation modals.
+ * Dialog primitive — Radix Dialog + Sasai semantic tokens.
  */
 "use client";
 
@@ -21,9 +20,9 @@ export const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
+    data-slot="dialog-overlay"
     className={cn(
-      "fixed inset-0 z-50 bg-black/60 backdrop-blur-sm",
-      "data-[state=open]:animate-in data-[state=closed]:animate-out",
+      "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
       className,
     )}
     {...props}
@@ -39,18 +38,20 @@ export const DialogContent = React.forwardRef<
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      data-slot="dialog-content"
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[--color-border] bg-[--color-surface-1] p-6 shadow-2xl",
+        "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
         className,
       )}
       {...props}
     >
       {children}
       <DialogPrimitive.Close
-        className="absolute right-3 top-3 rounded-md p-1 text-[--color-text-2] opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--color-brand]"
+        className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
         aria-label="Close dialog"
       >
-        <X className="h-4 w-4" />
+        <X />
+        <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
@@ -58,13 +59,18 @@ export const DialogContent = React.forwardRef<
 DialogContent.displayName = "DialogContent";
 
 export const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("mb-4 flex flex-col gap-1.5", className)} {...props} />
+  <div
+    data-slot="dialog-header"
+    className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+    {...props}
+  />
 );
 DialogHeader.displayName = "DialogHeader";
 
 export const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("mt-6 flex items-center justify-end gap-2", className)}
+    data-slot="dialog-footer"
+    className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
     {...props}
   />
 );
@@ -76,7 +82,8 @@ export const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-[16px] font-semibold text-[--color-text-1]", className)}
+    data-slot="dialog-title"
+    className={cn("text-lg leading-none font-semibold", className)}
     {...props}
   />
 ));
@@ -88,7 +95,8 @@ export const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-[13px] text-[--color-text-2]", className)}
+    data-slot="dialog-description"
+    className={cn("text-muted-foreground text-sm", className)}
     {...props}
   />
 ));

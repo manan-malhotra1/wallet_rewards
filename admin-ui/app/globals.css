@@ -1,104 +1,145 @@
 /**
- * Tailwind v4 + design tokens for the Sasai Wallet admin UI.
+ * Sasai Wallet admin UI — design tokens.
  *
- * Tokens come straight from docs/04-ui-layouts.md §2. Dark is default; light
- * overrides via the system preference media query. WCAG AA contrast on both.
+ * Ported from the FinOps Studio design system (Sasai Fintech brand). Light
+ * default; dark via the `.dark` class which `next-themes` toggles on the
+ * <html> element.
+ *
+ * Token shape matches the shadcn/ui convention so every primitive can
+ * use semantic Tailwind classes (`bg-card`, `text-muted-foreground`,
+ * `border-border`, etc.) without referencing raw colour values.
  */
 @import "tailwindcss";
+@import "tw-animate-css";
 
-/* --- Design tokens (dark default) ---------------------------------------- */
-@theme {
-  /* Sans + mono fonts come from Next's `localFont` wiring in app/layout.tsx,
-     exposed via CSS vars so Tailwind utilities can reference them. */
-  --font-sans: var(--font-geist-sans), "Inter", system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), "JetBrains Mono", "Menlo", monospace;
+@custom-variant dark (&:is(.dark *));
 
-  /* Surfaces */
-  --color-surface-0: oklch(0.18 0.01 240);
-  --color-surface-1: oklch(0.22 0.01 240);
-  --color-surface-2: oklch(0.26 0.01 240);
-  --color-surface-3: oklch(0.32 0.01 240);
-  --color-border: oklch(0.30 0.01 240);
-
-  /* Text */
-  --color-text-1: oklch(0.96 0 0);
-  --color-text-2: oklch(0.75 0 0);
-  --color-text-3: oklch(0.55 0 0);
-
-  /* Brand */
-  --color-brand: oklch(0.55 0.16 235);
-  --color-accent: oklch(0.75 0.13 200);
-
-  /* Status */
-  --color-success: oklch(0.72 0.18 145);
-  --color-warning: oklch(0.78 0.16 75);
-  --color-danger: oklch(0.65 0.22 25);
-  --color-info: oklch(0.70 0.13 235);
-
-  /* Financial semantics */
-  --color-credit: oklch(0.72 0.18 145);
-  --color-debit: oklch(0.65 0.22 25);
-  --color-points: oklch(0.78 0.16 75);
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* --- Light mode (opt-in via system preference) --------------------------- */
-@media (prefers-color-scheme: light) {
-  @theme {
-    --color-surface-0: oklch(0.99 0 0);
-    --color-surface-1: oklch(0.97 0 0);
-    --color-surface-2: oklch(0.94 0 0);
-    --color-surface-3: oklch(0.90 0 0);
-    --color-border: oklch(0.85 0 0);
-
-    --color-text-1: oklch(0.20 0 0);
-    --color-text-2: oklch(0.40 0 0);
-    --color-text-3: oklch(0.55 0 0);
-  }
+/* Light — default */
+:root {
+  --radius: 0.5rem;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #1e3a5f;
+  --primary-foreground: #f8fafc;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #e0f2fe;
+  --accent-foreground: #0c4a6e;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #1e3a5f;
+  --chart-1: #1e3a5f;
+  --chart-2: #0ea5e9;
+  --chart-3: #10b981;
+  --chart-4: #f59e0b;
+  --chart-5: #ef4444;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1e293b;
+  --sidebar-primary: #1e3a5f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #1e293b;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #1e3a5f;
 }
 
-/* --- Globals ------------------------------------------------------------- */
-html,
+/* Dark — toggled via .dark class */
+.dark {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --popover: #1e293b;
+  --popover-foreground: #f8fafc;
+  --primary: #38bdf8;
+  --primary-foreground: #0f172a;
+  --secondary: #334155;
+  --secondary-foreground: #f8fafc;
+  --muted: #334155;
+  --muted-foreground: #94a3b8;
+  --accent: #1e3a5f;
+  --accent-foreground: #bae6fd;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #334155;
+  --input: #334155;
+  --ring: #38bdf8;
+  --chart-1: #38bdf8;
+  --chart-2: #34d399;
+  --chart-3: #fbbf24;
+  --chart-4: #a78bfa;
+  --chart-5: #f87171;
+  --sidebar: #111827;
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-primary: #38bdf8;
+  --sidebar-primary-foreground: #0f172a;
+  --sidebar-accent: #1e293b;
+  --sidebar-accent-foreground: #e2e8f0;
+  --sidebar-border: #1e293b;
+  --sidebar-ring: #38bdf8;
+}
+
+* {
+  border-color: var(--border);
+}
+
 body {
-  height: 100%;
-}
-
-body {
-  background-color: var(--color-surface-0);
-  color: var(--color-text-1);
+  background-color: var(--background);
+  color: var(--foreground);
   font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 18px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Tabular numbers everywhere we display amounts / IDs. */
 .tabular {
   font-variant-numeric: tabular-nums;
-}
-
-/* Reset for buttons inside dense tables. */
-button {
-  font: inherit;
-  color: inherit;
-}
-
-/* Focus ring used by every interactive primitive. */
-.ring-focus {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 2px var(--color-brand);
-}
-
-/* Scrollbar styling — match the surface, never the OS default. */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-surface-3);
-  border-radius: 5px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
 }

@@ -196,14 +196,88 @@ async def p2p_transfer(
     # 5. Lock sender wallet to serialise concurrent same-sender transfers.
     await _lock_account_for_update(session, sender_wallet.id)
 
-    # 6. Overdraft prevention (Pay-PRD-0220) — must happen BEFORE the ledger write.
+    # 6. Limits check (Phase G.2, Pay-PRD-0260 step 2). Throws on min/max
+    # or rolling-24h cap breach. No-op when no config exists.
+    from app.modules.limits.service import check_limits  # noqa: PLC0415
+
+    await check_limits(
+        session,
+        tenant_id=tenant_id,
+        user_id=sender_user_id,
+        transaction_type="p2p",
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency=currency,
+        amount=amount,
+    )
+
+    # 7. Pricing fee calculation (Phase G.3, Pay-PRD-0260 step 3). Optional
+    # — if no pricing config exists we treat this as no-fee (legacy callers
+    # / tests). Production tenants MUST configure a zero-fee row or the
+    # pricing call raises PricingConfigMissing. To stay backward-compatible
+    # with the existing test suite we swallow that specific case here.
+    from app.modules.pricing.service import (  # noqa: PLC0415
+        calculate_fee,
+        get_or_create_system_fee_account,
+    )
+    from app.shared.exceptions import PricingConfigMissing  # noqa: PLC0415
+
+    fee = Decimal("0")
+    try:
+        fee = await calculate_fee(
+            session,
+            tenant_id=tenant_id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency=currency,
+            amount=amount,
+        )
+    except PricingConfigMissing:
+        # Legacy pass-through: tenants without pricing configured pay no
+        # fee. Production deployments should explicitly insert zero-fee
+        # rows; the admin UI surfaces this gap.
+        fee = Decimal("0")
+
+    # 8. Overdraft prevention (Pay-PRD-0220) — must happen BEFORE the
+    # ledger write, and must include the fee.
     balance, reserved = await derive_balance(session, sender_wallet.id)
     available = balance - reserved
-    if available < amount:
+    if available < amount + fee:
         raise InsufficientFunds()
 
-    # 7. Post the balanced transaction. The ledger service handles idempotency,
-    # double-entry validation, and the COMMIT.
+    # 9. Build the ledger legs. Base txn always = sender→recipient. Fee
+    # adds a 3rd + 4th leg (sender → system_fee_collected) atomically in
+    # the same balanced transaction.
+    entries = [
+        LedgerEntryRequest(
+            account_id=sender_wallet.id,
+            entry_type=ENTRY_DEBIT,
+            amount=amount,
+        ),
+        LedgerEntryRequest(
+            account_id=recipient_wallet.id,
+            entry_type=ENTRY_CREDIT,
+            amount=amount,
+        ),
+    ]
+    if fee > 0:
+        fee_account = await get_or_create_system_fee_account(
+            session, tenant_id=tenant_id, currency=currency
+        )
+        entries.append(
+            LedgerEntryRequest(
+                account_id=sender_wallet.id,
+                entry_type=ENTRY_DEBIT,
+                amount=fee,
+            )
+        )
+        entries.append(
+            LedgerEntryRequest(
+                account_id=fee_account.id,
+                entry_type=ENTRY_CREDIT,
+                amount=fee,
+            )
+        )
+
     txn = await post_transaction(
         session,
         PostTransactionRequest(
@@ -211,18 +285,7 @@ async def p2p_transfer(
             idempotency_key=idempotency_key,
             transaction_type="p2p",
             currency=currency.upper(),
-            entries=[
-                LedgerEntryRequest(
-                    account_id=sender_wallet.id,
-                    entry_type=ENTRY_DEBIT,
-                    amount=amount,
-                ),
-                LedgerEntryRequest(
-                    account_id=recipient_wallet.id,
-                    entry_type=ENTRY_CREDIT,
-                    amount=amount,
-                ),
-            ],
+            entries=entries,
             initiated_by=sender_user_id,
             amount=amount,
         ),

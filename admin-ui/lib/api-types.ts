@@ -180,3 +180,52 @@ export interface Role {
   status: string;
   created_at: string;
 }
+
+// ---- Phase G — Money Controls --------------------------------------------
+
+export interface LimitConfig {
+  id: string;
+  tenant_id: string;
+  transaction_type: string;
+  account_type: string;
+  currency: string;
+  min_amount: string | null;
+  max_amount: string | null;
+  daily_count_cap: number | null;
+  daily_value_cap: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PricingConfig {
+  id: string;
+  tenant_id: string;
+  transaction_type: string;
+  account_type: string;
+  currency: string;
+  fixed_fee: string;
+  variable_fee_pct: string;
+  fee_cap: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RewardBudget {
+  id: string;
+  tenant_id: string;
+  scope_type: "tenant" | "rule";
+  scope_id: string | null;
+  currency: string;
+  window_type: "rolling_24h" | "rolling_7d" | "calendar_month" | "lifetime";
+  cap_amount: string;
+  status: "active" | "paused";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BudgetConsumption {
+  budget: RewardBudget;
+  consumed_amount: string;
+  remaining_amount: string;
+  percent_consumed: number;
+}

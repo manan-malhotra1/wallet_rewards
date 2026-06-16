@@ -1,0 +1,101 @@
+"use client";
+
+import { Trash2 } from "lucide-react";
+import * as React from "react";
+
+import { deletePricingConfigAction } from "@/app/(authenticated)/pricing/_actions";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+} from "@/components/ui/table";
+import { useToast } from "@/components/ui/toast";
+import type { PricingConfig } from "@/lib/api-types";
+import { formatAmount } from "@/lib/utils";
+
+const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+  financial_wallet: "Wallet",
+  points_account: "Points",
+};
+
+export function PricingTable({
+  configs,
+  tenantId,
+}: {
+  configs: PricingConfig[];
+  tenantId: string;
+}) {
+  const { toast } = useToast();
+  const [pending, setPending] = React.useState<string | null>(null);
+
+  const onDelete = async (id: string) => {
+    setPending(id);
+    const result = await deletePricingConfigAction(id, tenantId);
+    setPending(null);
+    if (result.ok) {
+      toast({ title: "Pricing deleted" });
+    } else {
+      toast({
+        title: "Couldn't delete",
+        description: `${result.errorCode}: ${result.message}`,
+        variant: "danger",
+      });
+    }
+  };
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-card">
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableHeaderCell>Txn type</TableHeaderCell>
+            <TableHeaderCell>Account</TableHeaderCell>
+            <TableHeaderCell>Currency</TableHeaderCell>
+            <TableHeaderCell className="text-right">Fixed</TableHeaderCell>
+            <TableHeaderCell className="text-right">Variable %</TableHeaderCell>
+            <TableHeaderCell className="text-right">Fee cap</TableHeaderCell>
+            <TableHeaderCell className="w-[40px]"> </TableHeaderCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {configs.map((cfg) => (
+            <TableRow key={cfg.id}>
+              <TableCell className="font-medium">
+                <Badge variant="info">{cfg.transaction_type}</Badge>
+              </TableCell>
+              <TableCell>
+                {ACCOUNT_TYPE_LABEL[cfg.account_type] ?? cfg.account_type}
+              </TableCell>
+              <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
+              <TableCell className="text-right font-mono">
+                {formatAmount(cfg.fixed_fee, { fractionDigits: 2 })}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {(parseFloat(cfg.variable_fee_pct) * 100).toFixed(2)}%
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {cfg.fee_cap ?? "—"}
+              </TableCell>
+              <TableCell>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Delete pricing config"
+                  disabled={pending === cfg.id}
+                  onClick={() => onDelete(cfg.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}

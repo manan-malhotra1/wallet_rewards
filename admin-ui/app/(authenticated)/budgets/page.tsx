@@ -1,40 +1,40 @@
 /**
- * Pricing page — fixed + variable fee configs per (tenant, txn-type,
- * account-type, currency). Phase G.3 / WAL-52.
+ * Reward Budgets page — caps how much can be issued per (scope, window).
+ * Phase G.1 / WAL-50.
  */
-import { Coins, Plus } from "lucide-react";
+import { PiggyBank, Plus } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
-import { listPricingConfigs } from "@/lib/api-endpoints";
+import { listBudgets } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
-import { CreatePricingDialog } from "./_components/create-pricing-dialog";
-import { PricingTable } from "./_components/pricing-table";
+import { BudgetsTable } from "./_components/budgets-table";
+import { CreateBudgetDialog } from "./_components/create-budget-dialog";
 
 export const dynamic = "force-dynamic";
 
-export default async function PricingPage() {
+export default async function BudgetsPage() {
   const activeTenantId = await getActiveTenantId();
   if (!activeTenantId) {
     return (
       <div className="p-6">
         <EmptyState
-          icon={Coins}
+          icon={PiggyBank}
           title="No active tenant"
-          description="Switch to a tenant to manage its pricing."
+          description="Switch to a tenant to manage its reward budgets."
         />
       </div>
     );
   }
 
-  let configs: Awaited<ReturnType<typeof listPricingConfigs>> = [];
+  let entries: Awaited<ReturnType<typeof listBudgets>> = [];
   let error: ApiError | null = null;
   try {
-    configs = await listPricingConfigs(activeTenantId);
+    entries = await listBudgets(activeTenantId);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -43,10 +43,10 @@ export default async function PricingPage() {
   return (
     <div>
       <PageHeader
-        title="Pricing"
-        subtitle="Fixed + variable fees per transaction type. Step 3 of payment orchestration."
+        title="Reward budgets"
+        subtitle="Cap how much can be issued per scope + window. Pre-issuance check protects against runaway rules."
         actions={
-          <CreatePricingDialog
+          <CreateBudgetDialog
             tenantId={activeTenantId}
             trigger={
               <button
@@ -54,7 +54,7 @@ export default async function PricingPage() {
                 className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 <Plus className="h-3.5 w-3.5" />
-                New pricing
+                New budget
               </button>
             }
           />
@@ -63,18 +63,18 @@ export default async function PricingPage() {
       <div className="p-6">
         {error && (
           <ErrorBanner
-            title="Couldn't load pricing"
+            title="Couldn't load budgets"
             description={`${error.errorCode}: ${error.message}`}
           />
         )}
-        {!error && configs.length === 0 ? (
+        {!error && entries.length === 0 ? (
           <EmptyState
-            icon={Coins}
-            title="No pricing configured"
-            description="Per Pay-PRD-0420 every transaction MUST go through pricing. Add a config row (zero-fee is fine) per transaction type."
+            icon={PiggyBank}
+            title="No budgets configured"
+            description="Without a budget the issuance pipeline has no upper bound. A misconfigured rule could mint unlimited points until someone notices in the audit log."
           />
         ) : (
-          <PricingTable configs={configs} tenantId={activeTenantId} />
+          <BudgetsTable entries={entries} tenantId={activeTenantId} />
         )}
       </div>
     </div>

@@ -132,6 +132,20 @@ async def issue_points_reward(
     user_points = await _find_user_points_account(session, tenant_id, user_id)
     system_issuance = await _find_system_points_issuance(session, tenant_id)
 
+    # Phase G.1: every reward issuance is budget-checked BEFORE writing
+    # the ledger. `check_budget_available` locks each matching budget row
+    # FOR UPDATE, so two concurrent fires can't both pass at 99%
+    # consumption. Raises BudgetExceeded on breach.
+    from app.modules.budgets.service import check_budget_available  # noqa: PLC0415
+
+    await check_budget_available(
+        session,
+        tenant_id=tenant_id,
+        rule_id=rule.id,
+        currency=user_points.currency,
+        amount=reward_value,
+    )
+
     # The idempotency_key on the underlying transaction is deterministic —
     # replays will hit the post_transaction idempotency guard, not write
     # a second transaction.

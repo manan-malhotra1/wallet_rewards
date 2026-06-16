@@ -34,6 +34,9 @@ ACCOUNT_TYPE_PROVIDER_REDEMPTION = "provider_redemption_wallet"
 # from outside (top-ups, mobile money receipts). One per (tenant, currency).
 # See docs/06-data-architecture.md §4 addendum (Phase B).
 ACCOUNT_TYPE_SYSTEM_CASH_INFLOW = "system_cash_inflow"
+# Phase G — Pricing engine credit side. One per (tenant, currency).
+# Every fee leg writes a CREDIT here, balancing the user-wallet DEBIT.
+ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED = "system_fee_collected"
 
 ACCOUNT_TYPES = (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -41,6 +44,7 @@ ACCOUNT_TYPES = (
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     ACCOUNT_TYPE_PROVIDER_REDEMPTION,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
 )
 
 
@@ -63,7 +67,8 @@ class Account(Base):
             "'points_account', "
             "'system_points_issuance', "
             "'provider_redemption_wallet', "
-            "'system_cash_inflow'"
+            "'system_cash_inflow', "
+            "'system_fee_collected'"
             ")",
             name="ck_accounts_type",
         ),

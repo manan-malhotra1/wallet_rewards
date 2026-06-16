@@ -9,10 +9,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.modules.accounts import router as accounts_router
+from app.modules.budgets import router as budgets_router
 from app.modules.catalog import router as catalog_router
 from app.modules.events import router as events_router
 from app.modules.identity import router as identity_router
+from app.modules.limits import router as limits_router
 from app.modules.payments import router as payments_router
+from app.modules.pricing import router as pricing_router
 from app.modules.reconciliation import router as reconciliation_router
 from app.modules.redemption import router as redemption_router
 from app.modules.roles import router as roles_router
@@ -73,3 +76,7 @@ app.include_router(catalog_router)
 app.include_router(reconciliation_router)
 app.include_router(roles_router)
 app.include_router(tenants_router)
+# Phase G — money controls
+app.include_router(budgets_router)
+app.include_router(limits_router)
+app.include_router(pricing_router)

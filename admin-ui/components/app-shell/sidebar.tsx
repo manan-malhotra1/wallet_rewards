@@ -13,6 +13,7 @@ import {
   GitMerge,
   Layers,
   ListChecks,
+  PiggyBank,
   Receipt,
   ScanLine,
   Settings2,
@@ -41,6 +42,7 @@ const OPERATIONS: NavItem[] = [
 const CONFIG: NavItem[] = [
   { label: "Rules", href: "/rules", icon: GitMerge },
   { label: "Segments", href: "/segments", icon: Layers },
+  { label: "Budgets", href: "/budgets", icon: PiggyBank },
   { label: "Limits", href: "/limits", icon: ListChecks },
   { label: "Pricing", href: "/pricing", icon: Coins },
   { label: "Redemption", href: "/redemption", icon: CreditCard },

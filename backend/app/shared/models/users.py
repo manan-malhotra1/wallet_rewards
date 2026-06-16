@@ -196,3 +196,28 @@ class AuthAttempt(Base):
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = created_at_col()
+
+
+# --- Normalisation event listener -------------------------------------------
+# Apply identifier normalisation at the ORM layer so the canonical form
+# (no spaces, lowercase emails) reaches the DB regardless of caller.
+# Test helpers that bypass the service layer (e.g. direct ORM inserts in
+# pytest fixtures) get the same treatment as production writes.
+from sqlalchemy import event as _sa_event  # noqa: E402
+
+
+@_sa_event.listens_for(UserIdentifier, "before_insert")
+@_sa_event.listens_for(UserIdentifier, "before_update")
+def _normalize_identifier_before_write(mapper, connection, target):
+    """Run `normalize_identifier(type, value)` before every INSERT / UPDATE.
+
+    Lives at the model layer (not the service) so any code path — ORM
+    inserts, raw SQL via `session.add()`, tests, future imports —
+    persists the canonical form. Idempotent.
+    """
+    from app.shared.utils.normalize import normalize_identifier
+
+    if target.identifier_type and target.identifier_value:
+        target.identifier_value = normalize_identifier(
+            target.identifier_type, target.identifier_value
+        )

@@ -303,16 +303,19 @@ async def test_sweep_writes_audit_log_per_item(
         json={"tenant_id": str(test_tenant.id), "threshold_minutes": 5},
     )
 
+    # Filter to ONLY the sweep entry — Phase F.5 added a separate
+    # `redemption.initiated` audit row that lands when the seed helper
+    # calls /initiate, so the unfiltered entity query returns 2 rows.
     entries = (await db_session.execute(
         select(AuditLog).where(
             AuditLog.entity_type == "redemption",
             AuditLog.entity_id == str(redemption.id),
+            AuditLog.action == "recon.swept",
         )
     )).scalars().all()
     assert len(entries) == 1
     entry = entries[0]
     assert entry.actor_type == "system"
-    assert entry.action == "recon.swept"
     assert entry.before_state["retry_count"] == 0
     assert entry.after_state["retry_count"] == 1
 

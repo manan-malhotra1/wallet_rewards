@@ -39,7 +39,8 @@ async def test_create_user_happy_path(
     assert body["tenant_id"] == str(test_tenant.id)
     assert body["status"] == "active"
     assert len(body["identifiers"]) == 1
-    assert body["identifiers"][0]["identifier_value"] == "+27 82 555 0142"
+    # Phone is normalised to the canonical (no-space) form on write.
+    assert body["identifiers"][0]["identifier_value"] == "+27825550142"
 
 
 @pytest.mark.asyncio

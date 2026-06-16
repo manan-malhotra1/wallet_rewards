@@ -11,14 +11,18 @@
  */
 import "server-only";
 
-import { apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
 
 import type {
   AuditEntry,
+  BudgetConsumption,
   ExternalEventSource,
+  LimitConfig,
   ManualReviewItem,
   PendingItem,
+  PricingConfig,
   RedemptionProvider,
+  RewardBudget,
   Rule,
   SweepOutcome,
   Tenant,
@@ -164,3 +168,67 @@ export const queryAuditLog = (q: AuditQuery) =>
       limit: q.limit,
     },
   });
+
+// ---- Phase G — Limits, Pricing, Budgets ---------------------------------
+
+export interface CreateLimitConfigPayload {
+  tenant_id: string;
+  transaction_type: string;
+  account_type: string;
+  currency: string;
+  min_amount?: string;
+  max_amount?: string;
+  daily_count_cap?: number;
+  daily_value_cap?: string;
+}
+
+export const listLimitConfigs = (tenant_id: string) =>
+  apiGet<LimitConfig[]>("/api/v1/limits/configs", { query: { tenant_id } });
+
+export const createLimitConfig = (payload: CreateLimitConfigPayload) =>
+  apiPost<LimitConfig>("/api/v1/limits/configs", payload);
+
+export const deleteLimitConfig = (config_id: string, tenant_id: string) =>
+  apiDelete<void>(`/api/v1/limits/configs/${config_id}`, {
+    query: { tenant_id },
+  });
+
+export interface CreatePricingConfigPayload {
+  tenant_id: string;
+  transaction_type: string;
+  account_type: string;
+  currency: string;
+  fixed_fee?: string;
+  variable_fee_pct?: string;
+  fee_cap?: string;
+}
+
+export const listPricingConfigs = (tenant_id: string) =>
+  apiGet<PricingConfig[]>("/api/v1/pricing/configs", { query: { tenant_id } });
+
+export const createPricingConfig = (payload: CreatePricingConfigPayload) =>
+  apiPost<PricingConfig>("/api/v1/pricing/configs", payload);
+
+export const deletePricingConfig = (config_id: string, tenant_id: string) =>
+  apiDelete<void>(`/api/v1/pricing/configs/${config_id}`, {
+    query: { tenant_id },
+  });
+
+export interface CreateBudgetPayload {
+  tenant_id: string;
+  scope_type: "tenant" | "rule";
+  scope_id?: string;
+  currency: string;
+  window_type: "rolling_24h" | "rolling_7d" | "calendar_month" | "lifetime";
+  cap_amount: string;
+  status?: "active" | "paused";
+}
+
+export const listBudgets = (tenant_id: string) =>
+  apiGet<BudgetConsumption[]>("/api/v1/budgets", { query: { tenant_id } });
+
+export const createBudget = (payload: CreateBudgetPayload) =>
+  apiPost<RewardBudget>("/api/v1/budgets", payload);
+
+export const deleteBudget = (budget_id: string, tenant_id: string) =>
+  apiDelete<void>(`/api/v1/budgets/${budget_id}`, { query: { tenant_id } });

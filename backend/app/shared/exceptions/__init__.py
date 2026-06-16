@@ -545,3 +545,100 @@ class SignatureNotConfigured(AppHTTPException):
             "signature_not_configured",
             "Provider has no callback secret configured.",
         )
+
+
+# --- Money controls (Phase G) ----------------------------------------------
+
+
+class BudgetExceeded(AppHTTPException):
+    """A reward issuance would exceed the configured budget cap (WAL-50)."""
+
+    def __init__(self, window_type: str) -> None:
+        super().__init__(
+            409,
+            "budget_exceeded",
+            f"Reward budget exhausted for window '{window_type}'.",
+        )
+
+
+class AmountBelowMin(AppHTTPException):
+    """Transaction amount is below the configured min (WAL-51)."""
+
+    def __init__(self, min_amount: str) -> None:
+        super().__init__(
+            422,
+            "amount_below_min",
+            f"Amount must be at least {min_amount}.",
+        )
+
+
+class AmountAboveMax(AppHTTPException):
+    """Transaction amount exceeds the configured max (WAL-51)."""
+
+    def __init__(self, max_amount: str) -> None:
+        super().__init__(
+            422,
+            "amount_above_max",
+            f"Amount must not exceed {max_amount}.",
+        )
+
+
+class DailyCountExceeded(AppHTTPException):
+    """User has already hit the per-24h transaction count cap (WAL-51)."""
+
+    def __init__(self, cap: int) -> None:
+        super().__init__(
+            429,
+            "daily_count_exceeded",
+            f"Daily transaction count of {cap} already reached.",
+        )
+
+
+class DailyValueExceeded(AppHTTPException):
+    """This transaction would push the rolling-24h value past the cap (WAL-51)."""
+
+    def __init__(self, cap: str) -> None:
+        super().__init__(
+            429,
+            "daily_value_exceeded",
+            f"Daily value cap of {cap} would be exceeded.",
+        )
+
+
+class PricingConfigMissing(AppHTTPException):
+    """No pricing config for this (tenant, txn-type, account, currency) (WAL-52).
+
+    Per Pay-PRD-0420 every transaction must run pricing — operators have
+    to explicitly configure zero-fee if that's the intent. Silent
+    pass-through is forbidden.
+    """
+
+    def __init__(self, transaction_type: str) -> None:
+        super().__init__(
+            422,
+            "pricing_config_missing",
+            f"No pricing config exists for '{transaction_type}' in this tenant.",
+        )
+
+
+class BudgetNotFound(AppHTTPException):
+    """The referenced budget row doesn't exist or belongs to a different tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "budget_not_found", "Budget not found.")
+
+
+class LimitConfigNotFound(AppHTTPException):
+    """The referenced limit config row doesn't exist or belongs to a different tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "limit_config_not_found", "Limit config not found.")
+
+
+class PricingConfigNotFound(AppHTTPException):
+    """The referenced pricing config row doesn't exist or belongs to a different tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            404, "pricing_config_not_found", "Pricing config not found."
+        )

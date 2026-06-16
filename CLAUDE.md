@@ -33,7 +33,7 @@ Mobile (Expo) is deferred to Phase 2.
 | `backend/app/shared/models/` | SQLAlchemy ORM, one file per domain |
 | `backend/alembic/versions/` | Migrations (`YYYYMMDD_NNNN_description.py`) |
 | `admin-ui/app/` | Next.js admin (App Router) |
-| `infra/` | Docker Compose (Kafka, Keycloak, Redis) |
+| `sasai-wallet-infra/` | Docker Compose (Postgres, Kafka, Keycloak, Redis) |
 | `scripts/` | `seed.py`, `check_migrations.py` |
 | `docs/` | Vision, PRD, architecture, UI layouts |
 | `.claude/` | Agents, skills, rules, memory |
@@ -56,9 +56,9 @@ These come from PRD requirements. Never violate.
 ## Commands
 
 ```bash
-# Infra
-cd infra && docker compose up -d
-bash infra/kafka/topics.sh
+# Infra — everything in Docker, no host-installed services
+cd sasai-wallet-infra && docker compose up -d
+bash kafka/topics.sh   # after Kafka is healthy
 
 # Backend
 cd backend

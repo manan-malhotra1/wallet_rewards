@@ -10,10 +10,10 @@ description: Build images, push to registry, apply to sandbox namespace, smoke-t
 ## Phase 1 workflow (local only)
 
 ```bash
-# Bring up the local stack
-cd infra && docker compose up -d
+# Bring up the local stack (Postgres, Kafka, Keycloak, Redis — all in Docker)
+cd sasai-wallet-infra && docker compose up -d
 bash kafka/topics.sh
-# (Import Keycloak realm manually if first run)
+python ../scripts/bootstrap_keycloak.py   # provisions realm + clients
 
 # Apply DB migrations
 cd ../backend && alembic upgrade head

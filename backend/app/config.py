@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Topics:
     """Kafka topic constants — single source of truth.
 
-    Match the constants in infra/kafka/topics.sh.
+    Match the constants in sasai-wallet-infra/kafka/topics.sh.
     """
 
     TRANSACTIONS_COMPLETED = "wallet.transactions.completed"

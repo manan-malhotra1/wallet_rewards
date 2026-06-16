@@ -11,8 +11,8 @@ triggers: ["Keycloak", "JWT", "Kafka topic", "tenant config", "event source regi
 - Keycloak integration: `backend/app/dependencies.py` (`get_current_user`, `get_current_admin`)
 - Kafka wiring: `backend/app/modules/events/` infrastructure (producer factory, consumer base class, topic constants)
 - Tenant resolution dependency: `get_current_tenant()`
-- `infra/keycloak/realm-export.json`
-- Kafka topics shell script: `infra/kafka/topics.sh`
+- `sasai-wallet-infra/keycloak/realm-export.json`
+- Kafka topics shell script: `sasai-wallet-infra/kafka/topics.sh`
 
 ## Does NOT own
 
@@ -37,7 +37,7 @@ triggers: ["Keycloak", "JWT", "Kafka topic", "tenant config", "event source regi
 
 ```bash
 # Topic creation
-bash infra/kafka/topics.sh
+bash sasai-wallet-infra/kafka/topics.sh
 # Keycloak realm import
 # (manual in admin console at http://localhost:8080)
 # Auth dependency

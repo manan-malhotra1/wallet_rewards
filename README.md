@@ -2,7 +2,7 @@
 
 A multi-tenant wallet + rule-based rewards engine for Sasai Fintech's diaspora ecosystem.
 
-**Status:** Foundation scaffolded · 2026-05-28
+**Status:** Phase F.5 shipped · admin UI scaffolded · 2026-06-16
 **Owner:** Manan — Sasai Fintech
 
 ## Start here
@@ -16,26 +16,30 @@ A multi-tenant wallet + rule-based rewards engine for Sasai Fintech's diaspora e
 
 ## Local development
 
+Everything except the backend Python interpreter + the admin UI Node
+toolchain runs in Docker. No host-installed Postgres / Redis / Keycloak /
+Kafka.
+
 ```bash
-# 1. Infrastructure
-cd infra && docker compose up -d
-bash kafka/topics.sh
-# Open http://localhost:8080, import keycloak/realm-export.json
+# 1. Bring up infrastructure (Postgres, Kafka, Keycloak, Redis)
+cd sasai-wallet-infra && docker compose up -d
+bash kafka/topics.sh           # after Kafka is healthy (~10s)
+python ../scripts/bootstrap_keycloak.py   # provision realm + clients
 
 # 2. Backend
-cd backend
+cd ../backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 alembic upgrade head
-python ../scripts/seed.py
-uvicorn app.main:app --reload --port 8000
+make seed
+make dev                       # uvicorn at :8000
 
 # 3. Admin UI
-cd admin-ui
+cd ../admin-ui
 npm install
 cp .env.local.example .env.local
-npm run dev      # :3000
+npm run dev                    # :3000
 ```
 
 ## Repository layout
@@ -48,8 +52,9 @@ Sasai_Wallet/
 ├── .claude/                    # Agents, skills, rules, memory
 ├── backend/                    # Python FastAPI monolith
 ├── admin-ui/                   # Next.js 16 admin dashboard
-├── infra/                      # Docker Compose (Kafka, Keycloak, Redis)
-└── scripts/                    # Developer utilities (seed, check_migrations)
+├── sasai-wallet-infra/         # Docker Compose (Postgres, Kafka, Keycloak, Redis)
+└── scripts/                    # Developer utilities (seed, check_migrations,
+                                #   bootstrap_keycloak, publish_event, run_consumer)
 ```
 
 ## License

@@ -49,7 +49,7 @@ export default async function LoginPage({
         </form>
         <div className="mt-6 text-center text-[11px] text-[--color-text-3]">
           For local dev, the bootstrap script creates a default admin user.
-          See <code className="text-[--color-text-2]">infra/keycloak/README.md</code>.
+          See <code className="text-[--color-text-2]">sasai-wallet-infra/.claude.md</code>.
         </div>
       </div>
     </div>

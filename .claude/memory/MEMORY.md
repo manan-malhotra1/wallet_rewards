@@ -60,7 +60,10 @@ A flat log of architectural decisions made during genesis-init and subsequent se
 `/Users/manan/Downloads/wallet-platform-prd-v1_0.md` and `wallet-platform-technical-prd-v1_0.md` are the source PRDs. `docs/02-prd.md` and `docs/05-technical-architecture.md` are local distillations + pointers. Update both if PRD evolves.
 
 ### Working directory
-Flat scaffold at `/Users/manan/Documents/Sasai_Wallet/`. No sub-project folder. Top-level dirs: `backend/`, `admin-ui/`, `infra/`, `scripts/`, `docs/`, `.claude/`.
+Flat scaffold at `/Users/manan/Documents/Sasai_Wallet/`. No sub-project folder. Top-level dirs: `backend/`, `admin-ui/`, `sasai-wallet-infra/`, `scripts/`, `docs/`, `.claude/`.
+
+### Infra in Docker only (2026-06-16)
+Renamed `infra/` → `sasai-wallet-infra/`. Added Postgres to the Compose stack — no standalone Postgres on the host any more. Containers are named with the project prefix (e.g. `sasai-wallet-infra-kafka-1`). The Kafka topics script's `KAFKA_CONTAINER` default updated accordingly.
 
 ---
 

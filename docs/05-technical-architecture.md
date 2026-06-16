@@ -156,10 +156,10 @@ CI runs `alembic check` before any deploy.
 ## 8. Local development
 
 ```bash
-# 1. Infra
-cd infra && docker compose up -d
+# 1. Infra (Postgres, Kafka, Keycloak, Redis — all in Docker)
+cd sasai-wallet-infra && docker compose up -d
 bash kafka/topics.sh
-# Open http://localhost:8080 → import keycloak/realm-export.json
+python ../scripts/bootstrap_keycloak.py   # provisions realm + clients
 
 # 2. Backend
 cd backend

@@ -40,4 +40,4 @@ build/
 logs/
 
 # Local infra data
-infra/data/
+sasai-wallet-infra/data/

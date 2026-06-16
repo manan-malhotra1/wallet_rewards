@@ -3,7 +3,7 @@
  *
  * Single auth.ts at the project root — exports `handlers`, `auth`,
  * `signIn`, and `signOut`. Wires next-auth to the Keycloak realm
- * `wallet-platform` provisioned by `infra/keycloak/bootstrap_keycloak.py`.
+ * `wallet-platform` provisioned by `scripts/bootstrap_keycloak.py`.
  *
  * Important: we cache the Keycloak `access_token` on the session so server
  * components can forward it to the backend FastAPI service. Refresh-on-

@@ -56,6 +56,7 @@ from app.shared.exceptions import (
     TenantNotFound,
     UserNotFound,
 )
+from app.shared.utils.normalize import normalize_identifier, normalize_phone
 from app.shared.models import (
     AuthAttempt,
     OtpRequest,
@@ -116,12 +117,15 @@ async def create_user(
     await session.flush()
 
     for ident in request.identifiers:
+        # Normalise BEFORE persistence so the canonical form is what hits
+        # the unique constraint + every future lookup.
+        canonical = normalize_identifier(ident.identifier_type, ident.identifier_value)
         session.add(
             UserIdentifier(
                 user_id=user.id,
                 tenant_id=request.tenant_id,
                 identifier_type=ident.identifier_type,
-                identifier_value=ident.identifier_value,
+                identifier_value=canonical,
                 verified=ident.verified,
             )
         )
@@ -214,6 +218,78 @@ async def _reload_user(session: AsyncSession, user_id: UUID) -> User:
     return user
 
 
+async def get_user_detail(
+    session: AsyncSession, *, user_id: UUID, tenant_id: UUID
+):
+    """Load the full admin user-detail payload — identifiers, profile, accounts.
+
+    Returns a plain dict so the router can map to the Pydantic response
+    model. Tenant isolation is enforced: the user must belong to
+    `tenant_id` or we raise UserNotFound (no existence leak across tenants).
+
+    Args:
+        session: Async DB session.
+        user_id: The target user.
+        tenant_id: Tenant of the requesting admin (carries forward from
+            the path / query for now; F.5+ derives from realm context).
+
+    Raises:
+        UserNotFound: 404 — unknown user or user belongs to a different tenant.
+    """
+    from decimal import Decimal
+
+    from app.modules.accounts.service import derive_balance
+    from app.shared.models import Account, UserProfile
+
+    # Pull the user + identifiers in one round trip.
+    user_q = await session.execute(
+        select(User)
+        .where(User.id == user_id, User.tenant_id == tenant_id)
+        .options(selectinload(User.identifiers))
+    )
+    user = user_q.scalar_one_or_none()
+    if user is None:
+        raise UserNotFound()
+
+    # Profile is 0..1, separate table.
+    profile_q = await session.execute(
+        select(UserProfile).where(UserProfile.user_id == user.id)
+    )
+    profile = profile_q.scalar_one_or_none()
+
+    # Accounts (any account_type) — derive balance per account on demand.
+    accounts_q = await session.execute(
+        select(Account).where(
+            Account.tenant_id == tenant_id, Account.user_id == user.id
+        )
+    )
+    accounts = list(accounts_q.scalars().all())
+    account_payload = []
+    for acct in accounts:
+        balance, reserved = await derive_balance(session, acct.id)
+        account_payload.append(
+            {
+                "id": acct.id,
+                "account_type": acct.account_type,
+                "currency": acct.currency,
+                "status": acct.status,
+                "balance": str(balance),
+                "reserved_balance": str(reserved),
+                "available_balance": str(balance - reserved),
+            }
+        )
+
+    return {
+        "id": user.id,
+        "tenant_id": user.tenant_id,
+        "status": user.status,
+        "created_at": user.created_at,
+        "identifiers": user.identifiers,
+        "profile": profile,
+        "accounts": account_payload,
+    }
+
+
 async def resolve_identifier(
     session: AsyncSession,
     tenant_id: UUID,
@@ -238,9 +314,10 @@ async def resolve_identifier(
     Raises:
         UserNotFound: 404 when no identifier matches in this tenant.
     """
-    row = await _find_identifier(
-        session, tenant_id, identifier_type, identifier_value
-    )
+    # Normalise the lookup value so `+27 82 555 0001`, `+27-82-555-0001`,
+    # and `+27825550001` all resolve to the same row.
+    canonical = normalize_identifier(identifier_type, identifier_value)
+    row = await _find_identifier(session, tenant_id, identifier_type, canonical)
     if row is None:
         raise UserNotFound()
     return row

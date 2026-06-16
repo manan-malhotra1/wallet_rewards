@@ -1,15 +1,14 @@
 /**
- * Users page — identifier search + result list.
+ * Users page — identifier lookup → full user detail.
  *
- * The backend doesn't have a "list users" endpoint yet (Phase G); for now
- * the page is identifier-lookup-driven: enter a phone/email/account/card
- * and the server resolves it via Pay-PRD-0060. Results render as cards
- * with a "View detail" drawer trigger.
+ * On submit the page server-side resolves the identifier to a `user_id`,
+ * then fetches the full user-detail payload (identifiers, profile,
+ * accounts with balances) and renders the detail card.
  */
 import { UserPlus, Users } from "lucide-react";
 
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { resolveIdentifier } from "@/lib/api-endpoints";
+import { getUserDetail, resolveIdentifier } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,7 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { UserLookupForm } from "./_components/user-lookup-form";
-import { ResolvedUserCard } from "./_components/resolved-user-card";
+import { UserDetailCard } from "./_components/user-detail-card";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +30,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   const activeTenantId = await getActiveTenantId();
   if (!activeTenantId) {
     return (
-      <div className="px-6 py-8">
+      <div className="p-6">
         <EmptyState
           icon={Users}
           title="No active tenant"
@@ -41,17 +40,21 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
     );
   }
 
-  let resolved: Awaited<ReturnType<typeof resolveIdentifier>> | null = null;
+  let detail: Awaited<ReturnType<typeof getUserDetail>> | null = null;
+  let resolvedIdentifierValue: string | null = null;
   let error: ApiError | null = null;
   if (params.type && params.value) {
     try {
-      resolved = await resolveIdentifier(activeTenantId, params.type, params.value);
+      const resolved = await resolveIdentifier(
+        activeTenantId,
+        params.type,
+        params.value,
+      );
+      resolvedIdentifierValue = params.value;
+      detail = await getUserDetail(activeTenantId, resolved.user_id);
     } catch (err) {
-      if (err instanceof ApiError) {
-        error = err;
-      } else {
-        throw err;
-      }
+      if (err instanceof ApiError) error = err;
+      else throw err;
     }
   }
 
@@ -67,34 +70,31 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
           </Button>
         }
       />
-      <div className="px-6 py-6">
+      <div className="space-y-6 p-6">
         <UserLookupForm
           initialType={params.type ?? "phone"}
           initialValue={params.value ?? ""}
         />
-        <div className="mt-6">
-          {error && (
-            <ErrorBanner
-              title={error.errorCode === "user_not_found" ? "No user found" : "Lookup failed"}
-              description={error.message}
-            />
-          )}
-          {resolved && (
-            <ResolvedUserCard
-              userId={resolved.user_id}
-              tenantId={resolved.tenant_id}
-              identifierType={resolved.identifier_type}
-              identifierValue={params.value ?? ""}
-            />
-          )}
-          {!resolved && !error && !params.value && (
-            <EmptyState
-              icon={Users}
-              title="Search for a user"
-              description="Pick an identifier type, paste the value, and press Lookup. Full user-listing tables land in Phase G."
-            />
-          )}
-        </div>
+        {error && (
+          <ErrorBanner
+            title={error.errorCode === "user_not_found" ? "No user found" : "Lookup failed"}
+            description={error.message}
+          />
+        )}
+        {detail && (
+          <UserDetailCard
+            detail={detail}
+            resolvedIdentifierValue={resolvedIdentifierValue}
+            resolvedIdentifierType={params.type ?? "phone"}
+          />
+        )}
+        {!detail && !error && !params.value && (
+          <EmptyState
+            icon={Users}
+            title="Search for a user"
+            description="Pick an identifier type, paste the value, and press Lookup. Phone numbers are normalised — spaces, dashes, and parens are stripped before lookup."
+          />
+        )}
       </div>
     </div>
   );

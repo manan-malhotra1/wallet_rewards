@@ -6,11 +6,13 @@ validation is added in Phase 2 alongside the OTP flow.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.shared.utils.normalize import normalize_phone
 
 IdentifierType = Literal["phone", "email", "account_number", "card_number"]
 
@@ -74,6 +76,51 @@ class ResolveResponse(BaseModel):
     identifier_type: str
 
 
+class UserAccountOut(BaseModel):
+    """Account summary surfaced on the user-detail response.
+
+    Includes the derived balance + reserved so the admin UI can render a
+    full account row without an extra round trip per account.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    account_type: str
+    currency: str
+    status: str
+    balance: str
+    reserved_balance: str
+    available_balance: str
+
+
+class UserProfileOut(BaseModel):
+    """User profile fields (KYC). All optional."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    first_name: str | None = None
+    last_name: str | None = None
+    date_of_birth: date | None = None
+
+
+class UserDetailOut(BaseModel):
+    """Full user-detail response — admin-only.
+
+    Surfaces the data the admin UI needs to render the user drawer:
+    identifiers, profile, accounts with balances. Transactions /
+    redemptions arrive via the audit log + reconciliation surfaces.
+    """
+
+    id: UUID
+    tenant_id: UUID
+    status: str
+    created_at: datetime
+    identifiers: list[IdentifierOut]
+    profile: UserProfileOut | None
+    accounts: list[UserAccountOut]
+
+
 # --- Phase F.2 — PIN/OTP/session flow --------------------------------------
 
 
@@ -82,6 +129,13 @@ class OtpSendRequest(BaseModel):
 
     tenant_id: UUID
     phone: str = Field(min_length=5, max_length=20)
+
+    @field_validator("phone")
+    @classmethod
+    def _normalize_phone(cls, v: str) -> str:
+        """Strip spaces / dashes / parens so the canonical form is what
+        reaches the OTP lookup + the unique identifier index."""
+        return normalize_phone(v)
 
 
 class OtpSendResponse(BaseModel):
@@ -102,6 +156,11 @@ class OtpVerifyRequest(BaseModel):
     tenant_id: UUID
     phone: str = Field(min_length=5, max_length=20)
     otp: str = Field(min_length=4, max_length=10)
+
+    @field_validator("phone")
+    @classmethod
+    def _normalize_phone(cls, v: str) -> str:
+        return normalize_phone(v)
 
 
 class OtpVerifyResponse(BaseModel):
@@ -124,6 +183,11 @@ class PinAuthRequest(BaseModel):
     tenant_id: UUID
     phone: str = Field(min_length=5, max_length=20)
     pin: str = Field(min_length=4, max_length=6)
+
+    @field_validator("phone")
+    @classmethod
+    def _normalize_phone(cls, v: str) -> str:
+        return normalize_phone(v)
 
 
 class SessionTokenResponse(BaseModel):

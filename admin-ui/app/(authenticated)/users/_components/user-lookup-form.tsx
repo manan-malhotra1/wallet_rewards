@@ -42,8 +42,13 @@ export function UserLookupForm({
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!value.trim()) return;
-    const params = new URLSearchParams({ type, value: value.trim() });
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    // Phone numbers are stored without whitespace / dashes / parens — strip
+    // them here so an operator pasting "+27 82 555 0001" still resolves.
+    const canonical =
+      type === "phone" ? trimmed.replace(/[\s\-().]/g, "") : trimmed;
+    const params = new URLSearchParams({ type, value: canonical });
     router.push(`/users?${params.toString()}`);
   };
 

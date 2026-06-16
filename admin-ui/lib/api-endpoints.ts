@@ -23,6 +23,7 @@ import type {
   SweepOutcome,
   Tenant,
   User,
+  UserDetail,
 } from "@/lib/api-types";
 
 // ---- Tenants -------------------------------------------------------------
@@ -61,6 +62,15 @@ export const resolveIdentifier = (
     `/api/v1/identity/resolve/${identifier_type}/${encodeURIComponent(identifier_value)}`,
     { query: { tenant_id } },
   );
+
+/**
+ * Full user-detail payload — identifiers, profile, accounts with derived
+ * balances. Admin-only on the backend.
+ */
+export const getUserDetail = (tenant_id: string, user_id: string) =>
+  apiGet<UserDetail>(`/api/v1/identity/users/${user_id}`, {
+    query: { tenant_id },
+  });
 
 // ---- Rules ---------------------------------------------------------------
 

@@ -32,11 +32,13 @@ from app.modules.identity.schemas import (
     PinSetRequest,
     ResolveResponse,
     SessionTokenResponse,
+    UserDetailOut,
     UserOut,
 )
 from app.modules.identity.service import (
     authenticate_pin,
     create_user,
+    get_user_detail,
     resolve_identifier,
     send_otp,
     set_pin,
@@ -99,6 +101,24 @@ async def get_resolve(
         tenant_id=row.tenant_id,
         identifier_type=row.identifier_type,
     )
+
+
+@router.get("/users/{user_id}", response_model=UserDetailOut)
+async def get_user(
+    user_id: UUID,
+    tenant_id: UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> UserDetailOut:
+    """Return the full user-detail payload (admin-only).
+
+    Includes identifiers, profile, and accounts with derived balances —
+    everything the admin UI's user drawer renders. Tenant-scoped:
+    requesting a user that belongs to a different tenant returns 404.
+    """
+    _ = admin
+    payload = await get_user_detail(session, user_id=user_id, tenant_id=tenant_id)
+    return UserDetailOut.model_validate(payload, from_attributes=True)
 
 
 # =============================================================================

@@ -58,13 +58,13 @@ TENANT_CURRENCY = "ZAR"
 
 USERS_TO_SEED = [
     {
-        "phone": "+27 82 555 0001",
+        "phone": "+27825550001",
         "first_name": "Alice",
         "last_name": "Mokoena",
         "opening_balance_zar": Decimal("1000"),
     },
     {
-        "phone": "+27 82 555 0002",
+        "phone": "+27825550002",
         "first_name": "Bob",
         "last_name": "Nkomo",
         "opening_balance_zar": Decimal("500"),

@@ -24,6 +24,32 @@ export interface User {
   identifiers: UserIdentifier[];
 }
 
+export interface UserProfile {
+  first_name: string | null;
+  last_name: string | null;
+  date_of_birth: string | null;
+}
+
+export interface UserAccount {
+  id: string;
+  account_type: string;
+  currency: string;
+  status: string;
+  balance: string;
+  reserved_balance: string;
+  available_balance: string;
+}
+
+export interface UserDetail {
+  id: string;
+  tenant_id: string;
+  status: string;
+  created_at: string;
+  identifiers: UserIdentifier[];
+  profile: UserProfile | null;
+  accounts: UserAccount[];
+}
+
 export interface UserIdentifier {
   identifier_type: "phone" | "email" | "account_number" | "card_number";
   identifier_value: string;

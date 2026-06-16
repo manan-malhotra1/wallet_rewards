@@ -1,15 +1,20 @@
 /**
- * <CreateRuleDialog> — the create-rule wizard (2 steps in one dialog).
+ * <CreateRuleDialog> — create-rule wizard with an optional inline budget.
  *
- * Step 1: pick the rule type. Step 2: configure type-specific fields,
- * with a live summary sentence that updates as the form changes. Submits
- * via the `createRuleAction` server action.
+ * Step 1: pick the rule type. Step 2: configure type-specific fields + an
+ * optional "Set a per-rule budget" section. The dialog submits via
+ * `createRuleWithBudgetAction` — the rule is created first, then the
+ * budget if requested. A budget-create failure does NOT undo the rule;
+ * the dialog surfaces the budget error so the operator can fix it on
+ * the /budgets page without re-entering the rule.
  */
 "use client";
 
+import { Coins, PiggyBank } from "lucide-react";
 import * as React from "react";
 
-import { createRuleAction } from "@/app/(authenticated)/rules/_actions";
+import { createRuleWithBudgetAction } from "@/app/(authenticated)/rules/_actions";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 import type { Rule } from "@/lib/api-types";
 
@@ -42,6 +48,78 @@ const RULE_TYPES: { value: Rule["rule_type"]; label: string; help: string }[] = 
   { value: "composite", label: "Composite", help: "Multiple conditions joined AND / OR" },
   { value: "campaign", label: "Campaign", help: "Time-boxed with start + end dates" },
   { value: "referral", label: "Referral", help: "Referrer rewarded on referred action" },
+];
+
+type BudgetWindow = "rolling_24h" | "rolling_7d" | "calendar_month" | "lifetime";
+
+interface BudgetPreset {
+  key: string;
+  label: string;
+  description: string;
+  cap_amount: string;
+  window_type: BudgetWindow;
+}
+
+const POINTS_PRESETS: BudgetPreset[] = [
+  {
+    key: "conservative",
+    label: "Conservative",
+    description: "1,000 pts / day",
+    cap_amount: "1000",
+    window_type: "rolling_24h",
+  },
+  {
+    key: "standard",
+    label: "Standard",
+    description: "10,000 pts / day",
+    cap_amount: "10000",
+    window_type: "rolling_24h",
+  },
+  {
+    key: "monthly",
+    label: "Monthly cap",
+    description: "100,000 pts / month",
+    cap_amount: "100000",
+    window_type: "calendar_month",
+  },
+  {
+    key: "lifetime",
+    label: "Lifetime cap",
+    description: "1,000,000 pts total",
+    cap_amount: "1000000",
+    window_type: "lifetime",
+  },
+];
+
+const CASHBACK_PRESETS: BudgetPreset[] = [
+  {
+    key: "conservative",
+    label: "Conservative",
+    description: "1,000 / day",
+    cap_amount: "1000",
+    window_type: "rolling_24h",
+  },
+  {
+    key: "standard",
+    label: "Standard",
+    description: "10,000 / day",
+    cap_amount: "10000",
+    window_type: "rolling_24h",
+  },
+  {
+    key: "monthly",
+    label: "Monthly cap",
+    description: "100,000 / month",
+    cap_amount: "100000",
+    window_type: "calendar_month",
+  },
+  {
+    key: "lifetime",
+    label: "Lifetime cap",
+    description: "1,000,000 total",
+    cap_amount: "1000000",
+    window_type: "lifetime",
+  },
 ];
 
 interface FormState {
@@ -56,6 +134,11 @@ interface FormState {
   reward_value: string;
   stop_after_n_triggers: string;
   resets_after_trigger: boolean;
+  // Budget section ---------------------------------------------------
+  budget_enabled: boolean;
+  budget_preset: string;
+  budget_cap_amount: string;
+  budget_window_type: BudgetWindow;
 }
 
 const INITIAL: FormState = {
@@ -70,12 +153,19 @@ const INITIAL: FormState = {
   reward_value: "",
   stop_after_n_triggers: "",
   resets_after_trigger: true,
+  budget_enabled: false,
+  budget_preset: "standard",
+  budget_cap_amount: "10000",
+  budget_window_type: "rolling_24h",
 };
 
-/**
- * Build a one-sentence summary of the rule for the form footer. Keeps the
- * operator certain about what they're about to save.
- */
+const WINDOW_LABEL: Record<BudgetWindow, string> = {
+  rolling_24h: "rolling 24h",
+  rolling_7d: "rolling 7d",
+  calendar_month: "calendar month",
+  lifetime: "lifetime",
+};
+
 function summarise(form: FormState): string {
   const reward =
     form.reward_value && form.reward_type
@@ -95,6 +185,15 @@ function summarise(form: FormState): string {
   return `Rule type: ${form.rule_type}. ${reward}.`;
 }
 
+function summariseBudget(form: FormState): string {
+  if (!form.budget_enabled) {
+    return "No per-rule budget — rule relies on the tenant-wide budget if set, else runs uncapped.";
+  }
+  const cap = form.budget_cap_amount || "?";
+  const unit = form.reward_type === "points" ? "pts" : "(reward units)";
+  return `Cap ${cap} ${unit} per ${WINDOW_LABEL[form.budget_window_type]}.`;
+}
+
 export function CreateRuleDialog({
   tenantId,
   trigger,
@@ -109,7 +208,6 @@ export function CreateRuleDialog({
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
   const { toast } = useToast();
 
-  // Reset form when dialog opens/closes so a second invocation starts clean.
   React.useEffect(() => {
     if (!open) {
       setStep(1);
@@ -121,38 +219,81 @@ export function CreateRuleDialog({
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
+  const applyPreset = (preset: BudgetPreset) =>
+    setForm((prev) => ({
+      ...prev,
+      budget_preset: preset.key,
+      budget_cap_amount: preset.cap_amount,
+      budget_window_type: preset.window_type,
+    }));
+
+  const presets = form.reward_type === "points" ? POINTS_PRESETS : CASHBACK_PRESETS;
+
   const onSubmit = async (status: "active" | "draft") => {
     setErrorBanner(null);
     if (!form.name || !form.reward_value) {
       setErrorBanner("Name and reward value are required.");
       return;
     }
+    if (form.budget_enabled) {
+      const cap = parseFloat(form.budget_cap_amount);
+      if (!Number.isFinite(cap) || cap <= 0) {
+        setErrorBanner("Budget cap must be a positive number.");
+        return;
+      }
+    }
     setSubmitting(true);
-    const result = await createRuleAction({
-      tenant_id: tenantId,
-      name: form.name,
-      description: form.description || undefined,
-      rule_type: form.rule_type,
-      transaction_type: form.transaction_type,
-      count_threshold: form.count_threshold
-        ? Number(form.count_threshold)
+    const result = await createRuleWithBudgetAction(
+      {
+        tenant_id: tenantId,
+        name: form.name,
+        description: form.description || undefined,
+        rule_type: form.rule_type,
+        transaction_type: form.transaction_type,
+        count_threshold: form.count_threshold
+          ? Number(form.count_threshold)
+          : undefined,
+        min_amount: form.min_amount || undefined,
+        time_window: form.time_window || undefined,
+        reward_type: form.reward_type,
+        reward_value: form.reward_value,
+        stop_after_n_triggers: form.stop_after_n_triggers
+          ? Number(form.stop_after_n_triggers)
+          : undefined,
+        resets_after_trigger: form.resets_after_trigger,
+      },
+      form.budget_enabled
+        ? {
+            cap_amount: form.budget_cap_amount,
+            window_type: form.budget_window_type,
+          }
         : undefined,
-      min_amount: form.min_amount || undefined,
-      time_window: form.time_window || undefined,
-      reward_type: form.reward_type,
-      reward_value: form.reward_value,
-      stop_after_n_triggers: form.stop_after_n_triggers
-        ? Number(form.stop_after_n_triggers)
-        : undefined,
-      resets_after_trigger: form.resets_after_trigger,
-    });
+    );
     setSubmitting(false);
     if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
       return;
     }
+    if (form.budget_enabled && !result.budgetCreated) {
+      // Rule landed, budget didn't — toast the rule success + surface the
+      // budget error so the operator can pick up on /budgets without
+      // re-entering the whole rule.
+      toast({
+        title: "Rule created, but budget failed",
+        description:
+          result.budgetError ?? "Open the Budgets page to add it manually.",
+        variant: "danger",
+      });
+      setOpen(false);
+      return;
+    }
     toast({
-      title: status === "active" ? "Rule activated" : "Rule saved as draft",
+      title:
+        status === "active"
+          ? form.budget_enabled
+            ? "Rule + budget activated"
+            : "Rule activated"
+          : "Rule saved as draft",
       description: form.name,
     });
     setOpen(false);
@@ -163,7 +304,7 @@ export function CreateRuleDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             Create rule {step === 2 && selectedType ? `· ${selectedType.label}` : ""}
@@ -171,7 +312,7 @@ export function CreateRuleDialog({
           <DialogDescription>
             {step === 1
               ? "Pick the rule type. Each type unlocks a different set of fields."
-              : "Configure the fields. The summary below updates live."}
+              : "Configure the fields. Summary at the bottom updates live."}
           </DialogDescription>
         </DialogHeader>
 
@@ -185,17 +326,18 @@ export function CreateRuleDialog({
                   update("rule_type", t.value);
                   setStep(2);
                 }}
-                className="rounded-md border border-[--color-border] bg-[--color-surface-2] p-3 text-left hover:border-[--color-brand]"
+                className="rounded-lg border bg-card p-3 text-left transition-colors hover:border-primary hover:bg-accent"
               >
-                <div className="text-[13px] font-semibold">{t.label}</div>
-                <div className="mt-1 text-[11px] text-[--color-text-2]">{t.help}</div>
+                <div className="text-sm font-semibold">{t.label}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{t.help}</div>
               </button>
             ))}
           </div>
         )}
 
         {step === 2 && (
-          <div className="space-y-4">
+          <div className="space-y-5">
+            {/* --- Core rule fields ----------------------------------- */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="name">Name</Label>
@@ -204,6 +346,7 @@ export function CreateRuleDialog({
                   value={form.name}
                   onChange={(e) => update("name", e.target.value)}
                   placeholder="Weekly P2P milestone"
+                  className="mt-1"
                 />
               </div>
               <div>
@@ -213,6 +356,7 @@ export function CreateRuleDialog({
                   value={form.transaction_type}
                   onChange={(e) => update("transaction_type", e.target.value)}
                   placeholder="p2p"
+                  className="mt-1"
                 />
               </div>
               {(form.rule_type === "milestone" || form.rule_type === "streak") && (
@@ -224,6 +368,7 @@ export function CreateRuleDialog({
                     value={form.count_threshold}
                     onChange={(e) => update("count_threshold", e.target.value)}
                     placeholder="5"
+                    className="mt-1"
                   />
                 </div>
               )}
@@ -235,42 +380,49 @@ export function CreateRuleDialog({
                     value={form.min_amount}
                     onChange={(e) => update("min_amount", e.target.value)}
                     placeholder="1000.00"
+                    className="mt-1"
                   />
                 </div>
               )}
               {(form.rule_type === "milestone" || form.rule_type === "streak") && (
                 <div>
                   <Label htmlFor="window">Time window</Label>
-                  <Select
-                    value={form.time_window}
-                    onValueChange={(v) => update("time_window", v)}
-                  >
-                    <SelectTrigger id="window">
-                      <SelectValue placeholder="Pick a window" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="calendar_month">Calendar month</SelectItem>
-                      <SelectItem value="rolling_7d">Rolling 7 days</SelectItem>
-                      <SelectItem value="rolling_30d">Rolling 30 days</SelectItem>
-                      <SelectItem value="lifetime">Lifetime</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="mt-1">
+                    <Select
+                      value={form.time_window}
+                      onValueChange={(v) => update("time_window", v)}
+                    >
+                      <SelectTrigger id="window">
+                        <SelectValue placeholder="Pick a window" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="calendar_month">Calendar month</SelectItem>
+                        <SelectItem value="rolling_7d">Rolling 7 days</SelectItem>
+                        <SelectItem value="rolling_30d">Rolling 30 days</SelectItem>
+                        <SelectItem value="lifetime">Lifetime</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               )}
               <div>
                 <Label htmlFor="reward-type">Reward type</Label>
-                <Select
-                  value={form.reward_type}
-                  onValueChange={(v) => update("reward_type", v as Rule["reward_type"])}
-                >
-                  <SelectTrigger id="reward-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="points">Points</SelectItem>
-                    <SelectItem value="cashback">Cashback</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="mt-1">
+                  <Select
+                    value={form.reward_type}
+                    onValueChange={(v) =>
+                      update("reward_type", v as Rule["reward_type"])
+                    }
+                  >
+                    <SelectTrigger id="reward-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="points">Points</SelectItem>
+                      <SelectItem value="cashback">Cashback</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div>
                 <Label htmlFor="reward-value">Reward value</Label>
@@ -279,22 +431,150 @@ export function CreateRuleDialog({
                   value={form.reward_value}
                   onChange={(e) => update("reward_value", e.target.value)}
                   placeholder="200"
+                  className="mt-1"
                 />
               </div>
-              <div>
-                <Label htmlFor="stop-after">Stop after N triggers (0 = unlimited)</Label>
+              <div className="col-span-2">
+                <Label htmlFor="stop-after">
+                  Stop after N triggers (0 = unlimited)
+                </Label>
                 <Input
                   id="stop-after"
                   type="number"
                   value={form.stop_after_n_triggers}
                   onChange={(e) => update("stop_after_n_triggers", e.target.value)}
+                  className="mt-1"
                 />
               </div>
             </div>
-            <div className="rounded-md border border-[--color-border] bg-[--color-surface-2] p-3 text-[12px] text-[--color-text-2]">
-              {summarise(form)}
+
+            {/* --- Inline budget section ----------------------------- */}
+            <div className="rounded-lg border bg-card">
+              <label className="flex cursor-pointer items-start gap-3 p-4">
+                <input
+                  type="checkbox"
+                  checked={form.budget_enabled}
+                  onChange={(e) => update("budget_enabled", e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-input accent-[--color-primary]"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <PiggyBank className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold text-foreground">
+                      Set a per-rule budget
+                    </span>
+                    <Badge variant="info" className="text-[10px]">
+                      Optional
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Caps reward issuance for THIS rule. Layers with any
+                    tenant-wide budget — both must pass.
+                  </p>
+                </div>
+              </label>
+
+              {form.budget_enabled && (
+                <div className="space-y-4 border-t bg-muted/20 p-4">
+                  <div>
+                    <Label>Preset</Label>
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {presets.map((preset) => {
+                        const active = form.budget_preset === preset.key;
+                        return (
+                          <button
+                            key={preset.key}
+                            type="button"
+                            onClick={() => applyPreset(preset)}
+                            className={cn(
+                              "rounded-md border bg-card px-3 py-2 text-left transition-colors",
+                              active
+                                ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                : "hover:border-primary/40 hover:bg-accent",
+                            )}
+                          >
+                            <div className="text-xs font-semibold">{preset.label}</div>
+                            <div className="mt-0.5 text-[11px] text-muted-foreground">
+                              {preset.description}
+                            </div>
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => update("budget_preset", "custom")}
+                        className={cn(
+                          "rounded-md border bg-card px-3 py-2 text-left transition-colors",
+                          form.budget_preset === "custom"
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "hover:border-primary/40 hover:bg-accent",
+                        )}
+                      >
+                        <div className="text-xs font-semibold">Custom</div>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">
+                          Set your own
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="budget-cap">Cap amount</Label>
+                      <Input
+                        id="budget-cap"
+                        value={form.budget_cap_amount}
+                        onChange={(e) => {
+                          update("budget_cap_amount", e.target.value);
+                          update("budget_preset", "custom");
+                        }}
+                        placeholder="10000"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="budget-window">Window</Label>
+                      <div className="mt-1">
+                        <Select
+                          value={form.budget_window_type}
+                          onValueChange={(v) => {
+                            update("budget_window_type", v as BudgetWindow);
+                            update("budget_preset", "custom");
+                          }}
+                        >
+                          <SelectTrigger id="budget-window">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="rolling_24h">Rolling 24h</SelectItem>
+                            <SelectItem value="rolling_7d">Rolling 7d</SelectItem>
+                            <SelectItem value="calendar_month">
+                              Calendar month
+                            </SelectItem>
+                            <SelectItem value="lifetime">Lifetime</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            {errorBanner && <ErrorBanner title="Couldn't create rule" description={errorBanner} />}
+
+            {/* --- Summary footer ------------------------------------ */}
+            <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <div className="flex items-start gap-2">
+                <Coins className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>{summarise(form)}</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <PiggyBank className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>{summariseBudget(form)}</span>
+              </div>
+            </div>
+
+            {errorBanner && (
+              <ErrorBanner title="Couldn't create" description={errorBanner} />
+            )}
           </div>
         )}
 

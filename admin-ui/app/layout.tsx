@@ -30,8 +30,12 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body>
-        <Suspense>{children}</Suspense>
-        <Toaster />
+        {/* Toaster owns the React context provider for `useToast()` and
+            also renders the floating viewport. It MUST wrap children so
+            descendants find the provider in the tree. */}
+        <Toaster>
+          <Suspense>{children}</Suspense>
+        </Toaster>
       </body>
     </html>
   );

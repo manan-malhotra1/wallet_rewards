@@ -2,8 +2,12 @@
  * Toast notifications — bottom-right stack. Used for action confirmations
  * and inline error surfacing.
  *
- * Backed by Radix Toast. We expose a `<Toaster>` mount + a `useToast`
- * imperative hook. Three slots max, FIFO.
+ * Backed by Radix Toast. Two pieces:
+ *   - `<Toaster>` — wraps the entire React tree so descendants can call
+ *     `useToast()`. Mount it once in `app/layout.tsx` AROUND `{children}`.
+ *   - `useToast()` — imperative trigger for client components.
+ *
+ * Three toasts max, FIFO (oldest evicted when a 4th lands).
  */
 "use client";
 
@@ -25,8 +29,8 @@ const ToastContext = React.createContext<{
 } | null>(null);
 
 /**
- * Imperative toast trigger — usable from client components and server
- * action results that hand a message back via `useFormState`.
+ * Imperative toast trigger — usable from any client component that lives
+ * inside <Toaster>. Throws if the provider isn't an ancestor.
  */
 export function useToast() {
   const ctx = React.useContext(ToastContext);
@@ -35,10 +39,12 @@ export function useToast() {
 }
 
 /**
- * Mount once at the root layout. Provides the imperative `useToast` API and
- * renders the visible stack of in-flight toasts.
+ * Mount once at the root layout, AROUND `{children}` — the context
+ * provider needs to be an ancestor of every component that calls
+ * `useToast()`. The viewport (the floating stack of visible toasts) is
+ * rendered alongside the children inside the provider.
  */
-export function Toaster() {
+export function Toaster({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<Toast[]>([]);
 
   const toast = React.useCallback((input: Omit<Toast, "id">) => {
@@ -49,6 +55,7 @@ export function Toaster() {
   return (
     <ToastContext.Provider value={{ toast }}>
       <ToastPrimitive.Provider swipeDirection="right" duration={5000}>
+        {children}
         {toasts.map((t) => (
           <ToastPrimitive.Root
             key={t.id}

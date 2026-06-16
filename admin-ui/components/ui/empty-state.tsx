@@ -1,5 +1,6 @@
 /**
- * <EmptyState> — centred "nothing here yet" surface.
+ * <EmptyState> — centred "nothing here yet" surface. Matches the FinOps
+ * Studio pattern: compact icon tile + heading + description + action.
  */
 import { cn } from "@/lib/utils";
 
@@ -21,22 +22,20 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-card px-6 py-12 text-center",
+        "flex flex-col items-center justify-center py-16 px-6 text-center",
         className,
       )}
     >
       {Icon && (
-        <div className="rounded-full bg-muted p-3">
-          <Icon className="h-5 w-5 text-muted-foreground" />
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
+          <Icon className="h-6 w-6 text-muted-foreground" />
         </div>
       )}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        {description && (
-          <p className="mt-1 max-w-md text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
-      {action}
+      <h3 className="mb-1 text-sm font-semibold text-foreground">{title}</h3>
+      {description && (
+        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
+      )}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }

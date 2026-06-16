@@ -1,0 +1,104 @@
+/**
+ * Tailwind v4 + design tokens for the Sasai Wallet admin UI.
+ *
+ * Tokens come straight from docs/04-ui-layouts.md §2. Dark is default; light
+ * overrides via the system preference media query. WCAG AA contrast on both.
+ */
+@import "tailwindcss";
+
+/* --- Design tokens (dark default) ---------------------------------------- */
+@theme {
+  /* Sans + mono fonts come from Next's `localFont` wiring in app/layout.tsx,
+     exposed via CSS vars so Tailwind utilities can reference them. */
+  --font-sans: var(--font-geist-sans), "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "JetBrains Mono", "Menlo", monospace;
+
+  /* Surfaces */
+  --color-surface-0: oklch(0.18 0.01 240);
+  --color-surface-1: oklch(0.22 0.01 240);
+  --color-surface-2: oklch(0.26 0.01 240);
+  --color-surface-3: oklch(0.32 0.01 240);
+  --color-border: oklch(0.30 0.01 240);
+
+  /* Text */
+  --color-text-1: oklch(0.96 0 0);
+  --color-text-2: oklch(0.75 0 0);
+  --color-text-3: oklch(0.55 0 0);
+
+  /* Brand */
+  --color-brand: oklch(0.55 0.16 235);
+  --color-accent: oklch(0.75 0.13 200);
+
+  /* Status */
+  --color-success: oklch(0.72 0.18 145);
+  --color-warning: oklch(0.78 0.16 75);
+  --color-danger: oklch(0.65 0.22 25);
+  --color-info: oklch(0.70 0.13 235);
+
+  /* Financial semantics */
+  --color-credit: oklch(0.72 0.18 145);
+  --color-debit: oklch(0.65 0.22 25);
+  --color-points: oklch(0.78 0.16 75);
+}
+
+/* --- Light mode (opt-in via system preference) --------------------------- */
+@media (prefers-color-scheme: light) {
+  @theme {
+    --color-surface-0: oklch(0.99 0 0);
+    --color-surface-1: oklch(0.97 0 0);
+    --color-surface-2: oklch(0.94 0 0);
+    --color-surface-3: oklch(0.90 0 0);
+    --color-border: oklch(0.85 0 0);
+
+    --color-text-1: oklch(0.20 0 0);
+    --color-text-2: oklch(0.40 0 0);
+    --color-text-3: oklch(0.55 0 0);
+  }
+}
+
+/* --- Globals ------------------------------------------------------------- */
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-surface-0);
+  color: var(--color-text-1);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular numbers everywhere we display amounts / IDs. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reset for buttons inside dense tables. */
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* Focus ring used by every interactive primitive. */
+.ring-focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--color-brand);
+}
+
+/* Scrollbar styling — match the surface, never the OS default. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

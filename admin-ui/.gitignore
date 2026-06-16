@@ -1,0 +1,18 @@
+# Next.js
+.next/
+out/
+build/
+node_modules/
+
+# TS build info
+*.tsbuildinfo
+
+# Test output
+coverage/
+
+# Local env
+.env
+.env*.local
+
+# OS
+.DS_Store

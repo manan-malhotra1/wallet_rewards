@@ -17,6 +17,7 @@ from app.modules.reconciliation import router as reconciliation_router
 from app.modules.redemption import router as redemption_router
 from app.modules.roles import router as roles_router
 from app.modules.rules import router as rules_router
+from app.modules.tenants import router as tenants_router
 from app.shared.exceptions import AppHTTPException
 
 app = FastAPI(
@@ -71,3 +72,4 @@ app.include_router(redemption_router)
 app.include_router(catalog_router)
 app.include_router(reconciliation_router)
 app.include_router(roles_router)
+app.include_router(tenants_router)

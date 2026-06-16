@@ -41,3 +41,6 @@ logs/
 
 # Local infra data
 sasai-wallet-infra/data/
+
+# scripts/dev.sh runtime state
+.run/

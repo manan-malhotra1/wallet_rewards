@@ -286,7 +286,12 @@ async def seed() -> None:
     async with SessionLocal() as session:
         tenant = await _get_or_create_tenant(session)
 
-        # System-owned accounts for the tenant.
+        # System-owned accounts for the tenant. We create the master
+        # system_points_issuance account explicitly; provider_redemption_wallet
+        # is NOT created here — `register_provider()` later in this script
+        # auto-creates it as part of registering the sample provider
+        # (Pay-PRD-0730). Pre-0009 those two paths silently created two
+        # wallets; the uq_accounts_system_scoped index now enforces one.
         await _get_or_create_account(
             session,
             tenant,
@@ -294,14 +299,6 @@ async def seed() -> None:
             account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
             currency="PTS",
             label="System Points Issuance (master)",
-        )
-        await _get_or_create_account(
-            session,
-            tenant,
-            user=None,
-            account_type=ACCOUNT_TYPE_PROVIDER_REDEMPTION,
-            currency="PTS",
-            label="Provider Redemption Wallet (sample)",
         )
 
         # Users + their wallets + opening balances.

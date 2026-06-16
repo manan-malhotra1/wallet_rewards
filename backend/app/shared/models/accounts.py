@@ -18,6 +18,7 @@ from sqlalchemy import (
     Index,
     Numeric,
     String,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -75,6 +76,29 @@ class Account(Base):
             "ix_accounts_tenant_type",
             "tenant_id",
             "account_type",
+        ),
+        # Partial unique indexes — Postgres treats NULL as distinct on
+        # a plain UniqueConstraint, so we split the rule:
+        #   - User accounts: one per (tenant, user, type, currency)
+        #   - System accounts: one per (tenant, type, currency) when user is NULL
+        # Migration 0009 adds these on the live DB; seeds rely on the
+        # uniqueness to stay idempotent.
+        Index(
+            "uq_accounts_user_scoped",
+            "tenant_id",
+            "user_id",
+            "account_type",
+            "currency",
+            unique=True,
+            postgresql_where=text("user_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_accounts_system_scoped",
+            "tenant_id",
+            "account_type",
+            "currency",
+            unique=True,
+            postgresql_where=text("user_id IS NULL"),
         ),
     )
 

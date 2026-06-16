@@ -161,8 +161,14 @@ async def _get_or_create_account(
     else:
         query = query.where(Account.user_id.is_(None))
 
-    result = await session.execute(query)
-    account = result.scalar_one_or_none()
+    # Use `.first()` (not `scalar_one_or_none()`) so an already-duplicated DB
+    # state doesn't crash the seed. Older builds had no unique constraint
+    # on (tenant_id, user_id, account_type, currency), so prior runs could
+    # silently create duplicates. Picking the first row keeps the seed
+    # idempotent on legacy DBs; the new UniqueConstraint (migration 0009)
+    # prevents drift going forward.
+    result = await session.execute(query.order_by(Account.created_at.asc()))
+    account = result.scalars().first()
     if account is not None:
         return account
 

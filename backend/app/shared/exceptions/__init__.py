@@ -495,3 +495,53 @@ class NotAuthorised(AppHTTPException):
             "not_authorised",
             f"You are not authorised to initiate a '{transaction_type}' transaction.",
         )
+
+
+# --- HMAC / provider callbacks (Phase F.5) ---------------------------------
+
+
+class SignatureMissing(AppHTTPException):
+    """X-Sasai-Signature header missing on a callback that requires one."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            401,
+            "signature_missing",
+            "X-Sasai-Signature header is required.",
+        )
+
+
+class SignatureMalformed(AppHTTPException):
+    """Signature header present but not parseable (missing t= or v1=)."""
+
+    def __init__(self, detail: str = "Signature header is malformed.") -> None:
+        super().__init__(401, "signature_malformed", detail)
+
+
+class SignatureTimestampSkew(AppHTTPException):
+    """Signature timestamp is outside the 5-minute replay window (NFR-0210)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            401,
+            "signature_timestamp_skew",
+            "Signature timestamp is outside the allowed window.",
+        )
+
+
+class InvalidSignature(AppHTTPException):
+    """HMAC verification failed — body tampered, secret wrong, or replay."""
+
+    def __init__(self) -> None:
+        super().__init__(401, "invalid_signature", "Signature verification failed.")
+
+
+class SignatureNotConfigured(AppHTTPException):
+    """Provider has no `shared_secret` set — callbacks are not enabled."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            401,
+            "signature_not_configured",
+            "Provider has no callback secret configured.",
+        )

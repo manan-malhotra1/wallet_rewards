@@ -4,6 +4,8 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.principals import AdminPrincipal
+from app.modules.audit.service import record_audit_for_admin
 from app.modules.rules.schemas import RuleCreateRequest
 from app.shared.exceptions import TenantNotFound
 from app.shared.models import Rule, Tenant
@@ -17,7 +19,11 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id) -> None:
 
 
 async def create_rule(
-    session: AsyncSession, request: RuleCreateRequest
+    session: AsyncSession,
+    request: RuleCreateRequest,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
 ) -> Rule:
     """Persist a new Rule row.
 
@@ -27,6 +33,8 @@ async def create_rule(
     Args:
         session: Async DB session.
         request: Validated RuleCreateRequest.
+        admin: Authenticated admin (audit context). Optional for internal callers.
+        ip_address: Caller IP (audit context).
 
     Returns:
         The persisted Rule.
@@ -51,6 +59,26 @@ async def create_rule(
         resets_after_trigger=request.resets_after_trigger,
     )
     session.add(rule)
+    await session.flush()
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=request.tenant_id,
+            action="rule.created",
+            entity_type="rule",
+            entity_id=str(rule.id),
+            after_state={
+                "name": rule.name,
+                "rule_type": rule.rule_type,
+                "transaction_type": rule.transaction_type,
+                "reward_type": rule.reward_type,
+                "reward_value": str(rule.reward_value),
+            },
+            ip_address=ip_address,
+        )
+
     await session.commit()
     await session.refresh(rule)
     return rule

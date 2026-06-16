@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
@@ -22,16 +22,21 @@ router = APIRouter(prefix="/api/v1/rules", tags=["rules"])
 @router.post("", response_model=RuleOut, status_code=201)
 async def post_rule(
     request: RuleCreateRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> RuleOut:
     """Create a new rule (Pay-PRD-0530 to 0560).
 
     Admin-only — rules govern reward issuance. Requires `platform-admin`
-    role. Audit log writes land in Phase F.5.
+    role. Audit row recorded (Phase F.5, NFR-0250).
     """
-    _ = admin  # F.5 will use admin.id for audit_log writes
-    rule = await create_rule(session, request)
+    rule = await create_rule(
+        session,
+        request,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return RuleOut.model_validate(rule)
 
 

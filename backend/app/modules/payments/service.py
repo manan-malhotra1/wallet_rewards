@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.accounts.service import derive_balance
+from app.modules.audit.service import record_audit_for_user
 from app.modules.identity.service import resolve_identifier
 from app.modules.ledger import (
     LedgerEntryRequest,
@@ -112,6 +113,8 @@ async def p2p_transfer(
     amount: Decimal,
     currency: str,
     idempotency_key: str,
+    sender_principal: object | None = None,
+    ip_address: str | None = None,
 ) -> tuple[Transaction, UUID]:
     """Execute a peer-to-peer transfer between two users in the same tenant.
 
@@ -224,6 +227,28 @@ async def p2p_transfer(
             amount=amount,
         ),
     )
+
+    # NFR-0250: every P2P state change is audit-logged. Caller (router) passes
+    # a UserPrincipal; if absent (internal callers / seeds) we skip — the
+    # transaction itself is the financial record of truth.
+    from app.auth.principals import UserPrincipal
+
+    if isinstance(sender_principal, UserPrincipal):
+        record_audit_for_user(
+            session,
+            sender_principal,
+            action="p2p.transferred",
+            entity_type="transaction",
+            entity_id=str(txn.id),
+            after_state={
+                "amount": str(amount),
+                "currency": currency.upper(),
+                "recipient_user_id": str(recipient_user_id),
+                "status": txn.status,
+            },
+            ip_address=ip_address,
+        )
+        await session.commit()
 
     return txn, recipient_user_id
 

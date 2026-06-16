@@ -21,6 +21,7 @@ from app.auth.lockout import (
     register_failure,
     reset_failures,
 )
+from app.auth.principals import AdminPrincipal
 from app.auth.rate_limit import consume_otp_send_quota
 from app.auth.sessions import (
     REGTOKEN_TTL_SECONDS,
@@ -80,7 +81,13 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
         raise TenantNotFound()
 
 
-async def create_user(session: AsyncSession, request: CreateUserRequest) -> User:
+async def create_user(
+    session: AsyncSession,
+    request: CreateUserRequest,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> User:
     """Create a new user with one or more identifiers and optional profile.
 
     Tenant isolation is enforced by storing `tenant_id` on every related row.
@@ -90,6 +97,9 @@ async def create_user(session: AsyncSession, request: CreateUserRequest) -> User
     Args:
         session: Async DB session (NOT committed here — caller commits).
         request: Validated registration payload.
+        admin: Authenticated admin (audit context). Direct-registration is
+            admin-only after Phase F.4; absent for OTP-flow self-registration.
+        ip_address: Caller IP (audit context).
 
     Returns:
         The created User with identifiers and profile loaded.
@@ -139,6 +149,26 @@ async def create_user(session: AsyncSession, request: CreateUserRequest) -> User
                 raise IdentifierAlreadyInUse(ident.identifier_type) from exc
         # Fallback if we cannot pinpoint.
         raise IdentifierAlreadyInUse(request.identifiers[0].identifier_type) from exc
+
+    # NFR-0250: admin-initiated user creation is an audit event. Self-registration
+    # via the OTP flow does NOT call this function (it has its own audit hook
+    # in /pin/set landing in a follow-up phase).
+    if admin is not None:
+        from app.modules.audit.service import record_audit_for_admin
+
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=request.tenant_id,
+            action="user.registered.by_admin",
+            entity_type="user",
+            entity_id=str(user.id),
+            after_state={
+                "identifier_count": len(request.identifiers),
+                "has_profile": request.profile is not None,
+            },
+            ip_address=ip_address,
+        )
 
     await session.commit()
     return await _reload_user(session, user.id)

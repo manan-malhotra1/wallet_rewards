@@ -54,6 +54,7 @@ router = APIRouter(prefix="/api/v1/identity", tags=["identity"])
 @router.post("/users", response_model=UserOut, status_code=201)
 async def post_user(
     request: CreateUserRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> UserOut:
@@ -62,9 +63,14 @@ async def post_user(
     End-users register themselves via the OTP/PIN flow (/otp/send →
     /otp/verify → /pin/set). This endpoint is reserved for admin tooling
     (seeding, support recovery flows). Requires `platform-admin` role.
+    Audit row recorded (Phase F.5, NFR-0250).
     """
-    _ = admin  # F.5 will use admin.id for audit_log writes
-    user = await create_user(session, request)
+    user = await create_user(
+        session,
+        request,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return UserOut.model_validate(user)
 
 

@@ -7,7 +7,7 @@ endpoint (Pay-PRD-0320) lands later.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import UserPrincipal
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/v1/payments", tags=["payments"])
 @router.post("/p2p", response_model=P2PResponse, status_code=201)
 async def post_p2p(
     request: P2PRequest,
+    fastapi_request: Request,
     idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=255),
     session: AsyncSession = Depends(get_async_session),
     user: UserPrincipal = Depends(get_current_user),
@@ -60,6 +61,8 @@ async def post_p2p(
         amount=request.amount,
         currency=request.currency,
         idempotency_key=idempotency_key,
+        sender_principal=user,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
     )
 
     return P2PResponse(

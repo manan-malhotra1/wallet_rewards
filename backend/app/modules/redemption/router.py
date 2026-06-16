@@ -1,22 +1,22 @@
-"""Redemption module FastAPI router (Phase F.4 — auth-gated).
+"""Redemption module FastAPI router (Phase F.5).
 
 Endpoints:
-  - POST /api/v1/redemption/providers      — register a provider (admin)
-  - POST /api/v1/redemption/initiate       — user-facing redemption init (user)
-  - POST /api/v1/redemption/{id}/confirm   — provider success (admin, F.5→HMAC)
-  - POST /api/v1/redemption/{id}/fail      — provider failure (admin, F.5→HMAC)
-  - GET  /api/v1/redemption/{id}           — status lookup (user, tenant-scoped)
+  - POST /api/v1/redemption/providers                — register a provider (admin)
+  - POST /api/v1/redemption/initiate                  — user-facing redemption init (user)
+  - POST /api/v1/redemption/{id}/callback             — HMAC-verified provider callback
+  - POST /api/v1/redemption/{id}/confirm              — admin operator override
+  - POST /api/v1/redemption/{id}/fail                 — admin operator override
+  - GET  /api/v1/redemption/{id}                      — status lookup (user, tenant-scoped)
 
-Phase F.4 enforces:
-  - Admin endpoints require the `platform-admin` realm role.
-  - The user `/initiate` resolves user_id + tenant_id from the session token.
-  - The user `/{id}` GET is auth-gated and tenant-scoped via the session.
+Phase F.5 adds `/callback` — production provider callbacks land here with
+HMAC-signed bodies. `/confirm` + `/fail` remain admin-only operator
+overrides for when the provider can't or won't callback.
 """
 from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal, UserPrincipal
@@ -35,31 +35,40 @@ from app.modules.redemption.service import (
     fail_redemption,
     get_redemption,
     initiate_redemption,
+    process_provider_callback,
     register_provider,
 )
 
 router = APIRouter(prefix="/api/v1/redemption", tags=["redemption"])
 
 
+def _client_ip(request: Request) -> str | None:
+    """Return the caller's IP, or None when missing (test client)."""
+    return request.client.host if request.client else None
+
+
 @router.post("/providers", response_model=ProviderOut, status_code=201)
 async def post_provider(
     request: ProviderRegistrationRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> ProviderOut:
     """Register a redemption provider (Pay-PRD-0730).
 
     Admin-only — requires `platform-admin` realm role. Auto-creates the
-    associated provider_redemption_wallet account.
+    associated provider_redemption_wallet account. Audit row recorded.
     """
-    _ = admin  # F.5 will use admin.id for audit_log writes
-    provider = await register_provider(session, request)
+    provider = await register_provider(
+        session, request, admin=admin, ip_address=_client_ip(fastapi_request)
+    )
     return ProviderOut.model_validate(provider)
 
 
 @router.post("/initiate", response_model=RedemptionOut, status_code=201)
 async def post_initiate(
     request: InitiateRedemptionRequest,
+    fastapi_request: Request,
     idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=255),
     session: AsyncSession = Depends(get_async_session),
     user: UserPrincipal = Depends(get_current_user),
@@ -68,14 +77,44 @@ async def post_initiate(
 
     The redeeming user is the authenticated session holder — tenant_id +
     user_id come from the session token. The body carries only the
-    provider + amount.
+    provider + amount. Audit row recorded.
     """
     redemption = await initiate_redemption(
         session,
         tenant_id=user.tenant_id,
         user_id=user.id,
+        user=user,
+        ip_address=_client_ip(fastapi_request),
         request=request,
         idempotency_key=idempotency_key,
+    )
+    return RedemptionOut.model_validate(redemption)
+
+
+@router.post("/{redemption_id}/callback", response_model=RedemptionOut)
+async def post_callback(
+    redemption_id: UUID,
+    fastapi_request: Request,
+    signature: str = Header(..., alias="X-Sasai-Signature", min_length=1, max_length=2048),
+    session: AsyncSession = Depends(get_async_session),
+) -> RedemptionOut:
+    """HMAC-verified provider callback (Pay-PRD-0690 / 0700, Phase F.5).
+
+    The provider POSTs a `ProviderCallbackRequest` body signed with their
+    `shared_secret`. Verification happens against the RAW request body
+    bytes — read here BEFORE FastAPI's Pydantic parsing. The body itself
+    is parsed by the service AFTER the signature verifies, so a malformed
+    JSON body can never leak existence info ahead of the HMAC check.
+
+    No `Authorization` header is required: the HMAC IS the auth.
+    """
+    raw_body = await fastapi_request.body()
+    redemption = await process_provider_callback(
+        session,
+        redemption_id=redemption_id,
+        raw_body=raw_body,
+        signature_header=signature,
+        ip_address=_client_ip(fastapi_request),
     )
     return RedemptionOut.model_validate(redemption)
 
@@ -84,16 +123,23 @@ async def post_initiate(
 async def post_confirm(
     redemption_id: UUID,
     request: ConfirmRedemptionRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> RedemptionOut:
-    """Mark a PENDING redemption COMPLETED (simulates provider success).
+    """Admin operator override — mark a PENDING redemption COMPLETED.
 
-    Phase F.4: admin-gated. Phase F.5 replaces this with an HMAC-verified
-    provider-callback handler (Pay-PRD-0690).
+    Phase F.5: production traffic now lands at `/callback`. This endpoint
+    is retained as the manual escape hatch when the provider can't /
+    hasn't called back.
     """
-    _ = admin
-    redemption = await confirm_redemption(session, redemption_id, request)
+    redemption = await confirm_redemption(
+        session,
+        redemption_id,
+        request,
+        admin=admin,
+        ip_address=_client_ip(fastapi_request),
+    )
     return RedemptionOut.model_validate(redemption)
 
 
@@ -101,16 +147,21 @@ async def post_confirm(
 async def post_fail(
     redemption_id: UUID,
     request: FailRedemptionRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> RedemptionOut:
-    """Mark a PENDING redemption FAILED — restores the user's points.
+    """Admin operator override — mark a PENDING redemption FAILED.
 
-    Phase F.4: admin-gated. Phase F.5 replaces this with HMAC-verified
-    provider callback (Pay-PRD-0700).
+    Restores the user's points by reversing the PENDING ledger entries.
     """
-    _ = admin
-    redemption = await fail_redemption(session, redemption_id, request)
+    redemption = await fail_redemption(
+        session,
+        redemption_id,
+        request,
+        admin=admin,
+        ip_address=_client_ip(fastapi_request),
+    )
     return RedemptionOut.model_validate(redemption)
 
 
@@ -120,10 +171,6 @@ async def get_redemption_route(
     session: AsyncSession = Depends(get_async_session),
     user: UserPrincipal = Depends(get_current_user),
 ) -> RedemptionOut:
-    """Auth-gated redemption lookup — tenant-scoped by the session token.
-
-    The user can only fetch redemptions in their own tenant. Cross-tenant
-    access returns 404 (matches the tenant_isolation_test convention).
-    """
+    """Auth-gated redemption lookup — tenant-scoped by the session token."""
     redemption = await get_redemption(session, redemption_id, user.tenant_id)
     return RedemptionOut.model_validate(redemption)

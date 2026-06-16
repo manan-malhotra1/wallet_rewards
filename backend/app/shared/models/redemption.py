@@ -16,6 +16,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -76,6 +77,11 @@ class RedemptionProvider(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="active"
     )
+    # HMAC-SHA256 shared secret for verifying provider callback signatures
+    # (Phase F.5, Pay-PRD-0495). NULL = provider has no automated callback;
+    # all transitions must come through the admin `/confirm` + `/fail`
+    # operator overrides.
+    shared_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = created_at_col()
 
 

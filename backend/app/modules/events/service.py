@@ -17,6 +17,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.hmac import verify_signature
+from app.auth.principals import AdminPrincipal
+from app.modules.audit.service import record_audit_for_admin, record_audit_for_system
 from app.modules.events.normaliser import normalise
 from app.modules.events.schemas import (
     FiringOut,
@@ -30,6 +33,7 @@ from app.modules.rules.evaluator import (
     evaluate_active_rules_for_event,
 )
 from app.shared.exceptions import (
+    AppHTTPException,
     SourceKeyAlreadyInUse,
     TenantNotFound,
 )
@@ -55,13 +59,19 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
 
 
 async def register_source(
-    session: AsyncSession, request: SourceRegistrationRequest
+    session: AsyncSession,
+    request: SourceRegistrationRequest,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
 ) -> ExternalEventSource:
     """Idempotent-ish: registers a new source or 409 if source_key is taken.
 
     Args:
         session: Async DB session.
         request: Validated registration payload.
+        admin: Authenticated admin (audit context). Optional for internal callers.
+        ip_address: Caller IP (audit context).
 
     Returns:
         The persisted ExternalEventSource row.
@@ -81,10 +91,28 @@ async def register_source(
     )
     session.add(source)
     try:
-        await session.commit()
+        await session.flush()
     except IntegrityError as exc:
         await session.rollback()
         raise SourceKeyAlreadyInUse() from exc
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=request.tenant_id,
+            action="event_source.registered",
+            entity_type="external_event_source",
+            entity_id=str(source.id),
+            after_state={
+                "source_key": source.source_key,
+                "name": source.name,
+                "shared_secret_configured": source.shared_secret is not None,
+            },
+            ip_address=ip_address,
+        )
+
+    await session.commit()
     await session.refresh(source)
     return source
 
@@ -134,28 +162,34 @@ async def _log_rejected(
 
 
 async def process_external_event(
-    session: AsyncSession, raw: RawExternalEvent
+    session: AsyncSession,
+    raw: RawExternalEvent,
+    *,
+    raw_body: bytes | None = None,
+    signature_header: str | None = None,
 ) -> IngestResponse:
     """The full ingestion pipeline for one external event.
 
-    Steps (matches the Phase C threat model §2 data flow):
+    Steps (matches the Phase C threat model §2 data flow + Phase F.5 HMAC):
       1. Look up the source by source_key.
       2. Reject if source is missing, inactive, or belongs to another tenant.
-      3. (Future) HMAC verify when source.shared_secret is set.
+      3. HMAC verify when source.shared_secret is set (Phase F.5).
       4. Dedup via event_ingestion_log: try INSERT; on conflict return DUPLICATE.
       5. Normalise the event.
       6. Evaluate every active rule that could match.
       7. For each firing: issue_points_reward (writes reward_events + ledger).
       8. Commit (the ingestion log row, progress updates, and reward rows).
 
-    Idempotency at every layer:
-      - event_ingestion_log: UNIQUE(source_key, external_event_id)
-      - reward_events: UNIQUE(user_id, rule_id, triggering_event_id)
-      - ledger: post_transaction uses a deterministic idempotency_key
-
     Args:
         session: Async DB session.
         raw: Validated RawExternalEvent.
+        raw_body: Optional raw request/Kafka payload bytes. REQUIRED when the
+            source has a `shared_secret` configured — without these bytes we
+            can't compute the HMAC. Callers from trusted admin paths (the
+            admin-gated HTTP endpoint) can omit this; HMAC verify is then
+            skipped.
+        signature_header: Optional `X-Sasai-Signature` value. Same rules
+            as `raw_body`.
 
     Returns:
         IngestResponse describing the outcome and any rule firings.
@@ -179,9 +213,52 @@ async def process_external_event(
             rejection_reason="source_tenant_mismatch",
         )
 
-    # 3. (Phase F) HMAC verify when source.shared_secret is set.
-    #    For Phase C, this is a no-op when no secret is set; if a secret is
-    #    set, we still don't enforce — but log that this needs Phase F.
+    # 3. Phase F.5: HMAC verify when source.shared_secret is set.
+    #    If the source has no secret configured, HMAC is skipped (e.g. for
+    #    trusted internal sources or admin-gated test ingestion). If a
+    #    secret IS set but the caller didn't supply raw_body + signature, we
+    #    reject — silent skip would be a security regression.
+    if source.shared_secret:
+        if raw_body is None or signature_header is None:
+            await _log_rejected(session, raw, "integrity_check_missing")
+            record_audit_for_system(
+                session,
+                tenant_id=source.tenant_id,
+                actor_id=f"source:{source.source_key}",
+                action="event.rejected.integrity_failed",
+                entity_type="external_event",
+                entity_id=raw.event_id,
+                note="raw_body or signature header missing",
+            )
+            await session.commit()
+            return IngestResponse(
+                outcome="rejected",
+                event_id=raw.event_id,
+                rejection_reason="integrity_check_missing",
+            )
+        try:
+            verify_signature(
+                header=signature_header,
+                raw_body=raw_body,
+                secret=source.shared_secret,
+            )
+        except AppHTTPException as exc:
+            await _log_rejected(session, raw, "integrity_check_failed")
+            record_audit_for_system(
+                session,
+                tenant_id=source.tenant_id,
+                actor_id=f"source:{source.source_key}",
+                action="event.rejected.integrity_failed",
+                entity_type="external_event",
+                entity_id=raw.event_id,
+                note=exc.error_code,
+            )
+            await session.commit()
+            return IngestResponse(
+                outcome="rejected",
+                event_id=raw.event_id,
+                rejection_reason="integrity_check_failed",
+            )
 
     # 4. Dedup via the unique constraint on event_ingestion_log.
     log_row = EventIngestionLog(

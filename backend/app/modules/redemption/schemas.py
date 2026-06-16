@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,6 +15,10 @@ class ProviderRegistrationRequest(BaseModel):
     Creates the provider row AND the associated provider_redemption_wallet
     account (in PTS) atomically. `tenant_id` is in the body because
     Keycloak admins span tenants (matches the reconciliation router pattern).
+
+    `shared_secret` (Phase F.5) is the HMAC-SHA256 key the provider uses
+    to sign callback payloads. NULL = provider does not callback; all
+    transitions must come through the admin operator override endpoints.
     """
 
     tenant_id: UUID
@@ -22,6 +27,9 @@ class ProviderRegistrationRequest(BaseModel):
     max_retries: int = Field(default=3, ge=0, le=20)
     retry_interval_secs: int = Field(default=300, ge=1)
     escalate_after_mins: int = Field(default=60, ge=1)
+    # Min 32 chars so a low-entropy secret can't slip in; max 1024 is plenty
+    # of headroom for any reasonable HMAC key.
+    shared_secret: str | None = Field(default=None, min_length=32, max_length=1024)
 
 
 class ProviderOut(BaseModel):
@@ -65,12 +73,27 @@ class ConfirmRedemptionRequest(BaseModel):
 class FailRedemptionRequest(BaseModel):
     """Admin payload simulating provider failure (Pay-PRD-0700).
 
-    Same auth gate as ConfirmRedemptionRequest. Phase F.5 replaces this with
-    real provider HMAC.
+    Same auth gate as ConfirmRedemptionRequest. Phase F.5 added the real
+    HMAC-verified provider callback (`/callback`); these `/confirm` and
+    `/fail` admin endpoints remain as operator overrides.
     """
 
     tenant_id: UUID
     reason: str = Field(min_length=1, max_length=500)
+
+
+class ProviderCallbackRequest(BaseModel):
+    """HMAC-verified provider callback payload (Phase F.5, Pay-PRD-0690/0700).
+
+    The provider POSTs this body with an `X-Sasai-Signature` header. The
+    router verifies the signature against `provider.shared_secret` BEFORE
+    Pydantic parses this schema — Pydantic-normalised bytes would invalidate
+    the HMAC.
+    """
+
+    outcome: Literal["completed", "failed"]
+    external_reference: str | None = Field(default=None, max_length=255)
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class RedemptionOut(BaseModel):

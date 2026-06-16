@@ -1,4 +1,4 @@
-"""Redemption service — provider registration, initiate, confirm, fail.
+"""Redemption service — provider registration, initiate, confirm, fail, callback.
 
 Initiate follows the same overdraft pattern as P2P (Phase B):
     1. Lock user.points_account (SELECT FOR UPDATE)
@@ -10,6 +10,9 @@ Initiate follows the same overdraft pattern as P2P (Phase B):
 Confirm flips the ledger entries PENDING -> COMPLETED (Pay-PRD-0690).
 Fail flips them PENDING -> REVERSED (Pay-PRD-0700) — restoring the user's
 available balance because REVERSED entries don't count in derive_balance.
+
+Phase F.5 adds `process_provider_callback` — the HMAC-verified production
+entrypoint. Confirm/fail remain as admin operator overrides.
 """
 from __future__ import annotations
 
@@ -19,7 +22,14 @@ from uuid import UUID, uuid4
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.hmac import verify_signature
+from app.auth.principals import AdminPrincipal, UserPrincipal
 from app.modules.accounts.service import derive_balance
+from app.modules.audit.service import (
+    record_audit_for_admin,
+    record_audit_for_system,
+    record_audit_for_user,
+)
 from app.modules.ledger import (
     LedgerEntryRequest,
     PostTransactionRequest,
@@ -38,6 +48,7 @@ from app.shared.exceptions import (
     RedemptionNotPending,
     RedemptionProviderInactive,
     RedemptionProviderNotFound,
+    SignatureNotConfigured,
     TenantNotFound,
     UserPointsAccountMissing,
 )
@@ -112,7 +123,11 @@ async def _lock_account_for_update(
 
 
 async def register_provider(
-    session: AsyncSession, request: ProviderRegistrationRequest
+    session: AsyncSession,
+    request: ProviderRegistrationRequest,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
 ) -> RedemptionProvider:
     """Register a provider — auto-creates its provider_redemption_wallet.
 
@@ -121,6 +136,8 @@ async def register_provider(
     Args:
         session: Async DB session.
         request: Validated registration payload.
+        admin: Authenticated admin (audit context). Optional for internal callers.
+        ip_address: Caller IP (audit context).
 
     Returns:
         The persisted RedemptionProvider with `redemption_wallet_account_id`
@@ -149,8 +166,27 @@ async def register_provider(
         max_retries=request.max_retries,
         retry_interval_secs=request.retry_interval_secs,
         escalate_after_mins=request.escalate_after_mins,
+        shared_secret=request.shared_secret,
     )
     session.add(provider)
+    await session.flush()
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=request.tenant_id,
+            action="provider.registered",
+            entity_type="redemption_provider",
+            entity_id=str(provider.id),
+            after_state={
+                "name": provider.name,
+                "max_retries": provider.max_retries,
+                "shared_secret_configured": provider.shared_secret is not None,
+            },
+            ip_address=ip_address,
+        )
+
     await session.commit()
     await session.refresh(provider)
     return provider
@@ -182,6 +218,8 @@ async def initiate_redemption(
     *,
     tenant_id: UUID,
     user_id: UUID,
+    user: UserPrincipal | None = None,
+    ip_address: str | None = None,
     request: InitiateRedemptionRequest,
     idempotency_key: str,
 ) -> Redemption:
@@ -287,6 +325,39 @@ async def initiate_redemption(
         idempotency_key=idempotency_key,
     )
     session.add(redemption)
+    await session.flush()
+
+    # NFR-0250: redemption initiation is a state change that must be audit-logged.
+    # The user fixture may not be supplied (e.g. internal callers / seeds);
+    # fall back to system actor when absent.
+    if user is not None:
+        record_audit_for_user(
+            session,
+            user,
+            action="redemption.initiated",
+            entity_type="redemption",
+            entity_id=str(redemption.id),
+            after_state={
+                "status": redemption.status,
+                "points_amount": str(redemption.points_amount),
+                "provider_id": str(provider.id),
+            },
+            ip_address=ip_address,
+        )
+    else:
+        record_audit_for_system(
+            session,
+            tenant_id=tenant_id,
+            action="redemption.initiated",
+            entity_type="redemption",
+            entity_id=str(redemption.id),
+            after_state={
+                "status": redemption.status,
+                "points_amount": str(redemption.points_amount),
+                "provider_id": str(provider.id),
+            },
+        )
+
     await session.commit()
     await session.refresh(redemption)
     return redemption
@@ -315,20 +386,83 @@ async def _find_redemption_for_transition(
     return redemption
 
 
+def _redemption_audit_snapshot(redemption: Redemption) -> dict:
+    """Compact JSON-safe snapshot of the audit-relevant redemption fields."""
+    return {
+        "status": redemption.status,
+        "retry_count": redemption.retry_count,
+        "external_reference": redemption.external_reference,
+        "failure_reason": redemption.failure_reason,
+    }
+
+
+async def _apply_completed_transition(
+    session: AsyncSession, redemption: Redemption, external_reference: str | None
+) -> None:
+    """Flip a PENDING redemption + its ledger entries to COMPLETED.
+
+    Caller is responsible for the commit so audit_log rows can land
+    atomically with the state change.
+    """
+    # Per ledger-invariants.md §1, ledger_entries.status is the ONE field
+    # that may change — flip via UPDATE on the parent transaction's entries.
+    await session.execute(
+        update(LedgerEntry)
+        .where(LedgerEntry.transaction_id == redemption.transaction_id)
+        .values(status=ENTRY_STATUS_COMPLETED)
+    )
+    await session.execute(
+        update(Transaction)
+        .where(Transaction.id == redemption.transaction_id)
+        .values(status=TXN_STATUS_COMPLETED)
+    )
+    redemption.status = REDEMPTION_STATUS_COMPLETED
+    redemption.external_reference = external_reference
+    redemption.completed_at = datetime.now(UTC)
+
+
+async def _apply_failed_transition(
+    session: AsyncSession, redemption: Redemption, reason: str
+) -> None:
+    """Flip a PENDING redemption + its ledger entries to FAILED/REVERSED.
+
+    REVERSED ledger entries are excluded from `derive_balance`, so the
+    user's available balance restores immediately.
+    """
+    await session.execute(
+        update(LedgerEntry)
+        .where(LedgerEntry.transaction_id == redemption.transaction_id)
+        .values(status=ENTRY_STATUS_REVERSED)
+    )
+    await session.execute(
+        update(Transaction)
+        .where(Transaction.id == redemption.transaction_id)
+        .values(status=TXN_STATUS_REVERSED)
+    )
+    redemption.status = REDEMPTION_STATUS_FAILED
+    redemption.failure_reason = reason
+
+
 async def confirm_redemption(
     session: AsyncSession,
     redemption_id: UUID,
     request: ConfirmRedemptionRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> Redemption:
-    """Mark a PENDING redemption COMPLETED (Pay-PRD-0690).
+    """Admin operator override — mark a PENDING redemption COMPLETED.
 
-    Flips the two ledger entries from PENDING to COMPLETED, the transaction
-    from PENDING to COMPLETED, and the redemption row to COMPLETED.
+    Pay-PRD-0690. Phase F.5: HMAC-verified provider callbacks land via
+    `process_provider_callback`; this endpoint is the manual escape hatch
+    when the provider can't / hasn't called back.
 
     Args:
         session: Async DB session.
         redemption_id: UUID from the URL path.
         request: Carries tenant_id + optional external_reference.
+        admin: Authenticated admin principal (for the audit_log entry).
+        ip_address: Caller IP (audit context).
 
     Returns:
         The updated Redemption (status COMPLETED).
@@ -340,23 +474,20 @@ async def confirm_redemption(
     redemption = await _find_redemption_for_transition(
         session, redemption_id, request.tenant_id
     )
-
-    # Flip ledger entries PENDING -> COMPLETED. The status field on
-    # ledger_entries is the ONE thing that may change (see ledger-invariants.md).
-    await session.execute(
-        update(LedgerEntry)
-        .where(LedgerEntry.transaction_id == redemption.transaction_id)
-        .values(status=ENTRY_STATUS_COMPLETED)
+    before = _redemption_audit_snapshot(redemption)
+    await _apply_completed_transition(session, redemption, request.external_reference)
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=redemption.tenant_id,
+        action="redemption.confirmed.by_admin",
+        entity_type="redemption",
+        entity_id=str(redemption.id),
+        before_state=before,
+        after_state=_redemption_audit_snapshot(redemption),
+        ip_address=ip_address,
+        note="Operator override — provider callback bypassed.",
     )
-    await session.execute(
-        update(Transaction)
-        .where(Transaction.id == redemption.transaction_id)
-        .values(status=TXN_STATUS_COMPLETED)
-    )
-
-    redemption.status = REDEMPTION_STATUS_COMPLETED
-    redemption.external_reference = request.external_reference
-    redemption.completed_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(redemption)
     return redemption
@@ -366,17 +497,22 @@ async def fail_redemption(
     session: AsyncSession,
     redemption_id: UUID,
     request: FailRedemptionRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> Redemption:
-    """Mark a PENDING redemption FAILED (Pay-PRD-0700) — restores user points.
+    """Admin operator override — mark a PENDING redemption FAILED.
 
-    Flips the two ledger entries from PENDING to REVERSED. REVERSED entries
-    are excluded from `derive_balance`, so the user's available balance
-    is restored immediately.
+    Pay-PRD-0700. Restores the user's points by REVERSING the PENDING
+    ledger entries. Phase F.5 makes this an operator-only path; provider-
+    initiated failures go through `process_provider_callback`.
 
     Args:
         session: Async DB session.
         redemption_id: UUID from the URL path.
         request: Carries tenant_id + reason.
+        admin: Authenticated admin principal (for the audit_log entry).
+        ip_address: Caller IP (audit context).
 
     Returns:
         The updated Redemption (status FAILED).
@@ -384,20 +520,138 @@ async def fail_redemption(
     redemption = await _find_redemption_for_transition(
         session, redemption_id, request.tenant_id
     )
-
-    await session.execute(
-        update(LedgerEntry)
-        .where(LedgerEntry.transaction_id == redemption.transaction_id)
-        .values(status=ENTRY_STATUS_REVERSED)
+    before = _redemption_audit_snapshot(redemption)
+    await _apply_failed_transition(session, redemption, request.reason)
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=redemption.tenant_id,
+        action="redemption.failed.by_admin",
+        entity_type="redemption",
+        entity_id=str(redemption.id),
+        before_state=before,
+        after_state=_redemption_audit_snapshot(redemption),
+        ip_address=ip_address,
+        note=request.reason,
     )
-    await session.execute(
-        update(Transaction)
-        .where(Transaction.id == redemption.transaction_id)
-        .values(status=TXN_STATUS_REVERSED)
+    await session.commit()
+    await session.refresh(redemption)
+    return redemption
+
+
+# -----------------------------------------------------------------------------
+# Provider callback (Phase F.5)
+# -----------------------------------------------------------------------------
+
+
+async def process_provider_callback(
+    session: AsyncSession,
+    *,
+    redemption_id: UUID,
+    raw_body: bytes,
+    signature_header: str,
+    ip_address: str | None = None,
+) -> Redemption:
+    """HMAC-verified provider callback (Pay-PRD-0690 / 0700).
+
+    Flow:
+      1. Look up redemption by id (not tenant-scoped — we don't know tenant
+         until after HMAC verifies).
+      2. Look up provider → require `shared_secret` set.
+      3. Verify HMAC against the raw body. On failure raise — exception
+         handler returns 401.
+      4. Parse the body INTO `ProviderCallbackRequest` (only after verify,
+         so an attacker can't trigger 422 before the auth check).
+      5. Reject if redemption already terminal (RedemptionNotPending → 409).
+      6. Apply the requested transition; record audit_log entry; commit.
+
+    Args:
+        session: Async DB session.
+        redemption_id: UUID from the URL path.
+        raw_body: Raw bytes of the request body (BEFORE Pydantic parsing).
+        signature_header: Value of the `X-Sasai-Signature` header.
+        ip_address: Caller IP (audit context; usually a load balancer for
+            server-to-server callbacks).
+
+    Returns:
+        The updated Redemption.
+
+    Raises:
+        RedemptionNotFound: 404 — unknown redemption_id.
+        SignatureNotConfigured: 401 — provider has no shared_secret set.
+        SignatureMissing/Malformed/TimestampSkew/Invalid: 401 — HMAC fails.
+        RedemptionNotPending: 409 — redemption already terminal.
+    """
+    import json
+
+    from app.modules.redemption.schemas import ProviderCallbackRequest
+
+    redemption = (await session.execute(
+        select(Redemption).where(Redemption.id == redemption_id)
+    )).scalar_one_or_none()
+    if redemption is None:
+        raise RedemptionNotFound()
+
+    provider = (await session.execute(
+        select(RedemptionProvider).where(
+            RedemptionProvider.id == redemption.provider_id
+        )
+    )).scalar_one()
+
+    if not provider.shared_secret:
+        # Provider exists but isn't wired for HMAC callbacks; operators must
+        # use the admin /confirm + /fail endpoints instead.
+        raise SignatureNotConfigured()
+
+    # Verify BEFORE doing any further work — fails loud on bad signature.
+    # On failure: exception handler returns 401; no parsing leaks happen.
+    verify_signature(
+        header=signature_header,
+        raw_body=raw_body,
+        secret=provider.shared_secret,
     )
 
-    redemption.status = REDEMPTION_STATUS_FAILED
-    redemption.failure_reason = request.reason
+    # Parse + validate the body only after the signature passes.
+    payload = json.loads(raw_body or b"{}")
+    callback = ProviderCallbackRequest.model_validate(payload)
+
+    # Status guard — already terminal redemptions are no-ops for replay safety.
+    if redemption.status != REDEMPTION_STATUS_PENDING:
+        raise RedemptionNotPending(redemption.status)
+
+    before = _redemption_audit_snapshot(redemption)
+    if callback.outcome == "completed":
+        await _apply_completed_transition(
+            session, redemption, callback.external_reference
+        )
+        action = "redemption.confirmed.by_provider"
+        note = callback.external_reference
+    else:
+        # Default reason if the provider didn't send one — never blank to
+        # keep the audit row queryable.
+        await _apply_failed_transition(
+            session, redemption, callback.reason or "provider_failed"
+        )
+        action = "redemption.failed.by_provider"
+        note = callback.reason
+
+    record_audit_for_system(
+        session,
+        tenant_id=redemption.tenant_id,
+        actor_id=f"provider:{provider.id}",
+        action=action,
+        entity_type="redemption",
+        entity_id=str(redemption.id),
+        before_state=before,
+        after_state=_redemption_audit_snapshot(redemption),
+        note=note,
+    )
+    # ip_address is intentionally not stored on the audit row for system
+    # actors — provider callbacks come from server-to-server traffic where
+    # the source IP is the load balancer, not the provider itself. Kept in
+    # the signature for symmetry + future use.
+    _ = ip_address
+
     await session.commit()
     await session.refresh(redemption)
     return redemption

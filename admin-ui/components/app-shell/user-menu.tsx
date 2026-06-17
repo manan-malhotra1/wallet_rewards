@@ -1,12 +1,19 @@
 /**
  * UserMenu — operator identity + sign-out. Styled with semantic tokens.
+ *
+ * Signout uses `next-auth/react`'s client-side `signOut` rather than a
+ * server-action <form action> inside the dropdown. Reason: Radix closes
+ * the menu (unmounting the Portal'd Content) on click, and React 19's
+ * server-action form loses its host element before the NEXT_REDIRECT
+ * response is applied — the click looks like a silent no-op. The client
+ * helper makes its own fetch + navigation, independent of the menu's
+ * lifecycle.
  */
 "use client";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { LogOut, User } from "lucide-react";
-
-import { signOutAction } from "@/app/(authenticated)/_actions";
+import { signOut } from "next-auth/react";
 
 import type { TopbarUser } from "./topbar";
 
@@ -49,17 +56,19 @@ export function UserMenu({ user }: { user: TopbarUser }) {
             </div>
           </div>
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
-          <form action={signOutAction}>
-            <DropdownMenu.Item asChild>
-              <button
-                type="submit"
-                className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                Sign out
-              </button>
-            </DropdownMenu.Item>
-          </form>
+          <DropdownMenu.Item
+            onSelect={(event) => {
+              // Keep Radix from auto-closing the menu before we've kicked
+              // off the signout fetch; `signOut` handles its own redirect
+              // to /login when it completes.
+              event.preventDefault();
+              void signOut({ callbackUrl: "/login" });
+            }}
+            className="flex w-full cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm text-foreground outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Sign out
+          </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

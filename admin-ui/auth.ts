@@ -5,12 +5,18 @@
  * `signIn`, and `signOut`. Wires next-auth to the Keycloak realm
  * `wallet-platform` provisioned by `scripts/bootstrap_keycloak.py`.
  *
- * Important: we cache the Keycloak `access_token` on the session so server
- * components can forward it to the backend FastAPI service. Refresh-on-
- * expiry uses the standard refresh-token grant.
+ * Login UX: we use the Credentials provider so the form lives in the admin
+ * UI itself (no redirect to Keycloak's hosted login screen). The
+ * `authorize()` callback exchanges username + password for tokens via
+ * Keycloak's Direct Access Grants (password) endpoint, then surfaces the
+ * access token, refresh token, and realm roles onto the next-auth session.
+ *
+ * Trade-off: direct-grant bypasses Keycloak's MFA / consent screens. We
+ * accept this for an admin app gated behind the operator VPN; the backend
+ * still independently validates every JWT it sees.
  */
 import NextAuth, { type DefaultSession } from "next-auth";
-import Keycloak from "next-auth/providers/keycloak";
+import Credentials from "next-auth/providers/credentials";
 
 declare module "next-auth" {
   /**
@@ -30,6 +36,19 @@ declare module "next-auth" {
   }
 
   /**
+   * Augment the User object returned by the Credentials `authorize()`
+   * callback. These fields are read on initial sign-in inside the `jwt`
+   * callback and persisted onto the JWT.
+   */
+  interface User {
+    username?: string;
+    roles?: string[];
+    accessToken?: string;
+    refreshToken?: string;
+    accessTokenExpiresAt?: number;
+  }
+
+  /**
    * Augment the JWT we persist between requests with refresh-token state.
    * In next-auth v5 the JWT shape is exposed via the top-level `next-auth`
    * module declaration (no separate `next-auth/jwt` augmentation needed).
@@ -45,14 +64,33 @@ declare module "next-auth" {
 }
 
 /**
- * Build a Keycloak token-endpoint URL for the configured realm. We don't
- * use the discovery doc because next-auth's Keycloak provider already
- * handles initial sign-in; we hit `token` directly for refresh.
+ * Build a Keycloak token-endpoint URL for the configured realm. Used for
+ * both the initial password grant (sign-in) and the refresh-token grant.
  */
 function tokenUrl(): string {
   const base = process.env.KEYCLOAK_URL ?? "http://localhost:8080";
   const realm = process.env.KEYCLOAK_REALM ?? "wallet-platform";
   return `${base}/realms/${realm}/protocol/openid-connect/token`;
+}
+
+/**
+ * Decode the payload of a JWT without verifying its signature.
+ *
+ * Safe here because the token was just returned by Keycloak in the same
+ * request — we trust it for session metadata extraction only. The backend
+ * re-validates every JWT against Keycloak's JWKS on every API call.
+ *
+ * Edge-runtime compatible: uses `atob` + `TextDecoder` instead of `Buffer`,
+ * so this module can be imported by `middleware.ts` without an Edge-
+ * incompatibility build error.
+ */
+function decodeJwtPayload(jwt: string): Record<string, unknown> {
+  const segment = jwt.split(".")[1] ?? "";
+  const base64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 /**
@@ -98,39 +136,110 @@ async function refreshAccessToken(token: {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
-    Keycloak({
-      clientId: process.env.KEYCLOAK_CLIENT_ID ?? "admin-ui",
-      clientSecret: process.env.KEYCLOAK_CLIENT_SECRET ?? "",
-      issuer: `${process.env.KEYCLOAK_URL ?? "http://localhost:8080"}/realms/${process.env.KEYCLOAK_REALM ?? "wallet-platform"}`,
+    Credentials({
+      // Field names here are informational only — the credentials are
+      // submitted via our own form on `/login`. We pass the user-entered
+      // value through to Keycloak's `username` parameter; Keycloak resolves
+      // it against either the username or the email of the realm user
+      // (`loginWithEmailAllowed` is on by default).
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      /**
+       * Exchange the operator's email + password for Keycloak tokens via
+       * the Direct Access Grants (password) endpoint. Returning `null`
+       * causes next-auth to surface a `CredentialsSignin` error which the
+       * login form renders as "invalid credentials".
+       */
+      async authorize(credentials) {
+        const email = String(credentials?.email ?? "").trim();
+        const password = String(credentials?.password ?? "");
+        if (!email || !password) {
+          return null;
+        }
+        const params = new URLSearchParams({
+          grant_type: "password",
+          client_id: process.env.KEYCLOAK_CLIENT_ID ?? "admin-ui",
+          client_secret: process.env.KEYCLOAK_CLIENT_SECRET ?? "",
+          username: email,
+          password,
+          scope: "openid",
+        });
+        let res: Response;
+        try {
+          res = await fetch(tokenUrl(), {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: params,
+            cache: "no-store",
+          });
+        } catch {
+          // Keycloak unreachable — treat as a sign-in failure rather than
+          // crashing the auth route. The form will show a generic error.
+          return null;
+        }
+        if (!res.ok) {
+          // 401 invalid_grant (wrong creds), 400 (disabled user), etc.
+          return null;
+        }
+        const data = (await res.json()) as {
+          access_token: string;
+          refresh_token: string;
+          expires_in: number;
+        };
+        const claims = decodeJwtPayload(data.access_token) as {
+          sub?: string;
+          preferred_username?: string;
+          email?: string;
+          name?: string;
+          realm_access?: { roles?: string[] };
+        };
+        return {
+          id: claims.sub ?? "",
+          email: claims.email,
+          name: claims.name,
+          username: claims.preferred_username,
+          roles: claims.realm_access?.roles ?? [],
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          accessTokenExpiresAt:
+            Math.floor(Date.now() / 1000) + data.expires_in,
+        };
+      },
     }),
   ],
   pages: {
-    // Route unauthenticated browsers to our own login page (which renders a
-    // single "Sign in with Keycloak" button) rather than next-auth's
-    // default form. Cleaner branding + a single integration test target.
+    // Route unauthenticated browsers to our in-app login form (no Keycloak
+    // hosted page redirect).
     signIn: "/login",
   },
   session: { strategy: "jwt" },
   callbacks: {
     /**
      * Persist the Keycloak access token + realm roles onto the next-auth
-     * JWT. Runs on initial sign-in and every subsequent JWT validation.
+     * JWT. On initial sign-in next-auth passes the `User` object returned
+     * by `authorize()`; on subsequent calls only `token` is set, and we
+     * refresh against Keycloak when the access token is near expiry.
      */
-    async jwt({ token, account, profile }) {
-      if (account && profile) {
-        token.accessToken = account.access_token;
-        token.refreshToken = account.refresh_token;
-        token.accessTokenExpiresAt = account.expires_at;
-        // Keycloak puts realm roles in `realm_access.roles`. We surface
-        // them to the session so the UI can hide/show admin-only actions.
-        const realmAccess = (profile as { realm_access?: { roles?: string[] } })
-          .realm_access;
-        token.roles = realmAccess?.roles ?? [];
-        token.username =
-          (profile as { preferred_username?: string }).preferred_username ??
-          profile.name ?? undefined;
-        token.email = (profile.email as string | undefined) ?? token.email;
-        token.sub = profile.sub as string | undefined;
+    async jwt({ token, user }) {
+      if (user) {
+        const u = user as {
+          id: string;
+          email?: string;
+          username?: string;
+          roles?: string[];
+          accessToken?: string;
+          refreshToken?: string;
+          accessTokenExpiresAt?: number;
+        };
+        token.accessToken = u.accessToken;
+        token.refreshToken = u.refreshToken;
+        token.accessTokenExpiresAt = u.accessTokenExpiresAt;
+        token.roles = u.roles ?? [];
+        token.username = u.username;
+        token.email = u.email ?? token.email;
+        token.sub = u.id;
         return token;
       }
       // Token already exists: refresh if it's about to expire (30s safety

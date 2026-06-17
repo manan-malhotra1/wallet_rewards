@@ -99,6 +99,57 @@ async def list_rules_for_tenant(
     return list(result.scalars().all())
 
 
+async def list_rule_performance_for_tenant(
+    session: AsyncSession, *, tenant_id: UUID
+) -> list[RulePerformanceOut]:
+    """Aggregate `reward_events` for every rule in the tenant — one query.
+
+    Single SQL round-trip with `LEFT JOIN reward_events ON rule_id` and
+    `GROUP BY Rule.id`. Rules that have never fired appear with all-zero
+    metrics (LEFT JOIN preserves them; `count(reward_event.id)` returns
+    0 because COUNT ignores NULLs). Tenant scoping is enforced via the
+    WHERE on `Rule.tenant_id` (NFR-0220).
+
+    Exists to avoid the N+1 the per-rule endpoint creates when the
+    campaigns list page is rendered for a tenant with many rules.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Caller's tenant scope.
+
+    Returns:
+        One `RulePerformanceOut` per rule in the tenant, newest rule
+        first. Empty tenants return `[]`.
+    """
+    stmt = (
+        select(
+            Rule.id,
+            func.count(RewardEvent.id),
+            func.count(func.distinct(RewardEvent.user_id)),
+            func.coalesce(func.sum(RewardEvent.reward_value), 0),
+            func.min(RewardEvent.created_at),
+            func.max(RewardEvent.created_at),
+        )
+        .select_from(Rule)
+        .outerjoin(RewardEvent, RewardEvent.rule_id == Rule.id)
+        .where(Rule.tenant_id == tenant_id)
+        .group_by(Rule.id)
+        .order_by(Rule.created_at.desc())
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        RulePerformanceOut(
+            rule_id=rule_id,
+            total_fires=int(total_fires or 0),
+            unique_users_rewarded=int(unique_users or 0),
+            total_reward_value=Decimal(str(total_value or 0)),
+            first_fired_at=first_at,
+            last_fired_at=last_at,
+        )
+        for rule_id, total_fires, unique_users, total_value, first_at, last_at in rows
+    ]
+
+
 async def get_rule_performance(
     session: AsyncSession, *, tenant_id: UUID, rule_id: UUID
 ) -> RulePerformanceOut:

@@ -21,6 +21,7 @@ from app.modules.rules.schemas import (
 from app.modules.rules.service import (
     create_rule,
     get_rule_performance,
+    list_rule_performance_for_tenant,
     list_rules_for_tenant,
 )
 
@@ -58,6 +59,23 @@ async def get_rules(
     _ = admin
     rules = await list_rules_for_tenant(session, tenant_id)
     return [RuleOut.model_validate(r) for r in rules]
+
+
+@router.get("/performance", response_model=list[RulePerformanceOut])
+async def get_performance_batch(
+    tenant_id: UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[RulePerformanceOut]:
+    """Batch campaign performance for every rule in the tenant.
+
+    One SQL round-trip; rules with zero fires appear with zero metrics
+    (LEFT JOIN). Backs the campaigns list page — kept distinct from the
+    per-rule endpoint, which the campaign-detail drawer will still use.
+    Admin-only.
+    """
+    _ = admin
+    return await list_rule_performance_for_tenant(session, tenant_id=tenant_id)
 
 
 @router.get("/{rule_id}/performance", response_model=RulePerformanceOut)

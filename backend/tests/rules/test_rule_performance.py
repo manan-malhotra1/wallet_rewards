@@ -1,10 +1,11 @@
-"""Tests for GET /api/v1/rules/{rule_id}/performance (campaign metrics).
+"""Tests for the campaign-performance endpoints (single + batch).
 
 Covers:
-  - Happy path: empty rule returns zeros + null timestamps
-  - Happy path: rule with N fires across M users returns those counts
-  - 404 on unknown rule_id
-  - 404 on cross-tenant access (no metric leak)
+  - Per-rule GET /api/v1/rules/{rule_id}/performance:
+      happy path empty / non-empty, 404 unknown / cross-tenant, 422 malformed UUID.
+  - Batch GET /api/v1/rules/performance:
+      happy path with mixed fire counts, zero-fire rules included via LEFT JOIN,
+      tenant isolation, empty tenant returns [].
   - 401 / 403 are inherited from the admin auth dependency — covered
     by the existing rules router auth tests, not re-asserted here.
 
@@ -165,3 +166,104 @@ async def test_performance_malformed_rule_id_returns_422(
         params={"tenant_id": str(test_tenant.id)},
     )
     assert response.status_code == 422
+
+
+# -- Batch endpoint -----------------------------------------------------------
+# GET /api/v1/rules/performance returns one row per rule in the tenant in a
+# single SQL round-trip. The campaigns list page calls this instead of the
+# per-rule endpoint to avoid an N+1 once tenants scale past ~100 rules.
+
+
+@pytest.mark.asyncio
+async def test_list_performance_aggregates_every_rule_in_tenant(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+) -> None:
+    """Three rules with mixed activity → batch returns one row per rule
+    with correct aggregates, including a zero-fire rule via LEFT JOIN."""
+    busy_rule = await _create_rule(async_client, str(test_tenant.id), "Busy")
+    quiet_rule = await _create_rule(async_client, str(test_tenant.id), "Quiet")
+    silent_rule = await _create_rule(async_client, str(test_tenant.id), "Silent")
+
+    second_user = User(tenant_id=test_tenant.id)
+    db_session.add(second_user)
+    await db_session.commit()
+    await db_session.refresh(second_user)
+
+    # busy_rule: 3 fires, 2 users, 600 total.
+    await _seed_reward_events(
+        db_session,
+        rule_id=busy_rule,
+        fires=[
+            (test_user, Decimal("100")),
+            (test_user, Decimal("200")),
+            (second_user, Decimal("300")),
+        ],
+    )
+    # quiet_rule: 1 fire, 1 user, 50 total.
+    await _seed_reward_events(
+        db_session,
+        rule_id=quiet_rule,
+        fires=[(test_user, Decimal("50"))],
+    )
+    # silent_rule: no events → must still appear with zeros.
+
+    response = await async_client.get(
+        "/api/v1/rules/performance",
+        params={"tenant_id": str(test_tenant.id)},
+    )
+    assert response.status_code == 200, response.text
+    rows = {row["rule_id"]: row for row in response.json()}
+
+    assert set(rows) == {busy_rule, quiet_rule, silent_rule}
+
+    assert rows[busy_rule]["total_fires"] == 3
+    assert rows[busy_rule]["unique_users_rewarded"] == 2
+    assert Decimal(rows[busy_rule]["total_reward_value"]) == Decimal("600")
+    assert rows[busy_rule]["first_fired_at"] is not None
+    assert rows[busy_rule]["last_fired_at"] is not None
+
+    assert rows[quiet_rule]["total_fires"] == 1
+    assert rows[quiet_rule]["unique_users_rewarded"] == 1
+    assert Decimal(rows[quiet_rule]["total_reward_value"]) == Decimal("50")
+
+    assert rows[silent_rule]["total_fires"] == 0
+    assert rows[silent_rule]["unique_users_rewarded"] == 0
+    assert Decimal(rows[silent_rule]["total_reward_value"]) == Decimal("0")
+    assert rows[silent_rule]["first_fired_at"] is None
+    assert rows[silent_rule]["last_fired_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_performance_isolates_by_tenant(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    other_tenant: Tenant,
+) -> None:
+    """Caller scoped to tenant A never sees tenant B's rules (NFR-0220)."""
+    a_rule = await _create_rule(async_client, str(test_tenant.id), "A-only")
+    b_rule = await _create_rule(async_client, str(other_tenant.id), "B-only")
+
+    response = await async_client.get(
+        "/api/v1/rules/performance",
+        params={"tenant_id": str(test_tenant.id)},
+    )
+    assert response.status_code == 200, response.text
+    rule_ids = {row["rule_id"] for row in response.json()}
+    assert a_rule in rule_ids
+    assert b_rule not in rule_ids
+
+
+@pytest.mark.asyncio
+async def test_list_performance_empty_tenant_returns_empty_list(
+    async_client: AsyncClient, test_tenant: Tenant
+) -> None:
+    """Tenant with zero rules returns [], not an error."""
+    response = await async_client.get(
+        "/api/v1/rules/performance",
+        params={"tenant_id": str(test_tenant.id)},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == []

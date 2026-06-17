@@ -39,8 +39,11 @@ class RewardEvent(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
+    # Indexed standalone — supports rule-performance aggregation queries
+    # (SUM/COUNT WHERE rule_id = ?) that can't use the composite idempotency
+    # index above because rule_id isn't its leftmost column.
     rule_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("rules.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("rules.id"), nullable=False, index=True
     )
     # Free-text — could be a UUID (internal txn) or an external event_id.
     triggering_event_id: Mapped[str] = mapped_column(String(255), nullable=False)

@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # server in production).
     OTP_DEV_RETURN: bool = True
     LOG_LEVEL: str = "INFO"
+    # Local-dev only: opens two routes (`/events/sim-ingest`,
+    # `/events/sim-kafka-produce`) so the mobile-simulator app can fire
+    # test events without an admin Keycloak token. MUST stay False
+    # outside local dev — these routes return 404 when unset.
+    SIMULATOR_DEV_MODE: bool = False
 
 
 settings = Settings()  # type: ignore[call-arg]

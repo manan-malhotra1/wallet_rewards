@@ -1,0 +1,24 @@
+/**
+ * X-Sasai-Signature builder. Mirrors `backend/app/auth/hmac.py`'s
+ * `build_signature_header`: canonical string `{ts}.{body}`, HMAC-SHA256
+ * with the source's shared_secret, header is `t={ts},v1={hex}`.
+ *
+ * Pure server-side: needs the secret, must never reach the browser.
+ */
+import "server-only";
+
+import crypto from "node:crypto";
+
+export function signEventBody(rawBody: string, secret: string): string {
+  if (!secret) {
+    throw new Error(
+      "EVENT_SOURCE_SECRET is empty. Run `make seed` and copy the printed secret.",
+    );
+  }
+  const ts = Math.floor(Date.now() / 1000);
+  const digest = crypto
+    .createHmac("sha256", secret)
+    .update(`${ts}.${rawBody}`)
+    .digest("hex");
+  return `t=${ts},v1=${digest}`;
+}

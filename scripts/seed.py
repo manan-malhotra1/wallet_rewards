@@ -45,12 +45,16 @@ from app.shared.models import (  # noqa: E402
     Account,
     ExternalEventSource,
     RedemptionProvider,
+    Role,
+    RolePermission,
     Rule,
+    StepUpPolicy,
     Tenant,
     Transaction,
     User,
     UserIdentifier,
     UserProfile,
+    UserRole,
 )
 
 TENANT_NAME = "Sasai-ZA"
@@ -99,6 +103,8 @@ async def _get_or_create_user(
     last_name: str,
 ) -> User:
     """Return the user identified by `phone` in this tenant, creating it on first run."""
+    from app.auth.hashing import hash_pin
+
     result = await session.execute(
         select(UserIdentifier).where(
             UserIdentifier.tenant_id == tenant.id,
@@ -111,9 +117,22 @@ async def _get_or_create_user(
         user_result = await session.execute(
             select(User).where(User.id == identifier.user_id)
         )
-        return user_result.scalar_one()
+        existing = user_result.scalar_one()
+        # Backfill dev PIN on already-seeded users so the mobile-simulator
+        # can log in against old DBs without a full reset.
+        if existing.pin_hash is None:
+            existing.pin_hash = hash_pin("1234")
+            await session.commit()
+            print(f"    ~ Backfilled dev PIN on existing user: {phone}")
+        return existing
 
-    user = User(tenant_id=tenant.id)
+    # Seeded users get a deterministic dev PIN ("1234") so the
+    # mobile-simulator can silently authenticate without an OTP +
+    # set-PIN dance every time the DB resets. The PIN is bcrypt-hashed
+    # via the same helper the real flow uses.
+    from app.auth.hashing import hash_pin
+
+    user = User(tenant_id=tenant.id, pin_hash=hash_pin("1234"))
     session.add(user)
     await session.flush()
     session.add(
@@ -213,14 +232,110 @@ async def _get_or_create_redemption_provider(
     return provider
 
 
+async def _get_or_create_standard_user_role(
+    session: AsyncSession, tenant: Tenant
+) -> Role:
+    """Idempotently create a 'standard_user' role granting p2p + top_up + redemption.
+
+    Without this, the seeded users can't initiate any transaction — the
+    payments orchestrator's role check (Pay-PRD-0260 step 1) rejects.
+    """
+    result = await session.execute(
+        select(Role).where(Role.tenant_id == tenant.id, Role.name == "standard_user")
+    )
+    role = result.scalar_one_or_none()
+    if role is None:
+        role = Role(
+            tenant_id=tenant.id,
+            name="standard_user",
+            description="Default end-user role — grants p2p, top_up, redemption.",
+        )
+        session.add(role)
+        await session.commit()
+        await session.refresh(role)
+        print(f"  + Created role: standard_user -> {role.id}")
+    # Permissions are idempotent via the unique (role_id, transaction_type) index.
+    for txn_type in ("p2p", "top_up", "redemption"):
+        exists = (
+            await session.execute(
+                select(RolePermission).where(
+                    RolePermission.role_id == role.id,
+                    RolePermission.transaction_type == txn_type,
+                )
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            session.add(RolePermission(role_id=role.id, transaction_type=txn_type))
+    await session.commit()
+    return role
+
+
+async def _get_or_create_step_up_policy(
+    session: AsyncSession,
+    tenant: Tenant,
+    *,
+    transaction_type: str,
+    currency: str,
+    threshold_amount: Decimal,
+) -> StepUpPolicy:
+    """Idempotently create a step-up policy. Surfaces the PIN flow in dev."""
+    existing = (
+        await session.execute(
+            select(StepUpPolicy).where(
+                StepUpPolicy.tenant_id == tenant.id,
+                StepUpPolicy.transaction_type == transaction_type,
+                StepUpPolicy.currency == currency,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    policy = StepUpPolicy(
+        tenant_id=tenant.id,
+        transaction_type=transaction_type,
+        currency=currency,
+        threshold_amount=threshold_amount,
+    )
+    session.add(policy)
+    await session.commit()
+    await session.refresh(policy)
+    print(
+        f"  + Created step-up policy: {transaction_type} > "
+        f"{threshold_amount} {currency} → PIN required"
+    )
+    return policy
+
+
+async def _assign_role(session: AsyncSession, user: User, role: Role) -> None:
+    """Idempotently link the user to the role."""
+    existing = (
+        await session.execute(
+            select(UserRole).where(
+                UserRole.user_id == user.id, UserRole.role_id == role.id
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+    session.add(UserRole(user_id=user.id, role_id=role.id))
+    await session.commit()
+
+
 async def _get_or_create_event_source(
     session: AsyncSession,
     tenant: Tenant,
     *,
     name: str,
     source_key: str,
+    shared_secret: str | None = None,
 ) -> ExternalEventSource:
-    """Idempotently register a sample external event source."""
+    """Idempotently register a sample external event source.
+
+    When `shared_secret` is provided, it's set on the row so HMAC-aware
+    callers (e.g. the mobile-simulator) can sign requests against it.
+    The secret is printed once on creation so the operator can copy it
+    into the simulator's `.env.local`.
+    """
     result = await session.execute(
         select(ExternalEventSource).where(
             ExternalEventSource.source_key == source_key
@@ -228,16 +343,31 @@ async def _get_or_create_event_source(
     )
     source = result.scalar_one_or_none()
     if source is not None:
+        if shared_secret and source.shared_secret != shared_secret:
+            # Idempotently rotate the secret if the seed re-runs with a
+            # different value (e.g. operator regenerated their env).
+            source.shared_secret = shared_secret
+            await session.commit()
+            await session.refresh(source)
+            print(
+                f"  ~ Rotated shared_secret on event source: {name} ({source_key})"
+            )
         return source
     source = ExternalEventSource(
         tenant_id=tenant.id,
         name=name,
         source_key=source_key,
+        shared_secret=shared_secret,
     )
     session.add(source)
     await session.commit()
     await session.refresh(source)
     print(f"  + Created event source: {name} ({source_key}) -> {source.id}")
+    if shared_secret:
+        print(
+            f"    shared_secret={shared_secret}  "
+            "# copy into mobile-simulator/.env.local as EVENT_SOURCE_SECRET"
+        )
     return source
 
 
@@ -286,6 +416,25 @@ async def seed() -> None:
     async with SessionLocal() as session:
         tenant = await _get_or_create_tenant(session)
 
+        # Default end-user role so seeded users can actually transact.
+        standard_role = await _get_or_create_standard_user_role(session, tenant)
+
+        # Step-up PIN policies — make the prompt path discoverable in dev.
+        await _get_or_create_step_up_policy(
+            session,
+            tenant,
+            transaction_type="p2p",
+            currency="ZAR",
+            threshold_amount=Decimal("200"),
+        )
+        await _get_or_create_step_up_policy(
+            session,
+            tenant,
+            transaction_type="redemption",
+            currency="PTS",
+            threshold_amount=Decimal("500"),
+        )
+
         # System-owned accounts for the tenant. We create the master
         # system_points_issuance account explicitly; provider_redemption_wallet
         # is NOT created here — `register_provider()` later in this script
@@ -310,6 +459,7 @@ async def seed() -> None:
                 first_name=spec["first_name"],
                 last_name=spec["last_name"],
             )
+            await _assign_role(session, user, standard_role)
             await _get_or_create_account(
                 session,
                 tenant,
@@ -357,12 +507,15 @@ async def seed() -> None:
             name="Mukuru Voucher (sample)",
         )
 
-        # Phase C — sample external source + reward rules.
+        # Phase C — sample external source + reward rules. The shared
+        # secret is deterministic in dev so the mobile-simulator's env
+        # file doesn't have to be updated after every re-seed.
         await _get_or_create_event_source(
             session,
             tenant,
             name="Sasai Bank Receipts (sample)",
             source_key="sasai-bank",
+            shared_secret="dev-simulator-secret-do-not-use-in-prod",
         )
         await _get_or_create_rule(
             session,

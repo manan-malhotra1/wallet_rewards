@@ -14,6 +14,7 @@
 #       postgres (5432), kafka (9092), keycloak (8080), redis (6379), zookeeper (2181)
 #   - Backend (FastAPI on :8000) via the project venv
 #   - Admin UI (Next.js dev on :3000) via npm
+#   - Mobile simulator (Next.js dev on :3002) via npm — dev-only test harness
 #
 # State:
 #   - PIDs persisted under `.run/`
@@ -28,13 +29,16 @@ ROOT_DIR="$(cd -- "${SCRIPT_DIR}/.." &>/dev/null && pwd)"
 INFRA_DIR="${ROOT_DIR}/sasai-wallet-infra"
 BACKEND_DIR="${ROOT_DIR}/backend"
 UI_DIR="${ROOT_DIR}/admin-ui"
+SIM_DIR="${ROOT_DIR}/mobile-simulator"
 RUN_DIR="${ROOT_DIR}/.run"
 LOG_DIR="${RUN_DIR}/logs"
 
 BACKEND_PID="${RUN_DIR}/backend.pid"
 UI_PID="${RUN_DIR}/admin-ui.pid"
+SIM_PID="${RUN_DIR}/mobile-simulator.pid"
 BACKEND_LOG="${LOG_DIR}/backend.log"
 UI_LOG="${LOG_DIR}/admin-ui.log"
+SIM_LOG="${LOG_DIR}/mobile-simulator.log"
 
 mkdir -p "${RUN_DIR}" "${LOG_DIR}"
 
@@ -173,12 +177,58 @@ cmd_start() {
     done
   fi
 
+  # 5. Mobile simulator — optional. Only start when the directory exists
+  # and an .env.local has been created. The backend MUST be running with
+  # SIMULATOR_DEV_MODE=true for the sim's calls to succeed.
+  if [[ -d "${SIM_DIR}" ]]; then
+    if is_running "${SIM_PID}"; then
+      warn "Mobile simulator already running (PID $(cat "${SIM_PID}"))"
+    elif [[ ! -f "${SIM_DIR}/.env.local" ]]; then
+      warn "Skipping mobile simulator — no ${SIM_DIR}/.env.local."
+      warn "  Run: cp ${SIM_DIR}/.env.local.example ${SIM_DIR}/.env.local"
+    elif [[ ! -d "${SIM_DIR}/node_modules" ]]; then
+      warn "Skipping mobile simulator — no node_modules. Run \`npm install\` in ${SIM_DIR}."
+    else
+      info "Starting mobile simulator (next dev :3002)…"
+      (
+        cd "${SIM_DIR}"
+        nohup npm run dev >"${SIM_LOG}" 2>&1 &
+        echo $! >"${SIM_PID}"
+      )
+      for ((i = 0; i < 60; i++)); do
+        if curl -s -o /dev/null -w "%{http_code}" http://localhost:3002 2>/dev/null | grep -qE '^(2|3)..'; then
+          ok "mobile simulator ready"
+          break
+        fi
+        sleep 1
+      done
+    fi
+  fi
+
   echo
   cmd_status
 }
 
 cmd_stop() {
   info "${BOLD}Sasai Wallet — stop${RESET}"
+
+  # Mobile simulator (stop first so it can't 5xx mid-shutdown when backend dies)
+  if is_running "${SIM_PID}"; then
+    local pid
+    pid="$(cat "${SIM_PID}")"
+    info "Stopping mobile simulator (PID ${pid})…"
+    pkill -P "${pid}" 2>/dev/null || true
+    kill "${pid}" 2>/dev/null || true
+    rm -f "${SIM_PID}"
+    ok "mobile simulator stopped"
+  else
+    local pids
+    pids="$(port_holders 3002)"
+    if [[ -n "${pids}" ]]; then
+      info "Cleaning up stray :3002 listener(s) ${pids}"
+      echo "${pids}" | xargs kill 2>/dev/null || true
+    fi
+  fi
 
   # Admin UI
   if is_running "${UI_PID}"; then
@@ -251,9 +301,10 @@ cmd_status() {
   status_row "keycloak" "8080" "curl -fs http://localhost:8080/realms/master"
   status_row "backend"  "8000" "curl -fs http://localhost:8000/healthz"
   status_row "admin-ui" "3000" "curl -fs -o /dev/null -w '%{http_code}' http://localhost:3000 | grep -qE '^(2|3)..'"
+  status_row "mobile-sim" "3002" "curl -fs -o /dev/null -w '%{http_code}' http://localhost:3002 | grep -qE '^(2|3)..'" "dev-only"
 
   echo
-  echo "${DIM}Logs:${RESET} ${LOG_DIR}/{backend,admin-ui}.log"
+  echo "${DIM}Logs:${RESET} ${LOG_DIR}/{backend,admin-ui,mobile-simulator}.log"
   echo "${DIM}Tail with:${RESET} scripts/dev.sh logs backend"
 }
 
@@ -262,12 +313,13 @@ cmd_logs() {
   case "${svc}" in
     backend)  tail -n 80 -f "${BACKEND_LOG}" ;;
     admin-ui|ui|admin) tail -n 80 -f "${UI_LOG}" ;;
+    mobile-sim|sim|simulator) tail -n 80 -f "${SIM_LOG}" ;;
     postgres) docker logs -f --tail 80 sasai-wallet-infra-postgres-1 ;;
     keycloak) docker logs -f --tail 80 sasai-wallet-infra-keycloak-1 ;;
     redis)    docker logs -f --tail 80 sasai-wallet-infra-redis-1 ;;
     kafka)    docker logs -f --tail 80 sasai-wallet-infra-kafka-1 ;;
     *)
-      err "logs: pick one of backend | admin-ui | postgres | keycloak | redis | kafka"
+      err "logs: pick one of backend | admin-ui | mobile-sim | postgres | keycloak | redis | kafka"
       exit 1
       ;;
   esac
@@ -282,11 +334,11 @@ ${BOLD}Sasai Wallet — local dev script${RESET}
   ${BOLD}scripts/dev.sh restart${RESET}    Stop, then start
   ${BOLD}scripts/dev.sh status${RESET}     One-line health for each service
   ${BOLD}scripts/dev.sh logs <svc>${RESET} Tail one service's log
-                       svc: backend | admin-ui | postgres | keycloak | redis | kafka
+                       svc: backend | admin-ui | mobile-sim | postgres | keycloak | redis | kafka
 
 State directories (gitignored):
   ${RUN_DIR}/    PID files
-  ${LOG_DIR}/    backend.log, admin-ui.log
+  ${LOG_DIR}/    backend.log, admin-ui.log, mobile-simulator.log
 EOF
 }
 

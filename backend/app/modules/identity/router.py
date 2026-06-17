@@ -15,12 +15,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import AdminPrincipal
+from app.auth import AdminPrincipal, UserPrincipal
 from app.auth.sessions import invalidate_session
 from app.auth.tokens import extract_bearer_token
 from app.database import get_async_session
-from app.dependencies import require_admin_role
+from app.dependencies import get_current_user, require_admin_role
 from app.modules.identity.schemas import (
+    AdminPinResetResponse,
     CreateUserRequest,
     IdentifierType,
     LogoutResponse,
@@ -34,10 +35,13 @@ from app.modules.identity.schemas import (
     SessionTokenResponse,
     UserDetailOut,
     UserOut,
+    WalletOut,
 )
 from app.modules.identity.service import (
+    admin_reset_pin,
     authenticate_pin,
     create_user,
+    get_my_wallet,
     get_user_detail,
     resolve_identifier,
     send_otp,
@@ -119,6 +123,36 @@ async def get_user(
     _ = admin
     payload = await get_user_detail(session, user_id=user_id, tenant_id=tenant_id)
     return UserDetailOut.model_validate(payload, from_attributes=True)
+
+
+@router.post(
+    "/users/{user_id}/pin/reset", response_model=AdminPinResetResponse
+)
+async def post_admin_pin_reset(
+    user_id: UUID,
+    tenant_id: UUID,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> AdminPinResetResponse:
+    """Admin-triggered PIN reset for a user (NFR-0190 helper).
+
+    Generates a fresh random 4-digit PIN, bcrypt-stores it on the user,
+    clears any lockout state, and writes an audit row. The plaintext
+    PIN is returned in the response so the operator can read it back
+    over a verified channel — Phase 2 routes this through the
+    notifications module for SMS delivery.
+
+    Tenant-scoped — cross-tenant lookups return 404.
+    """
+    payload = await admin_reset_pin(
+        session,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
+    return AdminPinResetResponse.model_validate(payload)
 
 
 # =============================================================================
@@ -205,3 +239,20 @@ async def post_auth_logout(
     except Exception:
         pass
     return LogoutResponse(ok=True)
+
+
+@router.get("/me/wallet", response_model=WalletOut)
+async def get_me_wallet(
+    user: UserPrincipal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> WalletOut:
+    """Return the authenticated user's own wallet — accounts + recent txns.
+
+    User-facing: tenant scoping is implicit from the session token. No
+    admin role required. The mobile-simulator and the eventual real
+    mobile app are the primary consumers.
+    """
+    payload = await get_my_wallet(
+        session, user_id=user.id, tenant_id=user.tenant_id
+    )
+    return WalletOut.model_validate(payload)

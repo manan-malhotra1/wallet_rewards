@@ -5,8 +5,8 @@
 "use client";
 
 import {
+  Banknote,
   Box,
-  ClipboardList,
   Coins,
   CreditCard,
   Gauge,
@@ -17,12 +17,14 @@ import {
   Receipt,
   ScanLine,
   Settings2,
+  ShieldAlert,
   ShieldCheck,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { SasaiLogo } from "@/components/branding/sasai-logo";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -36,6 +38,7 @@ const OPERATIONS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: Gauge },
   { label: "Users", href: "/users", icon: Users },
   { label: "Merchants", href: "/merchants", icon: Box },
+  { label: "System wallets", href: "/system-wallets", icon: Banknote },
   { label: "Reconciliation", href: "/reconciliation", icon: ScanLine },
 ];
 
@@ -44,6 +47,7 @@ const CONFIG: NavItem[] = [
   { label: "Segments", href: "/segments", icon: Layers },
   { label: "Budgets", href: "/budgets", icon: PiggyBank },
   { label: "Limits", href: "/limits", icon: ListChecks },
+  { label: "Step-up PIN", href: "/step-up", icon: ShieldAlert },
   { label: "Pricing", href: "/pricing", icon: Coins },
   { label: "Redemption", href: "/redemption", icon: CreditCard },
   { label: "Tenants", href: "/tenants", icon: Settings2 },
@@ -113,16 +117,13 @@ export function Sidebar({ pendingCount }: { pendingCount?: number }) {
   );
   return (
     <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-      <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-sky-500 shadow-sm">
-          <ClipboardList className="h-4 w-4 text-white" />
-        </div>
-        <div className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold text-sidebar-foreground">
-            Sasai Wallet
-          </span>
-          <span className="text-[10px] text-sidebar-foreground/60">Admin Console</span>
-        </div>
+      <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
+        <Link href="/dashboard" aria-label="Sasai Wallet Admin home" className="flex items-center">
+          <SasaiLogo height={28} />
+        </Link>
+        <span className="rounded-full bg-sidebar-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-sidebar-accent-foreground">
+          Admin
+        </span>
       </div>
       <nav className="flex-1 overflow-y-auto py-2">
         <NavGroup title="Operations" items={operations} />

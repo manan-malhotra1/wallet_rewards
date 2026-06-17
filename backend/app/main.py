@@ -20,7 +20,9 @@ from app.modules.reconciliation import router as reconciliation_router
 from app.modules.redemption import router as redemption_router
 from app.modules.roles import router as roles_router
 from app.modules.rules import router as rules_router
+from app.modules.step_up import router as step_up_router
 from app.modules.tenants import router as tenants_router
+from app.modules.treasury import router as treasury_router
 from app.shared.exceptions import AppHTTPException
 
 app = FastAPI(
@@ -80,3 +82,5 @@ app.include_router(tenants_router)
 app.include_router(budgets_router)
 app.include_router(limits_router)
 app.include_router(pricing_router)
+app.include_router(step_up_router)
+app.include_router(treasury_router)

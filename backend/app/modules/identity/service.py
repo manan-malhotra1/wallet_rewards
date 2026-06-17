@@ -290,6 +290,182 @@ async def get_user_detail(
     }
 
 
+async def get_my_wallet(
+    session: AsyncSession, *, user_id: UUID, tenant_id: UUID
+) -> dict:
+    """Return the authenticated user's own wallet view.
+
+    Mirrors what a real mobile app needs: accounts with derived balances
+    plus the user's recent transactions. Transactions are pulled via the
+    user's accounts' ledger entries so BOTH inbound (received P2P) and
+    outbound (sent / spent) movements show up.
+
+    Tenant scoping is implicit — the caller already authenticated and we
+    re-assert against the session's tenant_id (NFR-0220).
+
+    Args:
+        session: Async DB session (read-only).
+        user_id: The authenticated user.
+        tenant_id: The session's tenant.
+
+    Returns:
+        Dict matching `WalletOut`. The router maps it to the schema.
+
+    Raises:
+        UserNotFound: 404 — user has been deleted between session issue
+            and this call, or token's user_id is bogus.
+    """
+    from app.modules.accounts.service import derive_balance
+    from app.shared.models import Account, LedgerEntry, Transaction, UserProfile
+
+    user_q = await session.execute(
+        select(User).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    user = user_q.scalar_one_or_none()
+    if user is None:
+        raise UserNotFound()
+
+    profile_q = await session.execute(
+        select(UserProfile).where(UserProfile.user_id == user.id)
+    )
+    profile = profile_q.scalar_one_or_none()
+
+    accounts_q = await session.execute(
+        select(Account).where(
+            Account.tenant_id == tenant_id, Account.user_id == user.id
+        )
+    )
+    accounts = list(accounts_q.scalars().all())
+    account_ids = [a.id for a in accounts]
+    account_payload = []
+    for acct in accounts:
+        balance, reserved = await derive_balance(session, acct.id)
+        account_payload.append(
+            {
+                "id": acct.id,
+                "account_type": acct.account_type,
+                "currency": acct.currency,
+                "status": acct.status,
+                "balance": str(balance),
+                "reserved_balance": str(reserved),
+                "available_balance": str(balance - reserved),
+            }
+        )
+
+    # Recent transactions: DISTINCT through the user's accounts' ledger
+    # entries so both sent + received movements appear. Limit 10 — mobile
+    # surfaces a short feed; a full statement is a separate endpoint.
+    txns_payload: list[dict] = []
+    if account_ids:
+        txns_q = await session.execute(
+            select(Transaction)
+            .join(LedgerEntry, LedgerEntry.transaction_id == Transaction.id)
+            .where(
+                Transaction.tenant_id == tenant_id,
+                LedgerEntry.account_id.in_(account_ids),
+            )
+            .distinct()
+            .order_by(Transaction.created_at.desc())
+            .limit(10)
+        )
+        txns = list(txns_q.scalars().all())
+        txns_payload = [
+            {
+                "id": t.id,
+                "transaction_type": t.transaction_type,
+                "status": t.status,
+                "amount": str(t.amount),
+                "currency": t.currency,
+                "created_at": t.created_at,
+            }
+            for t in txns
+        ]
+
+    return {
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "first_name": profile.first_name if profile else None,
+        "accounts": account_payload,
+        "recent_transactions": txns_payload,
+    }
+
+
+async def admin_reset_pin(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> dict:
+    """Generate a fresh random 4-digit PIN for the user and persist its hash.
+
+    Admin-only. Tenant-scoped — admin must supply the user's tenant_id;
+    cross-tenant resets return 404 (no existence leak).
+
+    The new PIN is generated server-side and the plaintext is RETURNED
+    in the response so the operator can read it back over a verified
+    channel (today). Phase 2 wires this through the notifications
+    module to deliver via SMS, at which point `delivered_via` flips
+    to "sms" and `new_pin` becomes None.
+
+    Side effects:
+      - Updates `users.pin_hash` (bcrypt of the new PIN).
+      - Resets the user's PIN-failure lockout counter so they aren't
+        locked out by stale state from before the reset.
+      - Writes an `admin.pin_reset` audit row (the PLAIN PIN is NEVER
+        written there — only the fact that a reset occurred).
+
+    Args:
+        session: Async DB session (commits inside).
+        user_id: Target user.
+        tenant_id: Caller's tenant; user must belong to it.
+        admin: Authenticated admin principal for audit.
+        ip_address: Caller IP for audit.
+
+    Returns:
+        Dict shaped like `AdminPinResetResponse`.
+
+    Raises:
+        UserNotFound: user unknown or belongs to another tenant.
+    """
+    import secrets
+
+    from app.auth import hashing
+    from app.auth.lockout import reset_failures
+    from app.modules.audit.service import record_audit_for_admin
+
+    user_q = await session.execute(
+        select(User).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    user = user_q.scalar_one_or_none()
+    if user is None:
+        raise UserNotFound()
+
+    # 4-digit zero-padded — matches the mobile PIN spec. secrets module is
+    # the CSPRNG safe choice; never use random.randint here.
+    new_pin = f"{secrets.randbelow(10_000):04d}"
+    user.pin_hash = hashing.hash_pin(new_pin)
+
+    # A reset clears the lockout state — otherwise a previously-locked
+    # user still couldn't log in with the new PIN until the window expires.
+    await reset_failures(user_id)
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="admin.pin_reset",
+        entity_type="user",
+        entity_id=str(user_id),
+        after_state={"delivered_via": "inline"},
+        ip_address=ip_address,
+    )
+    await session.commit()
+
+    return {"user_id": user_id, "delivered_via": "inline", "new_pin": new_pin}
+
+
 async def resolve_identifier(
     session: AsyncSession,
     tenant_id: UUID,

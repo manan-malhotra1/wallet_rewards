@@ -14,9 +14,12 @@ import "server-only";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 
 import type {
+  AdjustSystemWalletResponse,
+  AdminPinResetResponse,
   AuditEntry,
   BudgetConsumption,
   ExternalEventSource,
+  FundUserResponse,
   LimitConfig,
   ManualReviewItem,
   PendingItem,
@@ -25,7 +28,10 @@ import type {
   RewardBudget,
   Rule,
   RulePerformance,
+  StepUpPolicy,
   SweepOutcome,
+  SystemWallet,
+  SystemWalletTransaction,
   Tenant,
   User,
   UserDetail,
@@ -243,3 +249,76 @@ export const createBudget = (payload: CreateBudgetPayload) =>
 
 export const deleteBudget = (budget_id: string, tenant_id: string) =>
   apiDelete<void>(`/api/v1/budgets/${budget_id}`, { query: { tenant_id } });
+
+// ---- Phase H — Step-up PIN policies + admin PIN reset --------------------
+
+export interface CreateStepUpPolicyPayload {
+  tenant_id: string;
+  transaction_type: "p2p" | "redemption";
+  currency: string;
+  threshold_amount: string;
+}
+
+export const listStepUpPolicies = (tenant_id: string) =>
+  apiGet<StepUpPolicy[]>("/api/v1/step-up/policies", { query: { tenant_id } });
+
+export const createStepUpPolicy = (payload: CreateStepUpPolicyPayload) =>
+  apiPost<StepUpPolicy>("/api/v1/step-up/policies", payload);
+
+export const deleteStepUpPolicy = (policy_id: string, tenant_id: string) =>
+  apiDelete<void>(`/api/v1/step-up/policies/${policy_id}`, {
+    query: { tenant_id },
+  });
+
+/**
+ * Admin-triggered PIN reset — generates a new random 4-digit PIN,
+ * bcrypt-stores it, returns the plaintext (Phase 2 swaps this for
+ * SMS delivery via the notifications module).
+ */
+export const adminResetPin = (user_id: string, tenant_id: string) =>
+  apiPost<AdminPinResetResponse>(
+    `/api/v1/identity/users/${user_id}/pin/reset`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
+// ---- Phase H — Treasury / System Wallets --------------------------------
+
+export const listSystemWallets = (tenant_id: string) =>
+  apiGet<SystemWallet[]>("/api/v1/treasury/system-wallets", {
+    query: { tenant_id },
+  });
+
+export const listSystemWalletTransactions = (
+  account_id: string,
+  tenant_id: string,
+  limit = 50,
+) =>
+  apiGet<SystemWalletTransaction[]>(
+    `/api/v1/treasury/system-wallets/${account_id}/transactions`,
+    { query: { tenant_id, limit } },
+  );
+
+export interface FundUserPayload {
+  tenant_id: string;
+  user_id: string;
+  amount: string;
+  currency: string;
+  reason: string;
+}
+
+export const fundUser = (payload: FundUserPayload) =>
+  apiPost<FundUserResponse>("/api/v1/treasury/fund-user", payload);
+
+export interface AdjustSystemWalletPayload {
+  tenant_id: string;
+  account_id: string;
+  amount: string; // signed
+  reason: string;
+}
+
+export const adjustSystemWallet = (payload: AdjustSystemWalletPayload) =>
+  apiPost<AdjustSystemWalletResponse>(
+    "/api/v1/treasury/adjust-system-wallet",
+    payload,
+  );

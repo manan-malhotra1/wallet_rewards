@@ -37,6 +37,11 @@ ACCOUNT_TYPE_SYSTEM_CASH_INFLOW = "system_cash_inflow"
 # Phase G — Pricing engine credit side. One per (tenant, currency).
 # Every fee leg writes a CREDIT here, balancing the user-wallet DEBIT.
 ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED = "system_fee_collected"
+# Phase H — Treasury counter-leg. Balance tracks net external cash that has
+# flowed in (or out) of the platform via bank wires. Admin "fund float" and
+# "withdraw float" actions write the opposite leg here so the ledger stays
+# double-entry balanced. One per (tenant, currency).
+ACCOUNT_TYPE_OPERATOR_ADJUSTMENT = "operator_adjustment"
 
 ACCOUNT_TYPES = (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -45,6 +50,7 @@ ACCOUNT_TYPES = (
     ACCOUNT_TYPE_PROVIDER_REDEMPTION,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
+    ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
 )
 
 
@@ -68,7 +74,8 @@ class Account(Base):
             "'system_points_issuance', "
             "'provider_redemption_wallet', "
             "'system_cash_inflow', "
-            "'system_fee_collected'"
+            "'system_fee_collected', "
+            "'operator_adjustment'"
             ")",
             name="ck_accounts_type",
         ),

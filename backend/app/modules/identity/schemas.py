@@ -121,6 +121,49 @@ class UserDetailOut(BaseModel):
     accounts: list[UserAccountOut]
 
 
+class WalletTransactionOut(BaseModel):
+    """One transaction row surfaced on /me/wallet — same data the mobile
+    app shows in its recent-activity feed."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    transaction_type: str
+    status: str
+    amount: str
+    currency: str
+    created_at: datetime
+
+
+class WalletOut(BaseModel):
+    """Authenticated user's own wallet — accounts + recent transactions.
+
+    Used by the mobile-simulator and the eventual real mobile app. Pure
+    user-facing: NEVER returns admin-only fields (kyc state, audit ids,
+    etc). Tenant is implicit — taken from the session token.
+    """
+
+    user_id: UUID
+    tenant_id: UUID
+    first_name: str | None
+    accounts: list[UserAccountOut]
+    recent_transactions: list[WalletTransactionOut]
+
+
+class AdminPinResetResponse(BaseModel):
+    """Result of an admin-triggered PIN reset.
+
+    `delivered_via` is `"sms"` in production (notifications module —
+    Phase 2). Today it's `"inline"`, meaning the new PIN is included
+    in the response so the operator can read it back to the user
+    over a verified channel. NEVER expose this endpoint to non-admins.
+    """
+
+    user_id: UUID
+    delivered_via: Literal["inline", "sms"]
+    new_pin: str | None  # populated when delivered_via='inline'
+
+
 # --- Phase F.2 — PIN/OTP/session flow --------------------------------------
 
 

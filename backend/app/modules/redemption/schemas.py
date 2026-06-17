@@ -53,10 +53,14 @@ class InitiateRedemptionRequest(BaseModel):
 
     `tenant_id` and `user_id` come from the session token via
     `get_current_user`. Body carries only the provider + amount.
+
+    `pin` is optional — only required when a `step_up_policies` row
+    for ("redemption", "PTS") sets a threshold below `points_amount`.
     """
 
     provider_id: UUID
     points_amount: Decimal = Field(gt=Decimal("0"))
+    pin: str | None = Field(default=None, min_length=4, max_length=12)
 
 
 class ConfirmRedemptionRequest(BaseModel):

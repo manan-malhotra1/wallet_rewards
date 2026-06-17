@@ -5,6 +5,7 @@ and so callers can `from app.shared.models import Tenant, User, ...`.
 """
 from app.shared.models.accounts import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_PROVIDER_REDEMPTION,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
@@ -27,6 +28,7 @@ from app.shared.models.budgets import (
 )
 from app.shared.models.limits import LimitConfig
 from app.shared.models.pricing import PricingConfig
+from app.shared.models.step_up import StepUpPolicy
 from app.shared.models.audit import (
     ACTION_RECON_ESCALATED,
     ACTION_RECON_RESOLVED_COMPLETED,
@@ -121,6 +123,7 @@ __all__ = [
     "Account",
     "AccountBalanceSnapshot",
     "ACCOUNT_TYPE_FINANCIAL_WALLET",
+    "ACCOUNT_TYPE_OPERATOR_ADJUSTMENT",
     "ACCOUNT_TYPE_POINTS",
     "ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE",
     "ACCOUNT_TYPE_PROVIDER_REDEMPTION",
@@ -131,6 +134,7 @@ __all__ = [
     "RewardBudget",
     "LimitConfig",
     "PricingConfig",
+    "StepUpPolicy",
     "BUDGET_SCOPE_TENANT",
     "BUDGET_SCOPE_RULE",
     "BUDGET_STATUS_ACTIVE",

@@ -26,6 +26,11 @@ class P2PRequest(BaseModel):
     `tenant_id` and `sender_user_id` are no longer accepted in the body —
     both come from the session token via `get_current_user`. Spoofing the
     sender is no longer possible.
+
+    `pin` is optional: include it only when a `step_up_policies` row
+    requires re-verification for the requested amount/currency. The
+    backend rejects with `step_up_required` if missing when needed; the
+    mobile client retries with the PIN attached.
     """
 
     recipient: RecipientIdentifier
@@ -33,6 +38,7 @@ class P2PRequest(BaseModel):
     amount: Decimal = Field(gt=Decimal("0"))
     currency: str = Field(min_length=3, max_length=3)
     description: str | None = Field(default=None, max_length=255)
+    pin: str | None = Field(default=None, min_length=4, max_length=12)
 
 
 class P2PResponse(BaseModel):

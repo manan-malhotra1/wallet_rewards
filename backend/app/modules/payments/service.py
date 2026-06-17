@@ -114,6 +114,7 @@ async def p2p_transfer(
     currency: str,
     idempotency_key: str,
     sender_principal: object | None = None,
+    pin: str | None = None,
     ip_address: str | None = None,
 ) -> tuple[Transaction, UUID]:
     """Execute a peer-to-peer transfer between two users in the same tenant.
@@ -209,6 +210,23 @@ async def p2p_transfer(
         currency=currency,
         amount=amount,
     )
+
+    # 6.5. Step-up PIN check (Phase H). Comes AFTER limits so an
+    # over-cap transaction returns 422 without prompting the user for
+    # a PIN it can't satisfy anyway. No-op when no policy exists.
+    from app.auth.principals import UserPrincipal  # noqa: PLC0415
+    from app.modules.step_up.service import enforce_step_up  # noqa: PLC0415
+
+    if isinstance(sender_principal, UserPrincipal):
+        await enforce_step_up(
+            session,
+            principal=sender_principal,
+            transaction_type="p2p",
+            currency=currency,
+            amount=amount,
+            pin=pin,
+            ip_address=ip_address,
+        )
 
     # 7. Pricing fee calculation (Phase G.3, Pay-PRD-0260 step 3). Optional
     # — if no pricing config exists we treat this as no-fee (legacy callers

@@ -642,3 +642,40 @@ class PricingConfigNotFound(AppHTTPException):
         super().__init__(
             404, "pricing_config_not_found", "Pricing config not found."
         )
+
+
+# --- Step-up PIN ----------------------------------------------------------
+
+
+class StepUpRequired(AppHTTPException):
+    """Caller exceeded the step-up threshold but didn't supply a PIN.
+
+    The mobile client should prompt for the user's PIN and retry the
+    same request with `pin` in the body.
+    """
+
+    def __init__(self, transaction_type: str, threshold: str, currency: str) -> None:
+        super().__init__(
+            401,
+            "step_up_required",
+            f"This {transaction_type} exceeds the {currency} {threshold} step-up "
+            "threshold. Re-enter your PIN and retry.",
+        )
+
+
+class InvalidStepUpPin(AppHTTPException):
+    """PIN supplied for step-up did not match the user's stored hash."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            401, "invalid_step_up_pin", "Incorrect PIN. Please try again."
+        )
+
+
+class StepUpPolicyNotFound(AppHTTPException):
+    """The referenced step-up policy doesn't exist or belongs to another tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            404, "step_up_policy_not_found", "Step-up policy not found."
+        )

@@ -112,6 +112,66 @@ export interface RulePerformance {
   last_fired_at: string | null;
 }
 
+/**
+ * Per-(tenant, transaction_type, currency) PIN step-up threshold.
+ * Transactions exceeding `threshold_amount` require the user to
+ * re-enter their PIN.
+ */
+export interface StepUpPolicy {
+  id: string;
+  tenant_id: string;
+  transaction_type: string;
+  currency: string;
+  threshold_amount: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Admin-triggered PIN reset response. */
+export interface AdminPinResetResponse {
+  user_id: string;
+  delivered_via: "inline" | "sms";
+  new_pin: string | null;
+}
+
+/** A system-owned account (user_id IS NULL) with its derived balance. */
+export interface SystemWallet {
+  id: string;
+  tenant_id: string;
+  account_type: string;
+  currency: string;
+  status: string;
+  balance: string;
+  created_at: string;
+}
+
+/** One row in the system-wallet transactions drill-down. */
+export interface SystemWalletTransaction {
+  transaction_id: string;
+  transaction_type: string;
+  status: string;
+  entry_type: "DEBIT" | "CREDIT";
+  entry_amount: string;
+  currency: string;
+  created_at: string;
+}
+
+export interface FundUserResponse {
+  transaction_id: string;
+  user_id: string;
+  amount: string;
+  currency: string;
+  new_balance: string;
+}
+
+export interface AdjustSystemWalletResponse {
+  transaction_id: string;
+  account_id: string;
+  amount: string; // signed
+  currency: string;
+  new_balance: string;
+}
+
 export interface RedemptionProvider {
   id: string;
   tenant_id: string;

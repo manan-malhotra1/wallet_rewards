@@ -262,6 +262,22 @@ async def initiate_redemption(
     # ledger write.
     await require_permission(session, user_id, "redemption")
 
+    # Step-up PIN check — runs after role but before any DB lock or
+    # ledger touch. No-op when no policy exists or when amount is below
+    # the configured threshold.
+    if user is not None:
+        from app.modules.step_up.service import enforce_step_up  # noqa: PLC0415
+
+        await enforce_step_up(
+            session,
+            principal=user,
+            transaction_type="redemption",
+            currency="PTS",
+            amount=request.points_amount,
+            pin=request.pin,
+            ip_address=ip_address,
+        )
+
     provider = await _find_provider(session, request.provider_id, tenant_id)
     if provider.status != "active":
         raise RedemptionProviderInactive()

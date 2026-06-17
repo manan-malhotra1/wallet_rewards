@@ -36,6 +36,8 @@ import {
 import type { UserDetail } from "@/lib/api-types";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
+import { ResetPinButton } from "./reset-pin-button";
+
 const IDENTIFIER_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   phone: Phone,
   email: Mail,
@@ -91,11 +93,12 @@ export function UserDetailCard({
                 </CardDescription>
               </div>
             </div>
-            <div className="flex flex-col items-end gap-1.5">
+            <div className="flex flex-col items-end gap-2">
               <StatusPill status={detail.status.toUpperCase()} variant="full" />
               <span className="text-[11px] text-muted-foreground">
                 Created {formatTimestamp(detail.created_at)}
               </span>
+              <ResetPinButton userId={detail.id} tenantId={detail.tenant_id} />
             </div>
           </div>
         </CardHeader>

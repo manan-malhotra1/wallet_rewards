@@ -134,6 +134,28 @@ export interface AdminPinResetResponse {
   new_pin: string | null;
 }
 
+/** A static user cohort (Epic 10 / WAL-79). */
+export interface Segment {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A reward-amplifying multiplier (Epic 10 / WAL-78). */
+export interface BonusMultiplier {
+  id: string;
+  tenant_id: string;
+  rule_id: string | null;
+  segment_id: string | null;
+  multiplier: string;
+  valid_from: string | null;
+  valid_until: string | null;
+  created_at: string;
+}
+
 /** A system-owned account (user_id IS NULL) with its derived balance. */
 export interface SystemWallet {
   id: string;

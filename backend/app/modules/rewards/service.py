@@ -132,6 +132,19 @@ async def issue_points_reward(
     user_points = await _find_user_points_account(session, tenant_id, user_id)
     system_issuance = await _find_system_points_issuance(session, tenant_id)
 
+    # Epic 10 / WAL-78: apply any matching bonus multiplier BEFORE the
+    # budget check + ledger write. The multiplied amount is what the
+    # budget guards against and what ends up on the ledger. Lazy import
+    # to avoid a service-layer cycle.
+    from app.modules.multipliers.service import (  # noqa: PLC0415
+        resolve_multiplier_for_issuance,
+    )
+
+    multiplier = await resolve_multiplier_for_issuance(
+        session, tenant_id=tenant_id, rule_id=rule.id, user_id=user_id
+    )
+    effective_value = (reward_value * multiplier).quantize(Decimal("0.000001"))
+
     # Phase G.1: every reward issuance is budget-checked BEFORE writing
     # the ledger. `check_budget_available` locks each matching budget row
     # FOR UPDATE, so two concurrent fires can't both pass at 99%
@@ -143,8 +156,11 @@ async def issue_points_reward(
         tenant_id=tenant_id,
         rule_id=rule.id,
         currency=user_points.currency,
-        amount=reward_value,
+        amount=effective_value,
     )
+
+    # Use the multiplied amount for ledger + reward_events from this point on.
+    reward_value = effective_value
 
     # The idempotency_key on the underlying transaction is deterministic —
     # replays will hit the post_transaction idempotency guard, not write
@@ -197,6 +213,8 @@ async def issue_points_reward(
         triggering_event_id=triggering_event_id,
         reward_type=REWARD_TYPE_POINTS,
         reward_value=reward_value,
+        # Persist the multiplier so reports can distinguish base vs boosted.
+        multiplier_applied=multiplier,
         ledger_entry_id=credit_entry.id if credit_entry else None,
     )
     session.add(reward)

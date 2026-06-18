@@ -132,6 +132,11 @@ interface FormState {
   count_threshold: string;
   min_amount: string;
   time_window: string;
+  // Epic 10 — type-specific fields
+  streak_units: string;
+  streak_unit_window: "day" | "week";
+  campaign_start_date: string;
+  campaign_end_date: string;
   reward_type: Rule["reward_type"];
   reward_value: string;
   stop_after_n_triggers: string;
@@ -151,6 +156,10 @@ const INITIAL: FormState = {
   count_threshold: "",
   min_amount: "",
   time_window: "",
+  streak_units: "3",
+  streak_unit_window: "day",
+  campaign_start_date: "",
+  campaign_end_date: "",
   reward_type: "points",
   reward_value: "",
   stop_after_n_triggers: "",
@@ -183,6 +192,15 @@ function summarise(form: FormState): string {
   }
   if (form.rule_type === "value_based") {
     return `When a user's ${form.transaction_type} txn ≥ ${form.min_amount || "(amount)"}, ${reward}.`;
+  }
+  if (form.rule_type === "streak") {
+    const n = form.streak_units || "N";
+    return `When a user does ${form.transaction_type} ${n} ${form.streak_unit_window}s in a row, ${reward}.`;
+  }
+  if (form.rule_type === "campaign") {
+    const start = form.campaign_start_date || "(start)";
+    const end = form.campaign_end_date || "(end)";
+    return `Between ${start} and ${end}, a user's first ${form.transaction_type} ${reward}.`;
   }
   return `Campaign type: ${form.rule_type}. ${reward}.`;
 }
@@ -257,6 +275,18 @@ export function CreateCampaignDialog({
           : undefined,
         min_amount: form.min_amount || undefined,
         time_window: form.time_window || undefined,
+        // Epic 10 — only thread these when the rule type uses them; the
+        // backend validator rejects e.g. streak_units on a first_time rule.
+        streak_units:
+          form.rule_type === "streak" && form.streak_units
+            ? Number(form.streak_units)
+            : undefined,
+        streak_unit_window:
+          form.rule_type === "streak" ? form.streak_unit_window : undefined,
+        campaign_start_date:
+          form.rule_type === "campaign" ? form.campaign_start_date : undefined,
+        campaign_end_date:
+          form.rule_type === "campaign" ? form.campaign_end_date : undefined,
         reward_type: form.reward_type,
         reward_value: form.reward_value,
         stop_after_n_triggers: form.stop_after_n_triggers
@@ -361,7 +391,7 @@ export function CreateCampaignDialog({
                   className="mt-1"
                 />
               </div>
-              {(form.rule_type === "milestone" || form.rule_type === "streak") && (
+              {form.rule_type === "milestone" && (
                 <div>
                   <Label htmlFor="count">Count threshold</Label>
                   <Input
@@ -373,6 +403,69 @@ export function CreateCampaignDialog({
                     className="mt-1"
                   />
                 </div>
+              )}
+              {form.rule_type === "streak" && (
+                <>
+                  <div>
+                    <Label htmlFor="streak-units">Consecutive periods</Label>
+                    <Input
+                      id="streak-units"
+                      type="number"
+                      min="2"
+                      value={form.streak_units}
+                      onChange={(e) => update("streak_units", e.target.value)}
+                      placeholder="3"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="streak-window">Period unit</Label>
+                    <div className="mt-1">
+                      <Select
+                        value={form.streak_unit_window}
+                        onValueChange={(v) =>
+                          update("streak_unit_window", v as "day" | "week")
+                        }
+                      >
+                        <SelectTrigger id="streak-window">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="day">Day</SelectItem>
+                          <SelectItem value="week">Week</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              )}
+              {form.rule_type === "campaign" && (
+                <>
+                  <div>
+                    <Label htmlFor="camp-start">Start date</Label>
+                    <Input
+                      id="camp-start"
+                      type="date"
+                      value={form.campaign_start_date}
+                      onChange={(e) =>
+                        update("campaign_start_date", e.target.value)
+                      }
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="camp-end">End date</Label>
+                    <Input
+                      id="camp-end"
+                      type="date"
+                      value={form.campaign_end_date}
+                      onChange={(e) =>
+                        update("campaign_end_date", e.target.value)
+                      }
+                      className="mt-1"
+                    />
+                  </div>
+                </>
               )}
               {(form.rule_type === "value_based" || form.rule_type === "milestone") && (
                 <div>

@@ -27,7 +27,9 @@ from app.shared.models.budgets import (
     RewardBudget,
 )
 from app.shared.models.limits import LimitConfig
+from app.shared.models.multipliers import BonusMultiplier
 from app.shared.models.pricing import PricingConfig
+from app.shared.models.segments import Segment, UserSegment
 from app.shared.models.step_up import StepUpPolicy
 from app.shared.models.audit import (
     ACTION_RECON_ESCALATED,
@@ -135,6 +137,9 @@ __all__ = [
     "LimitConfig",
     "PricingConfig",
     "StepUpPolicy",
+    "Segment",
+    "UserSegment",
+    "BonusMultiplier",
     "BUDGET_SCOPE_TENANT",
     "BUDGET_SCOPE_RULE",
     "BUDGET_STATUS_ACTIVE",

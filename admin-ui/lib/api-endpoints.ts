@@ -17,6 +17,7 @@ import type {
   AdjustSystemWalletResponse,
   AdminPinResetResponse,
   AuditEntry,
+  BonusMultiplier,
   BudgetConsumption,
   ExternalEventSource,
   FundUserResponse,
@@ -28,6 +29,7 @@ import type {
   RewardBudget,
   Rule,
   RulePerformance,
+  Segment,
   StepUpPolicy,
   SweepOutcome,
   SystemWallet,
@@ -97,6 +99,11 @@ export interface CreateRulePayload {
   count_threshold?: number;
   min_amount?: string;
   time_window?: string;
+  // Epic 10 — rule-type-specific fields
+  streak_units?: number;
+  streak_unit_window?: "day" | "week";
+  campaign_start_date?: string; // YYYY-MM-DD
+  campaign_end_date?: string;
   reward_type: Rule["reward_type"];
   reward_value: string;
   stop_after_n_triggers?: number;
@@ -322,3 +329,48 @@ export const adjustSystemWallet = (payload: AdjustSystemWalletPayload) =>
     "/api/v1/treasury/adjust-system-wallet",
     payload,
   );
+
+// ---- Phase H — Segments + Bonus Multipliers ------------------------------
+
+export interface CreateSegmentPayload {
+  tenant_id: string;
+  name: string;
+  description?: string;
+}
+
+export const listSegments = (tenant_id: string) =>
+  apiGet<Segment[]>("/api/v1/segments", { query: { tenant_id } });
+
+export const createSegment = (payload: CreateSegmentPayload) =>
+  apiPost<Segment>("/api/v1/segments", payload);
+
+export const addUserToSegment = (
+  segment_id: string,
+  tenant_id: string,
+  user_id: string,
+) =>
+  apiPost<{ segment_id: string; user_id: string }>(
+    `/api/v1/segments/${segment_id}/users`,
+    { user_id },
+    { query: { tenant_id } },
+  );
+
+export interface CreateMultiplierPayload {
+  tenant_id: string;
+  rule_id?: string;
+  segment_id?: string;
+  multiplier: string;
+  valid_from?: string;
+  valid_until?: string;
+}
+
+export const listMultipliers = (tenant_id: string) =>
+  apiGet<BonusMultiplier[]>("/api/v1/multipliers", { query: { tenant_id } });
+
+export const createMultiplier = (payload: CreateMultiplierPayload) =>
+  apiPost<BonusMultiplier>("/api/v1/multipliers", payload);
+
+export const deleteMultiplier = (multiplier_id: string, tenant_id: string) =>
+  apiDelete<void>(`/api/v1/multipliers/${multiplier_id}`, {
+    query: { tenant_id },
+  });

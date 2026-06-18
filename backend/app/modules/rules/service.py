@@ -56,6 +56,12 @@ async def create_rule(
         count_threshold=request.count_threshold,
         min_amount=request.min_amount,
         time_window=request.time_window,
+        # Epic 10 — streak + campaign fields. NULL for rule types that
+        # don't use them; the schema validators enforce required pairings.
+        streak_units=request.streak_units,
+        streak_unit_window=request.streak_unit_window,
+        campaign_start_date=request.campaign_start_date,
+        campaign_end_date=request.campaign_end_date,
         reward_type=request.reward_type,
         reward_value=request.reward_value,
         stop_after_n_triggers=request.stop_after_n_triggers,

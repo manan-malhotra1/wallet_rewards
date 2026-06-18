@@ -20,6 +20,8 @@ from app.modules.reconciliation import router as reconciliation_router
 from app.modules.redemption import router as redemption_router
 from app.modules.roles import router as roles_router
 from app.modules.rules import router as rules_router
+from app.modules.multipliers import router as multipliers_router
+from app.modules.segments import router as segments_router
 from app.modules.step_up import router as step_up_router
 from app.modules.tenants import router as tenants_router
 from app.modules.treasury import router as treasury_router
@@ -84,3 +86,5 @@ app.include_router(limits_router)
 app.include_router(pricing_router)
 app.include_router(step_up_router)
 app.include_router(treasury_router)
+app.include_router(segments_router)
+app.include_router(multipliers_router)

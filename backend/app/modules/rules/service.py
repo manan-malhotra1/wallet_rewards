@@ -9,9 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
 from app.modules.audit.service import record_audit_for_admin
-from app.modules.rules.schemas import RuleCreateRequest, RulePerformanceOut
+from app.modules.rules.schemas import (
+    RuleCreateRequest,
+    RulePerformanceOut,
+    RuleUpdateRequest,
+)
 from app.shared.exceptions import RuleNotFound, TenantNotFound
-from app.shared.models import RewardEvent, Rule, Tenant
+from app.shared.models import RewardBudget, RewardEvent, Rule, Tenant
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id) -> None:
@@ -105,6 +109,155 @@ async def list_rules_for_tenant(
     return list(result.scalars().all())
 
 
+async def get_rule_by_id(
+    session: AsyncSession, *, tenant_id: UUID, rule_id: UUID
+) -> Rule:
+    """Return one rule. Tenant-scoped — cross-tenant lookups return 404."""
+    result = await session.execute(
+        select(Rule).where(Rule.id == rule_id, Rule.tenant_id == tenant_id)
+    )
+    rule = result.scalar_one_or_none()
+    if rule is None:
+        raise RuleNotFound()
+    return rule
+
+
+async def update_rule(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    rule_id: UUID,
+    request: RuleUpdateRequest,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> Rule:
+    """Patch a rule's editable fields. Trigger conditions are intentionally
+    NOT editable — they're load-bearing for in-flight user_rule_progress.
+
+    Records a `rule.updated` audit row with before/after for every field
+    that actually changed.
+    """
+    rule = await get_rule_by_id(session, tenant_id=tenant_id, rule_id=rule_id)
+
+    before: dict[str, str | None] = {}
+    after: dict[str, str | None] = {}
+
+    fields = request.model_dump(exclude_unset=True)
+    for field, new_value in fields.items():
+        old_value = getattr(rule, field)
+        # Decimal/None comparison is fine; Pydantic normalises numerics.
+        if str(old_value) == str(new_value):
+            continue
+        before[field] = None if old_value is None else str(old_value)
+        after[field] = None if new_value is None else str(new_value)
+        setattr(rule, field, new_value)
+
+    if not after:
+        return rule  # Nothing changed — no audit row, no commit.
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="rule.updated",
+        entity_type="rule",
+        entity_id=str(rule.id),
+        before_state=before,
+        after_state=after,
+        ip_address=ip_address,
+    )
+    await session.commit()
+    await session.refresh(rule)
+    return rule
+
+
+async def soft_delete_rule(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    rule_id: UUID,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> None:
+    """Soft-delete via status='inactive'.
+
+    Hard-delete would FK-violate on `reward_events.rule_id` once the rule
+    has fired (no CASCADE by design — those rows are auditable history).
+    Setting status='inactive' stops the evaluator from firing further
+    rewards (the candidate query filters by status='active') without
+    breaking history.
+    """
+    rule = await get_rule_by_id(session, tenant_id=tenant_id, rule_id=rule_id)
+    if rule.status == "inactive":
+        return  # Idempotent — already deactivated.
+
+    rule.status = "inactive"
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="rule.deleted",
+        entity_type="rule",
+        entity_id=str(rule.id),
+        before_state={"status": "active"},
+        after_state={"status": "inactive"},
+        ip_address=ip_address,
+    )
+    await session.commit()
+
+
+async def _resolve_budget_scopes(
+    session: AsyncSession, *, tenant_id: UUID
+) -> dict[UUID, str]:
+    """Map each rule in the tenant to its budget scope.
+
+    Returns a dict keyed by rule_id, where the value is one of
+    {"none", "tenant_only", "rule_only", "both"}.
+
+    A tenant-wide budget (`scope_id IS NULL`) applies to every rule in
+    the tenant. Per-rule budgets (`scope_id = rule_id`) override the
+    "none" default for that specific rule.
+    """
+    # Has the tenant got at least one tenant-wide budget?
+    tenant_has_budget = (
+        await session.execute(
+            select(RewardBudget.id).where(
+                RewardBudget.tenant_id == tenant_id,
+                RewardBudget.scope_id.is_(None),
+            )
+        )
+    ).scalar_one_or_none() is not None
+
+    # Per-rule budgets — collect every rule_id that's scoped.
+    per_rule_q = await session.execute(
+        select(RewardBudget.scope_id).where(
+            RewardBudget.tenant_id == tenant_id,
+            RewardBudget.scope_id.is_not(None),
+        )
+    )
+    rule_scoped: set[UUID] = {row for row in per_rule_q.scalars().all() if row}
+
+    # Every rule in the tenant — we want a map for ALL of them, not
+    # just the ones with budgets. Default to "tenant_only" or "none".
+    rule_ids_q = await session.execute(
+        select(Rule.id).where(Rule.tenant_id == tenant_id)
+    )
+    rule_ids = list(rule_ids_q.scalars().all())
+
+    scopes: dict[UUID, str] = {}
+    for rid in rule_ids:
+        has_rule_scope = rid in rule_scoped
+        if has_rule_scope and tenant_has_budget:
+            scopes[rid] = "both"
+        elif has_rule_scope:
+            scopes[rid] = "rule_only"
+        elif tenant_has_budget:
+            scopes[rid] = "tenant_only"
+        else:
+            scopes[rid] = "none"
+    return scopes
+
+
 async def list_rule_performance_for_tenant(
     session: AsyncSession, *, tenant_id: UUID
 ) -> list[RulePerformanceOut]:
@@ -143,6 +296,7 @@ async def list_rule_performance_for_tenant(
         .order_by(Rule.created_at.desc())
     )
     rows = (await session.execute(stmt)).all()
+    scopes = await _resolve_budget_scopes(session, tenant_id=tenant_id)
     return [
         RulePerformanceOut(
             rule_id=rule_id,
@@ -151,6 +305,7 @@ async def list_rule_performance_for_tenant(
             total_reward_value=Decimal(str(total_value or 0)),
             first_fired_at=first_at,
             last_fired_at=last_at,
+            budget_scope=scopes.get(rule_id, "none"),
         )
         for rule_id, total_fires, unique_users, total_value, first_at, last_at in rows
     ]
@@ -200,6 +355,7 @@ async def get_rule_performance(
     row = (await session.execute(stmt)).one()
     total_fires, unique_users, total_value, first_at, last_at = row
 
+    scopes = await _resolve_budget_scopes(session, tenant_id=tenant_id)
     return RulePerformanceOut(
         rule_id=rule_id,
         total_fires=int(total_fires or 0),
@@ -207,4 +363,5 @@ async def get_rule_performance(
         total_reward_value=Decimal(str(total_value or 0)),
         first_fired_at=first_at,
         last_fired_at=last_at,
+        budget_scope=scopes.get(rule_id, "none"),
     )

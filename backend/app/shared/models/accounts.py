@@ -42,6 +42,11 @@ ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED = "system_fee_collected"
 # "withdraw float" actions write the opposite leg here so the ledger stays
 # double-entry balanced. One per (tenant, currency).
 ACCOUNT_TYPE_OPERATOR_ADJUSTMENT = "operator_adjustment"
+# Phase H — Airtime recharge escrow. When a user buys airtime, their wallet
+# is DEBITed and this account is CREDITed (PENDING) while the third-party
+# provider provisioning call is in flight. Stays CREDITed after COMPLETED
+# until ops settles externally with the MNO. One per (tenant, currency).
+ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING = "airtime_merchant_holding"
 
 ACCOUNT_TYPES = (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -51,6 +56,7 @@ ACCOUNT_TYPES = (
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+    ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
 )
 
 
@@ -75,7 +81,8 @@ class Account(Base):
             "'provider_redemption_wallet', "
             "'system_cash_inflow', "
             "'system_fee_collected', "
-            "'operator_adjustment'"
+            "'operator_adjustment', "
+            "'airtime_merchant_holding'"
             ")",
             name="ck_accounts_type",
         ),

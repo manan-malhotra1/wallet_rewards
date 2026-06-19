@@ -1,9 +1,11 @@
 """Payments FastAPI router.
 
-Phase F.4 gates the P2P endpoint behind the user session token. The sender
-and tenant are resolved from the session — never from the request body.
-Top-up remains internal-only (called from the seed); the HTTP top-up
-endpoint (Pay-PRD-0320) lands later.
+Phase F.4 gates the P2P endpoint behind the user session token. The
+sender + tenant are resolved from the session — never from the request
+body. Cash-in to user wallets is admin-only via `treasury.fund_user`;
+users never fund themselves. Airtime recharge (a user-initiated SPEND
+that triggers a third-party provisioning call) lives in
+`app.modules.airtime`.
 """
 from __future__ import annotations
 
@@ -52,7 +54,7 @@ async def post_p2p(
             },
         )
 
-    txn, recipient_user_id = await p2p_transfer(
+    txn, recipient_user_id, earned_points = await p2p_transfer(
         session,
         tenant_id=user.tenant_id,
         sender_user_id=user.id,
@@ -74,4 +76,5 @@ async def post_p2p(
         sender_user_id=user.id,
         recipient_user_id=recipient_user_id,
         created_at=txn.created_at,
+        earned_points=earned_points,
     )

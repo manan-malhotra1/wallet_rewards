@@ -244,3 +244,35 @@ class LogoutResponse(BaseModel):
     """`POST /auth/logout` ack."""
 
     ok: bool = True
+
+
+# --- Phase mobile A1 — anonymous phone lookup ------------------------------
+
+
+class AuthStartRequest(BaseModel):
+    """Request body for `POST /identity/auth/start`.
+
+    Mirrors the shape of `OtpSendRequest` (tenant_id + phone) so the mobile
+    client uses the same input fields across the auth flow. Phone is
+    normalised here so the lookup compares canonical forms.
+    """
+
+    tenant_id: UUID
+    phone: str = Field(min_length=5, max_length=20)
+
+    @field_validator("phone")
+    @classmethod
+    def _normalize_phone(cls, v: str) -> str:
+        """Strip spaces / dashes / parens so visual variants resolve identically."""
+        return normalize_phone(v)
+
+
+class AuthStartResponse(BaseModel):
+    """`POST /auth/start` response — drives the mobile auth branch.
+
+    - `needs_otp` → no user exists for (tenant, phone); route through
+      OTP → set-PIN registration.
+    - `needs_pin` → user already exists; route to PIN entry.
+    """
+
+    status: Literal["needs_otp", "needs_pin"]

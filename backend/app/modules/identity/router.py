@@ -22,6 +22,8 @@ from app.database import get_async_session
 from app.dependencies import get_current_user, require_admin_role
 from app.modules.identity.schemas import (
     AdminPinResetResponse,
+    AuthStartRequest,
+    AuthStartResponse,
     CreateUserRequest,
     IdentifierType,
     LogoutResponse,
@@ -39,6 +41,7 @@ from app.modules.identity.schemas import (
 )
 from app.modules.identity.service import (
     admin_reset_pin,
+    auth_start_lookup,
     authenticate_pin,
     create_user,
     get_my_wallet,
@@ -158,6 +161,24 @@ async def post_admin_pin_reset(
 # =============================================================================
 # Phase F.2 — user PIN/OTP authentication flow
 # =============================================================================
+
+
+@router.post("/auth/start", response_model=AuthStartResponse)
+async def post_auth_start(
+    request: AuthStartRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> AuthStartResponse:
+    """Branch the mobile auth flow on whether the phone is already registered.
+
+    Pure read-only lookup — does NOT auto-register the phone (unlike
+    /otp/send). The mobile client calls this immediately after the user
+    enters a phone number so it can route to OTP registration
+    (`needs_otp`) or PIN entry (`needs_pin`).
+
+    Tenant-scoped: cross-tenant phone lookups return `needs_otp` so we
+    don't leak existence across tenants (NFR-0220).
+    """
+    return await auth_start_lookup(session, request)
 
 
 @router.post("/otp/send", response_model=OtpSendResponse, status_code=202)

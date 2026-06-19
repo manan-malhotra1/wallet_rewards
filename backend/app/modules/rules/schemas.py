@@ -122,6 +122,25 @@ class RuleOut(BaseModel):
     status: str
 
 
+BudgetScope = Literal["none", "tenant_only", "rule_only", "both"]
+
+
+class RuleUpdateRequest(BaseModel):
+    """Partial update — admin can change description, reward_value, status.
+
+    Fields that change the rule's TYPE or its trigger conditions are
+    intentionally not editable: an in-flight `user_rule_progress` row
+    assumes those values are stable. Operators wanting to change them
+    should deactivate this rule and create a new one.
+    """
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    reward_value: Decimal | None = Field(default=None, gt=Decimal("0"))
+    stop_after_n_triggers: int | None = Field(default=None, ge=1)
+    status: Literal["active", "inactive"] | None = None
+
+
 class RulePerformanceOut(BaseModel):
     """Campaign performance metrics for a single rule.
 
@@ -138,6 +157,10 @@ class RulePerformanceOut(BaseModel):
             in the rule's reward_type unit (points or cashback currency).
         first_fired_at / last_fired_at: Earliest and latest reward_event
             timestamps. Null when the rule has never fired.
+        budget_scope: Which budgets (if any) gate this campaign.
+            `none` = uncapped; `tenant_only` = only the tenant-wide cap;
+            `rule_only` = only a per-rule cap; `both` = layered (both
+            must pass).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -148,3 +171,4 @@ class RulePerformanceOut(BaseModel):
     total_reward_value: Decimal
     first_fired_at: datetime | None
     last_fired_at: datetime | None
+    budget_scope: BudgetScope = "none"

@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell/app-shell";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import { listTenants } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
@@ -39,20 +40,22 @@ export default async function AuthenticatedLayout({
     (await getActiveTenantId()) ?? tenants[0]?.id ?? null;
 
   return (
-    <AppShell
-      tenants={tenants.map((t) => ({
-        id: t.id,
-        name: t.name,
-        baseCurrency: t.base_currency ?? "—",
-      }))}
-      activeTenantId={activeTenantId}
-      user={{
-        username: session.user.username ?? session.user.email ?? session.user.id,
-        email: session.user.email ?? undefined,
-        roles: session.user.roles ?? [],
-      }}
-    >
-      {children}
-    </AppShell>
+    <TooltipProvider delayDuration={200}>
+      <AppShell
+        tenants={tenants.map((t) => ({
+          id: t.id,
+          name: t.name,
+          baseCurrency: t.base_currency ?? "—",
+        }))}
+        activeTenantId={activeTenantId}
+        user={{
+          username: session.user.username ?? session.user.email ?? session.user.id,
+          email: session.user.email ?? undefined,
+          roles: session.user.roles ?? [],
+        }}
+      >
+        {children}
+      </AppShell>
+    </TooltipProvider>
   );
 }

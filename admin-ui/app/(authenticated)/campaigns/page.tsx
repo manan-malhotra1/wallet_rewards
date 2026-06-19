@@ -101,7 +101,11 @@ export default async function CampaignsPage() {
             description="Campaigns trigger rewards when users meet configured conditions. Create the first one to start earning points or cashback."
           />
         ) : (
-          <CampaignsTable rules={rules} performance={performance} />
+          <CampaignsTable
+            rules={rules}
+            performance={performance}
+            tenantId={activeTenantId}
+          />
         )}
       </div>
     </div>

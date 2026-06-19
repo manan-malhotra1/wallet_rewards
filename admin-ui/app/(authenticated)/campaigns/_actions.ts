@@ -15,8 +15,11 @@ import { ApiError } from "@/lib/api";
 import {
   createBudget,
   createRule,
+  deleteRule,
+  updateRule,
   type CreateBudgetPayload,
   type CreateRulePayload,
+  type UpdateRulePayload,
 } from "@/lib/api-endpoints";
 
 export interface InlineBudgetInput {
@@ -112,3 +115,53 @@ export async function createCampaignWithBudgetAction(
  * dialog references `createCampaignWithBudgetAction` directly.
  */
 export const createRuleWithBudgetAction = createCampaignWithBudgetAction;
+
+
+export type CampaignMutationResult =
+  | { ok: true }
+  | { ok: false; errorCode: string; message: string };
+
+
+/** Patch a campaign's editable fields (name, description, reward, status). */
+export async function updateCampaignAction(
+  ruleId: string,
+  tenantId: string,
+  payload: UpdateRulePayload,
+): Promise<CampaignMutationResult> {
+  try {
+    await updateRule(ruleId, tenantId, payload);
+    revalidatePath("/campaigns");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, errorCode: err.errorCode, message: err.message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+
+/** Soft-delete a campaign (status='inactive'). Idempotent. */
+export async function deleteCampaignAction(
+  ruleId: string,
+  tenantId: string,
+): Promise<CampaignMutationResult> {
+  try {
+    await deleteRule(ruleId, tenantId);
+    revalidatePath("/campaigns");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, errorCode: err.errorCode, message: err.message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}

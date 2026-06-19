@@ -4,6 +4,7 @@ Import every model here so Alembic autogenerate sees them via Base.metadata,
 and so callers can `from app.shared.models import Tenant, User, ...`.
 """
 from app.shared.models.accounts import (
+    ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
@@ -124,6 +125,7 @@ __all__ = [
     # Accounts
     "Account",
     "AccountBalanceSnapshot",
+    "ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING",
     "ACCOUNT_TYPE_FINANCIAL_WALLET",
     "ACCOUNT_TYPE_OPERATOR_ADJUSTMENT",
     "ACCOUNT_TYPE_POINTS",

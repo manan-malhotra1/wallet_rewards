@@ -679,3 +679,26 @@ class StepUpPolicyNotFound(AppHTTPException):
         super().__init__(
             404, "step_up_policy_not_found", "Step-up policy not found."
         )
+
+
+# --- Airtime recharge ----------------------------------------------------
+
+
+class AirtimeRechargeNotFound(AppHTTPException):
+    """Unknown airtime_recharge_id, or one belonging to another tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            404, "airtime_recharge_not_found", "Airtime recharge not found."
+        )
+
+
+class AirtimeRechargeAlreadySettled(AppHTTPException):
+    """Tried to confirm/fail an airtime recharge that is no longer PENDING."""
+
+    def __init__(self, current_status: str) -> None:
+        super().__init__(
+            409,
+            "airtime_recharge_already_settled",
+            f"Airtime recharge already in terminal state '{current_status}'.",
+        )

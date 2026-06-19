@@ -1,7 +1,7 @@
 """Pydantic v2 schemas for the catalog module."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -57,3 +57,32 @@ class PointsHistoryItem(BaseModel):
     rule_name: str | None    # populated for reward_issuance entries
     triggering_event_id: str | None
     occurred_at: datetime
+
+
+class FeaturedCampaignItem(BaseModel):
+    """One featured campaign — surfaced fields mapped directly from `Rule`.
+
+    Backs the mobile home featured-card slot. Only columns that exist on
+    the `Rule` model are surfaced; no derived or computed fields beyond
+    `reward_type` + `reward_value` which together act as the "reward hint"
+    the card needs to render (e.g. "100 points").
+    """
+
+    id: UUID
+    name: str
+    description: str | None
+    reward_type: str         # "points" or "cashback"
+    reward_value: Decimal
+    campaign_start_date: date | None
+    campaign_end_date: date | None
+
+
+class FeaturedCampaignResponse(BaseModel):
+    """Featured-campaign envelope.
+
+    Wrapping the item in `{campaign: ...}` lets the empty case stay a
+    clean 200 with `{"campaign": null}` — the mobile home page collapses
+    the slot in that case rather than treating it as an error.
+    """
+
+    campaign: FeaturedCampaignItem | None

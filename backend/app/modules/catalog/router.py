@@ -15,10 +15,12 @@ from app.database import get_async_session
 from app.dependencies import get_current_user
 from app.modules.catalog.schemas import (
     CatalogSummaryResponse,
+    FeaturedCampaignResponse,
     PointsHistoryItem,
     RedemptionHistoryItem,
 )
 from app.modules.catalog.service import (
+    get_featured_campaign,
     get_user_points_history,
     get_user_redemption_history,
     get_user_summary,
@@ -67,3 +69,20 @@ async def get_points_history(
     same case).
     """
     return await get_user_points_history(session, user.tenant_id, user.id)
+
+
+@router.get("/featured", response_model=FeaturedCampaignResponse)
+async def get_featured(
+    session: AsyncSession = Depends(get_async_session),
+    user: UserPrincipal = Depends(get_current_user),
+) -> FeaturedCampaignResponse:
+    """Single most relevant active campaign for the mobile home card (A4).
+
+    Returns `{"campaign": null}` when no eligible campaign exists, so the
+    mobile home page can collapse the slot cleanly without treating the
+    empty case as an error.
+    """
+    campaign = await get_featured_campaign(
+        session, tenant_id=user.tenant_id, user_id=user.id
+    )
+    return FeaturedCampaignResponse(campaign=campaign)

@@ -11,7 +11,7 @@
  */
 import "server-only";
 
-import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 import type {
   AdjustSystemWalletResponse,
@@ -112,6 +112,32 @@ export interface CreateRulePayload {
 
 export const createRule = (payload: CreateRulePayload) =>
   apiPost<Rule>("/api/v1/rules", payload);
+
+/** Fetch one rule (admin only, tenant-scoped). */
+export const getRule = (rule_id: string, tenant_id: string) =>
+  apiGet<Rule>(`/api/v1/rules/${rule_id}`, { query: { tenant_id } });
+
+export interface UpdateRulePayload {
+  name?: string;
+  description?: string;
+  reward_value?: string;
+  stop_after_n_triggers?: number;
+  status?: "active" | "inactive";
+}
+
+/** Patch a rule's editable fields. Trigger conditions are immutable. */
+export const updateRule = (
+  rule_id: string,
+  tenant_id: string,
+  payload: UpdateRulePayload,
+) =>
+  apiPatch<Rule>(`/api/v1/rules/${rule_id}`, payload, {
+    query: { tenant_id },
+  });
+
+/** Soft-delete (status='inactive'). Idempotent. */
+export const deleteRule = (rule_id: string, tenant_id: string) =>
+  apiDelete<void>(`/api/v1/rules/${rule_id}`, { query: { tenant_id } });
 
 /**
  * Campaign performance metrics — total fires, unique users rewarded,

@@ -17,12 +17,16 @@ from app.modules.rules.schemas import (
     RuleCreateRequest,
     RuleOut,
     RulePerformanceOut,
+    RuleUpdateRequest,
 )
 from app.modules.rules.service import (
     create_rule,
+    get_rule_by_id,
     get_rule_performance,
     list_rule_performance_for_tenant,
     list_rules_for_tenant,
+    soft_delete_rule,
+    update_rule,
 )
 
 router = APIRouter(prefix="/api/v1/rules", tags=["rules"])
@@ -93,4 +97,65 @@ async def get_performance(
     _ = admin
     return await get_rule_performance(
         session, tenant_id=tenant_id, rule_id=rule_id
+    )
+
+
+@router.get("/{rule_id}", response_model=RuleOut)
+async def get_rule(
+    rule_id: UUID,
+    tenant_id: UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> RuleOut:
+    """Fetch a single rule. Tenant-scoped — 404 cross-tenant."""
+    _ = admin
+    rule = await get_rule_by_id(session, tenant_id=tenant_id, rule_id=rule_id)
+    return RuleOut.model_validate(rule)
+
+
+@router.patch("/{rule_id}", response_model=RuleOut)
+async def patch_rule(
+    rule_id: UUID,
+    tenant_id: UUID,
+    request: RuleUpdateRequest,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> RuleOut:
+    """Patch a rule's editable fields (name, description, reward, status).
+
+    Trigger conditions (count_threshold, min_amount, etc.) are intentionally
+    not editable. Tenant-scoped — 404 cross-tenant.
+    """
+    rule = await update_rule(
+        session,
+        tenant_id=tenant_id,
+        rule_id=rule_id,
+        request=request,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
+    return RuleOut.model_validate(rule)
+
+
+@router.delete("/{rule_id}", status_code=204)
+async def remove_rule(
+    rule_id: UUID,
+    tenant_id: UUID,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """Soft-delete a rule (status='inactive') so it stops firing.
+
+    Hard-delete is rejected by the FK on `reward_events.rule_id` once
+    the rule has fired — those rows are auditable history. Operators
+    wanting a true purge should drop them at the DB level.
+    """
+    await soft_delete_rule(
+        session,
+        tenant_id=tenant_id,
+        rule_id=rule_id,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
     )

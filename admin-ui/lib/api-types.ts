@@ -90,6 +90,12 @@ export interface Rule {
   count_threshold: number | null;
   min_amount: string | null;
   time_window: string | null;
+  // Epic 10 — rule-type-specific fields. Null for rule types that
+  // don't use them.
+  streak_units: number | null;
+  streak_unit_window: "day" | "week" | null;
+  campaign_start_date: string | null;
+  campaign_end_date: string | null;
   reward_type: "points" | "cashback";
   reward_value: string;
   stop_after_n_triggers: number | null;
@@ -110,6 +116,7 @@ export interface RulePerformance {
   total_reward_value: string;
   first_fired_at: string | null;
   last_fired_at: string | null;
+  budget_scope: "none" | "tenant_only" | "rule_only" | "both";
 }
 
 /**

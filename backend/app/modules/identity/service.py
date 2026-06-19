@@ -32,6 +32,8 @@ from app.auth.sessions import (
 )
 from app.config import settings
 from app.modules.identity.schemas import (
+    AuthStartRequest,
+    AuthStartResponse,
     CreateUserRequest,
     IdentifierType,
     OtpSendRequest,
@@ -793,3 +795,39 @@ async def authenticate_pin(
         session_token=session_token,
         expires_in=SESSION_TTL_SECONDS,
     )
+
+
+async def auth_start_lookup(
+    session: AsyncSession, request: AuthStartRequest
+) -> AuthStartResponse:
+    """Branch the mobile auth flow on whether (tenant, phone) already has a user.
+
+    Pure read-only lookup — UNLIKE `send_otp`, this function MUST NOT
+    create any rows. The mobile client calls this immediately after the
+    user enters a phone number to decide between OTP registration
+    (`needs_otp`) and PIN entry (`needs_pin`). No rate limit either; the
+    OTP rate limit applies on the subsequent /otp/send call.
+
+    Tenant isolation (NFR-0220): a phone known in tenant B is invisible
+    from tenant A — both paths return `needs_otp`, which is what we want
+    to avoid cross-tenant user enumeration.
+
+    Args:
+        session: Async DB session (read-only — no commit needed).
+        request: Validated payload; phone is already normalised by the
+            schema validator.
+
+    Returns:
+        AuthStartResponse with status `"needs_pin"` if a user exists for
+        (tenant_id, phone), else `"needs_otp"`.
+
+    Raises:
+        TenantNotFound: 404 when tenant_id is unknown. Mirrors /otp/send so
+            an attacker can't probe tenant existence via this endpoint either.
+    """
+    await _assert_tenant_exists(session, request.tenant_id)
+
+    user = await _find_user_by_phone(session, request.tenant_id, request.phone)
+    if user is not None:
+        return AuthStartResponse(status="needs_pin")
+    return AuthStartResponse(status="needs_otp")

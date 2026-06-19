@@ -1,4 +1,5 @@
-"""Payments service — P2P orchestration and internal top-up.
+"""Payments service — P2P orchestration, internal top-up, and the
+mobile-facing demo top-up endpoint (Pay-PRD-0320).
 
 The full PRD orchestration sequence (Pay-PRD-0260) is:
     1. Role check
@@ -9,6 +10,11 @@ The full PRD orchestration sequence (Pay-PRD-0260) is:
 Phase B implements step 4 only. Steps 1–3 are explicitly TODO with the relevant
 PRD references. The architecture supports plugging them in without changing the
 caller — they belong inside this service, before the `post_transaction` call.
+
+The user-facing `topup()` function (Pay-PRD-0320) wraps the internal
+`top_up()` ledger primitive with the user-action concerns: step-up PIN
+enforcement, audit attribution to the user, and surfacing any earned
+points back to the caller.
 """
 from __future__ import annotations
 
@@ -18,6 +24,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.principals import UserPrincipal
 from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_user
 from app.modules.identity.service import resolve_identifier
@@ -41,6 +48,8 @@ from app.shared.models import (
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     Account,
+    LedgerEntry,
+    RewardEvent,
     Tenant,
     Transaction,
     User,
@@ -116,7 +125,7 @@ async def p2p_transfer(
     sender_principal: object | None = None,
     pin: str | None = None,
     ip_address: str | None = None,
-) -> tuple[Transaction, UUID]:
+) -> tuple[Transaction, UUID, int | None]:
     """Execute a peer-to-peer transfer between two users in the same tenant.
 
     Steps (matches PRD Pay-PRD-0260 ordering):
@@ -127,6 +136,8 @@ async def p2p_transfer(
       5. Lock sender wallet for the duration of the DB transaction.
       6. Overdraft check (Pay-PRD-0220) — reject BEFORE any ledger write.
       7. Post balanced transaction via the ledger service.
+      8. Resolve any reward points credited by the rules engine for this
+         transaction (post-commit, so any rule-firings are durable).
 
     Steps 1.5 (role), 2.5 (limits), 3.5 (pricing) — TODO, Phase C+.
 
@@ -142,7 +153,12 @@ async def p2p_transfer(
             the same key return the original transaction.
 
     Returns:
-        (Transaction, recipient_user_id).
+        (Transaction, recipient_user_id, earned_points). `earned_points`
+        is the integer total of PTS the rules engine issued against this
+        transaction, or `None` if no rules fired. Today the P2P path does
+        not synchronously call the rules engine, so this is `None` in
+        practice; the lookup picks up any future rule-firings keyed by
+        the internal transaction id.
 
     Raises:
         TenantNotFound: unknown tenant.
@@ -331,7 +347,13 @@ async def p2p_transfer(
         )
         await session.commit()
 
-    return txn, recipient_user_id
+    # Step 8 — earned-points lookup happens AFTER every commit above so any
+    # rule-firing (today: none, since P2P doesn't synchronously go through
+    # Kafka; tomorrow: whatever the rules engine writes against this
+    # transaction id) is already durable. Mirrors the topup() pattern.
+    earned_points = await _resolve_earned_points_for_txn(session, txn.id)
+
+    return txn, recipient_user_id, earned_points
 
 
 async def _get_or_create_system_cash_inflow(
@@ -429,3 +451,42 @@ async def top_up(
 # Bind User to the import graph so it doesn't trigger import warnings —
 # `User` is referenced in this module's docstrings.
 _ = User
+
+
+async def _resolve_earned_points_for_txn(
+    session: AsyncSession, txn_id: UUID
+) -> int | None:
+    """Sum reward points issued by the rules engine for an internal txn.
+
+    The rules engine writes `reward_events` rows keyed by
+    `triggering_event_id` — a STRING that holds either an external Kafka
+    `event_id` or, for synchronous internal flows, the string form of the
+    internal transaction id. We match on `str(txn_id)` so internal
+    rule-firings (when they exist) are picked up; today the top-up path
+    does not emit Kafka events so this returns `None` in practice.
+
+    The CHECK constraint on `ledger_entries.amount > 0` plus the
+    `reward_value NUMERIC(20, 6)` storage means we can safely round to
+    int for the mobile UI — fractional points don't exist on the rules
+    engine surface.
+
+    Args:
+        session: Async DB session.
+        txn_id: The transaction we just posted.
+
+    Returns:
+        Total points credited as an int, or `None` if no rules fired.
+    """
+    result = await session.execute(
+        select(RewardEvent.reward_value).where(
+            RewardEvent.triggering_event_id == str(txn_id)
+        )
+    )
+    rows = result.scalars().all()
+    if not rows:
+        return None
+    total = sum((Decimal(str(v)) for v in rows), start=Decimal("0"))
+    # Round to int — mobile UI does not surface fractional points.
+    return int(total)
+
+

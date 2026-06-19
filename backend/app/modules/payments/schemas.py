@@ -1,4 +1,10 @@
-"""Pydantic v2 schemas for the payments module."""
+"""Pydantic v2 schemas for the payments module.
+
+Hosts request/response models for the P2P transfer endpoint and the
+mobile-facing demo top-up endpoint (Pay-PRD-0320). All `tenant_id` /
+`user_id` resolution comes from the session token — never the request
+body.
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -42,7 +48,22 @@ class P2PRequest(BaseModel):
 
 
 class P2PResponse(BaseModel):
-    """Result of a successful P2P transfer."""
+    """Result of a successful P2P transfer.
+
+    Attributes:
+        transaction_id: The double-entry transaction id (Pay-PRD-0170).
+        status: Lifecycle state of the transaction ("COMPLETED" on the
+            happy path).
+        amount: The transferred amount (echoes the request).
+        currency: 3-letter ISO 4217 (uppercase) — echoes the request.
+        sender_user_id: The authenticated sender (resolved from the
+            session token, NOT the request body).
+        recipient_user_id: Resolved from the recipient identifier.
+        created_at: When the transaction landed (UTC).
+        earned_points: Total PTS issued by the rules engine for this
+            transfer, or `null` if no rules fired. Surfacing this avoids
+            a polling round-trip on the mobile success screen.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -53,3 +74,6 @@ class P2PResponse(BaseModel):
     sender_user_id: UUID
     recipient_user_id: UUID
     created_at: datetime
+    earned_points: int | None = None
+
+

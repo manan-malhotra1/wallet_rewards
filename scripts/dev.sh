@@ -146,7 +146,7 @@ cmd_start() {
       cd "${BACKEND_DIR}"
       # shellcheck disable=SC1091
       source .venv/bin/activate
-      nohup uvicorn app.main:app --port 8000 --log-level info \
+      nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level info \
         >"${BACKEND_LOG}" 2>&1 &
       echo $! >"${BACKEND_PID}"
     )

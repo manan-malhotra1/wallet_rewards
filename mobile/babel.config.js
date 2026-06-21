@@ -1,9 +1,10 @@
 /**
  * Babel configuration for the Sasai mobile app.
  *
- * The Tamagui plugin extracts inline styles at build time, and
- * react-native-reanimated's worklet transform must remain LAST in the
- * plugin list per the Reanimated docs.
+ * The Tamagui plugin extracts inline styles at build time, and the
+ * worklets transform (Reanimated v4 / SDK 54) must remain LAST in the
+ * plugin list — moved from `react-native-reanimated/plugin` into the
+ * standalone `react-native-worklets/plugin` package.
  */
 module.exports = function (api) {
   api.cache(true);
@@ -18,7 +19,7 @@ module.exports = function (api) {
           logTimings: true,
         },
       ],
-      'react-native-reanimated/plugin',
+      'react-native-worklets/plugin',
     ],
   };
 };

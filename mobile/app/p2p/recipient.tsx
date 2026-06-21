@@ -7,7 +7,14 @@
  * round-trip and gives a tighter error message.
  */
 import { useState } from 'react';
-import { ActivityIndicator } from 'react-native';
+import {
+  ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TouchableWithoutFeedback,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button, Text, View, YStack } from 'tamagui';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -53,37 +60,50 @@ export default function RecipientScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <YStack flex={1} padding="$5" gap="$4">
-        <YStack gap="$2" marginTop="$4">
-          <Text fontFamily="Inter-Bold" fontSize={26} color="$ink">
-            Send money
-          </Text>
-          <Text fontFamily="Inter-Regular" fontSize={15} color="$muted">
-            Who are you sending to?
-          </Text>
-        </YStack>
-        <View marginTop="$2">
-          <PhoneInput onChange={setPhone} />
-        </View>
-        {error ? (
-          <Text fontFamily="Inter-Medium" color="$error" fontSize={13}>
-            {error}
-          </Text>
-        ) : null}
-        <View flex={1} />
-        <Button
-          size="$5"
-          theme="active"
-          backgroundColor="$sasaiNavy"
-          color="white"
-          disabled={!canContinue}
-          opacity={canContinue ? 1 : 0.5}
-          onPress={onContinue}
-          accessibilityLabel="Continue to amount"
-        >
-          {loading ? <ActivityIndicator color="#FFFFFF" /> : 'Continue'}
-        </Button>
-      </YStack>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <YStack flex={1} padding="$5" gap="$4">
+              <YStack gap="$2" marginTop="$4">
+                <Text fontFamily="Inter-Bold" fontSize={26} color="#0B1726">
+                  Send money
+                </Text>
+                <Text fontFamily="Inter-Regular" fontSize={15} color="#6A7682">
+                  Who are you sending to?
+                </Text>
+              </YStack>
+              <View marginTop="$2">
+                <PhoneInput onChange={setPhone} />
+              </View>
+              {error ? (
+                <Text fontFamily="Inter-Medium" color="#EF4444" fontSize={13}>
+                  {error}
+                </Text>
+              ) : null}
+              <View flex={1} minHeight={40} />
+              <Button
+                size="$5"
+                theme="active"
+                backgroundColor="#144989"
+                color="white"
+                disabled={!canContinue}
+                opacity={canContinue ? 1 : 0.5}
+                onPress={onContinue}
+                accessibilityLabel="Continue to amount"
+              >
+                {loading ? <ActivityIndicator color="#FFFFFF" /> : 'Continue'}
+              </Button>
+            </YStack>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

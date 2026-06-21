@@ -11,7 +11,15 @@
  * can recover it from a deep link or app restart.
  */
 import { useState } from 'react';
-import { ActivityIndicator } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TouchableWithoutFeedback,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button, Text, View, YStack } from 'tamagui';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -60,37 +68,57 @@ export default function PhoneScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <YStack flex={1} padding="$5" gap="$4">
-        <YStack gap="$2" marginTop="$4">
-          <Text fontFamily="Inter-Bold" fontSize={28} color="$ink">
-            Welcome to Sasai
-          </Text>
-          <Text fontFamily="Inter-Regular" fontSize={15} color="$muted">
-            Enter your phone number to sign in or create an account.
-          </Text>
-        </YStack>
-        <View marginTop="$2">
-          <PhoneInput onChange={setPhone} />
-        </View>
-        {error ? (
-          <Text fontFamily="Inter-Medium" color="$error" fontSize={13}>
-            {error}
-          </Text>
-        ) : null}
-        <View flex={1} />
-        <Button
-          size="$5"
-          theme="active"
-          backgroundColor="$sasaiNavy"
-          color="white"
-          disabled={!canContinue}
-          opacity={canContinue ? 1 : 0.5}
-          onPress={onContinue}
-          accessibilityLabel="Continue"
-        >
-          {loading ? <ActivityIndicator color="#FFFFFF" /> : 'Continue'}
-        </Button>
-      </YStack>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <YStack flex={1} padding="$5" gap="$4">
+              <View alignItems="flex-start" marginTop="$2">
+                <Image
+                  source={require('../../assets/sasai-logo.png')}
+                  style={{ width: 152, height: 43, resizeMode: 'contain' }}
+                  accessibilityLabel="Sasai"
+                />
+              </View>
+              <YStack gap="$2" marginTop="$5">
+                <Text fontFamily="Inter-Bold" fontSize={28} color="#0B1726">
+                  Welcome to Sasai
+                </Text>
+                <Text fontFamily="Inter-Regular" fontSize={15} color="#6A7682">
+                  Enter your phone number to sign in or create an account.
+                </Text>
+              </YStack>
+              <View marginTop="$2">
+                <PhoneInput onChange={setPhone} />
+              </View>
+              {error ? (
+                <Text fontFamily="Inter-Medium" color="#EF4444" fontSize={13}>
+                  {error}
+                </Text>
+              ) : null}
+              <View flex={1} minHeight={40} />
+              <Button
+                size="$5"
+                theme="active"
+                backgroundColor="#144989"
+                color="white"
+                disabled={!canContinue}
+                opacity={canContinue ? 1 : 0.5}
+                onPress={onContinue}
+                accessibilityLabel="Continue"
+              >
+                {loading ? <ActivityIndicator color="#FFFFFF" /> : 'Continue'}
+              </Button>
+            </YStack>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

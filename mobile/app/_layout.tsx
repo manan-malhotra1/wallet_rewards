@@ -12,7 +12,6 @@
  * own chrome.
  */
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -30,9 +29,14 @@ SplashScreen.preventAutoHideAsync().catch(() => {
   /* Already hidden — fine. */
 });
 
-/** Root provider tree. Hides the splash once fonts are loaded. */
+/**
+ * Root provider tree. Hides the splash once fonts are loaded.
+ *
+ * Theme is locked to `light` for v0 — the brand assets and every screen's
+ * colour choices were authored against a light surface. Dark-mode support
+ * lands later once we audit every screen for contrast.
+ */
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const [fontsLoaded] = useFonts({
     'Inter-Regular': require('../assets/fonts/Inter-Regular.ttf'),
     'Inter-Medium': require('../assets/fonts/Inter-Medium.ttf'),
@@ -55,12 +59,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <TamaguiProvider
-          config={tamaguiConfig}
-          defaultTheme={colorScheme === 'dark' ? 'dark' : 'light'}
-        >
+        <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
           <QueryClientProvider client={queryClient}>
-            <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+            <StatusBar style="dark" />
             <Stack screenOptions={{ headerShown: false }} />
           </QueryClientProvider>
         </TamaguiProvider>

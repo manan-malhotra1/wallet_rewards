@@ -11,7 +11,7 @@
  * Session-expired errors clear local state and bounce to /auth/phone.
  */
 import { useEffect } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -100,11 +100,13 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       <YStack flex={1} padding="$5" gap="$5">
-        {/* Top row — greeting on the left, PTS pill on the right. */}
-        <XStack alignItems="center" justifyContent="space-between" marginTop="$2">
-          <Text fontFamily="Inter-Bold" fontSize={22} color="$ink">
-            Hi {firstName}
-          </Text>
+        {/* Top row — Sasai logo on the left, PTS pill on the right. */}
+        <XStack alignItems="center" justifyContent="space-between" marginTop="$1">
+          <Image
+            source={require('../assets/sasai-logo.png')}
+            style={{ width: 110, height: 31, resizeMode: 'contain' }}
+            accessibilityLabel="Sasai"
+          />
           {ptsBalance > 0 ? (
             <XStack
               backgroundColor="rgba(72,194,207,0.18)"
@@ -112,12 +114,16 @@ export default function HomeScreen() {
               paddingVertical="$2"
               borderRadius={16}
             >
-              <Text fontFamily="Inter-SemiBold" fontSize={13} color="$sasaiNavy">
+              <Text fontFamily="Inter-SemiBold" fontSize={13} color="#144989">
                 {formatPTS(ptsBalance)}
               </Text>
             </XStack>
           ) : null}
         </XStack>
+
+        <Text fontFamily="Inter-Bold" fontSize={22} color="#0B1726">
+          Hi {firstName}
+        </Text>
 
         {/* Balance hero card. */}
         <YStack

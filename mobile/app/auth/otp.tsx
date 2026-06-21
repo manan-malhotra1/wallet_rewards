@@ -12,7 +12,14 @@
  * a deep link or refresh still shows "Dev OTP: 123456".
  */
 import { useEffect, useRef, useState } from 'react';
-import { Animated } from 'react-native';
+import {
+  Animated,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TouchableWithoutFeedback,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Text, XStack, YStack } from 'tamagui';
@@ -111,45 +118,58 @@ export default function OtpScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <YStack flex={1} padding="$5" gap="$4">
-        <YStack gap="$2" marginTop="$4">
-          <Text fontFamily="Inter-Bold" fontSize={26} color="$ink">
-            Verify your number
-          </Text>
-          <Text fontFamily="Inter-Regular" fontSize={14} color="$muted">
-            We sent a 6-digit code to {phone}.
-          </Text>
-        </YStack>
-        <Animated.View style={{ transform: [{ translateX: shake }] }}>
-          <OtpInput onComplete={handleComplete} resetSignal={resetTick} />
-        </Animated.View>
-        {error ? (
-          <Text fontFamily="Inter-Medium" color="$error" fontSize={13} textAlign="center">
-            {error}
-          </Text>
-        ) : null}
-        {devHint ? (
-          <Text fontFamily="Inter-Regular" color="$muted" fontSize={12} textAlign="center">
-            Dev OTP: {devHint}
-          </Text>
-        ) : null}
-        <XStack justifyContent="center">
-          <Button
-            unstyled
-            disabled={resendIn > 0}
-            onPress={handleResend}
-            accessibilityLabel="Resend code"
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <Text
-              fontFamily="Inter-Medium"
-              fontSize={14}
-              color={resendIn > 0 ? '$muted' : '$sasaiNavy'}
-            >
-              {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
-            </Text>
-          </Button>
-        </XStack>
-      </YStack>
+            <YStack flex={1} padding="$5" gap="$4">
+              <YStack gap="$2" marginTop="$4">
+                <Text fontFamily="Inter-Bold" fontSize={26} color="#0B1726">
+                  Verify your number
+                </Text>
+                <Text fontFamily="Inter-Regular" fontSize={14} color="#6A7682">
+                  We sent a 6-digit code to {phone}.
+                </Text>
+              </YStack>
+              <Animated.View style={{ transform: [{ translateX: shake }] }}>
+                <OtpInput onComplete={handleComplete} resetSignal={resetTick} />
+              </Animated.View>
+              {error ? (
+                <Text fontFamily="Inter-Medium" color="#EF4444" fontSize={13} textAlign="center">
+                  {error}
+                </Text>
+              ) : null}
+              {devHint ? (
+                <Text fontFamily="Inter-Regular" color="#6A7682" fontSize={12} textAlign="center">
+                  Dev OTP: {devHint}
+                </Text>
+              ) : null}
+              <XStack justifyContent="center">
+                <Button
+                  unstyled
+                  disabled={resendIn > 0}
+                  onPress={handleResend}
+                  accessibilityLabel="Resend code"
+                >
+                  <Text
+                    fontFamily="Inter-Medium"
+                    fontSize={14}
+                    color={resendIn > 0 ? '#6A7682' : '#144989'}
+                  >
+                    {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+                  </Text>
+                </Button>
+              </XStack>
+            </YStack>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

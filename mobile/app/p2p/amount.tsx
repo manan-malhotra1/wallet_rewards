@@ -6,6 +6,13 @@
  * The amount is forwarded to /p2p/review as a route param.
  */
 import { useState } from 'react';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TouchableWithoutFeedback,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Text, View, YStack } from 'tamagui';
@@ -48,50 +55,63 @@ export default function AmountScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <YStack flex={1} padding="$5" gap="$5">
-        <YStack gap="$2" marginTop="$4">
-          <Text fontFamily="Inter-Bold" fontSize={26} color="$ink">
-            Amount
-          </Text>
-          <Text fontFamily="Inter-Regular" fontSize={15} color="$muted">
-            Sending to {maskPhone(recipientPhone)}
-          </Text>
-        </YStack>
-        <View marginTop="$3">
-          <AmountInput value={amount} onChange={setAmount} />
-        </View>
-        <Text
-          fontFamily="Inter-Regular"
-          fontSize={13}
-          color="$muted"
-          textAlign="center"
-        >
-          ZAR wallet · {formatZAR(available)} available
-        </Text>
-        {overdrawn ? (
-          <Text
-            fontFamily="Inter-Medium"
-            color="$error"
-            fontSize={13}
-            textAlign="center"
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            Not enough in your wallet to send {formatZAR(parsed)}.
-          </Text>
-        ) : null}
-        <View flex={1} />
-        <Button
-          size="$5"
-          theme="active"
-          backgroundColor="$sasaiNavy"
-          color="white"
-          disabled={!canContinue}
-          opacity={canContinue ? 1 : 0.5}
-          onPress={onContinue}
-          accessibilityLabel="Continue to review"
-        >
-          Continue
-        </Button>
-      </YStack>
+            <YStack flex={1} padding="$5" gap="$5">
+              <YStack gap="$2" marginTop="$4">
+                <Text fontFamily="Inter-Bold" fontSize={26} color="#0B1726">
+                  Amount
+                </Text>
+                <Text fontFamily="Inter-Regular" fontSize={15} color="#6A7682">
+                  Sending to {maskPhone(recipientPhone)}
+                </Text>
+              </YStack>
+              <View marginTop="$3">
+                <AmountInput value={amount} onChange={setAmount} />
+              </View>
+              <Text
+                fontFamily="Inter-Regular"
+                fontSize={13}
+                color="#6A7682"
+                textAlign="center"
+              >
+                ZAR wallet · {formatZAR(available)} available
+              </Text>
+              {overdrawn ? (
+                <Text
+                  fontFamily="Inter-Medium"
+                  color="#EF4444"
+                  fontSize={13}
+                  textAlign="center"
+                >
+                  Not enough in your wallet to send {formatZAR(parsed)}.
+                </Text>
+              ) : null}
+              <View flex={1} minHeight={40} />
+              <Button
+                size="$5"
+                theme="active"
+                backgroundColor="#144989"
+                color="white"
+                disabled={!canContinue}
+                opacity={canContinue ? 1 : 0.5}
+                onPress={onContinue}
+                accessibilityLabel="Continue to review"
+              >
+                Continue
+              </Button>
+            </YStack>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

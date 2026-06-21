@@ -19,7 +19,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { TamaguiProvider } from 'tamagui';
+import { PortalProvider, TamaguiProvider } from 'tamagui';
 
 import tamaguiConfig from '@/tamagui.config';
 import { queryClient } from '@/lib/query';
@@ -60,10 +60,16 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-          <QueryClientProvider client={queryClient}>
-            <StatusBar style="dark" />
-            <Stack screenOptions={{ headerShown: false }} />
-          </QueryClientProvider>
+          {/* PortalProvider is required for Tamagui Sheet / Dialog /
+              Popover to mount their content above the screen. The
+              `shouldAddRootHost` flag registers the default portal host
+              so consumers don't need to name it. */}
+          <PortalProvider shouldAddRootHost>
+            <QueryClientProvider client={queryClient}>
+              <StatusBar style="dark" />
+              <Stack screenOptions={{ headerShown: false }} />
+            </QueryClientProvider>
+          </PortalProvider>
         </TamaguiProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -17,6 +17,7 @@ import {
   ScanLine,
   Settings2,
   ShieldCheck,
+  Tag,
   Users,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -43,6 +44,7 @@ const NAV: NavItem[] = [
   { label: "Go to Limits", href: "/limits", icon: ListChecks },
   { label: "Go to Pricing", href: "/pricing", icon: Coins },
   { label: "Go to Redemption", href: "/redemption", icon: CreditCard },
+  { label: "Go to Services", href: "/services", icon: Tag },
   { label: "Go to Tenants", href: "/tenants", icon: Settings2 },
   { label: "Go to Audit log", href: "/audit", icon: ShieldCheck },
   { label: "Go to Events", href: "/events", icon: Receipt },

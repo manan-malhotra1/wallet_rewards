@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import type { Service } from "@/lib/api-types";
 
 interface FormState {
   transaction_type: string;
@@ -41,35 +42,39 @@ interface FormState {
   daily_value_cap: string;
 }
 
-const INITIAL: FormState = {
-  transaction_type: "p2p",
-  account_type: "financial_wallet",
-  currency: "ZAR",
-  min_amount: "",
-  max_amount: "",
-  daily_count_cap: "",
-  daily_value_cap: "",
-};
+function initialForm(services: Service[]): FormState {
+  return {
+    transaction_type: services[0]?.code ?? "",
+    account_type: "financial_wallet",
+    currency: "ZAR",
+    min_amount: "",
+    max_amount: "",
+    daily_count_cap: "",
+    daily_value_cap: "",
+  };
+}
 
 export function CreateLimitDialog({
   tenantId,
+  services,
   trigger,
 }: {
   tenantId: string;
+  services: Service[];
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>(INITIAL);
+  const [form, setForm] = React.useState<FormState>(() => initialForm(services));
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
   const { toast } = useToast();
 
   React.useEffect(() => {
     if (!open) {
-      setForm(INITIAL);
+      setForm(initialForm(services));
       setErrorBanner(null);
     }
-  }, [open]);
+  }, [open, services]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -123,13 +128,28 @@ export function CreateLimitDialog({
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label htmlFor="txn">Txn type</Label>
-              <Input
-                id="txn"
+              <Label htmlFor="txn">Service</Label>
+              <Select
                 value={form.transaction_type}
-                onChange={(e) => update("transaction_type", e.target.value)}
-                placeholder="p2p"
-              />
+                onValueChange={(v) => update("transaction_type", v)}
+                disabled={services.length === 0}
+              >
+                <SelectTrigger id="txn">
+                  <SelectValue placeholder="Choose a service…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {services.map((s) => (
+                    <SelectItem key={s.id} value={s.code}>
+                      {s.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {services.length === 0 && (
+                <p className="mt-1 text-[11px] text-[--color-text-3]">
+                  No active services — create one in /services first.
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="acct">Account type</Label>

@@ -48,6 +48,7 @@ from app.shared.models import (  # noqa: E402
     Role,
     RolePermission,
     Rule,
+    Service,
     StepUpPolicy,
     Tenant,
     Transaction,
@@ -93,6 +94,47 @@ async def _get_or_create_tenant(session: AsyncSession) -> Tenant:
     await session.refresh(tenant)
     print(f"  + Created tenant: {tenant.name} ({tenant.id})")
     return tenant
+
+
+async def _seed_services_catalog(session: AsyncSession, tenant: Tenant) -> None:
+    """Idempotently insert the Phase-2 baseline services for the tenant.
+
+    Mirrors the migration 0017 backfill so freshly-created tenants get the
+    same catalog entries existing tenants got at upgrade time.
+    """
+    baseline = [
+        ("p2p", "Peer-to-Peer", "Send funds from one wallet to another."),
+        (
+            "airtime_recharge",
+            "Airtime Recharge",
+            "Top up a mobile number via a registered airtime merchant.",
+        ),
+        (
+            "redemption",
+            "Redemption",
+            "Redeem reward points with a registered redemption provider.",
+        ),
+    ]
+    for code, display_name, description in baseline:
+        result = await session.execute(
+            select(Service).where(
+                Service.tenant_id == tenant.id,
+                Service.code == code,
+                Service.deleted_at.is_(None),
+            )
+        )
+        if result.scalar_one_or_none() is not None:
+            continue
+        session.add(
+            Service(
+                tenant_id=tenant.id,
+                code=code,
+                display_name=display_name,
+                description=description,
+            )
+        )
+        print(f"  + Service: {code} ({display_name})")
+    await session.commit()
 
 
 async def _get_or_create_user(
@@ -415,6 +457,10 @@ async def seed() -> None:
 
     async with SessionLocal() as session:
         tenant = await _get_or_create_tenant(session)
+
+        # Services catalog — the dropdown source for Limits / Pricing /
+        # Campaigns admin pages. Idempotent.
+        await _seed_services_catalog(session, tenant)
 
         # Default end-user role so seeded users can actually transact.
         standard_role = await _get_or_create_standard_user_role(session, tenant)

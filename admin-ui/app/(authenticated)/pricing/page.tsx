@@ -5,8 +5,9 @@
 import { Coins, Plus } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
-import { listPricingConfigs } from "@/lib/api-endpoints";
+import { listPricingConfigs, listServices } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
+import type { Service } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -32,9 +33,13 @@ export default async function PricingPage() {
   }
 
   let configs: Awaited<ReturnType<typeof listPricingConfigs>> = [];
+  let services: Service[] = [];
   let error: ApiError | null = null;
   try {
-    configs = await listPricingConfigs(activeTenantId);
+    [configs, services] = await Promise.all([
+      listPricingConfigs(activeTenantId),
+      listServices(activeTenantId, "active"),
+    ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -48,6 +53,7 @@ export default async function PricingPage() {
         actions={
           <CreatePricingDialog
             tenantId={activeTenantId}
+            services={services}
             trigger={
               <button
                 type="button"

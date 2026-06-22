@@ -62,6 +62,29 @@ class TenantNotFound(AppHTTPException):
         super().__init__(404, "tenant_not_found", "Tenant not found.")
 
 
+class ServiceNotFound(AppHTTPException):
+    """The given service_id doesn't map to a live row in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "service_not_found", "Service not found.")
+
+
+class ServiceCodeAlreadyExists(AppHTTPException):
+    """Another live service in this tenant already uses this code.
+
+    Raised by the Phase 2 catalog create flow. Codes are unique per tenant
+    (partial UNIQUE index `uq_services_tenant_code_alive`), and the UI
+    surfaces the 409 with a "code already in use" message.
+    """
+
+    def __init__(self, code: str) -> None:
+        super().__init__(
+            409,
+            "service_code_already_exists",
+            f"A service with code '{code}' already exists for this tenant.",
+        )
+
+
 class TenantNameAlreadyExists(AppHTTPException):
     """Another tenant already holds this name.
 

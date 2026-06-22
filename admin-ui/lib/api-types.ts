@@ -19,6 +19,18 @@ export interface Tenant {
   created_at: string;
 }
 
+/** One row in the per-tenant services catalog (Phase 2). */
+export interface Service {
+  id: string;
+  tenant_id: string;
+  code: string;
+  display_name: string;
+  description: string | null;
+  status: "active" | "disabled";
+  created_at: string;
+  updated_at: string;
+}
+
 export interface User {
   id: string;
   tenant_id: string;

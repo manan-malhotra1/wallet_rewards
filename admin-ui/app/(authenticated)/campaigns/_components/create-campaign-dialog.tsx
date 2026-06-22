@@ -40,7 +40,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
-import type { Rule } from "@/lib/api-types";
+import type { Rule, Service } from "@/lib/api-types";
 
 const RULE_TYPES: { value: Rule["rule_type"]; label: string; help: string }[] = [
   { value: "milestone", label: "Milestone", help: "User completes N qualifying txns" },
@@ -216,14 +216,20 @@ function summariseBudget(form: FormState): string {
 
 export function CreateCampaignDialog({
   tenantId,
+  services,
   trigger,
 }: {
   tenantId: string;
+  services: Service[];
   trigger: React.ReactNode;
 }) {
+  const initialWithService: FormState = {
+    ...INITIAL,
+    transaction_type: services[0]?.code ?? INITIAL.transaction_type,
+  };
   const [open, setOpen] = React.useState(false);
   const [step, setStep] = React.useState<1 | 2>(1);
-  const [form, setForm] = React.useState<FormState>(INITIAL);
+  const [form, setForm] = React.useState<FormState>(initialWithService);
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
   const { toast } = useToast();
@@ -231,9 +237,11 @@ export function CreateCampaignDialog({
   React.useEffect(() => {
     if (!open) {
       setStep(1);
-      setForm(INITIAL);
+      setForm(initialWithService);
       setErrorBanner(null);
     }
+    // initialWithService depends only on services prop — captured at render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -382,14 +390,28 @@ export function CreateCampaignDialog({
                 />
               </div>
               <div>
-                <Label htmlFor="txn-type">Transaction type</Label>
-                <Input
-                  id="txn-type"
+                <Label htmlFor="txn-type">Service</Label>
+                <Select
                   value={form.transaction_type}
-                  onChange={(e) => update("transaction_type", e.target.value)}
-                  placeholder="p2p"
-                  className="mt-1"
-                />
+                  onValueChange={(v) => update("transaction_type", v)}
+                  disabled={services.length === 0}
+                >
+                  <SelectTrigger id="txn-type" className="mt-1">
+                    <SelectValue placeholder="Choose a service…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {services.map((s) => (
+                      <SelectItem key={s.id} value={s.code}>
+                        {s.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {services.length === 0 && (
+                  <p className="mt-1 text-[11px] text-[--color-text-3]">
+                    No active services — create one in /services first.
+                  </p>
+                )}
               </div>
               {form.rule_type === "milestone" && (
                 <div>

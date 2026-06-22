@@ -1,0 +1,85 @@
+/**
+ * Services catalog page — Phase 2 of the Tenant Management refactor.
+ *
+ * Lists every service (transaction type) registered for the active tenant.
+ * The catalog is the source of truth for the Limits, Pricing, and
+ * Campaigns dropdowns that replaced the old free-text inputs.
+ */
+import { Plus, Tag } from "lucide-react";
+
+import { ApiError } from "@/lib/api";
+import { getActiveTenantId } from "@/lib/active-tenant";
+import { listServices } from "@/lib/api-endpoints";
+
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/ui/error-banner";
+import { PageHeader } from "@/components/ui/page-header";
+
+import { CreateServiceDialog } from "./_components/create-service-dialog";
+import { ServicesTable } from "./_components/services-table";
+
+export const dynamic = "force-dynamic";
+
+export default async function ServicesPage() {
+  const activeTenantId = await getActiveTenantId();
+  if (!activeTenantId) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          icon={Tag}
+          title="No active tenant"
+          description="Switch to a tenant to manage its services catalog."
+        />
+      </div>
+    );
+  }
+
+  let services: Awaited<ReturnType<typeof listServices>> = [];
+  let error: ApiError | null = null;
+  try {
+    services = await listServices(activeTenantId);
+  } catch (err) {
+    if (err instanceof ApiError) error = err;
+    else throw err;
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Services"
+        subtitle="The transaction types this tenant has switched on. Used by Limits, Pricing and Campaigns dropdowns."
+        actions={
+          <CreateServiceDialog
+            tenantId={activeTenantId}
+            trigger={
+              <button
+                type="button"
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New service
+              </button>
+            }
+          />
+        }
+      />
+      <div className="p-6">
+        {error && (
+          <ErrorBanner
+            title="Couldn't load services"
+            description={`${error.errorCode}: ${error.message}`}
+          />
+        )}
+        {!error && services.length === 0 ? (
+          <EmptyState
+            icon={Tag}
+            title="No services yet"
+            description="Add a service to populate the dropdowns on Limits, Pricing, and Campaigns. The baseline (p2p, airtime_recharge, redemption) is auto-seeded on a fresh database."
+          />
+        ) : (
+          <ServicesTable services={services} tenantId={activeTenantId} />
+        )}
+      </div>
+    </div>
+  );
+}

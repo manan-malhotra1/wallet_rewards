@@ -30,6 +30,7 @@ import type {
   Rule,
   RulePerformance,
   Segment,
+  Service,
   StepUpPolicy,
   SweepOutcome,
   SystemWallet,
@@ -53,6 +54,44 @@ export interface UpdateTenantPayload {
 
 export const updateTenant = (tenant_id: string, payload: UpdateTenantPayload) =>
   apiPatch<Tenant>(`/api/v1/tenants/${tenant_id}`, payload);
+
+// ---- Services catalog (Phase 2) -----------------------------------------
+
+export const listServices = (
+  tenant_id: string,
+  status?: "active" | "disabled",
+) =>
+  apiGet<Service[]>("/api/v1/services", {
+    query: status ? { tenant_id, status } : { tenant_id },
+  });
+
+export interface CreateServicePayload {
+  tenant_id: string;
+  code: string;
+  display_name: string;
+  description?: string;
+}
+
+export const createService = (payload: CreateServicePayload) =>
+  apiPost<Service>("/api/v1/services", payload);
+
+export interface UpdateServicePayload {
+  display_name?: string;
+  description?: string;
+  status?: "active" | "disabled";
+}
+
+export const updateService = (
+  service_id: string,
+  tenant_id: string,
+  payload: UpdateServicePayload,
+) =>
+  apiPatch<Service>(`/api/v1/services/${service_id}`, payload, {
+    query: { tenant_id },
+  });
+
+export const deleteService = (service_id: string, tenant_id: string) =>
+  apiDelete<Service>(`/api/v1/services/${service_id}`, { query: { tenant_id } });
 
 // ---- Identity ------------------------------------------------------------
 

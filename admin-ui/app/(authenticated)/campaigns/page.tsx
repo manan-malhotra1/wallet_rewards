@@ -14,9 +14,9 @@
 import { Megaphone, Plus } from "lucide-react";
 
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { getRulePerformance, listRules } from "@/lib/api-endpoints";
+import { getRulePerformance, listRules, listServices } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
-import type { RulePerformance } from "@/lib/api-types";
+import type { RulePerformance, Service } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -42,9 +42,13 @@ export default async function CampaignsPage() {
   }
 
   let rules: Awaited<ReturnType<typeof listRules>> = [];
+  let services: Service[] = [];
   let error: ApiError | null = null;
   try {
-    rules = await listRules(activeTenantId);
+    [rules, services] = await Promise.all([
+      listRules(activeTenantId),
+      listServices(activeTenantId, "active"),
+    ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -74,6 +78,7 @@ export default async function CampaignsPage() {
         actions={
           <CreateCampaignDialog
             tenantId={activeTenantId}
+            services={services}
             trigger={
               <button
                 type="button"

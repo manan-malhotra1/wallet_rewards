@@ -85,7 +85,7 @@ async def _get_or_create_tenant(session: AsyncSession) -> Tenant:
 
     tenant = Tenant(
         name=TENANT_NAME,
-        deployment_mode="wallet",
+        business_type="both",
         base_currency=TENANT_CURRENCY,
     )
     session.add(tenant)

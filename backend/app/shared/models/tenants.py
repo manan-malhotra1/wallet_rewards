@@ -20,16 +20,21 @@ from app.shared.models.base import Base, created_at_col, updated_at_col, uuid_pk
 class Tenant(Base):
     """A logical deployment of the platform.
 
-    Deployment mode determines which modules are active:
-      - 'wallet'        : full platform (ledger + rewards + ...)
-      - 'rewards_only'  : rules engine + points ledger only
+    business_type declares what services the tenant has switched on:
+      - 'wallet'   : wallet services only (no rewards engine)
+      - 'rewards'  : rewards engine only (no wallet)
+      - 'both'     : wallet + rewards (full platform — Phase 1 default)
+
+    keycloak_realm is read-only in the UI; populated from the deployment's
+    KEYCLOAK_REALM env var on bootstrap (single-realm Phase 1 — per-tenant
+    realms land later when multi-realm Keycloak wiring goes in).
     """
 
     __tablename__ = "tenants"
     __table_args__ = (
         CheckConstraint(
-            "deployment_mode IN ('wallet', 'rewards_only')",
-            name="ck_tenants_deployment_mode",
+            "business_type IN ('wallet', 'rewards', 'both')",
+            name="ck_tenants_business_type",
         ),
         CheckConstraint(
             "status IN ('active', 'inactive')",
@@ -39,7 +44,8 @@ class Tenant(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
-    deployment_mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    business_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    keycloak_realm: Mapped[str | None] = mapped_column(String(100), nullable=True)
     base_currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="active"

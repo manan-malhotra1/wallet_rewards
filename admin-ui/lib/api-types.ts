@@ -7,10 +7,13 @@
  * the wire format.
  */
 
+export type BusinessType = "wallet" | "rewards" | "both";
+
 export interface Tenant {
   id: string;
   name: string;
-  deployment_mode: "wallet" | "rewards_only";
+  business_type: BusinessType;
+  keycloak_realm: string | null;
   base_currency: string | null;
   status: string;
   created_at: string;

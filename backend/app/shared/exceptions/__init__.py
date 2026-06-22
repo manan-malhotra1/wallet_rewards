@@ -62,6 +62,22 @@ class TenantNotFound(AppHTTPException):
         super().__init__(404, "tenant_not_found", "Tenant not found.")
 
 
+class TenantNameAlreadyExists(AppHTTPException):
+    """Another tenant already holds this name.
+
+    Raised by the Phase 1 tenant-rename flow: tenant names are globally
+    unique (UNIQUE constraint on tenants.name) and updates must surface a
+    clean 409 instead of letting the IntegrityError bubble.
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(
+            409,
+            "tenant_name_already_exists",
+            f"A tenant named '{name}' already exists.",
+        )
+
+
 # --- Accounts ---------------------------------------------------------------
 
 

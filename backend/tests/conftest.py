@@ -157,10 +157,10 @@ async def async_client() -> AsyncIterator[AsyncClient]:
 
 @pytest_asyncio.fixture
 async def test_tenant(db_session: AsyncSession) -> Tenant:
-    """A fresh wallet-mode tenant in ZAR per test."""
+    """A fresh tenant with full business-type (wallet + rewards) in ZAR per test."""
     tenant = Tenant(
         name=f"test-tenant-{uuid4().hex[:8]}",
-        deployment_mode="wallet",
+        business_type="both",
         base_currency="ZAR",
     )
     db_session.add(tenant)
@@ -174,7 +174,7 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
     """A second tenant used to verify cross-tenant isolation."""
     tenant = Tenant(
         name=f"other-tenant-{uuid4().hex[:8]}",
-        deployment_mode="wallet",
+        business_type="both",
         base_currency="USD",
     )
     db_session.add(tenant)

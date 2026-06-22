@@ -43,6 +43,17 @@ import type {
 
 export const listTenants = () => apiGet<Tenant[]>("/api/v1/tenants");
 
+export const getTenant = (tenant_id: string) =>
+  apiGet<Tenant>(`/api/v1/tenants/${tenant_id}`);
+
+export interface UpdateTenantPayload {
+  name?: string;
+  business_type?: "wallet" | "rewards" | "both";
+}
+
+export const updateTenant = (tenant_id: string, payload: UpdateTenantPayload) =>
+  apiPatch<Tenant>(`/api/v1/tenants/${tenant_id}`, payload);
+
 // ---- Identity ------------------------------------------------------------
 
 export interface CreateUserPayload {

@@ -357,31 +357,9 @@ async def get_my_wallet(
     # Recent transactions: DISTINCT through the user's accounts' ledger
     # entries so both sent + received movements appear. Limit 10 — mobile
     # surfaces a short feed; a full statement is a separate endpoint.
-    txns_payload: list[dict] = []
-    if account_ids:
-        txns_q = await session.execute(
-            select(Transaction)
-            .join(LedgerEntry, LedgerEntry.transaction_id == Transaction.id)
-            .where(
-                Transaction.tenant_id == tenant_id,
-                LedgerEntry.account_id.in_(account_ids),
-            )
-            .distinct()
-            .order_by(Transaction.created_at.desc())
-            .limit(10)
-        )
-        txns = list(txns_q.scalars().all())
-        txns_payload = [
-            {
-                "id": t.id,
-                "transaction_type": t.transaction_type,
-                "status": t.status,
-                "amount": str(t.amount),
-                "currency": t.currency,
-                "created_at": t.created_at,
-            }
-            for t in txns
-        ]
+    txns_payload: list[dict] = await _build_recent_txns_payload(
+        session, tenant_id=tenant_id, account_ids=account_ids
+    )
 
     return {
         "user_id": user.id,
@@ -390,6 +368,127 @@ async def get_my_wallet(
         "accounts": account_payload,
         "recent_transactions": txns_payload,
     }
+
+
+async def _build_recent_txns_payload(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    account_ids: list[UUID],
+) -> list[dict]:
+    """Build the recent-transactions list for /me/wallet.
+
+    Loads up to 10 recent transactions touching the caller's accounts,
+    then for each one derives:
+      - `direction`: CREDIT on the user's account → "in"; DEBIT → "out".
+      - `counterparty_name`: for `transaction_type='p2p'`, the OTHER
+        side's user profile first_name. For top-ups / reward issuance /
+        redemption the other side is a system or provider account with
+        no owning user, so the value is None and the mobile UI falls
+        back to a category label.
+
+    Uses three additional queries (entries-by-txn batch fetch, other-
+    side accounts batch fetch, user-profiles batch fetch) regardless of
+    txn count — the constant-factor is fine for a feed capped at 10.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Caller's tenant (already validated upstream).
+        account_ids: All accounts owned by the caller (financial + points).
+
+    Returns:
+        List of dicts shaped to match `WalletTransactionOut`.
+    """
+    from app.shared.models import Account, LedgerEntry, Transaction, UserProfile
+
+    if not account_ids:
+        return []
+
+    txns_q = await session.execute(
+        select(Transaction)
+        .join(LedgerEntry, LedgerEntry.transaction_id == Transaction.id)
+        .where(
+            Transaction.tenant_id == tenant_id,
+            LedgerEntry.account_id.in_(account_ids),
+        )
+        .distinct()
+        .order_by(Transaction.created_at.desc())
+        .limit(10)
+    )
+    txns = list(txns_q.scalars().all())
+    if not txns:
+        return []
+
+    txn_ids = [t.id for t in txns]
+
+    # Pull every ledger entry for these txns in one query so we can
+    # decide direction (from the user's-side entry) and find the
+    # counterparty's account_id (from the other-side entries).
+    entries_q = await session.execute(
+        select(LedgerEntry).where(LedgerEntry.transaction_id.in_(txn_ids))
+    )
+    entries_by_txn: dict[UUID, list[LedgerEntry]] = {}
+    for e in entries_q.scalars().all():
+        entries_by_txn.setdefault(e.transaction_id, []).append(e)
+
+    # Resolve counterparty first_name only when the other-side account
+    # belongs to a user (i.e., P2P — both legs are user accounts). For
+    # system / provider counterparts the account has user_id IS NULL.
+    other_account_ids: set[UUID] = set()
+    own_account_set = set(account_ids)
+    for entries in entries_by_txn.values():
+        for e in entries:
+            if e.account_id not in own_account_set:
+                other_account_ids.add(e.account_id)
+
+    first_name_by_account: dict[UUID, str | None] = {}
+    if other_account_ids:
+        cp_rows = await session.execute(
+            select(Account.id, UserProfile.first_name)
+            .outerjoin(UserProfile, UserProfile.user_id == Account.user_id)
+            .where(
+                Account.id.in_(other_account_ids),
+                Account.user_id.is_not(None),
+            )
+        )
+        for acct_id, first_name in cp_rows.all():
+            first_name_by_account[acct_id] = first_name
+
+    payload: list[dict] = []
+    for t in txns:
+        entries = entries_by_txn.get(t.id, [])
+        user_entry = next(
+            (e for e in entries if e.account_id in own_account_set), None
+        )
+        # Default to "out" if we somehow couldn't find a side; the user
+        # would never see this row otherwise but the type system needs
+        # a literal value.
+        direction = "out"
+        if user_entry is not None:
+            direction = "in" if user_entry.entry_type == "CREDIT" else "out"
+
+        counterparty_name: str | None = None
+        if t.transaction_type == "p2p":
+            other_entries = [e for e in entries if e.account_id not in own_account_set]
+            for e in other_entries:
+                name = first_name_by_account.get(e.account_id)
+                if name:
+                    counterparty_name = name
+                    break
+
+        payload.append(
+            {
+                "id": t.id,
+                "transaction_type": t.transaction_type,
+                "status": t.status,
+                "amount": str(t.amount),
+                "currency": t.currency,
+                "created_at": t.created_at,
+                "direction": direction,
+                "counterparty_name": counterparty_name,
+            }
+        )
+    return payload
 
 
 async def admin_reset_pin(

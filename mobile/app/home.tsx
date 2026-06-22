@@ -24,7 +24,11 @@ import { SideDrawer } from '@/components/ui/SideDrawer';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { signOut } from '@/lib/auth';
 import { SessionExpired } from '@/lib/api/errors';
-import { getMyWallet } from '@/lib/api/wallet';
+import {
+  activityCategory,
+  getMyWallet,
+  transactionTitle,
+} from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
 import { clearAll, getLastPhone } from '@/lib/storage';
 
@@ -447,22 +451,51 @@ export default function HomeScreen() {
                 <View paddingVertical={24} alignItems="center">
                   <ActivityIndicator color="#00508F" />
                 </View>
+              ) : (data?.recent_transactions ?? []).length === 0 ? (
+                <View paddingVertical={20} alignItems="center">
+                  <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#8a98a6">
+                    No activity yet.
+                  </Text>
+                </View>
               ) : (
-                <>
-                  <ActivityRow
-                    category="received"
-                    title="Received · Demo"
-                    subtitle="Today · 10:24"
-                    amount="+R 120.00"
-                  />
-                  <ActivityRow
-                    category="bill"
-                    title="ZESA Electricity"
-                    subtitle="Today · 08:02"
-                    amount="−R 18.50"
-                    noBorder
-                  />
-                </>
+                /* Last 3 real transactions from /me/wallet. */
+                (data?.recent_transactions ?? [])
+                  .slice(0, 3)
+                  .map((t, i, arr) => {
+                    const positive = t.direction === 'in';
+                    const sign = positive ? '+' : '−';
+                    const amtText =
+                      t.currency === 'PTS'
+                        ? `${sign}${Math.abs(parseFloat(t.amount)).toFixed(0)} PTS`
+                        : `${sign}R ${Math.abs(parseFloat(t.amount)).toFixed(2)}`;
+                    const when = new Date(t.created_at);
+                    const now = new Date();
+                    const sameDay =
+                      now.getFullYear() === when.getFullYear() &&
+                      now.getMonth() === when.getMonth() &&
+                      now.getDate() === when.getDate();
+                    const time = when.toLocaleTimeString('en-GB', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+                    const subtitle = sameDay
+                      ? `Today · ${time}`
+                      : `${when.toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                        })} · ${time}`;
+                    return (
+                      <ActivityRow
+                        key={t.id}
+                        category={activityCategory(t)}
+                        title={transactionTitle(t)}
+                        subtitle={subtitle}
+                        amount={amtText}
+                        positive={positive}
+                        noBorder={i === arr.length - 1}
+                      />
+                    );
+                  })
               )}
             </View>
           </YStack>

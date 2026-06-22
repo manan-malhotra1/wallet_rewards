@@ -1,12 +1,15 @@
 /**
  * /transactions — full transactions list (Sasai Pay redesign).
  *
- * Navy gradient header with screen title + search field + filter chips.
- * Money in / Money out summary cards on the surface. Day-grouped rows
- * pulled from /me/wallet's recent_transactions for v0; pagination /
- * server-side history endpoint comes later.
+ * Navy gradient header with screen title + search field + filter chips
+ * (All / Sent / Received / Bills — interactive). Money in / Money out
+ * cards compute totals from the actual transactions for the current
+ * month. Day-grouped rows pulled from /me/wallet's recent_transactions;
+ * each row uses the new backend-supplied direction + counterparty_name
+ * fields so debits render in red ink and credits in green.
  */
-import { useMemo } from 'react';
+import { Pressable } from 'react-native';
+import { useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,21 +18,27 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { ActivityRow } from '@/components/ui/ActivityRow';
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
 import { GradientHeader } from '@/components/brand/GradientHeader';
-import { getMyWallet, WalletTransaction } from '@/lib/api/wallet';
+import {
+  activityCategory,
+  getMyWallet,
+  transactionRef,
+  transactionTitle,
+  WalletTransaction,
+} from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
+import { formatZAR } from '@/lib/format';
 
-type Category = 'received' | 'sent' | 'bill' | 'airtime' | 'reward' | 'reward-redeem' | 'referral' | 'generic';
+type Filter = 'all' | 'sent' | 'received' | 'bills';
 
-/** Heuristic: map backend transaction_type → display category. */
-function categoryFor(t: WalletTransaction): Category {
-  const ty = t.transaction_type?.toLowerCase() ?? '';
-  if (ty.includes('reward')) return 'reward';
-  if (ty.includes('redemption')) return 'reward-redeem';
-  if (ty.includes('topup') || ty.includes('top_up') || ty.includes('top-up')) return 'received';
-  if (t.currency === 'PTS') return 'reward';
-  // Without a from/to comparison we can't tell sent from received
-  // reliably; fall back to a generic icon and let the amount sign hint.
-  return parseFloat(t.amount) >= 0 ? 'received' : 'sent';
+/** Returns true when the transaction matches the active filter. */
+function matchesFilter(t: WalletTransaction, filter: Filter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'sent') return t.direction === 'out' && t.transaction_type === 'p2p';
+  if (filter === 'received') return t.direction === 'in';
+  // "Bills" is a placeholder for now — once bill-pay ships it'll match
+  // `transaction_type === 'bill_payment'` (or similar). Empty for v0.
+  if (filter === 'bills') return false;
+  return true;
 }
 
 /** Format a Date as "Today", "Yesterday", or "DD MMM". */
@@ -43,21 +52,97 @@ function dayLabel(d: Date): string {
   return target.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }
 
+/** Build "Received · 10:24" style subtitle for ActivityRow. */
+function subtitleFor(t: WalletTransaction): string {
+  const time = new Date(t.created_at).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const ref = transactionRef(t);
+  return `${ref} · ${time}`;
+}
+
+/** Format amount with sign + currency symbol. Returns ["+R 50.00", true]. */
+function displayAmount(t: WalletTransaction): { text: string; positive: boolean } {
+  const positive = t.direction === 'in';
+  const sign = positive ? '+' : '−';
+  if (t.currency === 'PTS') {
+    return { text: `${sign}${Math.abs(parseFloat(t.amount)).toFixed(0)} PTS`, positive };
+  }
+  return { text: `${sign}R ${Math.abs(parseFloat(t.amount)).toFixed(2)}`, positive };
+}
+
+interface ChipProps {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}
+
+function FilterChip({ label, active, onPress }: ChipProps) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+      <View
+        backgroundColor={active ? '#ffffff' : 'rgba(255,255,255,0.14)'}
+        paddingHorizontal={14}
+        paddingVertical={6}
+        borderRadius={20}
+      >
+        <Text
+          fontFamily={active ? 'PlusJakartaSans-Bold' : 'PlusJakartaSans-SemiBold'}
+          fontSize={12}
+          color={active ? '#00508F' : '#ffffff'}
+        >
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 /** Transactions list screen. */
 export default function TransactionsScreen() {
+  const [filter, setFilter] = useState<Filter>('all');
   const { data } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
-  const txns = data?.recent_transactions ?? [];
+  const all = data?.recent_transactions ?? [];
 
-  const groups = useMemo(() => {
-    const byDay = new Map<string, WalletTransaction[]>();
-    for (const t of txns) {
-      const d = new Date(t.created_at);
-      const key = dayLabel(d);
-      if (!byDay.has(key)) byDay.set(key, []);
-      byDay.get(key)!.push(t);
+  // Filtered transactions (drives the list + the summary totals).
+  const filtered = useMemo(
+    () => all.filter((t) => matchesFilter(t, filter)),
+    [all, filter],
+  );
+
+  // Money in / out — sum amounts on ZAR txns (PTS doesn't belong on the
+  // money strip). Computed from `all`, not `filtered`, so flipping the
+  // filter doesn't change the headline numbers.
+  const { moneyIn, moneyOut } = useMemo(() => {
+    let inZ = 0;
+    let outZ = 0;
+    for (const t of all) {
+      if (t.currency !== 'ZAR') continue;
+      const n = Math.abs(parseFloat(t.amount));
+      if (!Number.isFinite(n)) continue;
+      if (t.direction === 'in') inZ += n;
+      else outZ += n;
     }
-    return Array.from(byDay.entries());
-  }, [txns]);
+    return { moneyIn: inZ, moneyOut: outZ };
+  }, [all]);
+
+  // Day-grouped rendering, preserving original sort order (newest first).
+  const groups = useMemo(() => {
+    const result: { day: string; items: WalletTransaction[] }[] = [];
+    const dayIndex = new Map<string, number>();
+    for (const t of filtered) {
+      const day = dayLabel(new Date(t.created_at));
+      const idx = dayIndex.get(day);
+      if (idx === undefined) {
+        dayIndex.set(day, result.length);
+        result.push({ day, items: [t] });
+      } else {
+        result[idx].items.push(t);
+      }
+    }
+    return result;
+  }, [filtered]);
 
   return (
     <View flex={1} backgroundColor="#f4f7fa">
@@ -103,23 +188,10 @@ export default function TransactionsScreen() {
             </View>
           </XStack>
           <XStack gap={8} marginTop={14}>
-            {['All', 'Sent', 'Received', 'Bills'].map((chip, i) => (
-              <View
-                key={chip}
-                backgroundColor={i === 0 ? '#ffffff' : 'rgba(255,255,255,0.14)'}
-                paddingHorizontal={14}
-                paddingVertical={6}
-                borderRadius={20}
-              >
-                <Text
-                  fontFamily={i === 0 ? 'PlusJakartaSans-Bold' : 'PlusJakartaSans-SemiBold'}
-                  fontSize={12}
-                  color={i === 0 ? '#00508F' : '#ffffff'}
-                >
-                  {chip}
-                </Text>
-              </View>
-            ))}
+            <FilterChip label="All" active={filter === 'all'} onPress={() => setFilter('all')} />
+            <FilterChip label="Sent" active={filter === 'sent'} onPress={() => setFilter('sent')} />
+            <FilterChip label="Received" active={filter === 'received'} onPress={() => setFilter('received')} />
+            <FilterChip label="Bills" active={filter === 'bills'} onPress={() => setFilter('bills')} />
           </XStack>
         </GradientHeader>
 
@@ -128,7 +200,7 @@ export default function TransactionsScreen() {
           contentContainerStyle={{ paddingBottom: 110 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* Summary strip — money in vs out. */}
+          {/* Summary strip — money in vs out, computed from real data. */}
           <XStack gap={12} paddingHorizontal={18} paddingTop={16}>
             <View
               flex={1}
@@ -144,7 +216,7 @@ export default function TransactionsScreen() {
                 Money in
               </Text>
               <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color="#1aa06b" marginTop={3}>
-                +R 640.00
+                +{formatZAR(moneyIn)}
               </Text>
             </View>
             <View
@@ -160,8 +232,8 @@ export default function TransactionsScreen() {
               <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
                 Money out
               </Text>
-              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color="#0c1b2a" marginTop={3}>
-                −R 312.80
+              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color="#c0392b" marginTop={3}>
+                −{formatZAR(moneyOut)}
               </Text>
             </View>
           </XStack>
@@ -169,11 +241,13 @@ export default function TransactionsScreen() {
           {groups.length === 0 ? (
             <YStack alignItems="center" paddingVertical={40}>
               <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#8a98a6">
-                No activity yet.
+                {filter === 'all'
+                  ? 'No activity yet.'
+                  : `No ${filter} transactions yet.`}
               </Text>
             </YStack>
           ) : (
-            groups.map(([day, items]) => (
+            groups.map(({ day, items }) => (
               <YStack key={day}>
                 <Text
                   fontFamily="PlusJakartaSans-Bold"
@@ -198,22 +272,15 @@ export default function TransactionsScreen() {
                   shadowOffset={{ width: 0, height: 6 }}
                 >
                   {items.map((t, i) => {
-                    const amount = parseFloat(t.amount);
-                    const sign = amount >= 0 ? '+' : '−';
-                    const display =
-                      t.currency === 'PTS'
-                        ? `${sign}${Math.abs(amount).toFixed(0)} PTS`
-                        : `${sign}R ${Math.abs(amount).toFixed(2)}`;
+                    const amt = displayAmount(t);
                     return (
                       <ActivityRow
                         key={t.id}
-                        category={categoryFor(t)}
-                        title={t.transaction_type ?? 'Transaction'}
-                        subtitle={new Date(t.created_at).toLocaleTimeString('en-GB', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                        amount={display}
+                        category={activityCategory(t)}
+                        title={transactionTitle(t)}
+                        subtitle={subtitleFor(t)}
+                        amount={amt.text}
+                        positive={amt.positive}
                         noBorder={i === items.length - 1}
                       />
                     );

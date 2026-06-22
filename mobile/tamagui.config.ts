@@ -1,30 +1,64 @@
 /**
- * Tamagui configuration for the Sasai Wallet mobile app.
+ * Tamagui configuration for the Sasai Pay mobile app.
  *
- * Re-exports the upstream v3 `config` (tokens, themes, animations, fonts,
- * media queries, shorthands) and *augments* the colour tokens with the
- * Sasai brand palette so any component can reference `$sasaiNavy`,
- * `$ink`, etc. via Tamagui's `$token` notation.
+ * Locked to the brand palette from the Sasai Pay design system:
  *
- * Themes "light" and "dark" come from the v3 preset — the root layout
- * picks one with `defaultTheme` based on `useColorScheme()`.
+ *   - Navy gradient `#00538f → #013a6b` is the signature hero treatment
+ *     (the `GradientHeader` component owns the actual gradient render).
+ *   - Primary CTA / accent text: `#00508F`.
+ *   - Teal range `#50C0D0 / #2EB6C8` is used for sparingly placed accents
+ *     (points pill, sub-logo "pay", swoosh outlines on the gradient).
+ *   - Surfaces stay near-white (`#f4f7fa` background, `#fff` card, `#f8fafc`
+ *     input fill) so the navy/teal pop.
+ *   - Status colors are reserved for receipts: `#0a8a5f → #067a52` for the
+ *     success header, `#c0392b → #a52e22` for the failed-receipt header.
+ *
+ * `defaultTheme="light"` is locked at the root — every screen is authored
+ * against the light surface.
  */
 import { config as v3 } from '@tamagui/config/v3';
 import { createTamagui } from 'tamagui';
 
-// Sasai brand tokens — keep in sync with admin-ui and the docs PRD §1.
 const brand = {
-  sasaiNavy: '#144989',
-  sasaiTeal: '#48C2CF',
-  ink: '#0B1726',
-  inkInverse: '#E8F0F8',
-  muted: '#6A7682',
-  surfaceLt: '#FFFFFF',
-  surfaceDk: '#0E1A2B',
-  borderLt: '#E5EAF0',
-  borderDk: '#1B2A40',
-  error: '#EF4444',
-  success: '#22C55E',
+  // Hero gradient stops — referenced as named tokens so a future palette
+  // refresh only needs to change them in one place.
+  navyTop: '#00538f',
+  navyBot: '#013a6b',
+  navyDeep: '#012e54',
+
+  // Primary CTA + accent text. Slightly lighter than `navyTop` so it reads
+  // well on white as well as in the hero.
+  primary: '#00508F',
+
+  // Teal accent family. `tealMid` is the canonical accent the swoosh
+  // logo uses; `tealLight` is reserved for ghost-on-navy text contexts.
+  tealLight: '#9fd9e2',
+  tealMid: '#50C0D0',
+  tealDeep: '#2EB6C8',
+
+  // Text + neutral grays.
+  ink: '#0c1b2a',
+  inkMuted: '#3a4756',
+  muted: '#6a7888',
+  mutedSoft: '#8a98a6',
+  mutedSofter: '#9aa7b5',
+
+  // Surfaces.
+  appBg: '#f4f7fa',
+  card: '#ffffff',
+  inputBg: '#f8fafc',
+  border: '#e2e8ef',
+  borderSoft: '#eef2f6',
+  divider: '#f1f4f7',
+
+  // Status. Used by receipts + activity row amounts.
+  successText: '#1aa06b',
+  successTop: '#0a8a5f',
+  successBot: '#067a52',
+  errorText: '#c0392b',
+  errorTop: '#c0392b',
+  errorBot: '#a52e22',
+  warnText: '#c98a00',
 } as const;
 
 export const tamaguiConfig = createTamagui({

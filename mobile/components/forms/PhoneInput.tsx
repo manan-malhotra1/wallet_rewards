@@ -1,10 +1,10 @@
 /**
- * PhoneInput — country code picker + national-digits input.
+ * PhoneInput — country code picker + national-digits input (Sasai Pay redesign).
  *
- * Composes E.164 on the fly and reports it via `onChange`. The country
- * default is +27 (ZA) per the demo; the other markets are the diaspora
- * corridors we currently care about. Selection state is purely local —
- * the parent only sees the composed phone string.
+ * Composes E.164 on the fly and reports it via `onChange`. Default country
+ * is +263 Zimbabwe to match the design mock's home market; +27 South
+ * Africa is the secondary option for the seeded ZA tenant. Selection state
+ * is purely local — the parent only sees the composed phone string.
  */
 import { useMemo, useState } from 'react';
 import { Pressable, TextInput } from 'react-native';
@@ -12,11 +12,11 @@ import { Text, View, XStack, YStack } from 'tamagui';
 
 /** Country options. Order = display order in the picker. */
 const COUNTRIES = [
-  { code: 'ZA', dial: '+27', label: 'South Africa' },
-  { code: 'IN', dial: '+91', label: 'India' },
-  { code: 'GB', dial: '+44', label: 'United Kingdom' },
-  { code: 'US', dial: '+1', label: 'United States' },
-  { code: 'ZW', dial: '+263', label: 'Zimbabwe' },
+  { code: 'ZW', dial: '+263', label: 'Zimbabwe', flag: '🇿🇼' },
+  { code: 'ZA', dial: '+27', label: 'South Africa', flag: '🇿🇦' },
+  { code: 'IN', dial: '+91', label: 'India', flag: '🇮🇳' },
+  { code: 'GB', dial: '+44', label: 'United Kingdom', flag: '🇬🇧' },
+  { code: 'US', dial: '+1', label: 'United States', flag: '🇺🇸' },
 ] as const;
 
 type Country = (typeof COUNTRIES)[number];
@@ -26,10 +26,21 @@ interface Props {
   onChange: (e164: string) => void;
   /** Initial national-number digits (no dial code). */
   initialNational?: string;
+  /**
+   * Visual variant.
+   *   - `default` — soft input fill, used on the phone-entry screen.
+   *   - `focused` — primary-colored border, lifts off the surface, used on
+   *     P2P recipient (the field is the focus of the screen).
+   */
+  variant?: 'default' | 'focused';
 }
 
-/** Country code picker + national-number text field that emits E.164. */
-export function PhoneInput({ onChange, initialNational = '' }: Props) {
+/** Country code picker + national-number input that emits E.164. */
+export function PhoneInput({
+  onChange,
+  initialNational = '',
+  variant = 'default',
+}: Props) {
   const [country, setCountry] = useState<Country>(COUNTRIES[0]);
   const [national, setNational] = useState(initialNational);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -38,9 +49,10 @@ export function PhoneInput({ onChange, initialNational = '' }: Props) {
     () => `${country.dial}${national.replace(/\D/g, '')}`,
     [country, national],
   );
+  // composed is for memoization side-effects in dev (Hermes only logs onChange).
+  void composed;
 
   function handleNationalChange(next: string) {
-    // Strip everything that isn't a digit — the input is numeric only.
     const digits = next.replace(/\D/g, '').slice(0, 12);
     setNational(digits);
     onChange(`${country.dial}${digits}`);
@@ -52,49 +64,60 @@ export function PhoneInput({ onChange, initialNational = '' }: Props) {
     onChange(`${c.dial}${national.replace(/\D/g, '')}`);
   }
 
+  const focused = variant === 'focused';
+
   return (
     <YStack gap="$2" width="100%">
-      <Text fontSize={13} color="$muted">
-        Phone number
+      <Text
+        fontFamily="PlusJakartaSans-SemiBold"
+        fontSize={12}
+        color="#5a6b7b"
+      >
+        Mobile number
       </Text>
       <XStack
-        gap="$2"
         alignItems="center"
-        borderWidth={1}
-        borderColor="$borderColor"
-        borderRadius={12}
-        padding="$2"
-        backgroundColor="$background"
+        gap={10}
+        borderWidth={1.5}
+        borderColor={focused ? '#00508F' : '#e2e8ef'}
+        borderRadius={14}
+        paddingHorizontal={14}
+        height={54}
+        backgroundColor={focused ? '#ffffff' : '#f8fafc'}
+        shadowColor={focused ? '#00508F' : 'transparent'}
+        shadowOpacity={focused ? 0.08 : 0}
+        shadowRadius={focused ? 16 : 0}
+        shadowOffset={{ width: 0, height: 6 }}
       >
-        <Pressable onPress={() => setPickerOpen((v) => !v)}>
-          <XStack
-            paddingHorizontal={10}
-            paddingVertical={6}
-            borderRadius={8}
-            backgroundColor="$borderColor"
-            alignItems="center"
-            gap="$1"
-          >
-            <Text fontWeight="600" color="$color">
+        <Pressable
+          onPress={() => setPickerOpen((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={`Country code ${country.dial}`}
+        >
+          <XStack alignItems="center" gap={6}>
+            <Text fontSize={18}>{country.flag}</Text>
+            <Text
+              fontFamily="PlusJakartaSans-Bold"
+              fontSize={15}
+              color="#0c1b2a"
+            >
               {country.dial}
-            </Text>
-            <Text color="$muted" fontSize={12}>
-              {country.code}
             </Text>
           </XStack>
         </Pressable>
+        <View width={1} height={22} backgroundColor="#e2e8ef" />
         <TextInput
           value={national}
           onChangeText={handleNationalChange}
           keyboardType="number-pad"
-          placeholder="82 555 0001"
-          placeholderTextColor="#9BA4AF"
+          placeholder="77 412 8890"
+          placeholderTextColor="#9aa7b5"
           style={{
             flex: 1,
             paddingVertical: 8,
-            fontSize: 18,
-            fontFamily: 'Inter-Medium',
-            color: '#0B1726',
+            fontSize: 15,
+            fontFamily: 'PlusJakartaSans-Medium',
+            color: '#0c1b2a',
           }}
           accessibilityLabel="Phone number"
           maxLength={14}
@@ -102,11 +125,11 @@ export function PhoneInput({ onChange, initialNational = '' }: Props) {
       </XStack>
       {pickerOpen ? (
         <YStack
-          marginTop="$1"
+          marginTop={2}
           borderWidth={1}
-          borderColor="$borderColor"
-          borderRadius={12}
-          backgroundColor="$background"
+          borderColor="#e2e8ef"
+          borderRadius={14}
+          backgroundColor="#ffffff"
           overflow="hidden"
         >
           {COUNTRIES.map((c) => (
@@ -116,22 +139,35 @@ export function PhoneInput({ onChange, initialNational = '' }: Props) {
               accessibilityRole="button"
             >
               <XStack
-                paddingHorizontal="$3"
-                paddingVertical="$2"
-                gap="$2"
+                paddingHorizontal={14}
+                paddingVertical={12}
+                gap={10}
                 alignItems="center"
-                backgroundColor={c.code === country.code ? '$borderColor' : '$background'}
+                backgroundColor={
+                  c.code === country.code ? '#f4f7fa' : '#ffffff'
+                }
               >
-                <Text fontWeight="600" color="$color" minWidth={48}>
+                <Text fontSize={18}>{c.flag}</Text>
+                <Text
+                  fontFamily="PlusJakartaSans-Bold"
+                  fontSize={14}
+                  color="#0c1b2a"
+                  minWidth={48}
+                >
                   {c.dial}
                 </Text>
-                <Text color="$color">{c.label}</Text>
+                <Text
+                  fontFamily="PlusJakartaSans-Medium"
+                  fontSize={14}
+                  color="#0c1b2a"
+                >
+                  {c.label}
+                </Text>
               </XStack>
             </Pressable>
           ))}
         </YStack>
       ) : null}
-      <View />
     </YStack>
   );
 }

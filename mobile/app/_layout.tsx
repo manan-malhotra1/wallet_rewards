@@ -38,10 +38,11 @@ SplashScreen.preventAutoHideAsync().catch(() => {
  */
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    'Inter-Regular': require('../assets/fonts/Inter-Regular.ttf'),
-    'Inter-Medium': require('../assets/fonts/Inter-Medium.ttf'),
-    'Inter-SemiBold': require('../assets/fonts/Inter-SemiBold.ttf'),
-    'Inter-Bold': require('../assets/fonts/Inter-Bold.ttf'),
+    'PlusJakartaSans-Regular': require('../assets/fonts/PlusJakartaSans-Regular.ttf'),
+    'PlusJakartaSans-Medium': require('../assets/fonts/PlusJakartaSans-Medium.ttf'),
+    'PlusJakartaSans-SemiBold': require('../assets/fonts/PlusJakartaSans-SemiBold.ttf'),
+    'PlusJakartaSans-Bold': require('../assets/fonts/PlusJakartaSans-Bold.ttf'),
+    'PlusJakartaSans-ExtraBold': require('../assets/fonts/PlusJakartaSans-ExtraBold.ttf'),
   });
 
   useEffect(() => {

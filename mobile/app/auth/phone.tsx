@@ -1,36 +1,37 @@
 /**
- * /auth/phone — country code + phone number entry.
+ * /auth/phone — phone-entry screen (Sasai Pay redesign).
+ *
+ * Top: navy gradient hero with the Sasai Pay wordmark.
+ * Body: "Welcome back" heading + phone input + Sign in CTA.
  *
  * On Continue:
- *   1. Resolve tenant_id via the bootstrap call (cached in memory)
- *   2. Call /auth/start to see if the phone is registered
- *   3. needs_pin → cache phone, route to /auth/pin
- *      needs_otp → cache phone, fire /otp/send, route to /auth/otp
- *
- * We persist the phone in secure-store on success so /auth/otp + /auth/pin
- * can recover it from a deep link or app restart.
+ *   1. Resolve tenant_id from the in-memory bootstrap call.
+ *   2. /auth/start → branch to /auth/pin (returning) or /auth/otp (new).
+ *   3. Cache the phone so downstream screens can recover it.
  */
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Button, Text, View, YStack } from 'tamagui';
+import { Text, View, XStack, YStack } from 'tamagui';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientHeader } from '@/components/brand/GradientHeader';
+import { SasaiPayLogo } from '@/components/brand/SasaiPayLogo';
 import { PhoneInput } from '@/components/forms/PhoneInput';
 import { authStart, otpSend } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/errors';
 import { getTenantId } from '@/lib/bootstrap';
 import { setLastPhone } from '@/lib/storage';
 
-/** Phone entry screen — the entry point of the auth flow. */
+/** Phone entry — entry point of the auth flow. */
 export default function PhoneScreen() {
   const router = useRouter();
   const [phone, setPhone] = useState('');
@@ -50,26 +51,25 @@ export default function PhoneScreen() {
         router.push({ pathname: '/auth/pin', params: { phone } });
         return;
       }
-      // needs_otp — fire /otp/send and forward
       await otpSend(tenantId, phone);
       router.push({ pathname: '/auth/otp', params: { phone } });
     } catch (e) {
-      const msg =
+      setError(
         e instanceof ApiError
           ? e.message
           : e instanceof Error
             ? e.message
-            : 'Something went wrong. Try again.';
-      setError(msg);
+            : 'Something went wrong. Try again.',
+      );
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['bottom']}>
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={{ flex: 1, backgroundColor: '#ffffff' }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -77,44 +77,99 @@ export default function PhoneScreen() {
             contentContainerStyle={{ flexGrow: 1 }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            bounces={false}
           >
-            <YStack flex={1} padding="$5" gap="$4">
-              <View alignItems="flex-start" marginTop="$2">
-                <Image
-                  source={require('../../assets/sasai-logo.png')}
-                  style={{ width: 152, height: 43, resizeMode: 'contain' }}
-                  accessibilityLabel="Sasai"
-                />
+            <GradientHeader paddingBottom={56}>
+              <View paddingTop={48}>
+                <SasaiPayLogo width={130} />
               </View>
-              <YStack gap="$2" marginTop="$5">
-                <Text fontFamily="Inter-Bold" fontSize={28} color="#0B1726">
-                  Welcome to Sasai
+            </GradientHeader>
+
+            <YStack padding={26} gap="$4" flex={1}>
+              <YStack gap={4}>
+                <Text
+                  fontFamily="PlusJakartaSans-ExtraBold"
+                  fontSize={25}
+                  color="#0c1b2a"
+                  letterSpacing={-0.5}
+                >
+                  Welcome back
                 </Text>
-                <Text fontFamily="Inter-Regular" fontSize={15} color="#6A7682">
-                  Enter your phone number to sign in or create an account.
+                <Text
+                  fontFamily="PlusJakartaSans-Regular"
+                  fontSize={14}
+                  color="#6a7888"
+                >
+                  Sign in to continue to your wallet
                 </Text>
               </YStack>
-              <View marginTop="$2">
+
+              <View marginTop={18}>
                 <PhoneInput onChange={setPhone} />
               </View>
+
               {error ? (
-                <Text fontFamily="Inter-Medium" color="#EF4444" fontSize={13}>
+                <Text
+                  fontFamily="PlusJakartaSans-Medium"
+                  color="#c0392b"
+                  fontSize={13}
+                >
                   {error}
                 </Text>
               ) : null}
-              <View flex={1} minHeight={40} />
-              <Button
-                size="$5"
-                theme="active"
-                backgroundColor="#144989"
-                color="white"
-                disabled={!canContinue}
-                opacity={canContinue ? 1 : 0.5}
+
+              <View flex={1} minHeight={20} />
+
+              <Pressable
                 onPress={onContinue}
+                disabled={!canContinue}
+                accessibilityRole="button"
                 accessibilityLabel="Continue"
+                style={({ pressed }) => ({
+                  opacity: !canContinue ? 0.5 : pressed ? 0.85 : 1,
+                })}
               >
-                {loading ? <ActivityIndicator color="#FFFFFF" /> : 'Continue'}
-              </Button>
+                <View
+                  height={54}
+                  borderRadius={14}
+                  backgroundColor="#00508F"
+                  alignItems="center"
+                  justifyContent="center"
+                  shadowColor="#00508F"
+                  shadowOpacity={0.28}
+                  shadowRadius={24}
+                  shadowOffset={{ width: 0, height: 10 }}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text
+                      fontFamily="PlusJakartaSans-Bold"
+                      fontSize={16}
+                      color="#ffffff"
+                    >
+                      Continue
+                    </Text>
+                  )}
+                </View>
+              </Pressable>
+
+              <XStack justifyContent="center" marginTop={6}>
+                <Text
+                  fontFamily="PlusJakartaSans-Regular"
+                  fontSize={13}
+                  color="#6a7888"
+                >
+                  New to Sasai?{' '}
+                </Text>
+                <Text
+                  fontFamily="PlusJakartaSans-Bold"
+                  fontSize={13}
+                  color="#00508F"
+                >
+                  Create account
+                </Text>
+              </XStack>
             </YStack>
           </ScrollView>
         </TouchableWithoutFeedback>

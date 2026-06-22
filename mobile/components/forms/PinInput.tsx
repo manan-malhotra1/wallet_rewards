@@ -1,5 +1,5 @@
 /**
- * PinInput — pip display + custom numeric keypad (no native keyboard).
+ * PinInput — pip display + custom numeric keypad (Sasai Pay redesign).
  *
  * 4-digit PIN entry. The native keyboard is intentionally suppressed so
  * the user sees only the keypad we render — eliminates the chance of a
@@ -7,7 +7,7 @@
  * tap target across platforms.
  *
  * The parent controls submission timing — we call `onChange` on each digit
- * and `onComplete` once 4 digits are entered.
+ * and `onComplete` once `length` digits are entered.
  */
 import { Pressable } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -15,21 +15,26 @@ import { Text, View, XStack, YStack } from 'tamagui';
 interface Props {
   value: string;
   onChange: (next: string) => void;
-  /** Fires when 4 digits have been entered (does NOT clear; parent decides). */
+  /** Fires once `length` digits are entered. Parent decides whether to clear. */
   onComplete?: (pin: string) => void;
   length?: number;
-  /** Optional helper text rendered above the pips (e.g. "Enter PIN"). */
+  /** Optional small helper text above the pips ("Enter your PIN to authorise"). */
   label?: string;
   /** Renders pips in error tint to signal a failed attempt. */
   errored?: boolean;
+  /** Color tint for filled pips. Defaults to Sasai primary navy. */
+  pipColor?: string;
+  /** Side icon on the bottom-left of the keypad (e.g., biometric ⌁). */
+  bottomLeftIcon?: string;
+  /** Called when the side icon is pressed. */
+  onBottomLeftPress?: () => void;
 }
 
-const KEYS: Array<'0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'back'> = [
-  '1', '2', '3',
-  '4', '5', '6',
-  '7', '8', '9',
-  // Empty slot, 0, backspace — matches every PIN pad on earth.
-  '0', 'back',
+const ROWS: ReadonlyArray<ReadonlyArray<'0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'back' | 'side'>> = [
+  ['1', '2', '3'],
+  ['4', '5', '6'],
+  ['7', '8', '9'],
+  ['side', '0', 'back'],
 ];
 
 /** Pip-display PIN entry with a built-in numeric keypad. */
@@ -40,8 +45,11 @@ export function PinInput({
   length = 4,
   label,
   errored = false,
+  pipColor = '#00508F',
+  bottomLeftIcon,
+  onBottomLeftPress,
 }: Props) {
-  function press(key: (typeof KEYS)[number]) {
+  function press(key: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'back') {
     if (key === 'back') {
       if (value.length === 0) return;
       onChange(value.slice(0, -1));
@@ -54,78 +62,90 @@ export function PinInput({
   }
 
   return (
-    <YStack alignItems="center" width="100%" gap="$4">
+    <YStack alignItems="center" width="100%" gap={22}>
       {label ? (
-        <Text fontSize={14} color="$muted">
+        <Text
+          fontFamily="PlusJakartaSans-Bold"
+          fontSize={14}
+          color="#0c1b2a"
+        >
           {label}
         </Text>
       ) : null}
-      <XStack gap="$3">
+      <XStack gap={18}>
         {Array.from({ length }).map((_, i) => {
           const filled = i < value.length;
           return (
             <View
               // eslint-disable-next-line react/no-array-index-key
               key={i}
-              width={16}
-              height={16}
-              borderRadius={8}
-              backgroundColor={
-                errored
-                  ? '#EF4444'
-                  : filled
-                    ? '#144989'
-                    : '#E5EAF0'
-              }
+              width={14}
+              height={14}
+              borderRadius={7}
+              backgroundColor={errored ? '#c0392b' : filled ? pipColor : '#cfd9e3'}
             />
           );
         })}
       </XStack>
-      <YStack gap="$2" width={264}>
-        {[
-          ['1', '2', '3'],
-          ['4', '5', '6'],
-          ['7', '8', '9'],
-          ['', '0', 'back'],
-        ].map((row, ri) => (
+      <YStack gap={2} width="100%" maxWidth={300} alignSelf="center">
+        {ROWS.map((row, ri) => (
           <XStack
             // eslint-disable-next-line react/no-array-index-key
             key={ri}
-            gap="$2"
-            justifyContent="space-between"
+            justifyContent="space-around"
+            gap={2}
           >
-            {row.map((k, ci) => (
-              <Pressable
-                // eslint-disable-next-line react/no-array-index-key
-                key={ci}
-                onPress={() => {
-                  if (k === '') return;
-                  press(k as (typeof KEYS)[number]);
-                }}
-                disabled={k === ''}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  k === 'back' ? 'Delete' : k === '' ? 'empty' : `Digit ${k}`
-                }
-              >
-                <View
-                  width={80}
-                  height={56}
-                  borderRadius={12}
-                  alignItems="center"
-                  justifyContent="center"
-                  backgroundColor={k === '' ? 'transparent' : '#F4F6F9'}
+            {row.map((k, ci) => {
+              const isSide = k === 'side';
+              const isBack = k === 'back';
+              const label = isSide
+                ? bottomLeftIcon ?? ''
+                : isBack
+                  ? '⌫'
+                  : k;
+              const onPress = isSide
+                ? onBottomLeftPress
+                : isBack || !isSide
+                  ? () => press(k as 'back' | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9')
+                  : undefined;
+              const dim = isSide && !bottomLeftIcon;
+              return (
+                <Pressable
+                  // eslint-disable-next-line react/no-array-index-key
+                  key={ci}
+                  onPress={dim ? undefined : onPress}
+                  disabled={dim}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isBack
+                      ? 'Delete'
+                      : isSide
+                        ? (bottomLeftIcon ? 'Biometric login' : 'empty')
+                        : `Digit ${k}`
+                  }
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    opacity: pressed && !dim ? 0.55 : 1,
+                  })}
                 >
-                  <Text
-                    fontSize={k === 'back' ? 18 : 22}
-                    fontWeight="600"
-                    color="$ink"
+                  <View
+                    height={56}
+                    alignItems="center"
+                    justifyContent="center"
                   >
-                    {k === 'back' ? '←' : k}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
+                    <Text
+                      fontFamily={
+                        isBack || isSide ? 'PlusJakartaSans-Medium' : 'PlusJakartaSans-SemiBold'
+                      }
+                      fontSize={isBack || isSide ? 22 : 26}
+                      color={isSide || isBack ? '#8a98a6' : '#0c1b2a'}
+                    >
+                      {label}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </XStack>
         ))}
       </YStack>

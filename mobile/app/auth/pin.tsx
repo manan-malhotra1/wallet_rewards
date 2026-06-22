@@ -1,21 +1,19 @@
 /**
- * /auth/pin — returning-user PIN entry.
+ * /auth/pin — returning-user PIN entry (Sasai Pay redesign).
  *
- * Flow:
- *   1. User types a 4-digit PIN via the in-screen keypad.
- *   2. We call /auth/pin with (tenant, phone, pin).
- *   3. On 200 we persist session_token and navigate to /home.
- *   4. On invalid_pin → shake + clear + error label.
- *   5. On 429 (lockout) → friendly "Too many attempts" screen.
- *
- * Lockout state is fully owned by the backend. We just surface it.
+ * Navy gradient header with Sasai Pay wordmark; white body with masked
+ * phone + PIN pip display + custom numeric keypad. On wrong PIN we shake
+ * the pips and clear via `setPin('')`. Lockout is handled server-side;
+ * we just surface a friendly screen on 429.
  */
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Animated } from 'react-native';
+import { Animated, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Text, YStack } from 'tamagui';
+import { Text, View, XStack, YStack } from 'tamagui';
 
+import { GradientHeader } from '@/components/brand/GradientHeader';
+import { SasaiPayLogo } from '@/components/brand/SasaiPayLogo';
 import { PinInput } from '@/components/forms/PinInput';
 import { authPin } from '@/lib/api/auth';
 import { ApiError, RateLimited } from '@/lib/api/errors';
@@ -23,7 +21,7 @@ import { getTenantId } from '@/lib/bootstrap';
 import { setSessionToken } from '@/lib/storage';
 import { maskPhone } from '@/lib/masking';
 
-/** PIN entry for users who already have a wallet. */
+/** PIN entry for returning users. */
 export default function PinScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ phone?: string }>();
@@ -37,8 +35,8 @@ export default function PinScreen() {
 
   function triggerShake() {
     Animated.sequence([
-      Animated.timing(shake, { toValue: 10, duration: 50, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shake, { toValue: 12, duration: 50, useNativeDriver: true }),
+      Animated.timing(shake, { toValue: -12, duration: 50, useNativeDriver: true }),
       Animated.timing(shake, { toValue: 8, duration: 50, useNativeDriver: true }),
       Animated.timing(shake, { toValue: 0, duration: 50, useNativeDriver: true }),
     ]).start();
@@ -60,9 +58,9 @@ export default function PinScreen() {
         setLockedOut(true);
         return;
       }
-      const msg =
-        e instanceof ApiError ? 'Incorrect PIN, try again.' : 'Something went wrong.';
-      setError(msg);
+      setError(
+        e instanceof ApiError ? 'Incorrect PIN. Try again.' : 'Something went wrong.',
+      );
     } finally {
       setSubmitting(false);
     }
@@ -70,61 +68,120 @@ export default function PinScreen() {
 
   if (lockedOut) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-        <YStack flex={1} padding="$5" gap="$4" alignItems="center" justifyContent="center">
-          <Text fontFamily="Inter-Bold" fontSize={24} color="$ink" textAlign="center">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
+        <YStack flex={1} padding={26} gap="$4" alignItems="center" justifyContent="center">
+          <Text
+            fontFamily="PlusJakartaSans-ExtraBold"
+            fontSize={24}
+            color="#0c1b2a"
+            textAlign="center"
+          >
             Too many attempts
           </Text>
-          <Text fontFamily="Inter-Regular" fontSize={14} color="$muted" textAlign="center">
+          <Text
+            fontFamily="PlusJakartaSans-Regular"
+            fontSize={14}
+            color="#6a7888"
+            textAlign="center"
+          >
             For your safety we have temporarily blocked sign-in attempts.
             Try again in a few minutes.
           </Text>
-          <Button
-            marginTop="$4"
-            size="$5"
-            theme="active"
-            backgroundColor="$sasaiNavy"
-            color="white"
+          <Pressable
             onPress={() => router.replace('/auth/phone')}
-            accessibilityLabel="Back to phone entry"
+            accessibilityRole="button"
+            accessibilityLabel="Use a different number"
+            style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, marginTop: 12 })}
           >
-            Use a different number
-          </Button>
+            <View
+              height={50}
+              paddingHorizontal={20}
+              borderRadius={14}
+              backgroundColor="#00508F"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Text
+                fontFamily="PlusJakartaSans-Bold"
+                fontSize={14}
+                color="#ffffff"
+              >
+                Use a different number
+              </Text>
+            </View>
+          </Pressable>
         </YStack>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <YStack flex={1} padding="$5" gap="$5">
-        <YStack gap="$2" marginTop="$4">
-          <Text fontFamily="Inter-Bold" fontSize={26} color="$ink">
-            Welcome back
-          </Text>
-          <Text fontFamily="Inter-Regular" fontSize={14} color="$muted">
-            Enter your PIN for {phone ? maskPhone(phone) : 'your account'}.
-          </Text>
-        </YStack>
-        <Animated.View style={{ transform: [{ translateX: shake }] }}>
-          <PinInput
-            value={pin}
-            onChange={setPin}
-            onComplete={onComplete}
-            label="Enter PIN"
-            errored={!!error}
-          />
-        </Animated.View>
-        {error ? (
-          <Text fontFamily="Inter-Medium" color="$error" fontSize={13} textAlign="center">
-            {error}
-          </Text>
-        ) : null}
-        {submitting ? (
-          <YStack alignItems="center">
-            <ActivityIndicator color="#144989" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['bottom']}>
+      <YStack flex={1}>
+        <GradientHeader paddingBottom={32}>
+          <View paddingTop={16}>
+            <SasaiPayLogo width={110} />
+          </View>
+        </GradientHeader>
+
+        <YStack flex={1} padding={26} gap="$4" alignItems="center">
+          <YStack gap={4} alignItems="center">
+            <Text
+              fontFamily="PlusJakartaSans-ExtraBold"
+              fontSize={22}
+              color="#0c1b2a"
+              letterSpacing={-0.4}
+            >
+              Welcome back
+            </Text>
+            <Text
+              fontFamily="PlusJakartaSans-Regular"
+              fontSize={13}
+              color="#6a7888"
+            >
+              Enter your PIN for {phone ? maskPhone(phone) : 'your account'}
+            </Text>
           </YStack>
-        ) : null}
+
+          <Animated.View
+            style={{ transform: [{ translateX: shake }], marginTop: 18 }}
+          >
+            <PinInput
+              value={pin}
+              onChange={setPin}
+              onComplete={onComplete}
+              errored={!!error}
+            />
+          </Animated.View>
+
+          {error ? (
+            <Text
+              fontFamily="PlusJakartaSans-Medium"
+              color="#c0392b"
+              fontSize={13}
+              textAlign="center"
+            >
+              {error}
+            </Text>
+          ) : null}
+
+          <View flex={1} />
+
+          <XStack
+            alignItems="center"
+            gap={7}
+            paddingBottom={6}
+          >
+            <Text fontSize={14}>🔒</Text>
+            <Text
+              fontFamily="PlusJakartaSans-Medium"
+              fontSize={12.5}
+              color="#8a98a6"
+            >
+              Secured with 256-bit encryption
+            </Text>
+          </XStack>
+        </YStack>
       </YStack>
     </SafeAreaView>
   );

@@ -11,7 +11,7 @@
  * Loading + error states fall back to muted greetings rather than
  * blocking the screen — the rest of the UI still renders.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -20,11 +20,13 @@ import { Text, View, XStack, YStack } from 'tamagui';
 
 import { ActivityRow } from '@/components/ui/ActivityRow';
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
+import { SideDrawer } from '@/components/ui/SideDrawer';
 import { GradientHeader } from '@/components/brand/GradientHeader';
+import { signOut } from '@/lib/auth';
 import { SessionExpired } from '@/lib/api/errors';
 import { getMyWallet } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
-import { clearAll } from '@/lib/storage';
+import { clearAll, getLastPhone } from '@/lib/storage';
 
 /** Quick-action tile metadata (icon + label + route). */
 const ACTIONS: ReadonlyArray<{ icon: string; label: string; href: string }> = [
@@ -57,13 +59,48 @@ function initials(name: string | null | undefined): string {
 export default function HomeScreen() {
   const router = useRouter();
   const [masked, setMasked] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [phone, setPhone] = useState<string | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: qk.wallet(),
     queryFn: getMyWallet,
   });
 
+  // Pull the phone the user last logged in with from secure storage so
+  // the drawer can show it. The wallet endpoint doesn't echo phone back
+  // (it's only on the session); cached `lastPhone` is the authoritative
+  // client-side source.
+  useEffect(() => {
+    let cancelled = false;
+    getLastPhone().then((p) => {
+      if (!cancelled) setPhone(p);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (error instanceof SessionExpired) {
     clearAll().finally(() => router.replace('/auth/phone'));
+  }
+
+  /**
+   * Sign out: best-effort invalidate the bearer server-side, clear all
+   * cached tokens locally, then route back to /auth/phone. The drawer
+   * stays open with a "Signing out…" label while the API call runs
+   * (typically <200 ms); we close it on the navigation transition.
+   */
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      setSigningOut(false);
+      setDrawerOpen(false);
+      router.replace('/auth/phone');
+    }
   }
 
   const firstName = data?.first_name ?? 'there';
@@ -87,32 +124,40 @@ export default function HomeScreen() {
               extra bottom padding so the balance card overlaps by 58px. */}
           <GradientHeader paddingBottom={78}>
             <XStack alignItems="center" justifyContent="space-between" paddingTop={6}>
-              <XStack alignItems="center" gap={11}>
-                <View
-                  width={42}
-                  height={42}
-                  borderRadius={21}
-                  backgroundColor="#50C0D0"
-                  alignItems="center"
-                  justifyContent="center"
-                >
-                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#013a6b">
-                    {initials(firstName)}
-                  </Text>
-                </View>
-                <YStack>
-                  <Text
-                    fontFamily="PlusJakartaSans-Medium"
-                    fontSize={12}
-                    color="rgba(255,255,255,0.7)"
+              <Pressable
+                onPress={() => setDrawerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Open menu"
+                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                hitSlop={8}
+              >
+                <XStack alignItems="center" gap={11}>
+                  <View
+                    width={42}
+                    height={42}
+                    borderRadius={21}
+                    backgroundColor="#50C0D0"
+                    alignItems="center"
+                    justifyContent="center"
                   >
-                    Welcome back
-                  </Text>
-                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color="#ffffff">
-                    {firstName}
-                  </Text>
-                </YStack>
-              </XStack>
+                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#013a6b">
+                      {initials(firstName)}
+                    </Text>
+                  </View>
+                  <YStack>
+                    <Text
+                      fontFamily="PlusJakartaSans-Medium"
+                      fontSize={12}
+                      color="rgba(255,255,255,0.7)"
+                    >
+                      Welcome back
+                    </Text>
+                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color="#ffffff">
+                      {firstName}
+                    </Text>
+                  </YStack>
+                </XStack>
+              </Pressable>
               <XStack alignItems="center" gap={10}>
                 <XStack
                   alignItems="center"
@@ -424,6 +469,15 @@ export default function HomeScreen() {
         </YStack>
       </SafeAreaView>
       <BottomTabBar active="pay" />
+      <SideDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onSignOut={handleSignOut}
+        name={firstName === 'there' ? null : firstName}
+        phone={phone}
+        initials={initials(firstName)}
+        signingOut={signingOut}
+      />
     </View>
   );
 }

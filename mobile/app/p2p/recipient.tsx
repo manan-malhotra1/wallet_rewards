@@ -1,10 +1,16 @@
 /**
- * /p2p/recipient — pick who you're sending to (by phone number).
+ * /p2p/recipient — pick who you're sending to (Sasai Pay redesign).
  *
- * Re-uses `/auth/start` as a lookup probe: a phone that returns `needs_otp`
- * isn't a registered Sasai user yet, so we reject with a friendly inline
- * error rather than letting the P2P call fail server-side. This shaves a
- * round-trip and gives a tighter error message.
+ * Step 1 of the send-money flow. Gradient header w/ step indicator,
+ * focused phone input, and a "Recent payments" section with both a
+ * horizontal avatar row and a tappable list. The list + avatars use
+ * static demo data for v0 (we don't have a "recent recipients" backend
+ * endpoint yet); tapping any of them deep-links to the amount screen
+ * pre-filled.
+ *
+ * Continue uses /auth/start as a lookup probe — if the phone isn't a
+ * Sasai user yet, we reject with a friendly inline error rather than
+ * letting /payments/p2p fail server-side.
  */
 import { useState } from 'react';
 import {
@@ -12,19 +18,31 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Button, Text, View, YStack } from 'tamagui';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text, View, XStack, YStack } from 'tamagui';
 
+import { GradientHeader } from '@/components/brand/GradientHeader';
+import { HeaderBack } from '@/components/brand/HeaderBack';
+import { StepIndicator } from '@/components/brand/StepIndicator';
 import { PhoneInput } from '@/components/forms/PhoneInput';
 import { authStart } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/errors';
 import { getTenantId } from '@/lib/bootstrap';
 
-/** Send-money recipient picker — phone number entry. */
+/** Demo recent recipients. Real "recent contacts" surfacing is Phase 2. */
+const RECENTS = [
+  { initials: 'AL', name: 'Alice',  phone: '+27825550001', bg: '#50C0D0', fg: '#013a6b' },
+  { initials: 'BB', name: 'Bob',    phone: '+27825550002', bg: '#eef3fb', fg: '#00508F' },
+  { initials: 'TC', name: 'Tariro', phone: '+263786612093', bg: '#fff7e6', fg: '#c98a00' },
+  { initials: 'RS', name: 'Rudo',   phone: '+263787715040', bg: '#fdeef0', fg: '#c0455a' },
+] as const;
+
+/** Recipient picker screen. */
 export default function RecipientScreen() {
   const router = useRouter();
   const [phone, setPhone] = useState('');
@@ -33,77 +51,181 @@ export default function RecipientScreen() {
 
   const canContinue = phone.replace(/\D/g, '').length >= 9 && !loading;
 
-  async function onContinue() {
+  async function lookupAndGoToAmount(target: string) {
     setLoading(true);
     setError(null);
     try {
       const tenantId = await getTenantId();
-      const { status } = await authStart(tenantId, phone);
+      const { status } = await authStart(tenantId, target);
       if (status === 'needs_otp') {
-        // Not a registered user yet — short-circuit before /payments/p2p.
         setError("That number isn't on Sasai yet.");
         return;
       }
-      router.push({ pathname: '/p2p/amount', params: { phone } });
+      router.push({ pathname: '/p2p/amount', params: { phone: target } });
     } catch (e) {
-      const msg =
-        e instanceof ApiError
-          ? e.message
-          : e instanceof Error
-            ? e.message
-            : 'Lookup failed. Try again.';
-      setError(msg);
+      setError(e instanceof ApiError ? e.message : 'Lookup failed. Try again.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-          <ScrollView
-            contentContainerStyle={{ flexGrow: 1 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <YStack flex={1} padding="$5" gap="$4">
-              <YStack gap="$2" marginTop="$4">
-                <Text fontFamily="Inter-Bold" fontSize={26} color="#0B1726">
-                  Send money
-                </Text>
-                <Text fontFamily="Inter-Regular" fontSize={15} color="#6A7682">
-                  Who are you sending to?
-                </Text>
+    <View flex={1} backgroundColor="#f4f7fa">
+      <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <ScrollView
+              contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <GradientHeader paddingBottom={24}>
+                <HeaderBack title="Send money" />
+                <StepIndicator step={1} caption="Step 1 of 3 · Who are you paying?" />
+              </GradientHeader>
+
+              <YStack padding={22} paddingTop={20} gap={18}>
+                <PhoneInput onChange={setPhone} variant="focused" />
+
+                {error ? (
+                  <Text fontFamily="PlusJakartaSans-Medium" color="#c0392b" fontSize={13}>
+                    {error}
+                  </Text>
+                ) : null}
+
+                <Pressable
+                  onPress={() => lookupAndGoToAmount(phone)}
+                  disabled={!canContinue}
+                  accessibilityRole="button"
+                  accessibilityLabel="Continue"
+                  style={({ pressed }) => ({
+                    opacity: !canContinue ? 0.5 : pressed ? 0.85 : 1,
+                  })}
+                >
+                  <View
+                    height={50}
+                    borderRadius={14}
+                    backgroundColor="#00508F"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color="#ffffff">
+                        Continue
+                      </Text>
+                    )}
+                  </View>
+                </Pressable>
+
+                {/* Recent payments — header */}
+                <XStack justifyContent="space-between" alignItems="center" marginTop={6}>
+                  <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={14} color="#0c1b2a">
+                    Recent payments
+                  </Text>
+                  <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#00508F">
+                    View all
+                  </Text>
+                </XStack>
               </YStack>
-              <View marginTop="$2">
-                <PhoneInput onChange={setPhone} />
-              </View>
-              {error ? (
-                <Text fontFamily="Inter-Medium" color="#EF4444" fontSize={13}>
-                  {error}
-                </Text>
-              ) : null}
-              <View flex={1} minHeight={40} />
-              <Button
-                size="$5"
-                theme="active"
-                backgroundColor="#144989"
-                color="white"
-                disabled={!canContinue}
-                opacity={canContinue ? 1 : 0.5}
-                onPress={onContinue}
-                accessibilityLabel="Continue to amount"
+
+              {/* Avatar row */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 22, gap: 16 }}
               >
-                {loading ? <ActivityIndicator color="#FFFFFF" /> : 'Continue'}
-              </Button>
-            </YStack>
-          </ScrollView>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+                {RECENTS.map((r) => (
+                  <Pressable
+                    key={r.phone}
+                    onPress={() => lookupAndGoToAmount(r.phone)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Send to ${r.name}`}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                  >
+                    <YStack alignItems="center" gap={7} width={58}>
+                      <View
+                        width={52}
+                        height={52}
+                        borderRadius={26}
+                        backgroundColor={r.bg}
+                        borderWidth={r.bg === '#50C0D0' ? 2.5 : 0}
+                        borderColor="#00508F"
+                        alignItems="center"
+                        justifyContent="center"
+                      >
+                        <Text fontFamily="PlusJakartaSans-Bold" fontSize={16} color={r.fg}>
+                          {r.initials}
+                        </Text>
+                      </View>
+                      <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#3a4756">
+                        {r.name}
+                      </Text>
+                    </YStack>
+                  </Pressable>
+                ))}
+              </ScrollView>
+
+              {/* Selectable list */}
+              <View
+                marginHorizontal={18}
+                marginTop={14}
+                backgroundColor="#ffffff"
+                borderRadius={18}
+                paddingHorizontal={14}
+                shadowColor="#0c1b2a"
+                shadowOpacity={0.05}
+                shadowRadius={16}
+                shadowOffset={{ width: 0, height: 6 }}
+              >
+                {RECENTS.map((r, i) => (
+                  <Pressable
+                    key={r.phone}
+                    onPress={() => lookupAndGoToAmount(r.phone)}
+                    accessibilityRole="button"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                  >
+                    <XStack
+                      alignItems="center"
+                      gap={12}
+                      paddingVertical={12}
+                      borderBottomWidth={i === RECENTS.length - 1 ? 0 : 1}
+                      borderBottomColor="#f1f4f7"
+                    >
+                      <View
+                        width={42}
+                        height={42}
+                        borderRadius={21}
+                        backgroundColor={r.bg}
+                        alignItems="center"
+                        justifyContent="center"
+                      >
+                        <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={r.fg}>
+                          {r.initials}
+                        </Text>
+                      </View>
+                      <YStack flex={1} gap={1}>
+                        <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a">
+                          {r.name}
+                        </Text>
+                        <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6">
+                          {r.phone}
+                        </Text>
+                      </YStack>
+                      <Text fontSize={18} color="#cfd9e3">›</Text>
+                    </XStack>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }

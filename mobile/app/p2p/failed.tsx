@@ -1,12 +1,11 @@
 /**
- * /p2p/success — payment receipt (Sasai Pay redesign).
+ * /p2p/failed — payment-failed receipt (Sasai Pay redesign).
  *
- * Green gradient header w/ check mark, "Payment successful", amount,
- * and recipient. White receipt card with dashed dividers shows the
- * line-item details (Recipient / Mobile / Amount / Fee / Reference /
- * Date). If `earned > 0`, a "You earned X reward points" line sits
- * above the action row. Done routes back to /home with the wallet
- * query already invalidated by the PIN screen.
+ * Red gradient header with X mark, "Payment failed", amount, and
+ * recipient. Reason callout (red-tinted box) explains why and reassures
+ * "no money has left your account". Receipt card with line items.
+ * Cancel returns to /home; Try again pops back to /p2p/recipient so
+ * the user can re-enter the flow cleanly.
  */
 import { Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,15 +15,7 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { maskPhone } from '@/lib/format';
 
-/** Format a Date as "DD MMM YYYY · HH:mm". */
-function nowFormatted(): string {
-  const d = new Date();
-  const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  return `${date} · ${time}`;
-}
-
-/** Single Recipient/Amount/etc. row in the receipt card. */
+/** Single row in the receipt card. */
 function ReceiptRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
   return (
     <XStack
@@ -32,8 +23,6 @@ function ReceiptRow({ label, value, last }: { label: string; value: string; last
       paddingVertical={12}
       borderBottomWidth={last ? 0 : 1}
       borderBottomColor="#e7edf2"
-      // dashed via opacity + width; React Native's `borderStyle: 'dashed'` is
-      // unreliable across platforms, so a soft line is used instead.
       style={{ borderStyle: 'dashed' }}
     >
       <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
@@ -46,25 +35,22 @@ function ReceiptRow({ label, value, last }: { label: string; value: string; last
   );
 }
 
-/** Payment receipt — success. */
-export default function SuccessScreen() {
+/** Failed-payment receipt. */
+export default function FailedScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{
-    phone: string;
-    amount: string;
-    earned: string;
-    reference: string;
-  }>();
+  const params = useLocalSearchParams<{ phone: string; amount: string; reason: string }>();
   const phone = typeof params.phone === 'string' ? params.phone : '';
   const amount = typeof params.amount === 'string' ? params.amount : '0';
-  const earned = parseInt(typeof params.earned === 'string' ? params.earned : '0', 10) || 0;
-  const reference = typeof params.reference === 'string' ? params.reference : '—';
+  const reason =
+    typeof params.reason === 'string' && params.reason.length > 0
+      ? params.reason
+      : 'Payment failed';
 
   return (
     <View flex={1} backgroundColor="#ffffff">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
-          <GradientHeader variant="success" paddingBottom={38}>
+          <GradientHeader variant="failed" paddingBottom={38}>
             <YStack alignItems="center" gap={10} paddingTop={6}>
               <View
                 width={78}
@@ -78,12 +64,12 @@ export default function SuccessScreen() {
                 shadowRadius={30}
                 shadowOffset={{ width: 0, height: 12 }}
               >
-                <Text fontSize={40} color="#0a8a5f">
-                  ✓
+                <Text fontSize={40} color="#c0392b">
+                  ✕
                 </Text>
               </View>
               <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={20} color="#ffffff" marginTop={4}>
-                Payment successful
+                Payment failed
               </Text>
               <Text
                 fontFamily="PlusJakartaSans-ExtraBold"
@@ -99,10 +85,39 @@ export default function SuccessScreen() {
             </YStack>
           </GradientHeader>
 
-          {/* Receipt card */}
-          <View
+          {/* Reason callout */}
+          <XStack
             marginHorizontal={18}
             marginTop={18}
+            backgroundColor="#fdf0ee"
+            borderColor="#f6d5cf"
+            borderWidth={1}
+            borderRadius={16}
+            padding={14}
+            gap={11}
+            alignItems="flex-start"
+          >
+            <Text fontSize={18}>⚠️</Text>
+            <YStack flex={1}>
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color="#a52e22">
+                {reason}
+              </Text>
+              <Text
+                fontFamily="PlusJakartaSans-Medium"
+                fontSize={12}
+                color="#8a5a54"
+                marginTop={3}
+                lineHeight={18}
+              >
+                Your transfer could not be completed. No money has left your account.
+              </Text>
+            </YStack>
+          </XStack>
+
+          {/* Receipt-style details for support reference. */}
+          <View
+            marginHorizontal={18}
+            marginTop={14}
             backgroundColor="#ffffff"
             borderColor="#eef2f6"
             borderWidth={1}
@@ -115,33 +130,16 @@ export default function SuccessScreen() {
             shadowOffset={{ width: 0, height: 6 }}
           >
             <ReceiptRow label="Recipient" value={maskPhone(phone)} />
-            <ReceiptRow label="Mobile" value={maskPhone(phone)} />
             <ReceiptRow label="Amount" value={`R ${parseFloat(amount).toFixed(2)}`} />
-            <ReceiptRow label="Fee" value="R 0.00" />
-            <ReceiptRow label="Reference" value={`SASAI-${reference}`} />
-            <ReceiptRow label="Date" value={nowFormatted()} last />
+            <ReceiptRow label="Status" value="Failed" last />
           </View>
-
-          {earned > 0 ? (
-            <XStack
-              alignItems="center"
-              justifyContent="center"
-              gap={7}
-              marginTop={14}
-            >
-              <Text fontSize={14}>⭐</Text>
-              <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#0a8a5f">
-                You earned {earned} reward points
-              </Text>
-            </XStack>
-          ) : null}
 
           <View flex={1} />
 
           <XStack gap={12} padding={18}>
             <Pressable
-              onPress={() => {}}
-              accessibilityLabel="Share receipt"
+              onPress={() => router.replace('/home')}
+              accessibilityLabel="Cancel"
               style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}
             >
               <View
@@ -151,18 +149,15 @@ export default function SuccessScreen() {
                 borderColor="#e2e8ef"
                 alignItems="center"
                 justifyContent="center"
-                flexDirection="row"
-                gap={7}
               >
-                <Text fontSize={15}>⤓</Text>
                 <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a">
-                  Share
+                  Cancel
                 </Text>
               </View>
             </Pressable>
             <Pressable
-              onPress={() => router.replace('/home')}
-              accessibilityLabel="Done"
+              onPress={() => router.replace('/p2p/recipient')}
+              accessibilityLabel="Try again"
               style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.85 : 1 })}
             >
               <View
@@ -171,9 +166,14 @@ export default function SuccessScreen() {
                 backgroundColor="#00508F"
                 alignItems="center"
                 justifyContent="center"
+                flexDirection="row"
+                gap={7}
               >
+                <Text color="#ffffff" fontSize={15}>
+                  ↻
+                </Text>
                 <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#ffffff">
-                  Done
+                  Try again
                 </Text>
               </View>
             </Pressable>

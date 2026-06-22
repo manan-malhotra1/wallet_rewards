@@ -1,39 +1,53 @@
 /**
- * /p2p/amount — pick how much to send.
+ * /p2p/amount — amount entry (Sasai Pay redesign).
  *
- * Pulls the user's ZAR account balance from /me/wallet (cached by the home
- * screen's identical query) and blocks Continue when amount > available.
- * The amount is forwarded to /p2p/review as a route param.
+ * Step 2 of the send-money flow. Gradient header with step indicator,
+ * recipient pill (avatar + name + verified badge), big amount display
+ * with cents in a muted tint, quick-amount chips ($10 / $25 / $50 /
+ * $100), fee + "Recipient gets X" line, then a white numeric keypad
+ * pinned to the bottom. Continue routes to /p2p/pin.
  */
 import { useState } from 'react';
-import {
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  TouchableWithoutFeedback,
-} from 'react-native';
+import { Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Text, View, YStack } from 'tamagui';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text, View, XStack, YStack } from 'tamagui';
 
-import { AmountInput } from '@/components/forms/AmountInput';
+import { GradientHeader } from '@/components/brand/GradientHeader';
+import { HeaderBack } from '@/components/brand/HeaderBack';
+import { StepIndicator } from '@/components/brand/StepIndicator';
+import { NumericKeypad } from '@/components/forms/NumericKeypad';
 import { getMyWallet } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
-import { formatZAR, maskPhone } from '@/lib/format';
+import { maskPhone } from '@/lib/format';
 
-/** Returns the user's ZAR wallet available_balance (numeric) or 0. */
-function pickZarAvailable(
-  accounts: { account_type: string; currency: string; available_balance: string }[] | undefined,
-): number {
-  const zar = accounts?.find(
-    (a) => a.currency === 'ZAR' && a.account_type === 'financial_wallet',
-  );
-  return zar ? parseFloat(zar.available_balance) : 0;
+const CHIPS = [50, 100, 200, 500] as const;
+
+/** Returns initials from a phone tail or recipient name for the pill avatar. */
+function tailInitials(phone: string): string {
+  const tail = phone.slice(-4);
+  return tail.slice(0, 2);
 }
 
-/** Amount entry — checks available balance before allowing Continue. */
+/** Format an entered amount as a [whole, cents] pair for the big display. */
+function splitAmount(amount: string): { whole: string; cents: string; hasDot: boolean } {
+  const dot = amount.indexOf('.');
+  if (dot === -1) {
+    return {
+      whole: amount.length === 0 ? '0' : amount,
+      cents: '.00',
+      hasDot: false,
+    };
+  }
+  return {
+    whole: amount.slice(0, dot) || '0',
+    cents: '.' + (amount.slice(dot + 1).padEnd(2, '0').slice(0, 2)),
+    hasDot: true,
+  };
+}
+
+/** Amount entry screen. */
 export default function AmountScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ phone: string }>();
@@ -41,77 +55,202 @@ export default function AmountScreen() {
   const [amount, setAmount] = useState('');
   const { data } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
 
-  const available = pickZarAvailable(data?.accounts);
+  const zar = data?.accounts.find(
+    (a) => a.currency === 'ZAR' && a.account_type === 'financial_wallet',
+  );
+  const available = parseFloat(zar?.available_balance ?? '0');
   const parsed = parseFloat(amount || '0');
   const overdrawn = parsed > available;
   const canContinue = parsed > 0 && !overdrawn;
+  const display = splitAmount(amount);
 
-  function onContinue() {
-    router.push({
-      pathname: '/p2p/review',
-      params: { phone: recipientPhone, amount },
+  function handleKey(key: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '.' | 'back') {
+    if (key === 'back') {
+      setAmount((a) => a.slice(0, -1));
+      return;
+    }
+    if (key === '.') {
+      if (amount.includes('.')) return;
+      setAmount((a) => (a === '' ? '0.' : a + '.'));
+      return;
+    }
+    setAmount((a) => {
+      const dotAt = a.indexOf('.');
+      // Cap cents at 2 digits.
+      if (dotAt !== -1 && a.length - dotAt - 1 >= 2) return a;
+      // Cap whole digits at 7 (R 9,999,999.99).
+      if (dotAt === -1 && a.length >= 7) return a;
+      return a + key;
     });
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-          <ScrollView
-            contentContainerStyle={{ flexGrow: 1 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+    <View flex={1} backgroundColor="#f4f7fa">
+      <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
+        <YStack flex={1}>
+          <GradientHeader paddingBottom={22}>
+            <HeaderBack title="Enter amount" />
+            <StepIndicator step={2} caption="Step 2 of 3 · How much are you sending?" />
+          </GradientHeader>
+
+          {/* Recipient pill — overlaps the header slightly. */}
+          <XStack
+            marginHorizontal={18}
+            marginTop={16}
+            alignItems="center"
+            gap={11}
+            backgroundColor="#ffffff"
+            borderRadius={14}
+            padding={11}
+            shadowColor="#0c1b2a"
+            shadowOpacity={0.05}
+            shadowRadius={16}
+            shadowOffset={{ width: 0, height: 6 }}
           >
-            <YStack flex={1} padding="$5" gap="$5">
-              <YStack gap="$2" marginTop="$4">
-                <Text fontFamily="Inter-Bold" fontSize={26} color="#0B1726">
-                  Amount
-                </Text>
-                <Text fontFamily="Inter-Regular" fontSize={15} color="#6A7682">
-                  Sending to {maskPhone(recipientPhone)}
-                </Text>
-              </YStack>
-              <View marginTop="$3">
-                <AmountInput value={amount} onChange={setAmount} />
-              </View>
-              <Text
-                fontFamily="Inter-Regular"
-                fontSize={13}
-                color="#6A7682"
-                textAlign="center"
-              >
-                ZAR wallet · {formatZAR(available)} available
+            <View
+              width={40}
+              height={40}
+              borderRadius={20}
+              backgroundColor="#50C0D0"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#013a6b">
+                {tailInitials(recipientPhone)}
               </Text>
-              {overdrawn ? (
-                <Text
-                  fontFamily="Inter-Medium"
-                  color="#EF4444"
-                  fontSize={13}
-                  textAlign="center"
-                >
-                  Not enough in your wallet to send {formatZAR(parsed)}.
-                </Text>
-              ) : null}
-              <View flex={1} minHeight={40} />
-              <Button
-                size="$5"
-                theme="active"
-                backgroundColor="#144989"
-                color="white"
-                disabled={!canContinue}
-                opacity={canContinue ? 1 : 0.5}
-                onPress={onContinue}
-                accessibilityLabel="Continue to review"
-              >
-                Continue
-              </Button>
+            </View>
+            <YStack flex={1} gap={2}>
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color="#0c1b2a">
+                {maskPhone(recipientPhone)}
+              </Text>
+              <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6">
+                Sasai user
+              </Text>
             </YStack>
-          </ScrollView>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <View
+              backgroundColor="#e7f6ee"
+              paddingHorizontal={9}
+              paddingVertical={4}
+              borderRadius={20}
+            >
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={11.5} color="#1aa06b">
+                Verified
+              </Text>
+            </View>
+          </XStack>
+
+          {/* Big amount display + balance hint + chips. */}
+          <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal={22}>
+            <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
+              ZAR wallet · R {available.toFixed(2)} available
+            </Text>
+            <XStack alignItems="flex-start" gap={4} marginTop={10}>
+              <Text
+                fontFamily="PlusJakartaSans-Bold"
+                fontSize={26}
+                color="#94a2b1"
+                marginTop={8}
+              >
+                R
+              </Text>
+              <Text
+                fontFamily="PlusJakartaSans-ExtraBold"
+                fontSize={56}
+                color="#0c1b2a"
+                lineHeight={56}
+                letterSpacing={-1}
+              >
+                {display.whole}
+                <Text
+                  fontFamily="PlusJakartaSans-ExtraBold"
+                  fontSize={56}
+                  color="#cfd9e3"
+                >
+                  {display.cents}
+                </Text>
+              </Text>
+            </XStack>
+            <XStack gap={8} marginTop={18} flexWrap="wrap" justifyContent="center">
+              {CHIPS.map((n) => {
+                const value = n.toFixed(2);
+                const selected = amount === value;
+                return (
+                  <Pressable
+                    key={n}
+                    onPress={() => setAmount(selected ? '' : value)}
+                    accessibilityLabel={`Set amount R ${n}`}
+                  >
+                    <View
+                      paddingHorizontal={14}
+                      paddingVertical={7}
+                      borderRadius={20}
+                      backgroundColor={selected ? '#00508F' : '#e9f1f9'}
+                    >
+                      <Text
+                        fontFamily="PlusJakartaSans-Bold"
+                        fontSize={12.5}
+                        color={selected ? '#ffffff' : '#00508F'}
+                      >
+                        R{n}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </XStack>
+            <Text fontFamily="PlusJakartaSans-Medium" fontSize={12} color="#8a98a6" marginTop={16}>
+              Fee R 0.00 · Recipient gets{' '}
+              <Text fontFamily="PlusJakartaSans-Bold" color="#0c1b2a">
+                R {parsed.toFixed(2)}
+              </Text>
+            </Text>
+            {overdrawn ? (
+              <Text
+                fontFamily="PlusJakartaSans-Bold"
+                color="#c0392b"
+                fontSize={12.5}
+                marginTop={8}
+              >
+                That's more than your wallet has right now.
+              </Text>
+            ) : null}
+          </YStack>
+
+          <NumericKeypad onPress={handleKey} />
+          <View backgroundColor="#ffffff" paddingHorizontal={18} paddingBottom={18}>
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: '/p2p/pin' as never,
+                  params: { phone: recipientPhone, amount: parsed.toFixed(2) },
+                })
+              }
+              disabled={!canContinue}
+              accessibilityRole="button"
+              accessibilityLabel="Continue"
+              style={({ pressed }) => ({
+                opacity: !canContinue ? 0.5 : pressed ? 0.85 : 1,
+              })}
+            >
+              <View
+                height={54}
+                borderRadius={14}
+                backgroundColor="#00508F"
+                alignItems="center"
+                justifyContent="center"
+                shadowColor="#00508F"
+                shadowOpacity={0.28}
+                shadowRadius={24}
+                shadowOffset={{ width: 0, height: 10 }}
+              >
+                <Text fontFamily="PlusJakartaSans-Bold" fontSize={16} color="#ffffff">
+                  Continue
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        </YStack>
+      </SafeAreaView>
+    </View>
   );
 }

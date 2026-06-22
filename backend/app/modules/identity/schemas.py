@@ -123,7 +123,15 @@ class UserDetailOut(BaseModel):
 
 class WalletTransactionOut(BaseModel):
     """One transaction row surfaced on /me/wallet — same data the mobile
-    app shows in its recent-activity feed."""
+    app shows in its recent-activity feed.
+
+    `direction` is derived from the ledger entry on one of the caller's
+    own accounts: CREDIT → "in" (money/points arrived), DEBIT → "out".
+    `counterparty_name` is populated for P2P transfers — the other
+    user's profile first_name — and null otherwise (top-ups, reward
+    issuance, redemptions where the other side is a system/provider
+    account with no owning user).
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -133,6 +141,8 @@ class WalletTransactionOut(BaseModel):
     amount: str
     currency: str
     created_at: datetime
+    direction: Literal["in", "out"]
+    counterparty_name: str | None = None
 
 
 class WalletOut(BaseModel):

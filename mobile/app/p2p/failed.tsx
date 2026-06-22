@@ -1,0 +1,185 @@
+/**
+ * /p2p/failed — payment-failed receipt (Sasai Pay redesign).
+ *
+ * Red gradient header with X mark, "Payment failed", amount, and
+ * recipient. Reason callout (red-tinted box) explains why and reassures
+ * "no money has left your account". Receipt card with line items.
+ * Cancel returns to /home; Try again pops back to /p2p/recipient so
+ * the user can re-enter the flow cleanly.
+ */
+import { Pressable } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text, View, XStack, YStack } from 'tamagui';
+
+import { GradientHeader } from '@/components/brand/GradientHeader';
+import { maskPhone } from '@/lib/format';
+
+/** Single row in the receipt card. */
+function ReceiptRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  return (
+    <XStack
+      justifyContent="space-between"
+      paddingVertical={12}
+      borderBottomWidth={last ? 0 : 1}
+      borderBottomColor="#e7edf2"
+      style={{ borderStyle: 'dashed' }}
+    >
+      <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
+        {label}
+      </Text>
+      <Text fontFamily="PlusJakartaSans-Bold" fontSize={12.5} color="#0c1b2a">
+        {value}
+      </Text>
+    </XStack>
+  );
+}
+
+/** Failed-payment receipt. */
+export default function FailedScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ phone: string; amount: string; reason: string }>();
+  const phone = typeof params.phone === 'string' ? params.phone : '';
+  const amount = typeof params.amount === 'string' ? params.amount : '0';
+  const reason =
+    typeof params.reason === 'string' && params.reason.length > 0
+      ? params.reason
+      : 'Payment failed';
+
+  return (
+    <View flex={1} backgroundColor="#ffffff">
+      <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
+        <YStack flex={1}>
+          <GradientHeader variant="failed" paddingBottom={38}>
+            <YStack alignItems="center" gap={10} paddingTop={6}>
+              <View
+                width={78}
+                height={78}
+                borderRadius={39}
+                backgroundColor="#ffffff"
+                alignItems="center"
+                justifyContent="center"
+                shadowColor="#000000"
+                shadowOpacity={0.18}
+                shadowRadius={30}
+                shadowOffset={{ width: 0, height: 12 }}
+              >
+                <Text fontSize={40} color="#c0392b">
+                  ✕
+                </Text>
+              </View>
+              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={20} color="#ffffff" marginTop={4}>
+                Payment failed
+              </Text>
+              <Text
+                fontFamily="PlusJakartaSans-ExtraBold"
+                fontSize={33}
+                color="#ffffff"
+                letterSpacing={-0.5}
+              >
+                R {parseFloat(amount).toFixed(2)}
+              </Text>
+              <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color="rgba(255,255,255,0.85)">
+                to {maskPhone(phone)}
+              </Text>
+            </YStack>
+          </GradientHeader>
+
+          {/* Reason callout */}
+          <XStack
+            marginHorizontal={18}
+            marginTop={18}
+            backgroundColor="#fdf0ee"
+            borderColor="#f6d5cf"
+            borderWidth={1}
+            borderRadius={16}
+            padding={14}
+            gap={11}
+            alignItems="flex-start"
+          >
+            <Text fontSize={18}>⚠️</Text>
+            <YStack flex={1}>
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color="#a52e22">
+                {reason}
+              </Text>
+              <Text
+                fontFamily="PlusJakartaSans-Medium"
+                fontSize={12}
+                color="#8a5a54"
+                marginTop={3}
+                lineHeight={18}
+              >
+                Your transfer could not be completed. No money has left your account.
+              </Text>
+            </YStack>
+          </XStack>
+
+          {/* Receipt-style details for support reference. */}
+          <View
+            marginHorizontal={18}
+            marginTop={14}
+            backgroundColor="#ffffff"
+            borderColor="#eef2f6"
+            borderWidth={1}
+            borderRadius={18}
+            paddingHorizontal={16}
+            paddingVertical={6}
+            shadowColor="#0c1b2a"
+            shadowOpacity={0.05}
+            shadowRadius={16}
+            shadowOffset={{ width: 0, height: 6 }}
+          >
+            <ReceiptRow label="Recipient" value={maskPhone(phone)} />
+            <ReceiptRow label="Amount" value={`R ${parseFloat(amount).toFixed(2)}`} />
+            <ReceiptRow label="Status" value="Failed" last />
+          </View>
+
+          <View flex={1} />
+
+          <XStack gap={12} padding={18}>
+            <Pressable
+              onPress={() => router.replace('/home')}
+              accessibilityLabel="Cancel"
+              style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}
+            >
+              <View
+                height={50}
+                borderRadius={14}
+                borderWidth={1.5}
+                borderColor="#e2e8ef"
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a">
+                  Cancel
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => router.replace('/p2p/recipient')}
+              accessibilityLabel="Try again"
+              style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.85 : 1 })}
+            >
+              <View
+                height={50}
+                borderRadius={14}
+                backgroundColor="#00508F"
+                alignItems="center"
+                justifyContent="center"
+                flexDirection="row"
+                gap={7}
+              >
+                <Text color="#ffffff" fontSize={15}>
+                  ↻
+                </Text>
+                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#ffffff">
+                  Try again
+                </Text>
+              </View>
+            </Pressable>
+          </XStack>
+        </YStack>
+      </SafeAreaView>
+    </View>
+  );
+}

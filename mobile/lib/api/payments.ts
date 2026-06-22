@@ -1,12 +1,15 @@
 /**
- * Payments API — P2P transfer (Sasai Pay redesign).
+ * Payments API — P2P transfer (Sasai Pay, with step-up support).
  *
- * The redesign always routes the user through a dedicated /p2p/pin
- * screen between amount entry and the actual send, so this module drops
- * the old try-then-PIN retry helper. Callers pass the PIN (always),
- * we send it once. The backend ignores PIN below step-up threshold,
- * accepts it above, and returns invalid_step_up_pin on wrong PIN —
- * the PIN screen handles the wrong-PIN retry inline.
+ * Backend treats `pin` as opportunistic. We mirror that on the client:
+ * call /payments/p2p WITHOUT a PIN first; below the configured step-up
+ * threshold the transfer goes through immediately, above it the server
+ * responds 401 `step_up_required`. The UI routes to /p2p/pin in that
+ * case, where the user enters their PIN and we replay the same request
+ * (same Idempotency-Key) with the PIN attached. Wrong PIN comes back
+ * as 401 `invalid_step_up_pin`; the PIN screen catches that, clears
+ * the pips, and lets the user try again under the same key (no double-
+ * spend risk because both rejections happen pre-ledger).
  */
 import { api, newIdempotencyKey } from '@/lib/api/client';
 
@@ -23,27 +26,24 @@ export interface P2PResponse {
 }
 
 interface P2PArgs {
-  /** Recipient phone in E.164 (the backend resolves it to a user_id). */
+  /** Recipient phone in E.164 (the backend resolves to a user_id). */
   recipientPhone: string;
   /** Amount as a decimal string. Currency is fixed to ZAR for the demo. */
   amount: string;
-  /** 4–6 digit PIN entered by the user. */
-  pin: string;
+  /** PIN. Omit on the no-PIN attempt; include on the step-up retry. */
+  pin?: string;
   /** Optional short note carried on the txn description. */
   description?: string;
-  /** Pre-generated idempotency key so the PIN screen can retry on
-   *  invalid_step_up_pin without producing a different key. */
-  idempotencyKey?: string;
+  /** Pre-generated idempotency key — caller passes the same one across
+   *  the no-PIN attempt and the step-up retry so the backend dedups. */
+  idempotencyKey: string;
 }
 
-/**
- * Send a P2P transfer. Always includes the PIN; the backend tolerates a
- * PIN below the step-up threshold (just ignores it) and requires it
- * above. The caller is expected to come from the /p2p/pin screen where
- * the user entered the digits.
- */
+/** Generate a fresh idempotency key for a new P2P attempt. */
+export const newP2PIdempotencyKey = newIdempotencyKey;
+
+/** Send a P2P transfer. Step-up retry is owned by the caller (amount → pin). */
 export async function sendP2P(args: P2PArgs): Promise<P2PResponse> {
-  const idempotencyKey = args.idempotencyKey ?? newIdempotencyKey();
   return api<P2PResponse>({
     path: '/api/v1/payments/p2p',
     method: 'POST',
@@ -51,10 +51,10 @@ export async function sendP2P(args: P2PArgs): Promise<P2PResponse> {
       recipient: { identifier_type: 'phone', identifier_value: args.recipientPhone },
       amount: args.amount,
       currency: 'ZAR',
-      pin: args.pin,
+      ...(args.pin ? { pin: args.pin } : {}),
       ...(args.description ? { description: args.description } : {}),
     },
     withAuth: true,
-    idempotencyKey,
+    idempotencyKey: args.idempotencyKey,
   });
 }

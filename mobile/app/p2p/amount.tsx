@@ -8,9 +8,9 @@
  * pinned to the bottom. Continue routes to /p2p/pin.
  */
 import { useState } from 'react';
-import { Pressable } from 'react-native';
+import { ActivityIndicator, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
 
@@ -18,6 +18,8 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
+import { ApiError, RateLimited, StepUpRequired } from '@/lib/api/errors';
+import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
 import { getMyWallet } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
 import { maskPhone } from '@/lib/format';
@@ -50,9 +52,11 @@ function splitAmount(amount: string): { whole: string; cents: string; hasDot: bo
 /** Amount entry screen. */
 export default function AmountScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const params = useLocalSearchParams<{ phone: string }>();
   const recipientPhone = typeof params.phone === 'string' ? params.phone : '';
   const [amount, setAmount] = useState('');
+  const [busy, setBusy] = useState(false);
   const { data } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
 
   const zar = data?.accounts.find(
@@ -61,8 +65,65 @@ export default function AmountScreen() {
   const available = parseFloat(zar?.available_balance ?? '0');
   const parsed = parseFloat(amount || '0');
   const overdrawn = parsed > available;
-  const canContinue = parsed > 0 && !overdrawn;
+  const canContinue = parsed > 0 && !overdrawn && !busy;
   const display = splitAmount(amount);
+
+  /**
+   * Try-then-PIN entry point. We fire /payments/p2p without a PIN first
+   * so the backend's step-up policy decides whether to demand one. The
+   * idempotency key persists across the no-PIN attempt and (if needed)
+   * the PIN-bearing retry on /p2p/pin — both rejections happen
+   * pre-ledger, so reusing the same key is safe and required.
+   */
+  async function onContinue() {
+    if (!canContinue) return;
+    const amountStr = parsed.toFixed(2);
+    const idempotencyKey = newP2PIdempotencyKey();
+    setBusy(true);
+    try {
+      const res = await sendP2P({
+        recipientPhone,
+        amount: amountStr,
+        idempotencyKey,
+      });
+      // Below step-up threshold → backend let it through without a PIN.
+      await qc.invalidateQueries({ queryKey: qk.wallet() });
+      router.replace({
+        pathname: '/p2p/success',
+        params: {
+          phone: recipientPhone,
+          amount: amountStr,
+          earned: String(res.earned_points ?? 0),
+          reference: res.transaction_id.slice(0, 8).toUpperCase(),
+        },
+      });
+    } catch (e) {
+      if (e instanceof StepUpRequired) {
+        // Above threshold — route to PIN screen, carry the key forward.
+        router.push({
+          pathname: '/p2p/pin' as never,
+          params: {
+            phone: recipientPhone,
+            amount: amountStr,
+            idem: idempotencyKey,
+          },
+        });
+        return;
+      }
+      const reason =
+        e instanceof RateLimited
+          ? 'Too many attempts. Try again later.'
+          : e instanceof ApiError
+            ? e.message
+            : 'Payment failed.';
+      router.replace({
+        pathname: '/p2p/failed' as never,
+        params: { phone: recipientPhone, amount: amountStr, reason },
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function handleKey(key: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '.' | 'back') {
     if (key === 'back') {
@@ -219,12 +280,7 @@ export default function AmountScreen() {
           <NumericKeypad onPress={handleKey} />
           <View backgroundColor="#ffffff" paddingHorizontal={18} paddingBottom={18}>
             <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: '/p2p/pin' as never,
-                  params: { phone: recipientPhone, amount: parsed.toFixed(2) },
-                })
-              }
+              onPress={onContinue}
               disabled={!canContinue}
               accessibilityRole="button"
               accessibilityLabel="Continue"
@@ -243,9 +299,13 @@ export default function AmountScreen() {
                 shadowRadius={24}
                 shadowOffset={{ width: 0, height: 10 }}
               >
-                <Text fontFamily="PlusJakartaSans-Bold" fontSize={16} color="#ffffff">
-                  Continue
-                </Text>
+                {busy ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={16} color="#ffffff">
+                    Send R {parsed.toFixed(2)}
+                  </Text>
+                )}
               </View>
             </Pressable>
           </View>

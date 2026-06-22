@@ -20,9 +20,8 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { PinInput } from '@/components/forms/PinInput';
-import { newIdempotencyKey } from '@/lib/api/client';
 import { ApiError, InvalidStepUpPin, RateLimited } from '@/lib/api/errors';
-import { sendP2P } from '@/lib/api/payments';
+import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
 import { qk } from '@/lib/query';
 import { maskPhone } from '@/lib/format';
 
@@ -30,7 +29,7 @@ import { maskPhone } from '@/lib/format';
 export default function PinConfirmScreen() {
   const router = useRouter();
   const qc = useQueryClient();
-  const params = useLocalSearchParams<{ phone: string; amount: string }>();
+  const params = useLocalSearchParams<{ phone: string; amount: string; idem?: string }>();
   const recipientPhone = typeof params.phone === 'string' ? params.phone : '';
   const amount = typeof params.amount === 'string' ? params.amount : '0';
 
@@ -39,8 +38,15 @@ export default function PinConfirmScreen() {
   const [error, setError] = useState<string | null>(null);
   const shake = useRef(new Animated.Value(0)).current;
   // Idempotency key persists across wrong-PIN retries so the backend
-  // dedups correctly (any rejection happens pre-ledger).
-  const idemRef = useRef(newIdempotencyKey());
+  // dedups correctly (any rejection happens pre-ledger). When we arrive
+  // here from the amount screen's step-up branch, the key is passed
+  // forward so the no-PIN attempt and the with-PIN retry share one
+  // logical transaction id.
+  const idemRef = useRef(
+    typeof params.idem === 'string' && params.idem.length > 0
+      ? params.idem
+      : newP2PIdempotencyKey(),
+  );
 
   function triggerShake() {
     Animated.sequence([
@@ -62,6 +68,7 @@ export default function PinConfirmScreen() {
         pin: entered,
         idempotencyKey: idemRef.current,
       });
+      void res;
       await qc.invalidateQueries({ queryKey: qk.wallet() });
       router.replace({
         pathname: '/p2p/success',

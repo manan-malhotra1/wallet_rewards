@@ -38,6 +38,7 @@ from app.modules.identity.schemas import (
     UserDetailOut,
     UserOut,
     WalletOut,
+    WalletTransactionOut,
 )
 from app.modules.identity.service import (
     admin_reset_pin,
@@ -46,6 +47,7 @@ from app.modules.identity.service import (
     create_user,
     get_my_wallet,
     get_user_detail,
+    list_user_transactions,
     resolve_identifier,
     send_otp,
     set_pin,
@@ -126,6 +128,30 @@ async def get_user(
     _ = admin
     payload = await get_user_detail(session, user_id=user_id, tenant_id=tenant_id)
     return UserDetailOut.model_validate(payload, from_attributes=True)
+
+
+@router.get(
+    "/users/{user_id}/transactions",
+    response_model=list[WalletTransactionOut],
+)
+async def get_user_transactions(
+    user_id: UUID,
+    tenant_id: UUID,
+    limit: int = 50,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[WalletTransactionOut]:
+    """Recent transactions for a user — admin user-detail page.
+
+    Same payload shape the mobile /me/wallet feed uses, so the type +
+    direction + counterparty_name logic stays in one place. Tenant-scoped:
+    a user that belongs to a different tenant returns 404 (no leak).
+    """
+    _ = admin
+    rows = await list_user_transactions(
+        session, tenant_id=tenant_id, user_id=user_id, limit=limit
+    )
+    return [WalletTransactionOut.model_validate(r) for r in rows]
 
 
 @router.post(

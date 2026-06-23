@@ -50,7 +50,7 @@ export function TransactionsDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent
-        className="flex max-h-[85vh] w-[min(96vw,1100px)] max-w-none flex-col overflow-hidden"
+        className="flex max-h-[85vh] w-[min(96vw,1100px)] max-w-none flex-col overflow-hidden sm:max-w-none"
       >
         <DialogHeader>
           <DialogTitle>Recent transactions</DialogTitle>

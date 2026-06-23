@@ -34,9 +34,40 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { UserDetail } from "@/lib/api-types";
+import type { UserTransaction } from "@/lib/api-endpoints";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
 import { ResetPinButton } from "./reset-pin-button";
+
+const TRANSACTION_TYPE_LABEL: Record<string, string> = {
+  p2p: "Peer-to-Peer",
+  fund: "Fund",
+  withdraw: "Withdraw",
+  redemption: "Redemption",
+  airtime_recharge: "Airtime Recharge",
+  reward_issuance: "Reward",
+  top_up: "Top up",
+  treasury_adjust: "Treasury adjust",
+};
+
+const SYSTEM_COUNTERPARTY_LABEL: Record<string, string> = {
+  fund: "Operator float",
+  withdraw: "Operator float",
+  airtime_recharge: "Airtime merchant",
+  redemption: "Redemption provider",
+  reward_issuance: "Rewards engine",
+  top_up: "System cash inflow",
+  treasury_adjust: "Operator adjustment",
+};
+
+function counterpartyDisplay(txn: UserTransaction): string {
+  if (txn.counterparty_name) return txn.counterparty_name;
+  return SYSTEM_COUNTERPARTY_LABEL[txn.transaction_type] ?? "—";
+}
+
+function serviceDisplay(transaction_type: string): string {
+  return TRANSACTION_TYPE_LABEL[transaction_type] ?? transaction_type;
+}
 
 const IDENTIFIER_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   phone: Phone,
@@ -62,12 +93,14 @@ function fullName(detail: UserDetail): string | null {
 
 export interface UserDetailCardProps {
   detail: UserDetail;
+  transactions: UserTransaction[];
   resolvedIdentifierValue: string | null;
   resolvedIdentifierType: string;
 }
 
 export function UserDetailCard({
   detail,
+  transactions,
   resolvedIdentifierValue,
   resolvedIdentifierType,
 }: UserDetailCardProps) {
@@ -268,6 +301,87 @@ export function UserDetailCard({
                       </TableCell>
                       <TableCell>
                         <StatusPill status={acct.status.toUpperCase()} variant="dense" />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Transactions — latest 50 ledger events touching this user */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Transactions</CardTitle>
+          <CardDescription>
+            Latest 50 movements on this user's wallets. Service tells you what
+            happened; Counterparty is who they paid or received from.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="px-0">
+          {transactions.length === 0 ? (
+            <p className="px-6 text-sm text-muted-foreground">
+              No transactions yet on this user's wallets.
+            </p>
+          ) : (
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableHeaderCell>When</TableHeaderCell>
+                  <TableHeaderCell>Service</TableHeaderCell>
+                  <TableHeaderCell>Direction</TableHeaderCell>
+                  <TableHeaderCell>Counterparty</TableHeaderCell>
+                  <TableHeaderCell className="text-right">Amount</TableHeaderCell>
+                  <TableHeaderCell>Currency</TableHeaderCell>
+                  <TableHeaderCell>Txn ID</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {transactions.map((t) => {
+                  const isIn = t.direction === "in";
+                  const isPoints = t.currency === "PTS";
+                  return (
+                    <TableRow key={t.id}>
+                      <TableCell className="whitespace-nowrap text-[11px] text-muted-foreground">
+                        {formatTimestamp(t.created_at)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap font-medium">
+                        {serviceDisplay(t.transaction_type)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <span
+                          className={
+                            "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold " +
+                            (isIn
+                              ? "bg-emerald-500/15 text-emerald-700"
+                              : "bg-rose-500/15 text-rose-700")
+                          }
+                        >
+                          {isIn ? "IN" : "OUT"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {counterpartyDisplay(t)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right font-mono tabular-nums">
+                        {isIn ? "+" : "−"}
+                        {isPoints ? (
+                          <Points amount={t.amount} />
+                        ) : (
+                          <Money amount={t.amount} currency={t.currency} />
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {t.currency}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap font-mono text-[11px] text-muted-foreground">
+                        {shortId(t.id, "txn")}
+                      </TableCell>
+                      <TableCell>
+                        <StatusPill status={t.status.toUpperCase()} variant="dense" />
                       </TableCell>
                     </TableRow>
                   );

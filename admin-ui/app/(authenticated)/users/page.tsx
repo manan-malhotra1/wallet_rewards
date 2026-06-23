@@ -8,7 +8,12 @@
 import { UserPlus, Users } from "lucide-react";
 
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { getUserDetail, resolveIdentifier } from "@/lib/api-endpoints";
+import {
+  getUserDetail,
+  listUserTransactions,
+  resolveIdentifier,
+  type UserTransaction,
+} from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
@@ -41,6 +46,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   }
 
   let detail: Awaited<ReturnType<typeof getUserDetail>> | null = null;
+  let transactions: UserTransaction[] = [];
   let resolvedIdentifierValue: string | null = null;
   let error: ApiError | null = null;
   if (params.type && params.value) {
@@ -51,7 +57,10 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         params.value,
       );
       resolvedIdentifierValue = params.value;
-      detail = await getUserDetail(activeTenantId, resolved.user_id);
+      [detail, transactions] = await Promise.all([
+        getUserDetail(activeTenantId, resolved.user_id),
+        listUserTransactions(activeTenantId, resolved.user_id),
+      ]);
     } catch (err) {
       if (err instanceof ApiError) error = err;
       else throw err;
@@ -84,6 +93,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         {detail && (
           <UserDetailCard
             detail={detail}
+            transactions={transactions}
             resolvedIdentifierValue={resolvedIdentifierValue}
             resolvedIdentifierType={params.type ?? "phone"}
           />

@@ -375,6 +375,7 @@ async def _build_recent_txns_payload(
     *,
     tenant_id: UUID,
     account_ids: list[UUID],
+    limit: int = 10,
 ) -> list[dict]:
     """Build the recent-transactions list for /me/wallet.
 
@@ -413,7 +414,7 @@ async def _build_recent_txns_payload(
         )
         .distinct()
         .order_by(Transaction.created_at.desc())
-        .limit(10)
+        .limit(limit)
     )
     txns = list(txns_q.scalars().all())
     if not txns:
@@ -489,6 +490,51 @@ async def _build_recent_txns_payload(
             }
         )
     return payload
+
+
+async def list_user_transactions(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    limit: int = 50,
+) -> list[dict]:
+    """Return a user's recent transactions for the admin user-detail view.
+
+    Resolves the user's accounts then delegates to the same payload
+    builder the mobile /me/wallet endpoint uses, so the response shape
+    stays consistent across admin and user surfaces.
+
+    Args:
+        tenant_id: Required for tenant isolation; cross-tenant lookups
+            return UserNotFound (404).
+        user_id: Target user.
+        limit: Cap on rows returned. UI default is 50 — operators looking
+            at a single account rarely need more on one screen.
+
+    Returns:
+        List of dicts shaped to match `UserTransactionOut`.
+
+    Raises:
+        UserNotFound: user_id is unknown or belongs to a different tenant.
+    """
+    from app.shared.models import Account
+
+    user_q = await session.execute(
+        select(User).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    if user_q.scalar_one_or_none() is None:
+        raise UserNotFound()
+
+    accounts_q = await session.execute(
+        select(Account.id).where(
+            Account.tenant_id == tenant_id, Account.user_id == user_id
+        )
+    )
+    account_ids = list(accounts_q.scalars().all())
+    return await _build_recent_txns_payload(
+        session, tenant_id=tenant_id, account_ids=account_ids, limit=limit
+    )
 
 
 async def admin_reset_pin(

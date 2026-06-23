@@ -180,6 +180,28 @@ export const getUserDetail = (tenant_id: string, user_id: string) =>
     query: { tenant_id },
   });
 
+/** One row in the admin user-detail Transactions table. */
+export interface UserTransaction {
+  id: string;
+  transaction_type: string;
+  status: string;
+  amount: string;
+  currency: string;
+  created_at: string;
+  direction: "in" | "out";
+  counterparty_name: string | null;
+}
+
+export const listUserTransactions = (
+  tenant_id: string,
+  user_id: string,
+  limit: number = 50,
+) =>
+  apiGet<UserTransaction[]>(
+    `/api/v1/identity/users/${user_id}/transactions`,
+    { query: { tenant_id, limit } },
+  );
+
 // ---- Rules ---------------------------------------------------------------
 
 export const listRules = (tenant_id: string) =>

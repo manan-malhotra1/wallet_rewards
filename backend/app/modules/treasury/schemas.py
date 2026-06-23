@@ -3,9 +3,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Identifier types accepted by Fund and Withdraw — operators never type
+# a raw UUID. Mirrors the UserIdentifier model's enum.
+TreasuryIdentifierType = Literal["phone", "email", "account_number", "card_number"]
 
 
 class SystemWalletOut(BaseModel):
@@ -42,12 +47,18 @@ class SystemWalletTransactionOut(BaseModel):
 
 
 class FundUserRequest(BaseModel):
-    """Admin top-up payload — credits a user wallet from `system_cash_inflow`."""
+    """Admin top-up payload — credits a user wallet from `system_cash_inflow`.
+
+    The user is identified by a registered identifier (phone, email,
+    account or card) rather than a raw UUID — operators don't have
+    UUIDs to hand at the counter.
+    """
 
     tenant_id: UUID
-    user_id: UUID
+    identifier_type: TreasuryIdentifierType
+    identifier_value: str = Field(min_length=1, max_length=255)
     amount: Decimal = Field(gt=Decimal("0"))
-    currency: str = Field(min_length=3, max_length=3)
+    currency: str = Field(min_length=2, max_length=10)
     reason: str = Field(min_length=1, max_length=500)
 
 
@@ -66,14 +77,14 @@ class FundUserResponse(BaseModel):
 class WithdrawFromUserRequest(BaseModel):
     """Admin withdraw payload — debits a user wallet and credits operator_adjustment.
 
-    Admin operations don't carry a PIN — operator identity is the
-    Keycloak session. Pricing / service charges don't apply on admin
-    flows either (this is a back-office move, not a user-initiated
-    transaction).
+    Identified the same way as fund — by registered identifier, not UUID.
+    Admin operations are PIN-less and fee-less; operator authentication
+    is the Keycloak session.
     """
 
     tenant_id: UUID
-    user_id: UUID
+    identifier_type: TreasuryIdentifierType
+    identifier_value: str = Field(min_length=1, max_length=255)
     amount: Decimal = Field(gt=Decimal("0"))
     currency: str = Field(min_length=2, max_length=10)
     reason: str = Field(min_length=1, max_length=500)

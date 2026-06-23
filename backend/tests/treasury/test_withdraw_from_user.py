@@ -31,6 +31,15 @@ from app.shared.models import (
 )
 
 
+def _user_phone(user: User) -> str:
+    """Return the seeded phone identifier for the user fixture."""
+    return next(
+        ident.identifier_value
+        for ident in user.identifiers
+        if ident.identifier_type == "phone"
+    )
+
+
 async def _seed_user_wallet_with_balance(
     session: AsyncSession,
     tenant: Tenant,
@@ -102,7 +111,8 @@ async def test_withdraw_happy_path(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "200",
             "currency": "ZAR",
             "reason": "Cash-out at agent counter.",
@@ -135,7 +145,8 @@ async def test_withdraw_credits_operator_adjustment(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "120",
             "currency": "ZAR",
             "reason": "Counter cash-out.",
@@ -173,7 +184,8 @@ async def test_withdraw_rejects_insufficient_balance(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "100",
             "currency": "ZAR",
             "reason": "Over-draw attempt.",
@@ -196,7 +208,8 @@ async def test_withdraw_missing_wallet_returns_404(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "10",
             "currency": "ZAR",
             "reason": "No wallet.",
@@ -214,7 +227,8 @@ async def test_withdraw_requires_auth(
         "/api/v1/treasury/withdraw",
         json={
             "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "10",
             "currency": "ZAR",
             "reason": "x",
@@ -241,7 +255,8 @@ async def test_withdraw_ignores_user_pin_field(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "100",
             "currency": "ZAR",
             "reason": "smoke test",
@@ -273,7 +288,8 @@ async def test_withdraw_cross_tenant_returns_404(
         headers=admin_auth_header,
         json={
             "tenant_id": str(other_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "10",
             "currency": "ZAR",
             "reason": "wrong tenant",

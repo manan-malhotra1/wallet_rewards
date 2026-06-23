@@ -81,11 +81,16 @@ async def post_fund_user(
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> FundUserResponse:
-    """Admin top-up — debits system_cash_inflow, credits the user's wallet."""
+    """Admin top-up — debits system_cash_inflow, credits the user's wallet.
+
+    User is identified by a registered identifier (phone, email, account
+    or card) — operators never type a UUID.
+    """
     return await fund_user(
         session,
         tenant_id=request.tenant_id,
-        user_id=request.user_id,
+        identifier_type=request.identifier_type,
+        identifier_value=request.identifier_value,
         amount=request.amount,
         currency=request.currency,
         reason=request.reason,
@@ -105,13 +110,14 @@ async def post_withdraw_from_user(
 ) -> WithdrawFromUserResponse:
     """Admin pull-back — debits the user wallet, credits operator_adjustment.
 
-    PIN-less and fee-less by design: the operator's Keycloak session is
-    the authentication; PIN policies are user-initiated-transactions only.
+    User identified by phone / email / account / card — same shape as
+    Fund. PIN-less and fee-less.
     """
     return await withdraw_from_user(
         session,
         tenant_id=request.tenant_id,
-        user_id=request.user_id,
+        identifier_type=request.identifier_type,
+        identifier_value=request.identifier_value,
         amount=request.amount,
         currency=request.currency,
         reason=request.reason,

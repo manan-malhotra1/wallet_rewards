@@ -26,6 +26,7 @@ from app.modules.ledger.service import (
     PostTransactionRequest,
     post_transaction,
 )
+from app.modules.identity.service import resolve_identifier
 from app.modules.payments.service import top_up
 from app.modules.treasury.schemas import (
     AdjustSystemWalletResponse,
@@ -183,7 +184,8 @@ async def fund_user(
     session: AsyncSession,
     *,
     tenant_id: UUID,
-    user_id: UUID,
+    identifier_type: str,
+    identifier_value: str,
     amount: Decimal,
     currency: str,
     reason: str,
@@ -192,14 +194,24 @@ async def fund_user(
 ) -> FundUserResponse:
     """Admin tops up a user's wallet — wraps the existing `top_up()`.
 
-    Posts the standard balanced transaction (DEBIT system_cash_inflow,
-    CREDIT user_wallet) via the same code path the seed uses, then
-    writes a `treasury.fund_user` audit row carrying the admin's reason.
+    The user is resolved from their registered identifier (phone, email,
+    account_number, card_number) — operators don't have UUIDs at the
+    counter. Posts the standard balanced transaction (DEBIT
+    system_cash_inflow, CREDIT user_wallet) and writes a
+    `treasury.fund_user` audit row with the admin's reason.
 
     Idempotency-Key here is internally generated — admin actions are
     not naturally idempotent (every "fund again" is a real new top-up).
+
+    Raises:
+        TenantNotFound: tenant_id is unknown.
+        UserNotFound: identifier doesn't resolve in this tenant.
     """
     await _assert_tenant_exists(session, tenant_id)
+    identifier_row = await resolve_identifier(
+        session, tenant_id, identifier_type, identifier_value
+    )
+    user_id = identifier_row.user_id
 
     idempotency_key = f"admin-fund-{uuid4().hex}"
     txn = await top_up(
@@ -223,6 +235,7 @@ async def fund_user(
             "currency": currency.upper(),
             "transaction_id": str(txn.id),
             "reason": reason,
+            "identifier_type": identifier_type,
         },
         ip_address=ip_address,
     )
@@ -254,7 +267,8 @@ async def withdraw_from_user(
     session: AsyncSession,
     *,
     tenant_id: UUID,
-    user_id: UUID,
+    identifier_type: str,
+    identifier_value: str,
     amount: Decimal,
     currency: str,
     reason: str,
@@ -268,11 +282,14 @@ async def withdraw_from_user(
     into the operator's cash float at the counter.
 
     Admin operations are PIN-less and fee-less: the operator's Keycloak
-    session is the only authentication. Step-up PIN policies apply to
-    user-initiated transactions (P2P, redemption) only — not admin moves.
+    session is the only authentication. The target user is identified
+    by a registered identifier, not a UUID.
 
     Args:
-        tenant_id, user_id, amount, currency: Withdraw parameters.
+        tenant_id: Tenant scope.
+        identifier_type / identifier_value: Resolved to a user via
+            identity.resolve_identifier — typically phone at the counter.
+        amount, currency: Withdraw parameters.
         reason: Free-text reason, persisted in the audit row.
         admin: Authenticated admin initiating the action.
         ip_address: Caller IP for the audit row.
@@ -282,6 +299,7 @@ async def withdraw_from_user(
 
     Raises:
         TenantNotFound: tenant_id is unknown.
+        UserNotFound: identifier doesn't resolve in this tenant.
         AccountNotFound: user has no financial_wallet for this currency.
         InsufficientFunds: user balance < requested amount.
 
@@ -291,6 +309,10 @@ async def withdraw_from_user(
         Commits the session.
     """
     await _assert_tenant_exists(session, tenant_id)
+    identifier_row = await resolve_identifier(
+        session, tenant_id, identifier_type, identifier_value
+    )
+    user_id = identifier_row.user_id
     currency = currency.upper()
 
     # Fetch the user's wallet for the currency. Withdraw is meaningless
@@ -358,6 +380,7 @@ async def withdraw_from_user(
             "currency": currency,
             "transaction_id": str(txn.id),
             "reason": reason,
+            "identifier_type": identifier_type,
         },
         ip_address=ip_address,
     )

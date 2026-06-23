@@ -17,6 +17,15 @@ from app.shared.models import (
 )
 
 
+def _user_phone(user: User) -> str:
+    """Return the seeded phone identifier (test_user fixture creates one)."""
+    return next(
+        ident.identifier_value
+        for ident in user.identifiers
+        if ident.identifier_type == "phone"
+    )
+
+
 async def _seed_user_wallet(
     session: AsyncSession, tenant: Tenant, user: User
 ) -> Account:
@@ -49,7 +58,8 @@ async def test_fund_user_happy_path(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "500",
             "currency": "ZAR",
             "reason": "Onboarding gift.",
@@ -79,7 +89,8 @@ async def test_fund_user_rejects_negative_amount(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "-50",
             "currency": "ZAR",
             "reason": "trying to withdraw via fund-user",
@@ -101,7 +112,8 @@ async def test_fund_user_requires_reason(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "100",
             "currency": "ZAR",
             "reason": "",
@@ -122,7 +134,8 @@ async def test_fund_user_unknown_tenant_returns_404(
         headers=admin_auth_header,
         json={
             "tenant_id": str(uuid4()),
-            "user_id": str(test_user.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
             "amount": "100",
             "currency": "ZAR",
             "reason": "test",

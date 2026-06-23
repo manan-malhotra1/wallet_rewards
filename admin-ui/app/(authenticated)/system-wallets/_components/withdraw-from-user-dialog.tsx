@@ -1,9 +1,10 @@
 /**
  * <WithdrawFromUserDialog> — admin pull-back form for the System Wallets page header.
  *
- * Mirrors FundUserDialog but in reverse: DEBIT user wallet, CREDIT
- * operator_adjustment. Admin operations are PIN-less (operator's
- * Keycloak session is the only authentication) and fee-less.
+ * Mirror of FundUserDialog in the reverse direction: DEBIT user wallet,
+ * CREDIT operator_adjustment. Target user is picked by registered
+ * identifier (phone/email/account/card) — never a raw UUID. Admin
+ * operations are PIN-less and fee-less.
  */
 "use client";
 
@@ -23,17 +24,41 @@ import {
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import type { TreasuryIdentifierType } from "@/lib/api-endpoints";
+
+const IDENTIFIER_LABEL: Record<TreasuryIdentifierType, string> = {
+  phone: "Phone",
+  email: "Email",
+  account_number: "Account",
+  card_number: "Card",
+};
+
+const IDENTIFIER_PLACEHOLDER: Record<TreasuryIdentifierType, string> = {
+  phone: "+27 82 555 0001",
+  email: "user@example.com",
+  account_number: "ZA-001-887-2210",
+  card_number: "5234 5678 9012 3456",
+};
 
 interface FormState {
-  user_id: string;
+  identifier_type: TreasuryIdentifierType;
+  identifier_value: string;
   amount: string;
   currency: string;
   reason: string;
 }
 
 const INITIAL: FormState = {
-  user_id: "",
+  identifier_type: "phone",
+  identifier_value: "",
   amount: "",
   currency: "ZAR",
   reason: "",
@@ -41,36 +66,31 @@ const INITIAL: FormState = {
 
 export function WithdrawFromUserDialog({
   tenantId,
-  defaultUserId,
   trigger,
 }: {
   tenantId: string;
-  defaultUserId?: string;
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>({
-    ...INITIAL,
-    user_id: defaultUserId ?? "",
-  });
+  const [form, setForm] = React.useState<FormState>(INITIAL);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
 
   React.useEffect(() => {
     if (!open) {
-      setForm({ ...INITIAL, user_id: defaultUserId ?? "" });
+      setForm(INITIAL);
       setError(null);
     }
-  }, [open, defaultUserId]);
+  }, [open]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
   async function onSubmit() {
     setError(null);
-    if (!form.user_id) {
-      setError("user_id is required.");
+    if (!form.identifier_value.trim()) {
+      setError(`${IDENTIFIER_LABEL[form.identifier_type]} is required.`);
       return;
     }
     const n = Number(form.amount);
@@ -82,17 +102,16 @@ export function WithdrawFromUserDialog({
       setError("Reason is required for the audit row.");
       return;
     }
-
     setSubmitting(true);
     const result = await withdrawFromUserAction({
       tenant_id: tenantId,
-      user_id: form.user_id,
+      identifier_type: form.identifier_type,
+      identifier_value: form.identifier_value.trim(),
       amount: form.amount,
       currency: form.currency.toUpperCase(),
       reason: form.reason,
     });
     setSubmitting(false);
-
     if (result.ok) {
       toast({ title: "Withdraw posted", description: result.message });
       setOpen(false);
@@ -116,14 +135,30 @@ export function WithdrawFromUserDialog({
 
         <div className="space-y-3">
           <div>
-            <Label htmlFor="w-user-id">User ID</Label>
-            <Input
-              id="w-user-id"
-              value={form.user_id}
-              onChange={(e) => update("user_id", e.target.value)}
-              placeholder="00000000-0000-…"
-              className="mt-1 font-mono text-xs"
-            />
+            <Label>User identifier</Label>
+            <div className="mt-1 grid grid-cols-[1fr_2fr] gap-2">
+              <Select
+                value={form.identifier_type}
+                onValueChange={(v) =>
+                  update("identifier_type", v as TreasuryIdentifierType)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="phone">Phone</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="account_number">Account</SelectItem>
+                  <SelectItem value="card_number">Card</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                value={form.identifier_value}
+                onChange={(e) => update("identifier_value", e.target.value)}
+                placeholder={IDENTIFIER_PLACEHOLDER[form.identifier_type]}
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

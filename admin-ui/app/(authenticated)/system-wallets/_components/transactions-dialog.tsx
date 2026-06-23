@@ -49,7 +49,9 @@ export function TransactionsDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[80vh] max-w-2xl overflow-hidden">
+      <DialogContent
+        className="flex max-h-[85vh] w-[min(96vw,1100px)] max-w-none flex-col overflow-hidden"
+      >
         <DialogHeader>
           <DialogTitle>Recent transactions</DialogTitle>
           <DialogDescription>
@@ -57,7 +59,7 @@ export function TransactionsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="overflow-auto rounded-md border">
+        <div className="min-h-0 flex-1 overflow-auto rounded-md border">
           {error ? (
             <div className="p-4">
               <ErrorBanner title="Couldn't load transactions" description={error} />
@@ -74,12 +76,12 @@ export function TransactionsDialog({
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 text-left">When</th>
-                  <th className="px-3 py-2 text-left">Type</th>
-                  <th className="px-3 py-2 text-left">Direction</th>
-                  <th className="px-3 py-2 text-right">Amount</th>
-                  <th className="px-3 py-2 text-right">Txn ID</th>
-                  <th className="px-3 py-2">Status</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-left">When</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-left">Type</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-left">Direction</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">Amount</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-left">Txn ID</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-left">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -87,13 +89,13 @@ export function TransactionsDialog({
                   const isCredit = r.entry_type === "CREDIT";
                   return (
                     <tr key={r.transaction_id} className="border-t">
-                      <td className="px-3 py-2 text-[11px] text-muted-foreground">
+                      <td className="whitespace-nowrap px-3 py-2 text-[11px] text-muted-foreground">
                         {formatTimestamp(r.created_at)}
                       </td>
-                      <td className="px-3 py-2 font-mono text-[11px]">
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px]">
                         {r.transaction_type}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="whitespace-nowrap px-3 py-2">
                         <span
                           className={
                             "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold " +
@@ -110,14 +112,14 @@ export function TransactionsDialog({
                           {r.entry_type}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">
+                      <td className="whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums">
                         {isCredit ? "+" : "−"}
                         {r.entry_amount} {r.currency}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-[11px] text-muted-foreground">
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-muted-foreground">
                         {shortId(r.transaction_id, "txn")}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="whitespace-nowrap px-3 py-2">
                         <StatusPill status={r.status} variant="dense" />
                       </td>
                     </tr>

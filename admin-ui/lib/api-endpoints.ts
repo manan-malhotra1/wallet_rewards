@@ -427,9 +427,16 @@ export const listSystemWalletTransactions = (
     { query: { tenant_id, limit } },
   );
 
+export type TreasuryIdentifierType =
+  | "phone"
+  | "email"
+  | "account_number"
+  | "card_number";
+
 export interface FundUserPayload {
   tenant_id: string;
-  user_id: string;
+  identifier_type: TreasuryIdentifierType;
+  identifier_value: string;
   amount: string;
   currency: string;
   reason: string;
@@ -440,7 +447,8 @@ export const fundUser = (payload: FundUserPayload) =>
 
 export interface WithdrawFromUserPayload {
   tenant_id: string;
-  user_id: string;
+  identifier_type: TreasuryIdentifierType;
+  identifier_value: string;
   amount: string;
   currency: string;
   reason: string;

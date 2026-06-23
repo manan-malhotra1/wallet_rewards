@@ -45,7 +45,7 @@ export default async function SystemWalletsPage() {
     <div>
       <PageHeader
         title="System wallets"
-        subtitle="Platform float, points issuance pool, fee accounts, and the operator_adjustment ledger. Fund or withdraw from the float and top up user wallets."
+        subtitle="The platform's own accounts — float, points pool, fees, operator pool. Use this page to adjust the operator float and to fund or withdraw user wallets at the counter."
         actions={
           <div className="flex gap-2">
             <WithdrawFromUserDialog

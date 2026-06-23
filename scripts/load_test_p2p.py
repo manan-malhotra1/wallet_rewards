@@ -222,9 +222,29 @@ async def ensure_zar_wallet(
 ) -> None:
     """Create a ZAR financial_wallet for the user if it doesn't exist.
 
-    The accounts endpoint returns 409 on duplicate — we treat that as a no-op.
+    Robust to partial-state from a previous failed run: we look up the
+    user's existing accounts first via /identity/users/{id} and skip
+    creation entirely when the ZAR wallet is already there. The naive
+    POST → catch-409 pattern doesn't work because the backend's
+    create_account currently returns 500 (not 409) when the partial
+    UNIQUE index fires — that's tracked as a separate backend fix.
     """
     headers = {"Authorization": f"Bearer {admin_token}"}
+
+    detail_resp = await client.get(
+        f"{api_url}/api/v1/identity/users/{user_id}",
+        headers=headers,
+        params={"tenant_id": tenant_id},
+        timeout=30,
+    )
+    if detail_resp.status_code == 200:
+        for acct in detail_resp.json().get("accounts", []):
+            if (
+                acct.get("account_type") == "financial_wallet"
+                and acct.get("currency") == "ZAR"
+            ):
+                return
+
     resp = await client.post(
         f"{api_url}/api/v1/accounts",
         headers=headers,

@@ -10,10 +10,12 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import case, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.accounts.schemas import CreateAccountRequest
 from app.shared.exceptions import (
+    AccountAlreadyExists,
     AccountNotFound,
     InvalidAccountType,
     TenantNotFound,
@@ -72,7 +74,19 @@ async def create_account(
         currency=request.currency.upper(),
     )
     session.add(account)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        # Partial UNIQUE index `uq_accounts_user_scoped` (or
+        # `uq_accounts_system_scoped`) fires when the same (tenant, user,
+        # type, currency) tuple is recreated. Surface as 409 so callers
+        # (admin UI, load scripts) can treat it as idempotent.
+        await session.rollback()
+        if "uq_accounts_user_scoped" in str(exc.orig).lower() or (
+            "uq_accounts_system_scoped" in str(exc.orig).lower()
+        ):
+            raise AccountAlreadyExists() from exc
+        raise
     await session.refresh(account)
     return account
 

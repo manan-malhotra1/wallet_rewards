@@ -69,6 +69,23 @@ class ServiceNotFound(AppHTTPException):
         super().__init__(404, "service_not_found", "Service not found.")
 
 
+class AccountAlreadyExists(AppHTTPException):
+    """Another account already covers this (tenant, user, type, currency)
+    tuple — or (tenant, type, currency) for system-owned accounts.
+
+    Raised when the partial UNIQUE index `uq_accounts_user_scoped` /
+    `uq_accounts_system_scoped` would be violated. Surfaces as 409 so
+    callers can treat it as an idempotent no-op rather than a 500.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "account_already_exists",
+            "An account with this (tenant, user, type, currency) already exists.",
+        )
+
+
 class InstrumentNotFound(AppHTTPException):
     """The given instrument_id doesn't map to a live row in this tenant."""
 

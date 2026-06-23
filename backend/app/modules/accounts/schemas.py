@@ -27,7 +27,7 @@ class CreateAccountRequest(BaseModel):
     user_id: UUID | None = None
     merchant_id: UUID | None = None
     account_type: AccountType
-    currency: str = Field(min_length=3, max_length=3)
+    currency: str = Field(min_length=2, max_length=10)
 
 
 class AccountOut(BaseModel):

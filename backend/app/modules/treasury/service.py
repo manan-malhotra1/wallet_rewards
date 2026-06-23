@@ -27,18 +27,22 @@ from app.modules.ledger.service import (
     post_transaction,
 )
 from app.modules.payments.service import top_up
+from app.modules.step_up.service import enforce_step_up_for_user
 from app.modules.treasury.schemas import (
     AdjustSystemWalletResponse,
     FundUserResponse,
     SystemWalletOut,
     SystemWalletTransactionOut,
+    WithdrawFromUserResponse,
 )
 from app.shared.exceptions import (
     AccountNotFound,
     AppHTTPException,
+    InsufficientFunds,
     TenantNotFound,
 )
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     Account,
     LedgerEntry,
@@ -243,6 +247,149 @@ async def fund_user(
         user_id=user_id,
         amount=amount,
         currency=currency.upper(),
+        new_balance=new_balance,
+    )
+
+
+async def withdraw_from_user(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    amount: Decimal,
+    currency: str,
+    reason: str,
+    admin: AdminPrincipal,
+    pin: str | None = None,
+    ip_address: str | None = None,
+) -> WithdrawFromUserResponse:
+    """Admin debits a user's wallet and returns the funds to the operator pool.
+
+    The mirror of `fund_user`: DEBIT user's financial_wallet, CREDIT the
+    `operator_adjustment` system account. Both are real money moving back
+    into the operator's cash float at the counter.
+
+    Step-up: if a `step_up_policies` row exists for (tenant, 'withdraw',
+    currency) with a threshold below the requested amount, the user's
+    PIN must be re-submitted via the `pin` parameter. The lockout
+    counter still tracks the user (NFR-0190).
+
+    Args:
+        tenant_id, user_id, amount, currency: Withdraw parameters.
+        reason: Free-text reason, persisted in the audit row.
+        admin: Authenticated admin initiating the action.
+        pin: Optional plain-text PIN — required when above the
+            step-up threshold; None on the first attempt to discover the
+            policy.
+        ip_address: Caller IP for the audit row.
+
+    Returns:
+        WithdrawFromUserResponse with the new wallet balance.
+
+    Raises:
+        TenantNotFound: tenant_id is unknown.
+        AccountNotFound: user has no financial_wallet for this currency.
+        InsufficientFunds: user balance < requested amount.
+        StepUpRequired / InvalidStepUpPin / user_locked_out: step-up failures.
+
+    Side effects:
+        Posts a balanced 2-leg transaction (transaction_type='withdraw').
+        Writes a `treasury.withdraw_from_user` audit row with the reason.
+        Commits the session.
+    """
+    await _assert_tenant_exists(session, tenant_id)
+    currency = currency.upper()
+
+    # Fetch the user's wallet for the currency. Withdraw is meaningless
+    # without an existing wallet — the operator can't pull funds from a
+    # currency the user never held.
+    user_wallet = (
+        await session.execute(
+            select(Account).where(
+                Account.tenant_id == tenant_id,
+                Account.user_id == user_id,
+                Account.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                Account.currency == currency,
+            )
+        )
+    ).scalar_one_or_none()
+    if user_wallet is None:
+        raise AccountNotFound()
+
+    # Overdraft prevention — rule 6 of ledger-invariants.md says reject
+    # before any ledger write. available = balance - reserved.
+    balance, reserved = await derive_balance(session, user_wallet.id)
+    if (balance - reserved) < amount:
+        raise InsufficientFunds()
+
+    # Step-up — looks up step_up_policies for (tenant, 'withdraw', currency).
+    # No-op when no policy or amount ≤ threshold.
+    await enforce_step_up_for_user(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        admin=admin,
+        transaction_type="withdraw",
+        currency=currency,
+        amount=amount,
+        pin=pin,
+        ip_address=ip_address,
+    )
+
+    # Counter-leg is the operator_adjustment account — money flows back
+    # into the operator's cash pool. Lazy-created per (tenant, currency).
+    operator_adjustment = await _get_or_create_operator_adjustment(
+        session, tenant_id=tenant_id, currency=currency
+    )
+
+    idempotency_key = f"admin-withdraw-{uuid4().hex}"
+    txn = await post_transaction(
+        session,
+        PostTransactionRequest(
+            tenant_id=tenant_id,
+            idempotency_key=idempotency_key,
+            transaction_type="withdraw",
+            currency=currency,
+            amount=amount,
+            initiated_by=user_id,
+            entries=[
+                LedgerEntryRequest(
+                    account_id=user_wallet.id,
+                    entry_type="DEBIT",
+                    amount=amount,
+                ),
+                LedgerEntryRequest(
+                    account_id=operator_adjustment.id,
+                    entry_type="CREDIT",
+                    amount=amount,
+                ),
+            ],
+        ),
+    )
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="treasury.withdraw_from_user",
+        entity_type="user",
+        entity_id=str(user_id),
+        after_state={
+            "amount": str(amount),
+            "currency": currency,
+            "transaction_id": str(txn.id),
+            "reason": reason,
+        },
+        ip_address=ip_address,
+    )
+    await session.commit()
+
+    new_balance, _ = await derive_balance(session, user_wallet.id)
+    return WithdrawFromUserResponse(
+        transaction_id=txn.id,
+        user_id=user_id,
+        amount=amount,
+        currency=currency,
         new_balance=new_balance,
     )
 

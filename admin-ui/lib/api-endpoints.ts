@@ -438,6 +438,20 @@ export interface FundUserPayload {
 export const fundUser = (payload: FundUserPayload) =>
   apiPost<FundUserResponse>("/api/v1/treasury/fund-user", payload);
 
+export interface WithdrawFromUserPayload {
+  tenant_id: string;
+  user_id: string;
+  amount: string;
+  currency: string;
+  reason: string;
+  /** Re-submitted user PIN when step-up is required. */
+  pin?: string;
+}
+
+/** Result type mirrors FundUserResponse (same shape — derived balance after the move). */
+export const withdrawFromUser = (payload: WithdrawFromUserPayload) =>
+  apiPost<FundUserResponse>("/api/v1/treasury/withdraw", payload);
+
 export interface AdjustSystemWalletPayload {
   tenant_id: string;
   account_id: string;

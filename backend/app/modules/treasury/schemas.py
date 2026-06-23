@@ -63,6 +63,34 @@ class FundUserResponse(BaseModel):
     new_balance: Decimal
 
 
+class WithdrawFromUserRequest(BaseModel):
+    """Admin withdraw payload — debits a user wallet and credits operator_adjustment.
+
+    The optional `pin` is supplied on the second attempt after a 401
+    step_up_required response; on the first attempt it's typically
+    omitted so the backend can surface the policy threshold.
+    """
+
+    tenant_id: UUID
+    user_id: UUID
+    amount: Decimal = Field(gt=Decimal("0"))
+    currency: str = Field(min_length=2, max_length=10)
+    reason: str = Field(min_length=1, max_length=500)
+    pin: str | None = Field(default=None, min_length=4, max_length=8)
+
+
+class WithdrawFromUserResponse(BaseModel):
+    """Result of an admin withdraw."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    transaction_id: UUID
+    user_id: UUID
+    amount: Decimal
+    currency: str
+    new_balance: Decimal
+
+
 class AdjustSystemWalletRequest(BaseModel):
     """Admin fund/withdraw payload for a system wallet.
 

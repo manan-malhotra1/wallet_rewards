@@ -149,6 +149,16 @@ async def _seed_services_catalog(session: AsyncSession, tenant: Tenant) -> None:
             "Redemption",
             "Redeem reward points with a registered redemption provider.",
         ),
+        (
+            "fund",
+            "Fund",
+            "Admin credits a user's wallet from the operator cash pool.",
+        ),
+        (
+            "withdraw",
+            "Withdraw",
+            "Admin debits a user's wallet and returns funds to the operator cash pool.",
+        ),
     ]
     for code, display_name, description in baseline:
         result = await session.execute(
@@ -518,6 +528,15 @@ async def seed() -> None:
             transaction_type="redemption",
             currency="PTS",
             threshold_amount=Decimal("500"),
+        )
+        # Withdraw mirrors p2p for a familiar dev experience — agents must
+        # re-PIN above R 200 to cash a user out at the counter.
+        await _get_or_create_step_up_policy(
+            session,
+            tenant,
+            transaction_type="withdraw",
+            currency="ZAR",
+            threshold_amount=Decimal("200"),
         )
 
         # System-owned accounts for the tenant. We create the master

@@ -10,8 +10,10 @@ import {
   adjustSystemWallet,
   fundUser,
   listSystemWalletTransactions,
+  withdrawFromUser,
   type AdjustSystemWalletPayload,
   type FundUserPayload,
+  type WithdrawFromUserPayload,
 } from "@/lib/api-endpoints";
 import type { SystemWalletTransaction } from "@/lib/api-types";
 
@@ -32,6 +34,32 @@ export async function fundUserAction(
     return {
       ok: true,
       message: `Funded ${res.currency} ${res.amount}. New balance: ${res.new_balance}.`,
+    };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, errorCode: err.errorCode, message: err.message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+export async function withdrawFromUserAction(
+  payload: WithdrawFromUserPayload,
+): Promise<TreasuryActionResult> {
+  if (!payload.reason.trim()) {
+    return { ok: false, errorCode: "missing_reason", message: "Reason is required." };
+  }
+  try {
+    const res = await withdrawFromUser(payload);
+    revalidatePath("/system-wallets");
+    revalidatePath("/users");
+    return {
+      ok: true,
+      message: `Withdrew ${res.currency} ${res.amount}. New balance: ${res.new_balance}.`,
     };
   } catch (err) {
     if (err instanceof ApiError) {

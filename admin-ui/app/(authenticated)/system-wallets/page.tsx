@@ -2,7 +2,7 @@
  * /system-wallets — treasury page. Cards per system account with balance,
  * plus a header "Fund user" CTA and per-row Adjust + Transactions actions.
  */
-import { Banknote, Plus } from "lucide-react";
+import { Banknote, Minus, Plus } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import { getActiveTenantId } from "@/lib/active-tenant";
@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/page-header";
 
 import { FundUserDialog } from "./_components/fund-user-dialog";
 import { SystemWalletGrid } from "./_components/system-wallet-grid";
+import { WithdrawFromUserDialog } from "./_components/withdraw-from-user-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -46,18 +47,32 @@ export default async function SystemWalletsPage() {
         title="System wallets"
         subtitle="Platform float, points issuance pool, fee accounts, and the operator_adjustment ledger. Fund or withdraw from the float and top up user wallets."
         actions={
-          <FundUserDialog
-            tenantId={activeTenantId}
-            trigger={
-              <button
-                type="button"
-                className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Fund user
-              </button>
-            }
-          />
+          <div className="flex gap-2">
+            <WithdrawFromUserDialog
+              tenantId={activeTenantId}
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-[--color-border] bg-[--color-surface-1] px-3 text-sm font-medium text-[--color-text-1] hover:bg-[--color-surface-2]"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                  Withdraw
+                </button>
+              }
+            />
+            <FundUserDialog
+              tenantId={activeTenantId}
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Fund user
+                </button>
+              }
+            />
+          </div>
         }
       />
       <div className="p-6">

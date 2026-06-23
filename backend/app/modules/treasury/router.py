@@ -1,9 +1,10 @@
 """Treasury FastAPI router (admin-gated).
 
-Four routes:
+Five routes:
   - GET  /system-wallets                     list system accounts + balances
   - GET  /system-wallets/{id}/transactions    drill-down (paginated)
   - POST /fund-user                          admin top-up wrapper
+  - POST /withdraw                           admin pull-back wrapper
   - POST /adjust-system-wallet               fund/withdraw via operator_adjustment
 """
 from __future__ import annotations
@@ -23,12 +24,15 @@ from app.modules.treasury.schemas import (
     FundUserResponse,
     SystemWalletOut,
     SystemWalletTransactionOut,
+    WithdrawFromUserRequest,
+    WithdrawFromUserResponse,
 )
 from app.modules.treasury.service import (
     adjust_system_wallet,
     fund_user,
     list_account_transactions,
     list_system_wallets,
+    withdraw_from_user,
 )
 
 router = APIRouter(prefix="/api/v1/treasury", tags=["treasury"])
@@ -85,6 +89,34 @@ async def post_fund_user(
         amount=request.amount,
         currency=request.currency,
         reason=request.reason,
+        admin=admin,
+        ip_address=_client_ip(fastapi_request),
+    )
+
+
+@router.post(
+    "/withdraw", response_model=WithdrawFromUserResponse, status_code=201
+)
+async def post_withdraw_from_user(
+    request: WithdrawFromUserRequest,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> WithdrawFromUserResponse:
+    """Admin pull-back — debits the user wallet, credits operator_adjustment.
+
+    Above the step-up threshold (per `step_up_policies`), the user's PIN
+    must be re-submitted via `request.pin`. The first call without a
+    PIN returns 401 step_up_required so the client can prompt.
+    """
+    return await withdraw_from_user(
+        session,
+        tenant_id=request.tenant_id,
+        user_id=request.user_id,
+        amount=request.amount,
+        currency=request.currency,
+        reason=request.reason,
+        pin=request.pin,
         admin=admin,
         ip_address=_client_ip(fastapi_request),
     )

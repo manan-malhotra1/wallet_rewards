@@ -20,6 +20,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Tag,
+  Ticket,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -52,6 +53,7 @@ const CONFIG: NavItem[] = [
   { label: "Pricing", href: "/pricing", icon: Coins },
   { label: "Redemption", href: "/redemption", icon: CreditCard },
   { label: "Services", href: "/services", icon: Tag },
+  { label: "Instruments", href: "/instruments", icon: Ticket },
   { label: "Tenants", href: "/tenants", icon: Settings2 },
 ];
 

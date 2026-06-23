@@ -3,7 +3,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    CHAR,
     TIMESTAMP,
     CheckConstraint,
     ForeignKey,
@@ -46,7 +45,7 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     business_type: Mapped[str] = mapped_column(String(20), nullable=False)
     keycloak_realm: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    base_currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    base_currency: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="active"
     )

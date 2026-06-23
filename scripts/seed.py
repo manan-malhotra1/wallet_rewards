@@ -44,6 +44,7 @@ from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
     ExternalEventSource,
+    Instrument,
     RedemptionProvider,
     Role,
     RolePermission,
@@ -94,6 +95,40 @@ async def _get_or_create_tenant(session: AsyncSession) -> Tenant:
     await session.refresh(tenant)
     print(f"  + Created tenant: {tenant.name} ({tenant.id})")
     return tenant
+
+
+async def _seed_instruments_catalog(session: AsyncSession, tenant: Tenant) -> None:
+    """Idempotently insert the Phase-3 baseline instruments for the tenant.
+
+    Mirrors the migration 0018 backfill so freshly-created tenants get the
+    ZAR + PTS catalog entries existing tenants got at upgrade time.
+    """
+    baseline = [
+        ("ZAR", "R", "South African Rand", "Fiat wallet currency.", "financial_wallet"),
+        ("PTS", "Rewards", "Rewards Points", "Loyalty points credited by the rules engine.", "points_account"),
+    ]
+    for code, symbol, display_name, description, account_type in baseline:
+        result = await session.execute(
+            select(Instrument).where(
+                Instrument.tenant_id == tenant.id,
+                Instrument.code == code,
+                Instrument.deleted_at.is_(None),
+            )
+        )
+        if result.scalar_one_or_none() is not None:
+            continue
+        session.add(
+            Instrument(
+                tenant_id=tenant.id,
+                code=code,
+                symbol=symbol,
+                display_name=display_name,
+                description=description,
+                account_type=account_type,
+            )
+        )
+        print(f"  + Instrument: {code} ({display_name})")
+    await session.commit()
 
 
 async def _seed_services_catalog(session: AsyncSession, tenant: Tenant) -> None:
@@ -457,6 +492,10 @@ async def seed() -> None:
 
     async with SessionLocal() as session:
         tenant = await _get_or_create_tenant(session)
+
+        # Instruments catalog — the dropdown source for currency fields
+        # on Limits / Pricing. Idempotent.
+        await _seed_instruments_catalog(session, tenant)
 
         # Services catalog — the dropdown source for Limits / Pricing /
         # Campaigns admin pages. Idempotent.

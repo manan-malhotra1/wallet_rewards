@@ -11,7 +11,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    CHAR,
     TIMESTAMP,
     CheckConstraint,
     ForeignKey,
@@ -134,7 +133,7 @@ class Account(Base):
         UUID(as_uuid=True), nullable=True
     )  # FK to merchants.id added in a later migration when merchants table exists.
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="active"
     )

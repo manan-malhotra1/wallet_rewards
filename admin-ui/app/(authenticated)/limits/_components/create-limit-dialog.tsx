@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { Service } from "@/lib/api-types";
+import type { Instrument, Service } from "@/lib/api-types";
 
 interface FormState {
   transaction_type: string;
@@ -42,11 +42,14 @@ interface FormState {
   daily_value_cap: string;
 }
 
-function initialForm(services: Service[]): FormState {
+function initialForm(services: Service[], instruments: Instrument[]): FormState {
   return {
     transaction_type: services[0]?.code ?? "",
     account_type: "financial_wallet",
-    currency: "ZAR",
+    currency:
+      instruments.find((i) => i.account_type === "financial_wallet")?.code ??
+      instruments[0]?.code ??
+      "",
     min_amount: "",
     max_amount: "",
     daily_count_cap: "",
@@ -57,24 +60,28 @@ function initialForm(services: Service[]): FormState {
 export function CreateLimitDialog({
   tenantId,
   services,
+  instruments,
   trigger,
 }: {
   tenantId: string;
   services: Service[];
+  instruments: Instrument[];
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>(() => initialForm(services));
+  const [form, setForm] = React.useState<FormState>(() =>
+    initialForm(services, instruments),
+  );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
   const { toast } = useToast();
 
   React.useEffect(() => {
     if (!open) {
-      setForm(initialForm(services));
+      setForm(initialForm(services, instruments));
       setErrorBanner(null);
     }
-  }, [open, services]);
+  }, [open, services, instruments]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -168,13 +175,22 @@ export function CreateLimitDialog({
             </div>
             <div>
               <Label htmlFor="ccy">Currency</Label>
-              <Input
-                id="ccy"
+              <Select
                 value={form.currency}
-                onChange={(e) => update("currency", e.target.value)}
-                placeholder="ZAR"
-                maxLength={3}
-              />
+                onValueChange={(v) => update("currency", v)}
+                disabled={instruments.length === 0}
+              >
+                <SelectTrigger id="ccy">
+                  <SelectValue placeholder="Choose…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {instruments.map((i) => (
+                    <SelectItem key={i.id} value={i.code}>
+                      {i.code} · {i.symbol}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

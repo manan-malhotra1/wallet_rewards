@@ -20,7 +20,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    CHAR,
     CheckConstraint,
     ForeignKey,
     Index,
@@ -101,7 +100,7 @@ class RewardBudget(Base):
     scope_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
-    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False)
     window_type: Mapped[str] = mapped_column(String(20), nullable=False)
     cap_amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
     status: Mapped[str] = mapped_column(

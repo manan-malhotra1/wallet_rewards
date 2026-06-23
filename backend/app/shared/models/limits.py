@@ -13,7 +13,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    CHAR,
     ForeignKey,
     Integer,
     Numeric,
@@ -46,7 +45,7 @@ class LimitConfig(Base):
     )
     transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False)
 
     # All four are nullable — operators can configure just min/max, just
     # the daily caps, or any combination. NULL means "no limit on this axis".

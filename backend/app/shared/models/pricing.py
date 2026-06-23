@@ -12,7 +12,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    CHAR,
     CheckConstraint,
     ForeignKey,
     Numeric,
@@ -53,7 +52,7 @@ class PricingConfig(Base):
     )
     transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False)
 
     # `fixed_fee` is always charged regardless of amount. `variable_fee_pct`
     # is multiplied by the transaction amount (0.025 = 2.5%). `fee_cap`

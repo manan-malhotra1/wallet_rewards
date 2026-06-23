@@ -13,6 +13,7 @@ from app.modules.budgets import router as budgets_router
 from app.modules.catalog import router as catalog_router
 from app.modules.events import router as events_router
 from app.modules.identity import router as identity_router
+from app.modules.instruments import router as instruments_router
 from app.modules.limits import router as limits_router
 from app.modules.payments import router as payments_router
 from app.modules.pricing import router as pricing_router
@@ -91,3 +92,5 @@ app.include_router(segments_router)
 app.include_router(multipliers_router)
 # Phase 2 — services catalog
 app.include_router(services_router)
+# Phase 3 — instruments catalog
+app.include_router(instruments_router)

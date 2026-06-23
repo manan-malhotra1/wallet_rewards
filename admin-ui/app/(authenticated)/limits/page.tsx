@@ -5,9 +5,9 @@
 import { ListChecks, Plus } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
-import { listLimitConfigs, listServices } from "@/lib/api-endpoints";
+import { listInstruments, listLimitConfigs, listServices } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import type { Service } from "@/lib/api-types";
+import type { Instrument, Service } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -34,11 +34,13 @@ export default async function LimitsPage() {
 
   let configs: Awaited<ReturnType<typeof listLimitConfigs>> = [];
   let services: Service[] = [];
+  let instruments: Instrument[] = [];
   let error: ApiError | null = null;
   try {
-    [configs, services] = await Promise.all([
+    [configs, services, instruments] = await Promise.all([
       listLimitConfigs(activeTenantId),
       listServices(activeTenantId, "active"),
+      listInstruments(activeTenantId, "active"),
     ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
@@ -54,6 +56,7 @@ export default async function LimitsPage() {
           <CreateLimitDialog
             tenantId={activeTenantId}
             services={services}
+            instruments={instruments}
             trigger={
               <button
                 type="button"

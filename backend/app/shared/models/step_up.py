@@ -14,7 +14,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    CHAR,
     CheckConstraint,
     ForeignKey,
     Index,
@@ -54,7 +53,7 @@ class StepUpPolicy(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
     )
     transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False)
     threshold_amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
 
     created_at: Mapped[datetime] = created_at_col()

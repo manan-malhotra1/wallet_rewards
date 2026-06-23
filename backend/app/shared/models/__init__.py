@@ -30,6 +30,11 @@ from app.shared.models.budgets import (
 from app.shared.models.limits import LimitConfig
 from app.shared.models.multipliers import BonusMultiplier
 from app.shared.models.pricing import PricingConfig
+from app.shared.models.instruments import (
+    INSTRUMENT_STATUS_ACTIVE,
+    INSTRUMENT_STATUS_DISABLED,
+    Instrument,
+)
 from app.shared.models.segments import Segment, UserSegment
 from app.shared.models.services import (
     SERVICE_STATUS_ACTIVE,
@@ -151,6 +156,10 @@ __all__ = [
     "Service",
     "SERVICE_STATUS_ACTIVE",
     "SERVICE_STATUS_DISABLED",
+    # Instruments catalog (Phase 3)
+    "Instrument",
+    "INSTRUMENT_STATUS_ACTIVE",
+    "INSTRUMENT_STATUS_DISABLED",
     "BUDGET_SCOPE_TENANT",
     "BUDGET_SCOPE_RULE",
     "BUDGET_STATUS_ACTIVE",

@@ -21,6 +21,7 @@ import type {
   BudgetConsumption,
   ExternalEventSource,
   FundUserResponse,
+  Instrument,
   LimitConfig,
   ManualReviewItem,
   PendingItem,
@@ -92,6 +93,50 @@ export const updateService = (
 
 export const deleteService = (service_id: string, tenant_id: string) =>
   apiDelete<Service>(`/api/v1/services/${service_id}`, { query: { tenant_id } });
+
+// ---- Instruments catalog (Phase 3) --------------------------------------
+
+export const listInstruments = (
+  tenant_id: string,
+  status?: "active" | "disabled",
+) =>
+  apiGet<Instrument[]>("/api/v1/instruments", {
+    query: status ? { tenant_id, status } : { tenant_id },
+  });
+
+export interface CreateInstrumentPayload {
+  tenant_id: string;
+  code: string;
+  symbol: string;
+  display_name: string;
+  description?: string;
+  account_type: "financial_wallet" | "points_account";
+  assign_to_existing_users?: boolean;
+}
+
+export const createInstrument = (payload: CreateInstrumentPayload) =>
+  apiPost<Instrument>("/api/v1/instruments", payload);
+
+export interface UpdateInstrumentPayload {
+  symbol?: string;
+  display_name?: string;
+  description?: string;
+  status?: "active" | "disabled";
+}
+
+export const updateInstrument = (
+  instrument_id: string,
+  tenant_id: string,
+  payload: UpdateInstrumentPayload,
+) =>
+  apiPatch<Instrument>(`/api/v1/instruments/${instrument_id}`, payload, {
+    query: { tenant_id },
+  });
+
+export const deleteInstrument = (instrument_id: string, tenant_id: string) =>
+  apiDelete<Instrument>(`/api/v1/instruments/${instrument_id}`, {
+    query: { tenant_id },
+  });
 
 // ---- Identity ------------------------------------------------------------
 

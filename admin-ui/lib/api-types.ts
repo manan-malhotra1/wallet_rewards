@@ -19,6 +19,20 @@ export interface Tenant {
   created_at: string;
 }
 
+/** One row in the per-tenant instruments catalog (Phase 3). */
+export interface Instrument {
+  id: string;
+  tenant_id: string;
+  code: string;
+  symbol: string;
+  display_name: string;
+  description: string | null;
+  account_type: "financial_wallet" | "points_account";
+  status: "active" | "disabled";
+  created_at: string;
+  updated_at: string;
+}
+
 /** One row in the per-tenant services catalog (Phase 2). */
 export interface Service {
   id: string;

@@ -17,7 +17,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    CHAR,
     CheckConstraint,
     ForeignKey,
     Index,
@@ -100,7 +99,7 @@ class Transaction(Base):
     fee_amount: Mapped[float] = mapped_column(
         Numeric(20, 6), nullable=False, server_default="0"
     )
-    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     external_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
     retry_count: Mapped[int] = mapped_column(
@@ -156,7 +155,7 @@ class LedgerEntry(Base):
     )
     entry_type: Mapped[str] = mapped_column(String(10), nullable=False)
     amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
-    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=ENTRY_STATUS_PENDING
     )

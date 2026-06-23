@@ -69,6 +69,28 @@ class ServiceNotFound(AppHTTPException):
         super().__init__(404, "service_not_found", "Service not found.")
 
 
+class InstrumentNotFound(AppHTTPException):
+    """The given instrument_id doesn't map to a live row in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "instrument_not_found", "Instrument not found.")
+
+
+class InstrumentCodeAlreadyExists(AppHTTPException):
+    """Another live instrument in this tenant already uses this code.
+
+    Raised by the Phase 3 catalog create flow. Codes are unique per tenant
+    via the partial UNIQUE index `uq_instruments_tenant_code_alive`.
+    """
+
+    def __init__(self, code: str) -> None:
+        super().__init__(
+            409,
+            "instrument_code_already_exists",
+            f"An instrument with code '{code}' already exists for this tenant.",
+        )
+
+
 class ServiceCodeAlreadyExists(AppHTTPException):
     """Another live service in this tenant already uses this code.
 

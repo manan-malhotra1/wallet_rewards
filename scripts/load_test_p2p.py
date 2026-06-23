@@ -184,7 +184,7 @@ async def ensure_user(
     if resp.status_code == 200:
         return resp.json()["user_id"]
     if resp.status_code != 404:
-        resp.raise_for_status()
+        _fail("identity/resolve", resp)
 
     create_resp = await client.post(
         f"{api_url}/api/v1/identity/users",
@@ -198,8 +198,19 @@ async def ensure_user(
         },
         timeout=30,
     )
-    create_resp.raise_for_status()
+    if create_resp.status_code != 201:
+        _fail("identity/users POST", create_resp)
     return create_resp.json()["id"]
+
+
+def _fail(label: str, resp: httpx.Response) -> None:
+    """Raise with status + body so the operator sees the real error_code."""
+    body = resp.text[:500] if resp.text else "<empty>"
+    raise SystemExit(
+        f"\n[{label}] HTTP {resp.status_code} from {resp.request.url}\n"
+        f"  request headers:  Authorization=Bearer {resp.request.headers.get('Authorization', '')[:30]}...\n"
+        f"  response body:    {body}\n"
+    )
 
 
 async def ensure_zar_wallet(
@@ -227,7 +238,7 @@ async def ensure_zar_wallet(
     )
     if resp.status_code in (201, 409):
         return
-    resp.raise_for_status()
+    _fail("accounts POST", resp)
 
 
 async def set_known_pin(
@@ -253,7 +264,8 @@ async def set_known_pin(
         params={"tenant_id": tenant_id},
         timeout=30,
     )
-    resp.raise_for_status()
+    if resp.status_code != 200:
+        _fail("identity/users/{id}/pin/reset", resp)
     body = resp.json()
     new_pin = body.get("new_pin")
     if not new_pin:
@@ -612,10 +624,50 @@ async def main() -> None:
         async with httpx.AsyncClient(timeout=30) as client:
             print("== AUTH ==")
             admin_token = await get_admin_token(client, args)
-            print("  + admin token acquired")
+            print(f"  + admin token acquired ({len(admin_token)} chars)")
+
+            # Decode the JWT payload (no signature check) to confirm roles.
+            # This catches the "token works on lenient endpoints but lacks
+            # platform-admin role for write endpoints" misconfiguration up front.
+            import base64
+            try:
+                _hdr, payload_b64, _sig = admin_token.split(".")
+                payload_b64 += "=" * (-len(payload_b64) % 4)
+                claims = json.loads(base64.urlsafe_b64decode(payload_b64))
+                roles = claims.get("realm_access", {}).get("roles", [])
+                username = claims.get("preferred_username", "<unknown>")
+                aud = claims.get("aud", "<no-aud>")
+                iss = claims.get("iss", "<no-iss>")
+                print(f"  + token claims: user={username}, iss={iss}")
+                print(f"  + token claims: aud={aud}")
+                print(f"  + token claims: realm_access.roles={roles}")
+                if "platform-admin" not in roles:
+                    sys.exit(
+                        "\nFATAL: token does NOT contain the 'platform-admin' role.\n"
+                        "Run: python scripts/bootstrap_keycloak.py\n"
+                        "Then verify in Keycloak admin UI that user 'admin-test'\n"
+                        "has the 'platform-admin' realm role assigned.\n"
+                    )
+            except (ValueError, json.JSONDecodeError):
+                print("  ! could not decode JWT payload (continuing)")
+
             print("== TENANT ==")
             tenant_id = await find_tenant_id(client, args.api_url, args.tenant_name, admin_token)
             print(f"  + tenant '{args.tenant_name}' = {tenant_id}")
+
+            # Auth smoke test: hit a known-write-protected endpoint (/resolve
+            # for a non-existent phone) and assert we get 404, not 401/403.
+            # Failure here = setup misconfiguration before we waste time
+            # creating users.
+            smoke_resp = await client.get(
+                f"{args.api_url}/api/v1/identity/resolve/phone/+27 82 999 99999",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                params={"tenant_id": tenant_id},
+                timeout=30,
+            )
+            if smoke_resp.status_code not in (404, 200):
+                _fail("auth smoke test (identity/resolve)", smoke_resp)
+            print(f"  + auth smoke test ok (resolve returned {smoke_resp.status_code})")
 
             print(f"== USERS + ACCOUNTS + PINS + SESSIONS + FUND ({args.users} users) ==")
             sessions = await setup_users(client, args, admin_token, tenant_id, cache)

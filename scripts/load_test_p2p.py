@@ -639,6 +639,63 @@ async def setup_users(
     return sessions
 
 
+async def refresh_all_sessions(
+    client: httpx.AsyncClient,
+    args: argparse.Namespace,
+    cache: dict[str, dict],
+    sessions: list[UserSession],
+) -> None:
+    """Re-login every user with their cached PIN and overwrite the session token.
+
+    Run before each P2P phase because user sessions expire after 15 min
+    (backend SESSION_TTL_SECONDS) and the cache may be older. PINs in the
+    cache survive — they're set on the user row, not in Redis — so a
+    fresh login_pin gets us a fresh token without re-running PIN reset.
+
+    Mutates `sessions` and `cache` in place. Tenant id is parsed from the
+    first session's user_id... actually pulled from the first cache entry
+    via a side query — cleanest: pass it through.
+    """
+    # Tenant lookup. We need it for the auth/pin body.
+    # The cached entries don't carry tenant_id explicitly, so look it up.
+    tokens = AdminTokenProvider(client, args)
+    tenant_id = await find_tenant_id(client, args.api_url, args.tenant_name, tokens)
+
+    sem = asyncio.Semaphore(args.setup_concurrency)
+    refreshed = 0
+    failed = 0
+    failures: list[str] = []
+
+    async def refresh_one(s: UserSession) -> None:
+        nonlocal refreshed, failed
+        async with sem:
+            try:
+                new_token = await login_pin(
+                    client, args.api_url, tenant_id, s.phone, s.pin
+                )
+                s.session_token = new_token
+                cache[s.phone]["session_token"] = new_token
+                refreshed += 1
+            except httpx.HTTPStatusError as exc:
+                failed += 1
+                if len(failures) < 3:
+                    body = exc.response.text[:200] if exc.response else "<no resp>"
+                    failures.append(f"{s.phone}: {exc.response.status_code} {body}")
+
+    tasks = [refresh_one(s) for s in sessions]
+    batch_size = 500
+    for chunk_start in range(0, len(tasks), batch_size):
+        chunk = tasks[chunk_start:chunk_start + batch_size]
+        await asyncio.gather(*chunk)
+        print(
+            f"  refresh: {min(chunk_start + len(chunk), len(tasks)):>5}/{len(tasks)}  "
+            f"(ok={refreshed}, failed={failed})",
+            flush=True,
+        )
+    for line in failures:
+        print(f"  ! login failure: {line}")
+
+
 def load_state(path: str) -> dict[str, dict]:
     """Load the cached (phone -> {user_id, session_token, pin}) map."""
     p = Path(path)
@@ -920,9 +977,20 @@ async def main() -> None:
                 pin=entry.get("pin", args.user_pin),
             )
             for phone, entry in cache.items()
-            if "session_token" in entry
+            if "session_token" in entry and "pin" in entry
         ][: args.users]
         print(f"== P2P (from cache) {len(sessions)} sessions ==")
+
+        # Refresh sessions before P2P. SESSION_TTL_SECONDS in the backend is
+        # 15 minutes — any cached token older than that is dead. We always
+        # re-login on a p2p-only run because we can't tell whether a token
+        # is still alive without probing it (and a wasted P2P with an
+        # expired token is a worse outcome than spending 30-60s here).
+        async with httpx.AsyncClient(timeout=30) as client:
+            print(f"== REFRESH SESSIONS ({len(sessions)} users) ==")
+            await refresh_all_sessions(client, args, cache, sessions)
+            save_state(args.state_file, cache)
+            print(f"  + sessions refreshed. State cached at {args.state_file}")
 
     if len(sessions) < 2:
         sys.exit("Need at least 2 funded sessions to run P2P. Check setup phase.")

@@ -273,6 +273,142 @@ def _fail(label: str, resp: httpx.Response) -> None:
     )
 
 
+async def ensure_permissive_p2p_limit(
+    client: httpx.AsyncClient,
+    api_url: str,
+    tokens: AdminTokenProvider,
+    tenant_id: str,
+) -> None:
+    """Replace any restrictive (p2p, financial_wallet, ZAR) limit row with a
+    very high one so a load test doesn't trip on the production-grade
+    daily count cap (default 10/day in seed).
+
+    Done once per setup pass — idempotent re-runs are no-ops.
+    """
+    list_resp = await client.get(
+        f"{api_url}/api/v1/limits/configs",
+        headers=await tokens.header(),
+        params={"tenant_id": tenant_id},
+        timeout=30,
+    )
+    if list_resp.status_code != 200:
+        _fail("limits/configs list", list_resp)
+
+    restrictive = [
+        c
+        for c in list_resp.json()
+        if c["transaction_type"] == "p2p"
+        and c["account_type"] == "financial_wallet"
+        and c["currency"] == "ZAR"
+    ]
+    # If a high-cap row already exists, skip both delete + create.
+    if any(
+        c.get("daily_count_cap") and c["daily_count_cap"] >= 10_000_000
+        for c in restrictive
+    ):
+        return
+
+    for c in restrictive:
+        del_resp = await client.delete(
+            f"{api_url}/api/v1/limits/configs/{c['id']}",
+            headers=await tokens.header(),
+            params={"tenant_id": tenant_id},
+            timeout=30,
+        )
+        if del_resp.status_code not in (204, 404):
+            _fail("limits/configs delete", del_resp)
+
+    create_resp = await client.post(
+        f"{api_url}/api/v1/limits/configs",
+        headers=await tokens.header(),
+        json={
+            "tenant_id": tenant_id,
+            "transaction_type": "p2p",
+            "account_type": "financial_wallet",
+            "currency": "ZAR",
+            # Permissive caps — effectively unbounded for the load test.
+            "daily_count_cap": 100_000_000,
+            "daily_value_cap": "1000000000000",
+            "min_amount": "0.01",
+            "max_amount": "1000000000",
+        },
+        timeout=30,
+    )
+    if create_resp.status_code != 201:
+        _fail("limits/configs create", create_resp)
+
+
+async def ensure_load_test_role(
+    client: httpx.AsyncClient,
+    api_url: str,
+    tokens: AdminTokenProvider,
+    tenant_id: str,
+) -> str:
+    """Idempotently ensure a 'load-test-user' role with p2p permission.
+
+    Returns the role_id. Called once per setup pass; the returned id is
+    cached and reused for all per-user role assignments.
+    """
+    list_resp = await client.get(
+        f"{api_url}/api/v1/roles",
+        headers=await tokens.header(),
+        params={"tenant_id": tenant_id},
+        timeout=30,
+    )
+    if list_resp.status_code != 200:
+        _fail("roles list", list_resp)
+    for role in list_resp.json():
+        if role["name"] == "load-test-user":
+            return role["id"]
+
+    # Create the role.
+    create_resp = await client.post(
+        f"{api_url}/api/v1/roles",
+        headers=await tokens.header(),
+        json={
+            "tenant_id": tenant_id,
+            "name": "load-test-user",
+            "description": "Role used by scripts/load_test_p2p.py — grants p2p.",
+        },
+        timeout=30,
+    )
+    if create_resp.status_code != 201:
+        _fail("roles create", create_resp)
+    role_id: str = create_resp.json()["id"]
+
+    # Grant p2p.
+    perm_resp = await client.post(
+        f"{api_url}/api/v1/roles/{role_id}/permissions",
+        headers=await tokens.header(),
+        params={"tenant_id": tenant_id},
+        json={"transaction_type": "p2p", "permitted": True},
+        timeout=30,
+    )
+    if perm_resp.status_code != 201:
+        _fail("roles permission grant", perm_resp)
+    return role_id
+
+
+async def assign_user_role(
+    client: httpx.AsyncClient,
+    api_url: str,
+    tokens: AdminTokenProvider,
+    tenant_id: str,
+    user_id: str,
+    role_id: str,
+) -> None:
+    """Assign role_id to user_id. Idempotent — backend returns 201 on re-assign."""
+    resp = await client.post(
+        f"{api_url}/api/v1/users/{user_id}/roles",
+        headers=await tokens.header(),
+        params={"tenant_id": tenant_id},
+        json={"role_id": role_id},
+        timeout=30,
+    )
+    if resp.status_code != 201:
+        _fail("users/{id}/roles POST", resp)
+
+
 async def ensure_zar_wallet(
     client: httpx.AsyncClient,
     api_url: str,
@@ -415,12 +551,18 @@ async def setup_users(
     tenant_id: str,
     cache: dict[str, dict],
 ) -> list[UserSession]:
-    """Run phases 3–7 — ensure users / accounts / pins / sessions / funding.
+    """Run phases 3–7 — ensure users / accounts / pins / roles / sessions / funding.
 
     Reads/writes the state cache so re-runs skip what's already done.
     State is checkpointed after every batch so a mid-run crash doesn't
     lose progress.
     """
+    # One-time: ensure permissive p2p limits + load-test role exist.
+    await ensure_permissive_p2p_limit(client, args.api_url, tokens, tenant_id)
+    print("  + permissive p2p limits ensured")
+    role_id = await ensure_load_test_role(client, args.api_url, tokens, tenant_id)
+    print(f"  + load-test role ready ({role_id[:8]}…)")
+
     sessions: list[UserSession] = []
     sem = asyncio.Semaphore(args.setup_concurrency)
     created_count = 0
@@ -463,6 +605,9 @@ async def setup_users(
                 phone, f"Load{idx}", "Tester",
             )
             await ensure_zar_wallet(client, args.api_url, tokens, tenant_id, user_id)
+            await assign_user_role(
+                client, args.api_url, tokens, tenant_id, user_id, role_id
+            )
             pin = await set_known_pin(
                 client, args.api_url, tokens, tenant_id, user_id, args.user_pin
             )
@@ -552,9 +697,19 @@ async def one_p2p(
         else:
             stats.failure += 1
             try:
-                stats.error_codes[resp.json().get("error_code", f"http_{resp.status_code}")] += 1
+                code = resp.json().get("error_code", f"http_{resp.status_code}")
             except Exception:
-                stats.error_codes[f"http_{resp.status_code}"] += 1
+                code = f"http_{resp.status_code}"
+            stats.error_codes[code] += 1
+            # Log the first 3 details for each error code — helps diagnose
+            # opaque 500s without spamming the console.
+            if stats.error_codes[code] <= 3:
+                body = resp.text[:200] if resp.text else "<empty>"
+                print(
+                    f"  ! {code}: sender={sender.phone} → {recipient.phone} "
+                    f"amount={amount} body={body}",
+                    flush=True,
+                )
     except httpx.HTTPError as exc:
         stats.failure += 1
         stats.error_codes[type(exc).__name__] += 1
@@ -645,7 +800,7 @@ async def p2p_phase(
 # Final summary
 # ---------------------------------------------------------------------------
 
-def print_summary(args: argparse.Namespace, stats: P2PStats) -> None:
+def print_summary(args: argparse.Namespace, stats: P2PStats, n_sessions: int) -> None:
     """Pretty-print the final TPS + latency report."""
     wall = max(time.monotonic() - stats.started_at, 0.001)
     total = stats.success + stats.failure
@@ -653,7 +808,7 @@ def print_summary(args: argparse.Namespace, stats: P2PStats) -> None:
     print("=" * 60)
     print("  P2P LOAD TEST — SUMMARY")
     print("=" * 60)
-    print(f"  Users participating  : {args.users}")
+    print(f"  Users participating  : {n_sessions}")
     print(f"  Concurrency          : {args.concurrency}")
     print(f"  Duration target      : {args.duration}s")
     print(f"  Wall clock           : {wall:.2f}s")
@@ -775,7 +930,7 @@ async def main() -> None:
     print(f"== P2P LOAD ({len(sessions)} senders, {args.concurrency} concurrent, "
           f"{args.duration}s) ==")
     stats = await p2p_phase(args, sessions)
-    print_summary(args, stats)
+    print_summary(args, stats, len(sessions))
 
 
 if __name__ == "__main__":

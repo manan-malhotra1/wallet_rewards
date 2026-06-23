@@ -19,7 +19,7 @@ class LimitConfigCreateRequest(BaseModel):
     tenant_id: UUID
     transaction_type: str = Field(min_length=1, max_length=50)
     account_type: str = Field(min_length=1, max_length=30)
-    currency: str = Field(min_length=3, max_length=3)
+    currency: str = Field(min_length=2, max_length=10)
     min_amount: Decimal | None = None
     max_amount: Decimal | None = None
     daily_count_cap: int | None = Field(default=None, gt=0)

@@ -113,8 +113,14 @@ class P2PStats:
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
-async def get_admin_token(client: httpx.AsyncClient, args: argparse.Namespace) -> str:
-    """Password-grant against the local admin-ui client. Returns a bearer JWT."""
+async def get_admin_token(
+    client: httpx.AsyncClient, args: argparse.Namespace
+) -> tuple[str, int]:
+    """Password-grant against the local admin-ui client.
+
+    Returns:
+        (access_token, expires_in_seconds).
+    """
     token_url = f"{args.keycloak_url}/realms/{args.realm}/protocol/openid-connect/token"
     resp = await client.post(
         token_url,
@@ -133,16 +139,71 @@ async def get_admin_token(client: httpx.AsyncClient, args: argparse.Namespace) -
             f"Failed to get admin token from {token_url}: "
             f"{resp.status_code} {resp.text}"
         )
-    return resp.json()["access_token"]
+    body = resp.json()
+    return body["access_token"], int(body.get("expires_in", 300))
+
+
+class AdminTokenProvider:
+    """Holds a Keycloak admin access token and refreshes it before expiry.
+
+    Used by all admin HTTP calls in the script. The setup pass takes
+    longer than Keycloak's 5-minute default access-token TTL so a single
+    fetched-at-startup token doesn't last the whole run.
+
+    Each .get() returns the current token, transparently re-fetching if
+    we're within `safety_window_s` of expiry. Concurrent .get() callers
+    serialize on the asyncio.Lock so we never fire two parallel password
+    grants.
+    """
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        args: argparse.Namespace,
+        safety_window_s: int = 30,
+    ) -> None:
+        self.client = client
+        self.args = args
+        self.safety_window_s = safety_window_s
+        self._token: str | None = None
+        self._expires_at: float = 0.0
+        self._lock = asyncio.Lock()
+        self._refresh_count = 0
+
+    async def get(self) -> str:
+        """Return a non-stale token (refreshing if needed)."""
+        if self._token and time.monotonic() < self._expires_at - self.safety_window_s:
+            return self._token
+        async with self._lock:
+            # Re-check inside the lock so concurrent waiters don't all refresh.
+            if self._token and time.monotonic() < self._expires_at - self.safety_window_s:
+                return self._token
+            token, expires_in = await get_admin_token(self.client, self.args)
+            self._token = token
+            self._expires_at = time.monotonic() + expires_in
+            self._refresh_count += 1
+            if self._refresh_count > 1:
+                # First fetch is reported by the caller; subsequent refreshes
+                # surface here so the operator sees they're happening.
+                print(
+                    f"  + admin token refreshed (#{self._refresh_count}, "
+                    f"expires_in={expires_in}s)",
+                    flush=True,
+                )
+            return token
+
+    async def header(self) -> dict[str, str]:
+        """Convenience: build the Authorization header with a fresh token."""
+        return {"Authorization": f"Bearer {await self.get()}"}
 
 
 async def find_tenant_id(
-    client: httpx.AsyncClient, api_url: str, name: str, admin_token: str
+    client: httpx.AsyncClient, api_url: str, name: str, tokens: AdminTokenProvider
 ) -> str:
     """Look up the target tenant by name. Exits if not found."""
     resp = await client.get(
         f"{api_url}/api/v1/tenants",
-        headers={"Authorization": f"Bearer {admin_token}"},
+        headers=await tokens.header(),
         timeout=30,
     )
     resp.raise_for_status()
@@ -166,18 +227,17 @@ def phone_for(args: argparse.Namespace, idx: int) -> str:
 async def ensure_user(
     client: httpx.AsyncClient,
     api_url: str,
-    admin_token: str,
+    tokens: AdminTokenProvider,
     tenant_id: str,
     phone: str,
     first_name: str,
     last_name: str,
 ) -> str:
     """Resolve or create. Returns user_id."""
-    headers = {"Authorization": f"Bearer {admin_token}"}
     # Resolve first — cheaper than catching IntegrityError on duplicate create.
     resp = await client.get(
         f"{api_url}/api/v1/identity/resolve/phone/{phone}",
-        headers=headers,
+        headers=await tokens.header(),
         params={"tenant_id": tenant_id},
         timeout=30,
     )
@@ -188,7 +248,7 @@ async def ensure_user(
 
     create_resp = await client.post(
         f"{api_url}/api/v1/identity/users",
-        headers=headers,
+        headers=await tokens.header(),
         json={
             "tenant_id": tenant_id,
             "identifiers": [
@@ -216,7 +276,7 @@ def _fail(label: str, resp: httpx.Response) -> None:
 async def ensure_zar_wallet(
     client: httpx.AsyncClient,
     api_url: str,
-    admin_token: str,
+    tokens: AdminTokenProvider,
     tenant_id: str,
     user_id: str,
 ) -> None:
@@ -224,16 +284,11 @@ async def ensure_zar_wallet(
 
     Robust to partial-state from a previous failed run: we look up the
     user's existing accounts first via /identity/users/{id} and skip
-    creation entirely when the ZAR wallet is already there. The naive
-    POST → catch-409 pattern doesn't work because the backend's
-    create_account currently returns 500 (not 409) when the partial
-    UNIQUE index fires — that's tracked as a separate backend fix.
+    creation entirely when the ZAR wallet is already there.
     """
-    headers = {"Authorization": f"Bearer {admin_token}"}
-
     detail_resp = await client.get(
         f"{api_url}/api/v1/identity/users/{user_id}",
-        headers=headers,
+        headers=await tokens.header(),
         params={"tenant_id": tenant_id},
         timeout=30,
     )
@@ -247,7 +302,7 @@ async def ensure_zar_wallet(
 
     resp = await client.post(
         f"{api_url}/api/v1/accounts",
-        headers=headers,
+        headers=await tokens.header(),
         json={
             "tenant_id": tenant_id,
             "user_id": user_id,
@@ -264,23 +319,16 @@ async def ensure_zar_wallet(
 async def set_known_pin(
     client: httpx.AsyncClient,
     api_url: str,
-    admin_token: str,
+    tokens: AdminTokenProvider,
     tenant_id: str,
     user_id: str,
     desired_pin: str,
 ) -> str:
-    """Admin-reset the PIN. The server picks a random PIN — we then re-reset
-    by attempting auth/pin against the returned value and storing the pair.
-
-    Simpler approach since we control the test: use the admin endpoint's
-    returned PIN as-is (it varies per user). Caller stores it.
-    """
-    _ = desired_pin  # honoured by storing the server-generated value; this
-    # script never enforces a uniform PIN because pin-reset always randomises.
-    headers = {"Authorization": f"Bearer {admin_token}"}
+    """Admin-reset the PIN. Returns the server-generated PIN; caller caches it."""
+    _ = desired_pin  # script stores the server-generated value (admin reset always randomises)
     resp = await client.post(
         f"{api_url}/api/v1/identity/users/{user_id}/pin/reset",
-        headers=headers,
+        headers=await tokens.header(),
         params={"tenant_id": tenant_id},
         timeout=30,
     )
@@ -329,7 +377,7 @@ async def current_zar_balance(
 async def fund_user_to_target(
     client: httpx.AsyncClient,
     api_url: str,
-    admin_token: str,
+    tokens: AdminTokenProvider,
     tenant_id: str,
     phone: str,
     current: float,
@@ -341,7 +389,7 @@ async def fund_user_to_target(
         return
     resp = await client.post(
         f"{api_url}/api/v1/treasury/fund-user",
-        headers={"Authorization": f"Bearer {admin_token}"},
+        headers=await tokens.header(),
         json={
             "tenant_id": tenant_id,
             "identifier_type": "phone",
@@ -352,7 +400,8 @@ async def fund_user_to_target(
         },
         timeout=30,
     )
-    resp.raise_for_status()
+    if resp.status_code != 201:
+        _fail("treasury/fund-user", resp)
 
 
 # ---------------------------------------------------------------------------
@@ -362,13 +411,15 @@ async def fund_user_to_target(
 async def setup_users(
     client: httpx.AsyncClient,
     args: argparse.Namespace,
-    admin_token: str,
+    tokens: AdminTokenProvider,
     tenant_id: str,
     cache: dict[str, dict],
 ) -> list[UserSession]:
     """Run phases 3–7 — ensure users / accounts / pins / sessions / funding.
 
     Reads/writes the state cache so re-runs skip what's already done.
+    State is checkpointed after every batch so a mid-run crash doesn't
+    lose progress.
     """
     sessions: list[UserSession] = []
     sem = asyncio.Semaphore(args.setup_concurrency)
@@ -394,7 +445,7 @@ async def setup_users(
                         )
                     # Token still valid; just needs more funding.
                     await fund_user_to_target(
-                        client, args.api_url, admin_token, tenant_id,
+                        client, args.api_url, tokens, tenant_id,
                         phone, bal, args.fund_amount,
                     )
                     funded_count += 1
@@ -408,17 +459,17 @@ async def setup_users(
                     pass  # Token expired — fall through to full re-setup.
 
             user_id = await ensure_user(
-                client, args.api_url, admin_token, tenant_id,
+                client, args.api_url, tokens, tenant_id,
                 phone, f"Load{idx}", "Tester",
             )
-            await ensure_zar_wallet(client, args.api_url, admin_token, tenant_id, user_id)
+            await ensure_zar_wallet(client, args.api_url, tokens, tenant_id, user_id)
             pin = await set_known_pin(
-                client, args.api_url, admin_token, tenant_id, user_id, args.user_pin
+                client, args.api_url, tokens, tenant_id, user_id, args.user_pin
             )
             token = await login_pin(client, args.api_url, tenant_id, phone, pin)
             bal = await current_zar_balance(client, args.api_url, token)
             await fund_user_to_target(
-                client, args.api_url, admin_token, tenant_id,
+                client, args.api_url, tokens, tenant_id,
                 phone, bal, args.fund_amount,
             )
             created_count += 1
@@ -432,9 +483,12 @@ async def setup_users(
     for chunk_start in range(0, len(tasks), batch_size):
         chunk = tasks[chunk_start:chunk_start + batch_size]
         sessions.extend(await asyncio.gather(*chunk))
+        # Checkpoint after every batch so a mid-run crash doesn't lose progress.
+        save_state(args.state_file, cache)
         print(
             f"  setup: {chunk_start + len(chunk):>5}/{args.users}  "
-            f"(created so far: {created_count}, funded: {funded_count})",
+            f"(created so far: {created_count}, funded: {funded_count}, "
+            f"cache checkpointed)",
             flush=True,
         )
     return sessions
@@ -643,7 +697,8 @@ async def main() -> None:
     if args.phase in ("all", "setup"):
         async with httpx.AsyncClient(timeout=30) as client:
             print("== AUTH ==")
-            admin_token = await get_admin_token(client, args)
+            tokens = AdminTokenProvider(client, args)
+            admin_token = await tokens.get()
             print(f"  + admin token acquired ({len(admin_token)} chars)")
 
             # Decode the JWT payload (no signature check) to confirm roles.
@@ -672,7 +727,7 @@ async def main() -> None:
                 print("  ! could not decode JWT payload (continuing)")
 
             print("== TENANT ==")
-            tenant_id = await find_tenant_id(client, args.api_url, args.tenant_name, admin_token)
+            tenant_id = await find_tenant_id(client, args.api_url, args.tenant_name, tokens)
             print(f"  + tenant '{args.tenant_name}' = {tenant_id}")
 
             # Auth smoke test: hit a known-write-protected endpoint (/resolve
@@ -681,7 +736,7 @@ async def main() -> None:
             # creating users.
             smoke_resp = await client.get(
                 f"{args.api_url}/api/v1/identity/resolve/phone/+27 82 999 99999",
-                headers={"Authorization": f"Bearer {admin_token}"},
+                headers=await tokens.header(),
                 params={"tenant_id": tenant_id},
                 timeout=30,
             )
@@ -690,7 +745,7 @@ async def main() -> None:
             print(f"  + auth smoke test ok (resolve returned {smoke_resp.status_code})")
 
             print(f"== USERS + ACCOUNTS + PINS + SESSIONS + FUND ({args.users} users) ==")
-            sessions = await setup_users(client, args, admin_token, tenant_id, cache)
+            sessions = await setup_users(client, args, tokens, tenant_id, cache)
             save_state(args.state_file, cache)
             print(f"  + setup complete. State cached at {args.state_file}")
 

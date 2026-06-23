@@ -66,9 +66,10 @@ class FundUserResponse(BaseModel):
 class WithdrawFromUserRequest(BaseModel):
     """Admin withdraw payload — debits a user wallet and credits operator_adjustment.
 
-    The optional `pin` is supplied on the second attempt after a 401
-    step_up_required response; on the first attempt it's typically
-    omitted so the backend can surface the policy threshold.
+    Admin operations don't carry a PIN — operator identity is the
+    Keycloak session. Pricing / service charges don't apply on admin
+    flows either (this is a back-office move, not a user-initiated
+    transaction).
     """
 
     tenant_id: UUID
@@ -76,7 +77,6 @@ class WithdrawFromUserRequest(BaseModel):
     amount: Decimal = Field(gt=Decimal("0"))
     currency: str = Field(min_length=2, max_length=10)
     reason: str = Field(min_length=1, max_length=500)
-    pin: str | None = Field(default=None, min_length=4, max_length=8)
 
 
 class WithdrawFromUserResponse(BaseModel):

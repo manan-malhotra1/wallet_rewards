@@ -1,8 +1,9 @@
 """Tests for POST /api/v1/treasury/withdraw (admin pull-back).
 
 Mirrors test_fund_user.py but verifies the reverse direction (user wallet
-debited, operator_adjustment credited) and exercises the step-up flow
-introduced in Phase 4.
+debited, operator_adjustment credited). Admin operations are PIN-less and
+fee-less — step-up PIN policies apply to user-initiated transactions
+only, not back-office moves.
 """
 from __future__ import annotations
 
@@ -25,7 +26,6 @@ from app.shared.models import (
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     Account,
-    StepUpPolicy,
     Tenant,
     User,
 )
@@ -82,22 +82,6 @@ async def _seed_user_wallet_with_balance(
     )
     await session.commit()
     return wallet
-
-
-async def _seed_step_up_policy(
-    session: AsyncSession, tenant: Tenant, *, threshold: Decimal, currency: str = "ZAR"
-) -> StepUpPolicy:
-    """Add a withdraw step-up policy for the tenant."""
-    policy = StepUpPolicy(
-        tenant_id=tenant.id,
-        transaction_type="withdraw",
-        currency=currency,
-        threshold_amount=threshold,
-    )
-    session.add(policy)
-    await session.commit()
-    await session.refresh(policy)
-    return policy
 
 
 @pytest.mark.asyncio
@@ -240,129 +224,31 @@ async def test_withdraw_requires_auth(
 
 
 @pytest.mark.asyncio
-async def test_withdraw_step_up_required_without_pin(
+async def test_withdraw_ignores_user_pin_field(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Above threshold with no PIN → 401 step_up_required."""
-    await _seed_user_wallet_with_balance(
-        db_session, test_tenant, test_user, starting_balance=Decimal("1000")
-    )
-    await _seed_step_up_policy(db_session, test_tenant, threshold=Decimal("100"))
-
-    resp = await async_client.post(
-        "/api/v1/treasury/withdraw",
-        headers=admin_auth_header,
-        json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
-            "amount": "200",
-            "currency": "ZAR",
-            "reason": "Big cash-out.",
-        },
-    )
-    assert resp.status_code == 401
-    assert resp.json()["error_code"] == "step_up_required"
-
-
-@pytest.mark.asyncio
-async def test_withdraw_step_up_accepts_valid_pin(
-    async_client: AsyncClient,
-    db_session: AsyncSession,
-    test_tenant: Tenant,
-    test_user: User,
-    admin_auth_header: dict[str, str],
-) -> None:
-    """Valid PIN unlocks the withdraw."""
-    from app.auth.hashing import hash_pin
-
-    await _seed_user_wallet_with_balance(
-        db_session, test_tenant, test_user, starting_balance=Decimal("1000")
-    )
-    await _seed_step_up_policy(db_session, test_tenant, threshold=Decimal("100"))
-    # Step-up verifies against users.pin_hash — set it for this test.
-    test_user.pin_hash = hash_pin("1234")
-    await db_session.commit()
-
-    resp = await async_client.post(
-        "/api/v1/treasury/withdraw",
-        headers=admin_auth_header,
-        json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
-            "amount": "200",
-            "currency": "ZAR",
-            "reason": "Big cash-out.",
-            "pin": "1234",
-        },
-    )
-    assert resp.status_code == 201, resp.text
-
-
-@pytest.mark.asyncio
-async def test_withdraw_step_up_rejects_wrong_pin(
-    async_client: AsyncClient,
-    db_session: AsyncSession,
-    test_tenant: Tenant,
-    test_user: User,
-    admin_auth_header: dict[str, str],
-) -> None:
-    """Wrong PIN → 401 invalid_step_up_pin; balance untouched."""
-    from app.auth.hashing import hash_pin
-
-    wallet = await _seed_user_wallet_with_balance(
-        db_session, test_tenant, test_user, starting_balance=Decimal("1000")
-    )
-    await _seed_step_up_policy(db_session, test_tenant, threshold=Decimal("100"))
-    test_user.pin_hash = hash_pin("1234")
-    await db_session.commit()
-
-    resp = await async_client.post(
-        "/api/v1/treasury/withdraw",
-        headers=admin_auth_header,
-        json={
-            "tenant_id": str(test_tenant.id),
-            "user_id": str(test_user.id),
-            "amount": "200",
-            "currency": "ZAR",
-            "reason": "Big cash-out.",
-            "pin": "9999",
-        },
-    )
-    assert resp.status_code == 401
-    assert resp.json()["error_code"] == "invalid_step_up_pin"
-
-    # Balance unchanged — no leg posted.
-    balance, _ = await derive_balance(db_session, wallet.id)
-    assert balance == Decimal("1000")
-
-
-@pytest.mark.asyncio
-async def test_withdraw_below_threshold_skips_step_up(
-    async_client: AsyncClient,
-    db_session: AsyncSession,
-    test_tenant: Tenant,
-    test_user: User,
-    admin_auth_header: dict[str, str],
-) -> None:
-    """Amount ≤ threshold → no PIN needed even though policy exists."""
+    """Admin treasury endpoints are PIN-less — an unknown 'pin' field is
+    rejected at validation rather than silently consumed."""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
-    await _seed_step_up_policy(db_session, test_tenant, threshold=Decimal("100"))
-
     resp = await async_client.post(
         "/api/v1/treasury/withdraw",
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
             "user_id": str(test_user.id),
-            "amount": "50",
+            "amount": "100",
             "currency": "ZAR",
-            "reason": "Small cash-out.",
+            "reason": "smoke test",
+            # Stray PIN field — Pydantic default ignores extras, so this
+            # asserts the *backend* does not act on it. The withdraw
+            # still completes 201.
+            "pin": "1234",
         },
     )
     assert resp.status_code == 201, resp.text

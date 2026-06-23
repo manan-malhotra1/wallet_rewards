@@ -444,8 +444,6 @@ export interface WithdrawFromUserPayload {
   amount: string;
   currency: string;
   reason: string;
-  /** Re-submitted user PIN when step-up is required. */
-  pin?: string;
 }
 
 /** Result type mirrors FundUserResponse (same shape — derived balance after the move). */

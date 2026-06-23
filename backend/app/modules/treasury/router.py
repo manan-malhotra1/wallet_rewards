@@ -105,9 +105,8 @@ async def post_withdraw_from_user(
 ) -> WithdrawFromUserResponse:
     """Admin pull-back — debits the user wallet, credits operator_adjustment.
 
-    Above the step-up threshold (per `step_up_policies`), the user's PIN
-    must be re-submitted via `request.pin`. The first call without a
-    PIN returns 401 step_up_required so the client can prompt.
+    PIN-less and fee-less by design: the operator's Keycloak session is
+    the authentication; PIN policies are user-initiated-transactions only.
     """
     return await withdraw_from_user(
         session,
@@ -116,7 +115,6 @@ async def post_withdraw_from_user(
         amount=request.amount,
         currency=request.currency,
         reason=request.reason,
-        pin=request.pin,
         admin=admin,
         ip_address=_client_ip(fastapi_request),
     )

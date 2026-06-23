@@ -27,7 +27,6 @@ from app.modules.ledger.service import (
     post_transaction,
 )
 from app.modules.payments.service import top_up
-from app.modules.step_up.service import enforce_step_up_for_user
 from app.modules.treasury.schemas import (
     AdjustSystemWalletResponse,
     FundUserResponse,
@@ -260,7 +259,6 @@ async def withdraw_from_user(
     currency: str,
     reason: str,
     admin: AdminPrincipal,
-    pin: str | None = None,
     ip_address: str | None = None,
 ) -> WithdrawFromUserResponse:
     """Admin debits a user's wallet and returns the funds to the operator pool.
@@ -269,18 +267,14 @@ async def withdraw_from_user(
     `operator_adjustment` system account. Both are real money moving back
     into the operator's cash float at the counter.
 
-    Step-up: if a `step_up_policies` row exists for (tenant, 'withdraw',
-    currency) with a threshold below the requested amount, the user's
-    PIN must be re-submitted via the `pin` parameter. The lockout
-    counter still tracks the user (NFR-0190).
+    Admin operations are PIN-less and fee-less: the operator's Keycloak
+    session is the only authentication. Step-up PIN policies apply to
+    user-initiated transactions (P2P, redemption) only — not admin moves.
 
     Args:
         tenant_id, user_id, amount, currency: Withdraw parameters.
         reason: Free-text reason, persisted in the audit row.
         admin: Authenticated admin initiating the action.
-        pin: Optional plain-text PIN — required when above the
-            step-up threshold; None on the first attempt to discover the
-            policy.
         ip_address: Caller IP for the audit row.
 
     Returns:
@@ -290,7 +284,6 @@ async def withdraw_from_user(
         TenantNotFound: tenant_id is unknown.
         AccountNotFound: user has no financial_wallet for this currency.
         InsufficientFunds: user balance < requested amount.
-        StepUpRequired / InvalidStepUpPin / user_locked_out: step-up failures.
 
     Side effects:
         Posts a balanced 2-leg transaction (transaction_type='withdraw').
@@ -321,20 +314,6 @@ async def withdraw_from_user(
     balance, reserved = await derive_balance(session, user_wallet.id)
     if (balance - reserved) < amount:
         raise InsufficientFunds()
-
-    # Step-up — looks up step_up_policies for (tenant, 'withdraw', currency).
-    # No-op when no policy or amount ≤ threshold.
-    await enforce_step_up_for_user(
-        session,
-        tenant_id=tenant_id,
-        user_id=user_id,
-        admin=admin,
-        transaction_type="withdraw",
-        currency=currency,
-        amount=amount,
-        pin=pin,
-        ip_address=ip_address,
-    )
 
     # Counter-leg is the operator_adjustment account — money flows back
     # into the operator's cash pool. Lazy-created per (tenant, currency).

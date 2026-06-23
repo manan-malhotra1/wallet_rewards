@@ -2,9 +2,8 @@
  * <WithdrawFromUserDialog> — admin pull-back form for the System Wallets page header.
  *
  * Mirrors FundUserDialog but in reverse: DEBIT user wallet, CREDIT
- * operator_adjustment. Above the step_up_policies threshold the
- * backend returns 401 step_up_required on the first submit; the dialog
- * reveals the PIN field and lets the operator resubmit.
+ * operator_adjustment. Admin operations are PIN-less (operator's
+ * Keycloak session is the only authentication) and fee-less.
  */
 "use client";
 
@@ -31,7 +30,6 @@ interface FormState {
   amount: string;
   currency: string;
   reason: string;
-  pin: string;
 }
 
 const INITIAL: FormState = {
@@ -39,7 +37,6 @@ const INITIAL: FormState = {
   amount: "",
   currency: "ZAR",
   reason: "",
-  pin: "",
 };
 
 export function WithdrawFromUserDialog({
@@ -58,14 +55,12 @@ export function WithdrawFromUserDialog({
   });
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [needsPin, setNeedsPin] = React.useState(false);
   const { toast } = useToast();
 
   React.useEffect(() => {
     if (!open) {
       setForm({ ...INITIAL, user_id: defaultUserId ?? "" });
       setError(null);
-      setNeedsPin(false);
     }
   }, [open, defaultUserId]);
 
@@ -87,10 +82,6 @@ export function WithdrawFromUserDialog({
       setError("Reason is required for the audit row.");
       return;
     }
-    if (needsPin && !form.pin.trim()) {
-      setError("Enter the user's PIN to confirm the withdraw.");
-      return;
-    }
 
     setSubmitting(true);
     const result = await withdrawFromUserAction({
@@ -99,26 +90,12 @@ export function WithdrawFromUserDialog({
       amount: form.amount,
       currency: form.currency.toUpperCase(),
       reason: form.reason,
-      pin: form.pin || undefined,
     });
     setSubmitting(false);
 
     if (result.ok) {
       toast({ title: "Withdraw posted", description: result.message });
       setOpen(false);
-      return;
-    }
-
-    if (result.errorCode === "step_up_required") {
-      setNeedsPin(true);
-      setError(
-        "This amount exceeds the step-up threshold. Ask the user for their PIN to continue.",
-      );
-      return;
-    }
-    if (result.errorCode === "invalid_step_up_pin") {
-      setError("PIN incorrect. Try again.");
-      setForm((prev) => ({ ...prev, pin: "" }));
       return;
     }
     setError(`${result.errorCode}: ${result.message}`);
@@ -132,7 +109,8 @@ export function WithdrawFromUserDialog({
           <DialogTitle>Withdraw from a user wallet</DialogTitle>
           <DialogDescription>
             Debits the user's wallet and credits operator_adjustment.
-            Above the step-up threshold the user's PIN is required.
+            Admin operations are PIN-less — your operator session is the
+            authentication.
           </DialogDescription>
         </DialogHeader>
 
@@ -183,25 +161,6 @@ export function WithdrawFromUserDialog({
               className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
-          {needsPin && (
-            <div>
-              <Label htmlFor="w-pin">User PIN</Label>
-              <Input
-                id="w-pin"
-                type="password"
-                inputMode="numeric"
-                value={form.pin}
-                onChange={(e) => update("pin", e.target.value)}
-                placeholder="••••"
-                maxLength={8}
-                className="mt-1 tracking-widest"
-                autoFocus
-              />
-              <p className="mt-1 text-[11px] text-[--color-text-3]">
-                Required because this amount is above the tenant's step-up threshold.
-              </p>
-            </div>
-          )}
           {error && <ErrorBanner title="Couldn't withdraw" description={error} />}
         </div>
 
@@ -210,7 +169,7 @@ export function WithdrawFromUserDialog({
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={submitting}>
-            {submitting ? "Withdrawing…" : needsPin ? "Confirm with PIN" : "Withdraw"}
+            {submitting ? "Withdrawing…" : "Withdraw"}
           </Button>
         </DialogFooter>
       </DialogContent>

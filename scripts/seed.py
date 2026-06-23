@@ -529,15 +529,6 @@ async def seed() -> None:
             currency="PTS",
             threshold_amount=Decimal("500"),
         )
-        # Withdraw mirrors p2p for a familiar dev experience — agents must
-        # re-PIN above R 200 to cash a user out at the counter.
-        await _get_or_create_step_up_policy(
-            session,
-            tenant,
-            transaction_type="withdraw",
-            currency="ZAR",
-            threshold_amount=Decimal("200"),
-        )
 
         # System-owned accounts for the tenant. We create the master
         # system_points_issuance account explicitly; provider_redemption_wallet

@@ -19,7 +19,8 @@ import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
 import { ApiError, RateLimited, StepUpRequired } from '@/lib/api/errors';
-import { newP2PIdempotencyKey, quoteP2P, sendP2P } from '@/lib/api/payments';
+import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
+import { quoteServiceFee } from '@/lib/api/pricing';
 import { getMyWallet } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
 import { maskPhone } from '@/lib/format';
@@ -70,8 +71,8 @@ export default function AmountScreen() {
   // tenant's pricing config). Quoted per entered amount; cached by react-query.
   const amountKey = parsed > 0 ? parsed.toFixed(2) : '';
   const { data: quote } = useQuery({
-    queryKey: ['p2p-quote', amountKey],
-    queryFn: () => quoteP2P(amountKey),
+    queryKey: ['fee-quote', 'p2p', amountKey],
+    queryFn: () => quoteServiceFee('p2p', amountKey),
     enabled: parsed > 0,
     staleTime: 60_000,
   });

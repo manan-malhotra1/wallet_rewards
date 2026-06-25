@@ -58,3 +58,43 @@ class FeePreviewResponse(BaseModel):
 
     fee: Decimal
     breakdown: dict[str, Decimal]
+
+
+class FeeQuoteRequest(BaseModel):
+    """User-facing request to preview the service charge for ANY service.
+
+    Service-agnostic by design: `service` is the service code, which is the
+    same value as `transaction_type` — the shared lookup key across
+    pricing_configs, rules, and transactions. Adding a new user service
+    (cash-in, airtime, redemption, ...) needs no new endpoint; the client
+    just passes that service's code here.
+
+    `account_type` is optional: when omitted it is derived from `currency`
+    (points instruments settle on the points account, everything else on the
+    financial wallet), which covers every current service. Pass it explicitly
+    only to override that default.
+    """
+
+    service: str = Field(min_length=1, max_length=50)
+    amount: Decimal = Field(gt=Decimal("0"))
+    currency: str = Field(min_length=3, max_length=3)
+    account_type: str | None = Field(default=None, max_length=30)
+
+
+class FeeQuoteResponse(BaseModel):
+    """Computed service charge for one service + amount (no ledger write).
+
+    Attributes:
+        service: Echoes the requested service code.
+        amount: The amount the operation would move (echoes the request).
+        fee: Service charge the user would pay on top (Pay-PRD-0260). Zero
+            when no pricing config applies to the tuple.
+        total: `amount + fee` — what would leave the user's account.
+        currency: 3-letter ISO 4217 (uppercase).
+    """
+
+    service: str
+    amount: Decimal
+    fee: Decimal
+    total: Decimal
+    currency: str

@@ -357,44 +357,6 @@ async def p2p_transfer(
     return txn, recipient_user_id, earned_points
 
 
-async def quote_p2p_fee(
-    session: AsyncSession,
-    *,
-    tenant_id: UUID,
-    amount: Decimal,
-    currency: str,
-) -> Decimal:
-    """Return the service charge a P2P transfer of `amount` would incur.
-
-    Read-only preview for the mobile confirmation screen — uses the exact
-    same pricing path as `p2p_transfer` so the quoted fee matches the fee
-    actually charged. Tenants without a pricing config pay no fee (legacy
-    pass-through), mirroring the transfer path.
-
-    Args:
-        tenant_id: Caller's tenant (resolved from the session token).
-        amount: The amount the recipient would receive.
-        currency: 3-letter ISO 4217.
-
-    Returns:
-        The fee as a Decimal; `Decimal("0")` when no pricing config applies.
-    """
-    from app.modules.pricing.service import calculate_fee  # noqa: PLC0415
-    from app.shared.exceptions import PricingConfigMissing  # noqa: PLC0415
-
-    try:
-        return await calculate_fee(
-            session,
-            tenant_id=tenant_id,
-            transaction_type="p2p",
-            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-            currency=currency,
-            amount=amount,
-        )
-    except PricingConfigMissing:
-        return Decimal("0")
-
-
 async def _get_or_create_system_cash_inflow(
     session: AsyncSession, tenant_id: UUID, currency: str
 ) -> Account:

@@ -483,6 +483,7 @@ async def _build_recent_txns_payload(
                 "transaction_type": t.transaction_type,
                 "status": t.status,
                 "amount": str(t.amount),
+                "fee_amount": str(t.fee_amount),
                 "currency": t.currency,
                 "created_at": t.created_at,
                 "direction": direction,

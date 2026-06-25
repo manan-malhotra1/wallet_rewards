@@ -47,6 +47,33 @@ class P2PRequest(BaseModel):
     pin: str | None = Field(default=None, min_length=4, max_length=12)
 
 
+class P2PQuoteRequest(BaseModel):
+    """Ask the backend what a P2P transfer of `amount` would cost.
+
+    Used by the mobile confirmation screen so the fee shown matches the
+    fee charged. `tenant_id` / sender come from the session token.
+    """
+
+    amount: Decimal = Field(gt=Decimal("0"))
+    currency: str = Field(min_length=3, max_length=3)
+
+
+class P2PQuoteResponse(BaseModel):
+    """Fee preview for a P2P transfer (no ledger write).
+
+    Attributes:
+        amount: The amount the recipient would receive (echoes the request).
+        fee: Service charge the sender would pay on top (Pay-PRD-0260).
+        total: `amount + fee` — what would leave the sender's wallet.
+        currency: 3-letter ISO 4217 (uppercase).
+    """
+
+    amount: Decimal
+    fee: Decimal
+    total: Decimal
+    currency: str
+
+
 class P2PResponse(BaseModel):
     """Result of a successful P2P transfer.
 
@@ -54,7 +81,12 @@ class P2PResponse(BaseModel):
         transaction_id: The double-entry transaction id (Pay-PRD-0170).
         status: Lifecycle state of the transaction ("COMPLETED" on the
             happy path).
-        amount: The transferred amount (echoes the request).
+        amount: The transferred amount the recipient receives (echoes the
+            request).
+        fee: Service charge debited from the sender on top of `amount`
+            (Pay-PRD-0260). Zero when no pricing config applies.
+        total_debited: What actually left the sender's wallet
+            (`amount + fee`) — saves the client doing the arithmetic.
         currency: 3-letter ISO 4217 (uppercase) — echoes the request.
         sender_user_id: The authenticated sender (resolved from the
             session token, NOT the request body).
@@ -70,6 +102,8 @@ class P2PResponse(BaseModel):
     transaction_id: UUID
     status: str
     amount: Decimal
+    fee: Decimal
+    total_debited: Decimal
     currency: str
     sender_user_id: UUID
     recipient_user_id: UUID

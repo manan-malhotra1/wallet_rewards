@@ -9,14 +9,21 @@ that triggers a third-party provisioning call) lives in
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import UserPrincipal
 from app.database import get_async_session
 from app.dependencies import get_current_user
-from app.modules.payments.schemas import P2PRequest, P2PResponse
-from app.modules.payments.service import p2p_transfer
+from app.modules.payments.schemas import (
+    P2PQuoteRequest,
+    P2PQuoteResponse,
+    P2PRequest,
+    P2PResponse,
+)
+from app.modules.payments.service import p2p_transfer, quote_p2p_fee
 
 router = APIRouter(prefix="/api/v1/payments", tags=["payments"])
 
@@ -68,13 +75,45 @@ async def post_p2p(
         ip_address=fastapi_request.client.host if fastapi_request.client else None,
     )
 
+    fee = Decimal(str(txn.fee_amount))
     return P2PResponse(
         transaction_id=txn.id,
         status=txn.status,
         amount=txn.amount,
+        fee=fee,
+        total_debited=Decimal(str(txn.amount)) + fee,
         currency=txn.currency,
         sender_user_id=user.id,
         recipient_user_id=recipient_user_id,
         created_at=txn.created_at,
         earned_points=earned_points,
+    )
+
+
+@router.post("/p2p/quote", response_model=P2PQuoteResponse)
+async def post_p2p_quote(
+    request: P2PQuoteRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: UserPrincipal = Depends(get_current_user),
+) -> P2PQuoteResponse:
+    """Preview the service charge for a P2P transfer before sending it.
+
+    Lets the mobile confirmation screen show the real fee + total instead
+    of guessing. Read-only — no ledger writes, no idempotency key. The
+    tenant is resolved from the session token.
+
+    Raises:
+        InvalidSession (401): session token unknown or expired.
+    """
+    fee = await quote_p2p_fee(
+        session,
+        tenant_id=user.tenant_id,
+        amount=request.amount,
+        currency=request.currency,
+    )
+    return P2PQuoteResponse(
+        amount=request.amount,
+        fee=fee,
+        total=request.amount + fee,
+        currency=request.currency.upper(),
     )

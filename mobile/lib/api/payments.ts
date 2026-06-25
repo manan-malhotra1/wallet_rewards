@@ -18,11 +18,37 @@ export interface P2PResponse {
   transaction_id: string;
   status: string;
   amount: string;
+  /** Service charge debited on top of `amount`. */
+  fee: string;
+  /** `amount + fee` — what actually left the sender's wallet. */
+  total_debited: string;
   currency: string;
   sender_user_id: string;
   recipient_user_id: string;
   created_at: string;
   earned_points: number | null;
+}
+
+/** Mirror of backend `P2PQuoteResponse` (payments/schemas.py). */
+export interface P2PQuote {
+  amount: string;
+  fee: string;
+  total: string;
+  currency: string;
+}
+
+/**
+ * Preview the service charge for a transfer before sending it.
+ * Read-only — drives the fee line on the amount/confirmation screen so the
+ * quoted fee matches what the backend will actually charge.
+ */
+export async function quoteP2P(amount: string): Promise<P2PQuote> {
+  return api<P2PQuote>({
+    path: '/api/v1/payments/p2p/quote',
+    method: 'POST',
+    body: { amount, currency: 'ZAR' },
+    withAuth: true,
+  });
 }
 
 interface P2PArgs {

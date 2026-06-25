@@ -24,6 +24,8 @@ export interface WalletTransaction {
   status: string;
   /** Always positive — direction is on the `direction` field. */
   amount: string;
+  /** Service charge debited with this transaction. "0" when none applied. */
+  fee_amount: string;
   currency: 'ZAR' | 'PTS' | string;
   created_at: string;
   /** CREDIT on the user's account → "in" (money/points received). DEBIT → "out". */

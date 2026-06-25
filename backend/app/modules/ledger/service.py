@@ -68,6 +68,10 @@ class PostTransactionRequest:
         initiated_by: Optional user_id; NULL for system-initiated.
         amount: The transaction's headline amount (typically equal to the
             largest single entry). Stored for fast filtering and display.
+        fee_amount: Service charge applied on top of `amount`, already
+            represented in `entries` as a sender→system_fee_collected leg.
+            Persisted on the transaction row so the fee is displayable
+            without re-deriving it from the ledger (Pay-PRD-0260).
         status: Initial status. Defaults to COMPLETED for synchronous flows;
             payments orchestrator passes PENDING for flows that need external calls.
     """
@@ -79,6 +83,7 @@ class PostTransactionRequest:
     entries: list[LedgerEntryRequest]
     initiated_by: UUID | None = None
     amount: Decimal | None = None
+    fee_amount: Decimal = Decimal("0")
     status: str = TXN_STATUS_COMPLETED
 
 
@@ -140,6 +145,7 @@ async def post_transaction(
         status=request.status,
         initiated_by=request.initiated_by,
         amount=headline_amount,
+        fee_amount=request.fee_amount,
         currency=request.currency.upper(),
     )
     session.add(txn)

@@ -19,7 +19,7 @@ import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
 import { ApiError, RateLimited, StepUpRequired } from '@/lib/api/errors';
-import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
+import { newP2PIdempotencyKey, quoteP2P, sendP2P } from '@/lib/api/payments';
 import { getMyWallet } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
 import { maskPhone } from '@/lib/format';
@@ -64,7 +64,22 @@ export default function AmountScreen() {
   );
   const available = parseFloat(zar?.available_balance ?? '0');
   const parsed = parseFloat(amount || '0');
-  const overdrawn = parsed > available;
+
+  // Live fee preview from the backend so the confirmation line matches what
+  // the sender is actually charged (the fee can be fixed or %-based per the
+  // tenant's pricing config). Quoted per entered amount; cached by react-query.
+  const amountKey = parsed > 0 ? parsed.toFixed(2) : '';
+  const { data: quote } = useQuery({
+    queryKey: ['p2p-quote', amountKey],
+    queryFn: () => quoteP2P(amountKey),
+    enabled: parsed > 0,
+    staleTime: 60_000,
+  });
+  const fee = quote ? parseFloat(quote.fee) : 0;
+  const total = parsed + fee;
+
+  // Overdraft must account for the fee — the wallet is debited amount + fee.
+  const overdrawn = total > available;
   const canContinue = parsed > 0 && !overdrawn && !busy;
   const display = splitAmount(amount);
 
@@ -260,9 +275,9 @@ export default function AmountScreen() {
               })}
             </XStack>
             <Text fontFamily="PlusJakartaSans-Medium" fontSize={12} color="#8a98a6" marginTop={16}>
-              Fee R 0.00 · Recipient gets{' '}
+              Fee R {fee.toFixed(2)} · You pay{' '}
               <Text fontFamily="PlusJakartaSans-Bold" color="#0c1b2a">
-                R {parsed.toFixed(2)}
+                R {total.toFixed(2)}
               </Text>
             </Text>
             {overdrawn ? (

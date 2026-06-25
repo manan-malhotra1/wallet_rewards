@@ -186,6 +186,8 @@ export interface UserTransaction {
   transaction_type: string;
   status: string;
   amount: string;
+  /** Service charge debited with this transaction. "0" when none applied. */
+  fee_amount: string;
   currency: string;
   created_at: string;
   direction: "in" | "out";

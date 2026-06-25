@@ -39,8 +39,11 @@ from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: 
 from app.modules.redemption.service import register_provider  # noqa: E402
 from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_PROVIDER_REDEMPTION,
+    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
     ExternalEventSource,
@@ -530,20 +533,35 @@ async def seed() -> None:
             threshold_amount=Decimal("500"),
         )
 
-        # System-owned accounts for the tenant. We create the master
-        # system_points_issuance account explicitly; provider_redemption_wallet
-        # is NOT created here — `register_provider()` later in this script
-        # auto-creates it as part of registering the sample provider
-        # (Pay-PRD-0730). Pre-0009 those two paths silently created two
-        # wallets; the uq_accounts_system_scoped index now enforces one.
-        await _get_or_create_account(
-            session,
-            tenant,
-            user=None,
-            account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
-            currency="PTS",
-            label="System Points Issuance (master)",
-        )
+        # System-owned accounts for the tenant. We pre-create every system
+        # wallet that platform activity would otherwise materialise lazily, so
+        # a freshly-seeded tenant shows the full set on the System Wallets page
+        # instead of a partial list that grows as transactions happen.
+        #
+        # provider_redemption_wallet is NOT created here — `register_provider()`
+        # later in this script auto-creates it as part of registering the
+        # sample provider (Pay-PRD-0730). Pre-0009 those two paths silently
+        # created two wallets; the uq_accounts_system_scoped index now enforces
+        # one. airtime_merchant_holding is intentionally omitted: the airtime
+        # module is deferred (Phase 2) and no code path issues it yet.
+        #
+        # All financial system wallets use the tenant's base currency (ZAR);
+        # the points pool uses PTS.
+        system_wallets = [
+            (ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE, "PTS", "System Points Issuance (master)"),
+            (ACCOUNT_TYPE_SYSTEM_CASH_INFLOW, "ZAR", "Cash float"),
+            (ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED, "ZAR", "Fees collected"),
+            (ACCOUNT_TYPE_OPERATOR_ADJUSTMENT, "ZAR", "Operator adjustments"),
+        ]
+        for account_type, currency, label in system_wallets:
+            await _get_or_create_account(
+                session,
+                tenant,
+                user=None,
+                account_type=account_type,
+                currency=currency,
+                label=label,
+            )
 
         # Users + their wallets + opening balances.
         for spec in USERS_TO_SEED:

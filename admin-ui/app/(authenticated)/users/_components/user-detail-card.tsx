@@ -334,6 +334,7 @@ export function UserDetailCard({
                   <TableHeaderCell>Direction</TableHeaderCell>
                   <TableHeaderCell>Counterparty</TableHeaderCell>
                   <TableHeaderCell className="text-right">Amount</TableHeaderCell>
+                  <TableHeaderCell className="text-right">Service charge</TableHeaderCell>
                   <TableHeaderCell>Currency</TableHeaderCell>
                   <TableHeaderCell>Txn ID</TableHeaderCell>
                   <TableHeaderCell>Status</TableHeaderCell>
@@ -372,6 +373,14 @@ export function UserDetailCard({
                           <Points amount={t.amount} />
                         ) : (
                           <Money amount={t.amount} currency={t.currency} />
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-muted-foreground">
+                        {/* Service charge only applies to financial (non-points) debits. */}
+                        {!isPoints && parseFloat(t.fee_amount) > 0 ? (
+                          <Money amount={t.fee_amount} currency={t.currency} />
+                        ) : (
+                          "—"
                         )}
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">

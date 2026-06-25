@@ -37,6 +37,7 @@ build/
 
 # Logs
 *.log
+*.log.err
 logs/
 
 # Local infra data

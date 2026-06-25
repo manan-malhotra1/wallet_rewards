@@ -59,7 +59,12 @@ function subtitleFor(t: WalletTransaction): string {
     minute: '2-digit',
   });
   const ref = transactionRef(t);
-  return `${ref} · ${time}`;
+  // Surface the service charge inline so the deduction is explained — the
+  // wallet was debited amount + fee, but the row's amount shows only the
+  // transfer. ZAR fees only; PTS movements never carry a charge.
+  const fee = parseFloat(t.fee_amount ?? '0');
+  const feeNote = fee > 0 ? ` · Fee R ${fee.toFixed(2)}` : '';
+  return `${ref} · ${time}${feeNote}`;
 }
 
 /** Format amount with sign + currency symbol. Returns ["+R 50.00", true]. */

@@ -139,6 +139,7 @@ class WalletTransactionOut(BaseModel):
     transaction_type: str
     status: str
     amount: str
+    fee_amount: str
     currency: str
     created_at: datetime
     direction: Literal["in", "out"]

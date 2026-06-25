@@ -4,15 +4,40 @@
  * `setActiveTenantAction`. Falls back to the first tenant the user has
  * access to when no cookie is present (first login).
  */
+import "server-only";
+
 import { cookies } from "next/headers";
+
+import { ApiError } from "@/lib/api";
+import { listTenants } from "@/lib/api-endpoints";
 
 const TENANT_COOKIE = "sasai_active_tenant";
 
 /**
- * Get the active tenant ID from the cookie. Returns null when no cookie
- * is set — callers should default to the first tenant in the list.
+ * Resolve the active tenant ID for the current operator.
+ *
+ * Reads the `sasai_active_tenant` cookie first. On first login the cookie
+ * is absent, so we fall back to the first tenant the operator can access —
+ * mirroring the layout's switcher default so tenant-scoped pages (e.g.
+ * system wallets) render real data instead of an empty "no tenant" state.
+ *
+ * Returns:
+ *   The active tenant UUID, or null only when the operator has no tenants
+ *   (or the backend is unreachable).
  */
 export async function getActiveTenantId(): Promise<string | null> {
   const store = await cookies();
-  return store.get(TENANT_COOKIE)?.value ?? null;
+  const fromCookie = store.get(TENANT_COOKIE)?.value;
+  if (fromCookie) return fromCookie;
+
+  // No cookie yet (first login): default to the operator's first tenant.
+  // Swallow API errors here so a backend hiccup degrades to "no tenant"
+  // rather than crashing every authenticated page.
+  try {
+    const tenants = await listTenants();
+    return tenants[0]?.id ?? null;
+  } catch (err) {
+    if (err instanceof ApiError) return null;
+    throw err;
+  }
 }

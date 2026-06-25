@@ -47,33 +47,6 @@ class P2PRequest(BaseModel):
     pin: str | None = Field(default=None, min_length=4, max_length=12)
 
 
-class P2PQuoteRequest(BaseModel):
-    """Ask the backend what a P2P transfer of `amount` would cost.
-
-    Used by the mobile confirmation screen so the fee shown matches the
-    fee charged. `tenant_id` / sender come from the session token.
-    """
-
-    amount: Decimal = Field(gt=Decimal("0"))
-    currency: str = Field(min_length=3, max_length=3)
-
-
-class P2PQuoteResponse(BaseModel):
-    """Fee preview for a P2P transfer (no ledger write).
-
-    Attributes:
-        amount: The amount the recipient would receive (echoes the request).
-        fee: Service charge the sender would pay on top (Pay-PRD-0260).
-        total: `amount + fee` — what would leave the sender's wallet.
-        currency: 3-letter ISO 4217 (uppercase).
-    """
-
-    amount: Decimal
-    fee: Decimal
-    total: Decimal
-    currency: str
-
-
 class P2PResponse(BaseModel):
     """Result of a successful P2P transfer.
 

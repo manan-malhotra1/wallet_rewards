@@ -29,6 +29,8 @@ from app.shared.exceptions import (
     TenantNotFound,
 )
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
     Account,
     PricingConfig,
@@ -122,6 +124,64 @@ async def calculate_fee(
 
     fee = (fixed + variable).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
     return fee
+
+
+def account_type_for_currency(currency: str) -> str:
+    """Default the fee's account scope from the currency.
+
+    Points instruments (PTS) settle on the points account; every other
+    currency on the financial wallet. This covers all current services
+    (p2p / cash-in / withdraw / airtime → financial_wallet; redemption →
+    points_account). Callers needing a different scope pass `account_type`
+    explicitly to `quote_fee`.
+    """
+    return (
+        ACCOUNT_TYPE_POINTS
+        if currency.upper() == "PTS"
+        else ACCOUNT_TYPE_FINANCIAL_WALLET
+    )
+
+
+async def quote_fee(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    service: str,
+    amount: Decimal,
+    currency: str,
+    account_type: str | None = None,
+) -> Decimal:
+    """Preview the service charge for ANY service + amount (read-only).
+
+    Service-agnostic: `service` is the service code, which equals the
+    `transaction_type` pricing/rules/transactions are keyed on — so one
+    quote path serves every user service, present and future. Uses the same
+    `calculate_fee()` the real transaction runs, guaranteeing the quoted fee
+    equals the charged fee.
+
+    Args:
+        tenant_id: Caller's tenant (resolved from the session token).
+        service: The service code (== transaction_type), e.g. 'p2p'.
+        amount: The amount the operation would move.
+        currency: 3-letter ISO 4217 (or 'PTS').
+        account_type: Optional override; defaults via `account_type_for_currency`.
+
+    Returns:
+        The fee as a Decimal; `Decimal("0")` when no pricing config applies
+        (legacy pass-through, mirroring the transaction paths).
+    """
+    resolved_account_type = account_type or account_type_for_currency(currency)
+    try:
+        return await calculate_fee(
+            session,
+            tenant_id=tenant_id,
+            transaction_type=service,
+            account_type=resolved_account_type,
+            currency=currency,
+            amount=amount,
+        )
+    except PricingConfigMissing:
+        return Decimal("0")
 
 
 # -----------------------------------------------------------------------------

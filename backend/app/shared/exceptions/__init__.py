@@ -8,6 +8,7 @@ FastAPI exception handler converts them into the standard error envelope:
 Never include PII, stack traces, or internal IDs in the message — see
 NFR-0170 and `.claude/rules/compliance-fintech.md`.
 """
+
 from __future__ import annotations
 
 from fastapi import HTTPException
@@ -311,9 +312,7 @@ class RedemptionProviderNotFound(AppHTTPException):
     """No redemption provider with the given id in this tenant."""
 
     def __init__(self) -> None:
-        super().__init__(
-            404, "provider_not_found", "Redemption provider not found."
-        )
+        super().__init__(404, "provider_not_found", "Redemption provider not found.")
 
 
 class RedemptionProviderInactive(AppHTTPException):
@@ -331,9 +330,7 @@ class RedemptionNotFound(AppHTTPException):
     """No redemption with the given id in this tenant."""
 
     def __init__(self) -> None:
-        super().__init__(
-            404, "redemption_not_found", "Redemption not found."
-        )
+        super().__init__(404, "redemption_not_found", "Redemption not found.")
 
 
 class RedemptionNotPending(AppHTTPException):
@@ -505,9 +502,7 @@ class InvalidCredentials(AppHTTPException):
     """PIN doesn't match. Generic message — never leak which side was wrong."""
 
     def __init__(self) -> None:
-        super().__init__(
-            401, "invalid_credentials", "Phone or PIN is incorrect."
-        )
+        super().__init__(401, "invalid_credentials", "Phone or PIN is incorrect.")
 
 
 class AccountLocked(AppHTTPException):
@@ -683,6 +678,50 @@ class DailyValueExceeded(AppHTTPException):
         )
 
 
+class WeeklyCountExceeded(AppHTTPException):
+    """User has already hit the rolling-7d transaction count cap (WAL-234)."""
+
+    def __init__(self, cap: int) -> None:
+        super().__init__(
+            429,
+            "weekly_count_exceeded",
+            f"Weekly transaction count of {cap} already reached.",
+        )
+
+
+class WeeklyValueExceeded(AppHTTPException):
+    """This transaction would push the rolling-7d value past the cap (WAL-234)."""
+
+    def __init__(self, cap: str) -> None:
+        super().__init__(
+            429,
+            "weekly_value_exceeded",
+            f"Weekly value cap of {cap} would be exceeded.",
+        )
+
+
+class MonthlyCountExceeded(AppHTTPException):
+    """User has already hit the rolling-30d transaction count cap (WAL-234)."""
+
+    def __init__(self, cap: int) -> None:
+        super().__init__(
+            429,
+            "monthly_count_exceeded",
+            f"Monthly transaction count of {cap} already reached.",
+        )
+
+
+class MonthlyValueExceeded(AppHTTPException):
+    """This transaction would push the rolling-30d value past the cap (WAL-234)."""
+
+    def __init__(self, cap: str) -> None:
+        super().__init__(
+            429,
+            "monthly_value_exceeded",
+            f"Monthly value cap of {cap} would be exceeded.",
+        )
+
+
 class PricingConfigMissing(AppHTTPException):
     """No pricing config for this (tenant, txn-type, account, currency) (WAL-52).
 
@@ -717,9 +756,7 @@ class PricingConfigNotFound(AppHTTPException):
     """The referenced pricing config row doesn't exist or belongs to a different tenant."""
 
     def __init__(self) -> None:
-        super().__init__(
-            404, "pricing_config_not_found", "Pricing config not found."
-        )
+        super().__init__(404, "pricing_config_not_found", "Pricing config not found.")
 
 
 # --- Step-up PIN ----------------------------------------------------------
@@ -745,18 +782,14 @@ class InvalidStepUpPin(AppHTTPException):
     """PIN supplied for step-up did not match the user's stored hash."""
 
     def __init__(self) -> None:
-        super().__init__(
-            401, "invalid_step_up_pin", "Incorrect PIN. Please try again."
-        )
+        super().__init__(401, "invalid_step_up_pin", "Incorrect PIN. Please try again.")
 
 
 class StepUpPolicyNotFound(AppHTTPException):
     """The referenced step-up policy doesn't exist or belongs to another tenant."""
 
     def __init__(self) -> None:
-        super().__init__(
-            404, "step_up_policy_not_found", "Step-up policy not found."
-        )
+        super().__init__(404, "step_up_policy_not_found", "Step-up policy not found.")
 
 
 # --- Airtime recharge ----------------------------------------------------
@@ -766,9 +799,7 @@ class AirtimeRechargeNotFound(AppHTTPException):
     """Unknown airtime_recharge_id, or one belonging to another tenant."""
 
     def __init__(self) -> None:
-        super().__init__(
-            404, "airtime_recharge_not_found", "Airtime recharge not found."
-        )
+        super().__init__(404, "airtime_recharge_not_found", "Airtime recharge not found.")
 
 
 class AirtimeRechargeAlreadySettled(AppHTTPException):

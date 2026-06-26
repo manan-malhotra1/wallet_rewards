@@ -1,16 +1,18 @@
-"""Limits service — Phase G.2 (WAL-51).
+"""Limits service — Phase G.2 (WAL-51) + weekly/monthly windows (WAL-234).
 
 Two surfaces:
   - `check_limits()` — called inline by the payment orchestration BEFORE
-    the ledger write. Rejects min/max breaches AND aggregate rolling-24h
-    caps. No-op when no matching limit config exists (graceful pass-through).
+    the ledger write. Rejects min/max breaches AND aggregate rolling count/
+    value caps over daily/weekly/monthly windows. No-op when no matching
+    limit config exists (graceful pass-through).
   - Admin CRUD for limit configs.
 
 Aggregate caps are computed live from `transactions` (the source of truth)
-— no separate counter table. The query window is "rolling 24h from the
-DB's NOW()", not calendar-day, to defeat the midnight-trickle attack
-listed in the threat model.
+— no separate counter table. The windows are "rolling 24h / 7d / 30d from
+the DB's NOW()", not calendar boundaries, to defeat the midnight/month-edge
+trickle attack listed in the threat model.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -31,7 +33,11 @@ from app.shared.exceptions import (
     DailyCountExceeded,
     DailyValueExceeded,
     LimitConfigNotFound,
+    MonthlyCountExceeded,
+    MonthlyValueExceeded,
     TenantNotFound,
+    WeeklyCountExceeded,
+    WeeklyValueExceeded,
 )
 from app.shared.models import (
     LimitConfig,
@@ -68,6 +74,66 @@ async def _find_limit_config(
     return result.scalar_one_or_none()
 
 
+# Rolling windows checked by `check_limits`, widest last. Each tuple is
+# (config count-cap attr, config value-cap attr, window length, count
+# exception, value exception). All windows are rolling from DB-time NOW(),
+# not calendar boundaries — defeats the midnight/month-edge trickle attack.
+_WINDOW_SPECS = (
+    (
+        "daily_count_cap",
+        "daily_value_cap",
+        timedelta(hours=24),
+        DailyCountExceeded,
+        DailyValueExceeded,
+    ),
+    (
+        "weekly_count_cap",
+        "weekly_value_cap",
+        timedelta(days=7),
+        WeeklyCountExceeded,
+        WeeklyValueExceeded,
+    ),
+    (
+        "monthly_count_cap",
+        "monthly_value_cap",
+        timedelta(days=30),
+        MonthlyCountExceeded,
+        MonthlyValueExceeded,
+    ),
+)
+
+
+async def _aggregate_user_txns(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    transaction_type: str,
+    window_floor: datetime,
+) -> tuple[int, Decimal]:
+    """Return (count, summed amount) of this user's matching COMPLETED txns.
+
+    Counts only transactions this user originated (`initiated_by`) of the
+    given `transaction_type`, in this tenant, with status COMPLETED, created
+    at or after `window_floor`. The single source of truth for every rolling
+    window (daily/weekly/monthly) — the caller just varies the floor.
+    """
+    agg = await session.execute(
+        select(
+            func.count(Transaction.id),
+            func.coalesce(func.sum(Transaction.amount), 0),
+        ).where(
+            Transaction.tenant_id == tenant_id,
+            Transaction.initiated_by == user_id,
+            Transaction.transaction_type == transaction_type,
+            Transaction.status == TXN_STATUS_COMPLETED,
+            Transaction.created_at >= window_floor,
+        )
+    )
+    row = agg.one()
+    return int(row[0] or 0), Decimal(str(row[1] or 0))
+
+
 # -----------------------------------------------------------------------------
 # Pre-write check
 # -----------------------------------------------------------------------------
@@ -89,9 +155,11 @@ async def check_limits(
     Looked-up tuple: (tenant_id, transaction_type, account_type, currency).
     When no row exists the check is a no-op — operators opt-in.
 
-    Rolling-24h aggregates count only this user's COMPLETED transactions
-    of the same `transaction_type` originating from them
-    (transactions.initiated_by == user_id).
+    Rolling aggregates (daily=24h, weekly=7d, monthly=30d) count only this
+    user's COMPLETED transactions of the same `transaction_type` originating
+    from them (transactions.initiated_by == user_id). A window is only
+    queried when it has at least one cap set, so operators who configure just
+    min/max — or only some windows — pay no extra query cost.
 
     Args:
         session: Async DB session.
@@ -105,7 +173,7 @@ async def check_limits(
 
     Raises:
         AmountBelowMin / AmountAboveMax: 422.
-        DailyCountExceeded / DailyValueExceeded: 429.
+        Daily/Weekly/Monthly Count/Value Exceeded: 429.
     """
     config = await _find_limit_config(
         session,
@@ -123,39 +191,25 @@ async def check_limits(
     if config.max_amount is not None and amount > Decimal(str(config.max_amount)):
         raise AmountAboveMax(str(config.max_amount))
 
-    # Rolling-24h aggregates. Only computed when at least one daily cap
-    # exists — avoids the table scan when the operator only set min/max.
-    if config.daily_count_cap is None and config.daily_value_cap is None:
-        return
-
+    # Rolling count/value caps per window (daily/weekly/monthly).
     current = now or datetime.now(UTC)
-    window_floor = current - timedelta(hours=24)
-    agg = await session.execute(
-        select(
-            func.count(Transaction.id).label("count"),
-            func.coalesce(func.sum(Transaction.amount), 0).label("total"),
-        ).where(
-            Transaction.tenant_id == tenant_id,
-            Transaction.initiated_by == user_id,
-            Transaction.transaction_type == transaction_type,
-            Transaction.status == TXN_STATUS_COMPLETED,
-            Transaction.created_at >= window_floor,
-        )
-    )
-    row = agg.one()
-    existing_count = int(row.count or 0)
-    existing_total = Decimal(str(row.total or 0))
+    for count_attr, value_attr, window_len, count_exc, value_exc in _WINDOW_SPECS:
+        count_cap = getattr(config, count_attr)
+        value_cap = getattr(config, value_attr)
+        if count_cap is None and value_cap is None:
+            continue  # Window not configured — skip the query.
 
-    if (
-        config.daily_count_cap is not None
-        and existing_count + 1 > int(config.daily_count_cap)
-    ):
-        raise DailyCountExceeded(int(config.daily_count_cap))
-    if (
-        config.daily_value_cap is not None
-        and existing_total + amount > Decimal(str(config.daily_value_cap))
-    ):
-        raise DailyValueExceeded(str(config.daily_value_cap))
+        existing_count, existing_total = await _aggregate_user_txns(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            transaction_type=transaction_type,
+            window_floor=current - window_len,
+        )
+        if count_cap is not None and existing_count + 1 > int(count_cap):
+            raise count_exc(int(count_cap))
+        if value_cap is not None and existing_total + amount > Decimal(str(value_cap)):
+            raise value_exc(str(value_cap))
 
 
 # -----------------------------------------------------------------------------
@@ -209,17 +263,11 @@ async def create_limit_config(
                 "transaction_type": config.transaction_type,
                 "account_type": config.account_type,
                 "currency": config.currency,
-                "min_amount": (
-                    str(config.min_amount) if config.min_amount is not None else None
-                ),
-                "max_amount": (
-                    str(config.max_amount) if config.max_amount is not None else None
-                ),
+                "min_amount": (str(config.min_amount) if config.min_amount is not None else None),
+                "max_amount": (str(config.max_amount) if config.max_amount is not None else None),
                 "daily_count_cap": config.daily_count_cap,
                 "daily_value_cap": (
-                    str(config.daily_value_cap)
-                    if config.daily_value_cap is not None
-                    else None
+                    str(config.daily_value_cap) if config.daily_value_cap is not None else None
                 ),
             },
             ip_address=ip_address,
@@ -230,9 +278,7 @@ async def create_limit_config(
     return config
 
 
-async def list_limit_configs(
-    session: AsyncSession, tenant_id: UUID
-) -> list[LimitConfig]:
+async def list_limit_configs(session: AsyncSession, tenant_id: UUID) -> list[LimitConfig]:
     """Return every limit config in a tenant, newest-first."""
     result = await session.execute(
         select(LimitConfig)

@@ -27,7 +27,7 @@ from app.shared.models.budgets import (
     BUDGET_WINDOW_ROLLING_24H,
     RewardBudget,
 )
-from app.shared.models.limits import LimitConfig
+from app.shared.models.limits import LimitConfig, WalletLimitConfig
 from app.shared.models.multipliers import BonusMultiplier
 from app.shared.models.pricing import PricingConfig
 from app.shared.models.instruments import (
@@ -147,6 +147,7 @@ __all__ = [
     # Money controls (Phase G)
     "RewardBudget",
     "LimitConfig",
+    "WalletLimitConfig",
     "PricingConfig",
     "StepUpPolicy",
     "Segment",

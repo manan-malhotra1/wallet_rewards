@@ -4,6 +4,7 @@ Implements PRD Module 9. Phase C uses `first_time` and `milestone` rule types
 only; the full 7-type schema is created up front so future rule types need
 only evaluator additions, not schema migrations.
 """
+
 import uuid
 from datetime import date, datetime
 
@@ -81,8 +82,7 @@ class Rule(Base):
             name="ck_rules_status",
         ),
         CheckConstraint(
-            "time_window IS NULL OR time_window IN "
-            "('lifetime', 'calendar_month', 'rolling_7d')",
+            "time_window IS NULL OR time_window IN ('lifetime', 'calendar_month', 'rolling_7d')",
             name="ck_rules_time_window",
         ),
         CheckConstraint(
@@ -124,12 +124,12 @@ class Rule(Base):
     # Composite (deferred — schema only)
     composite_operator: Mapped[str | None] = mapped_column(String(5), nullable=True)
 
-    # Segment binding (deferred — segments table doesn't exist yet)
-    segment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="active"
+    # Segment binding — FK to segments.id (constraint added in migration 0014).
+    segment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("segments.id"), nullable=True
     )
+
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
 
@@ -146,9 +146,7 @@ class RuleCondition(Base):
     transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
     count_threshold: Mapped[int] = mapped_column(Integer, nullable=False)
     min_amount: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
-    sort_order: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
 
 class UserRuleProgress(Base):
@@ -170,27 +168,17 @@ class UserRuleProgress(Base):
     rule_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("rules.id"), nullable=False
     )
-    current_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
-    current_streak: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
-    trigger_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
+    current_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    current_streak: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    trigger_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     last_triggered_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
     last_qualifying_event_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    window_start: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="active"
-    )
+    window_start: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     updated_at: Mapped[datetime] = updated_at_col()
 
     rule: Mapped[Rule] = relationship()

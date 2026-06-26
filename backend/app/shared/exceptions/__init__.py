@@ -722,6 +722,22 @@ class MonthlyValueExceeded(AppHTTPException):
         )
 
 
+class WalletSendLimitExceeded(AppHTTPException):
+    """A cumulative wallet SEND cap would be breached (WAL-235).
+
+    Spans every service for the user's financial wallet (not per
+    transaction_type). `window` is daily/weekly/monthly and `axis` is
+    count/value, yielding error codes like `wallet_send_weekly_value_exceeded`.
+    """
+
+    def __init__(self, window: str, axis: str, cap: str) -> None:
+        super().__init__(
+            429,
+            f"wallet_send_{window}_{axis}_exceeded",
+            f"Wallet {window} send {axis} cap of {cap} would be exceeded.",
+        )
+
+
 class PricingConfigMissing(AppHTTPException):
     """No pricing config for this (tenant, txn-type, account, currency) (WAL-52).
 

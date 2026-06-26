@@ -214,8 +214,13 @@ async def p2p_transfer(
     await _lock_account_for_update(session, sender_wallet.id)
 
     # 6. Limits check (Phase G.2, Pay-PRD-0260 step 2). Throws on min/max
-    # or rolling-24h cap breach. No-op when no config exists.
-    from app.modules.limits.service import check_limits  # noqa: PLC0415
+    # or rolling cap breach. No-op when no config exists. Two independent
+    # layers: the service-wise (p2p) cap, then the cross-service cumulative
+    # wallet SEND cap (WAL-235).
+    from app.modules.limits.service import (  # noqa: PLC0415
+        check_limits,
+        check_wallet_send_limits,
+    )
 
     await check_limits(
         session,
@@ -223,6 +228,13 @@ async def p2p_transfer(
         user_id=sender_user_id,
         transaction_type="p2p",
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency=currency,
+        amount=amount,
+    )
+    await check_wallet_send_limits(
+        session,
+        tenant_id=tenant_id,
+        user_id=sender_user_id,
         currency=currency,
         amount=amount,
     )

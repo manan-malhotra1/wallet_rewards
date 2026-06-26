@@ -36,14 +36,20 @@ from app.shared.exceptions import (
     MonthlyCountExceeded,
     MonthlyValueExceeded,
     TenantNotFound,
+    WalletSendLimitExceeded,
     WeeklyCountExceeded,
     WeeklyValueExceeded,
 )
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ENTRY_DEBIT,
+    Account,
+    LedgerEntry,
     LimitConfig,
     Tenant,
     Transaction,
     TXN_STATUS_COMPLETED,
+    WalletLimitConfig,
 )
 
 
@@ -210,6 +216,141 @@ async def check_limits(
             raise count_exc(int(count_cap))
         if value_cap is not None and existing_total + amount > Decimal(str(value_cap)):
             raise value_exc(str(value_cap))
+
+
+# -----------------------------------------------------------------------------
+# Wallet-level cumulative SEND check (WAL-235)
+# -----------------------------------------------------------------------------
+
+# Rolling send windows: (label, count-cap attr, value-cap attr, window length).
+# Labels feed the WalletSendLimitExceeded error code.
+_WALLET_SEND_WINDOWS = (
+    ("daily", "send_daily_count_cap", "send_daily_value_cap", timedelta(hours=24)),
+    ("weekly", "send_weekly_count_cap", "send_weekly_value_cap", timedelta(days=7)),
+    ("monthly", "send_monthly_count_cap", "send_monthly_value_cap", timedelta(days=30)),
+)
+
+
+async def _find_wallet_limit_config(
+    session: AsyncSession, *, tenant_id: UUID, currency: str
+) -> WalletLimitConfig | None:
+    """Return the (tenant, currency) wallet limit config, or None (pass-through)."""
+    result = await session.execute(
+        select(WalletLimitConfig).where(
+            WalletLimitConfig.tenant_id == tenant_id,
+            WalletLimitConfig.currency == currency.upper(),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _user_financial_wallet_id(
+    session: AsyncSession, *, tenant_id: UUID, user_id: UUID, currency: str
+) -> UUID | None:
+    """Return the user's financial_wallet account id for this currency, or None."""
+    result = await session.execute(
+        select(Account.id).where(
+            Account.tenant_id == tenant_id,
+            Account.user_id == user_id,
+            Account.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+            Account.currency == currency.upper(),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _aggregate_wallet_sends(
+    session: AsyncSession, *, tenant_id: UUID, wallet_id: UUID, window_floor: datetime
+) -> tuple[int, Decimal]:
+    """Return (count, summed principal) of sends from `wallet_id` since the floor.
+
+    A "send" is a COMPLETED transaction with a DEBIT leg on the wallet. We sum
+    `transactions.amount` (the principal) — NOT the ledger debit amounts — so
+    the service charge leg is excluded. An EXISTS subquery counts each
+    transaction once even though a send debits the wallet twice (principal +
+    fee).
+    """
+    has_debit_leg = (
+        select(LedgerEntry.id)
+        .where(
+            LedgerEntry.transaction_id == Transaction.id,
+            LedgerEntry.account_id == wallet_id,
+            LedgerEntry.entry_type == ENTRY_DEBIT,
+        )
+        .exists()
+    )
+    agg = await session.execute(
+        select(
+            func.count(Transaction.id),
+            func.coalesce(func.sum(Transaction.amount), 0),
+        ).where(
+            Transaction.tenant_id == tenant_id,
+            Transaction.status == TXN_STATUS_COMPLETED,
+            Transaction.created_at >= window_floor,
+            has_debit_leg,
+        )
+    )
+    row = agg.one()
+    return int(row[0] or 0), Decimal(str(row[1] or 0))
+
+
+async def check_wallet_send_limits(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    currency: str,
+    amount: Decimal,
+    now: datetime | None = None,
+) -> None:
+    """Raise if `amount` would breach a cumulative wallet SEND cap (WAL-235).
+
+    Per-(tenant, currency) caps spanning every service for the user's financial
+    wallet — independent of the per-transaction-type `check_limits`. Cumulative
+    send = COMPLETED financial-wallet DEBIT activity in the rolling window,
+    measured by transaction principal (fees excluded). No-op when no wallet
+    limit config exists or the relevant window caps are NULL. Financial wallets
+    only (points/redemption never reach here).
+
+    Args:
+        tenant_id: Tenant scope.
+        user_id: The sender — subject of the cumulative caps.
+        currency: The financial wallet currency (e.g. 'ZAR').
+        amount: The principal about to be sent.
+        now: Override for tests.
+
+    Raises:
+        WalletSendLimitExceeded: 429 — a daily/weekly/monthly count or value
+            cap would be breached.
+    """
+    config = await _find_wallet_limit_config(session, tenant_id=tenant_id, currency=currency)
+    if config is None:
+        return  # No config = no wallet limit (intentional pass-through).
+
+    wallet_id = await _user_financial_wallet_id(
+        session, tenant_id=tenant_id, user_id=user_id, currency=currency
+    )
+    current = now or datetime.now(UTC)
+    for label, count_attr, value_attr, window_len in _WALLET_SEND_WINDOWS:
+        count_cap = getattr(config, count_attr)
+        value_cap = getattr(config, value_attr)
+        if count_cap is None and value_cap is None:
+            continue
+
+        # No wallet yet → no prior sends, but the current send is still checked.
+        if wallet_id is None:
+            existing_count, existing_total = 0, Decimal("0")
+        else:
+            existing_count, existing_total = await _aggregate_wallet_sends(
+                session,
+                tenant_id=tenant_id,
+                wallet_id=wallet_id,
+                window_floor=current - window_len,
+            )
+        if count_cap is not None and existing_count + 1 > int(count_cap):
+            raise WalletSendLimitExceeded(label, "count", str(int(count_cap)))
+        if value_cap is not None and existing_total + amount > Decimal(str(value_cap)):
+            raise WalletSendLimitExceeded(label, "value", str(value_cap))
 
 
 # -----------------------------------------------------------------------------

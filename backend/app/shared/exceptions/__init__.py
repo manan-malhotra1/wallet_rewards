@@ -738,6 +738,65 @@ class WalletSendLimitExceeded(AppHTTPException):
         )
 
 
+class WalletReceiveLimitExceeded(AppHTTPException):
+    """A cumulative wallet RECEIVE cap would be breached (WAL-236).
+
+    Owner-facing (e.g. a top-up to your own wallet). `window` is
+    daily/weekly/monthly and `axis` is count/value, yielding codes like
+    `wallet_receive_monthly_count_exceeded`.
+    """
+
+    def __init__(self, window: str, axis: str, cap: str) -> None:
+        super().__init__(
+            429,
+            f"wallet_receive_{window}_{axis}_exceeded",
+            f"Wallet {window} receive {axis} cap of {cap} would be exceeded.",
+        )
+
+
+class MaxBalanceExceeded(AppHTTPException):
+    """A credit would push the wallet past its max-balance ceiling (WAL-236).
+
+    Owner-facing — the account holder is told their own cap.
+    """
+
+    def __init__(self, cap: str) -> None:
+        super().__init__(
+            409,
+            "max_balance_exceeded",
+            f"Wallet max balance of {cap} would be exceeded.",
+        )
+
+
+class RecipientLimitReached(AppHTTPException):
+    """A P2P transfer would breach the RECIPIENT's receive cap (WAL-236).
+
+    Sender-facing and deliberately detail-free: the recipient is not notified
+    and no recipient state (which cap, current balance) is leaked.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "recipient_limit_reached",
+            "Recipient cannot receive this transfer right now.",
+        )
+
+
+class RecipientMaxBalanceExceeded(AppHTTPException):
+    """A P2P transfer would push the RECIPIENT past their max balance (WAL-236).
+
+    Sender-facing and detail-free (see `RecipientLimitReached`).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "recipient_max_balance_exceeded",
+            "Recipient cannot receive this transfer.",
+        )
+
+
 class PricingConfigMissing(AppHTTPException):
     """No pricing config for this (tenant, txn-type, account, currency) (WAL-52).
 

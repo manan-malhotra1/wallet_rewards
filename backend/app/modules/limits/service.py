@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
+from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_admin
 from app.modules.limits.schemas import LimitConfigCreateRequest
 from app.shared.exceptions import (
@@ -33,15 +34,20 @@ from app.shared.exceptions import (
     DailyCountExceeded,
     DailyValueExceeded,
     LimitConfigNotFound,
+    MaxBalanceExceeded,
     MonthlyCountExceeded,
     MonthlyValueExceeded,
+    RecipientLimitReached,
+    RecipientMaxBalanceExceeded,
     TenantNotFound,
+    WalletReceiveLimitExceeded,
     WalletSendLimitExceeded,
     WeeklyCountExceeded,
     WeeklyValueExceeded,
 )
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ENTRY_CREDIT,
     ENTRY_DEBIT,
     Account,
     LedgerEntry,
@@ -219,16 +225,36 @@ async def check_limits(
 
 
 # -----------------------------------------------------------------------------
-# Wallet-level cumulative SEND check (WAL-235)
+# Wallet-level cumulative SEND / RECEIVE checks (WAL-235, WAL-236)
 # -----------------------------------------------------------------------------
 
-# Rolling send windows: (label, count-cap attr, value-cap attr, window length).
-# Labels feed the WalletSendLimitExceeded error code.
-_WALLET_SEND_WINDOWS = (
-    ("daily", "send_daily_count_cap", "send_daily_value_cap", timedelta(hours=24)),
-    ("weekly", "send_weekly_count_cap", "send_weekly_value_cap", timedelta(days=7)),
-    ("monthly", "send_monthly_count_cap", "send_monthly_value_cap", timedelta(days=30)),
-)
+
+def _wallet_windows(direction: str) -> tuple[tuple[str, str, str, timedelta], ...]:
+    """Build the rolling-window specs for a direction ('send' or 'receive').
+
+    Each tuple is (window label, count-cap attr, value-cap attr, window length).
+    The label feeds the Wallet{Send,Receive}LimitExceeded error code.
+    """
+    return (
+        (
+            "daily",
+            f"{direction}_daily_count_cap",
+            f"{direction}_daily_value_cap",
+            timedelta(hours=24),
+        ),
+        (
+            "weekly",
+            f"{direction}_weekly_count_cap",
+            f"{direction}_weekly_value_cap",
+            timedelta(days=7),
+        ),
+        (
+            "monthly",
+            f"{direction}_monthly_count_cap",
+            f"{direction}_monthly_value_cap",
+            timedelta(days=30),
+        ),
+    )
 
 
 async def _find_wallet_limit_config(
@@ -259,23 +285,28 @@ async def _user_financial_wallet_id(
     return result.scalar_one_or_none()
 
 
-async def _aggregate_wallet_sends(
-    session: AsyncSession, *, tenant_id: UUID, wallet_id: UUID, window_floor: datetime
+async def _aggregate_wallet_movement(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    wallet_id: UUID,
+    entry_type: str,
+    window_floor: datetime,
 ) -> tuple[int, Decimal]:
-    """Return (count, summed principal) of sends from `wallet_id` since the floor.
+    """Return (count, summed principal) of movements on `wallet_id` since the floor.
 
-    A "send" is a COMPLETED transaction with a DEBIT leg on the wallet. We sum
-    `transactions.amount` (the principal) — NOT the ledger debit amounts — so
-    the service charge leg is excluded. An EXISTS subquery counts each
-    transaction once even though a send debits the wallet twice (principal +
-    fee).
+    A movement is a COMPLETED transaction with a leg of `entry_type` (DEBIT for
+    sends, CREDIT for receives) on the wallet. We sum `transactions.amount` (the
+    principal) — NOT the ledger leg amounts — so a send's service-charge leg is
+    excluded. An EXISTS subquery counts each transaction once even when the
+    wallet has two legs for it (principal + fee).
     """
-    has_debit_leg = (
+    has_leg = (
         select(LedgerEntry.id)
         .where(
             LedgerEntry.transaction_id == Transaction.id,
             LedgerEntry.account_id == wallet_id,
-            LedgerEntry.entry_type == ENTRY_DEBIT,
+            LedgerEntry.entry_type == entry_type,
         )
         .exists()
     )
@@ -287,11 +318,52 @@ async def _aggregate_wallet_sends(
             Transaction.tenant_id == tenant_id,
             Transaction.status == TXN_STATUS_COMPLETED,
             Transaction.created_at >= window_floor,
-            has_debit_leg,
+            has_leg,
         )
     )
     row = agg.one()
     return int(row[0] or 0), Decimal(str(row[1] or 0))
+
+
+async def _first_wallet_window_breach(
+    session: AsyncSession,
+    *,
+    config: WalletLimitConfig,
+    direction: str,
+    entry_type: str,
+    tenant_id: UUID,
+    wallet_id: UUID | None,
+    amount: Decimal,
+    current: datetime,
+) -> tuple[str, str, str] | None:
+    """Return (window, axis, cap) of the first breached cap, or None.
+
+    Shared by the send + receive checks. `direction` selects the config columns
+    ('send'/'receive') and `entry_type` the ledger leg (DEBIT/CREDIT). A window
+    is only queried when it has a cap set. When the user has no wallet yet there
+    is no prior activity, but the current `amount` is still checked.
+    """
+    for label, count_attr, value_attr, window_len in _wallet_windows(direction):
+        count_cap = getattr(config, count_attr)
+        value_cap = getattr(config, value_attr)
+        if count_cap is None and value_cap is None:
+            continue
+
+        if wallet_id is None:
+            existing_count, existing_total = 0, Decimal("0")
+        else:
+            existing_count, existing_total = await _aggregate_wallet_movement(
+                session,
+                tenant_id=tenant_id,
+                wallet_id=wallet_id,
+                entry_type=entry_type,
+                window_floor=current - window_len,
+            )
+        if count_cap is not None and existing_count + 1 > int(count_cap):
+            return (label, "count", str(int(count_cap)))
+        if value_cap is not None and existing_total + amount > Decimal(str(value_cap)):
+            return (label, "value", str(value_cap))
+    return None
 
 
 async def check_wallet_send_limits(
@@ -330,27 +402,91 @@ async def check_wallet_send_limits(
     wallet_id = await _user_financial_wallet_id(
         session, tenant_id=tenant_id, user_id=user_id, currency=currency
     )
-    current = now or datetime.now(UTC)
-    for label, count_attr, value_attr, window_len in _WALLET_SEND_WINDOWS:
-        count_cap = getattr(config, count_attr)
-        value_cap = getattr(config, value_attr)
-        if count_cap is None and value_cap is None:
-            continue
+    breach = await _first_wallet_window_breach(
+        session,
+        config=config,
+        direction="send",
+        entry_type=ENTRY_DEBIT,
+        tenant_id=tenant_id,
+        wallet_id=wallet_id,
+        amount=amount,
+        current=now or datetime.now(UTC),
+    )
+    if breach is not None:
+        label, axis, cap = breach
+        raise WalletSendLimitExceeded(label, axis, cap)
 
-        # No wallet yet → no prior sends, but the current send is still checked.
-        if wallet_id is None:
-            existing_count, existing_total = 0, Decimal("0")
-        else:
-            existing_count, existing_total = await _aggregate_wallet_sends(
-                session,
-                tenant_id=tenant_id,
-                wallet_id=wallet_id,
-                window_floor=current - window_len,
-            )
-        if count_cap is not None and existing_count + 1 > int(count_cap):
-            raise WalletSendLimitExceeded(label, "count", str(int(count_cap)))
-        if value_cap is not None and existing_total + amount > Decimal(str(value_cap)):
-            raise WalletSendLimitExceeded(label, "value", str(value_cap))
+
+async def check_wallet_receive_limits(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    currency: str,
+    amount: Decimal,
+    recipient_facing: bool = False,
+    now: datetime | None = None,
+) -> None:
+    """Raise if crediting `amount` would breach a receive cap or max balance (WAL-236).
+
+    Enforced BEFORE a credit lands on a user's financial wallet. Two guards:
+      1. max_balance — reject if `derive_balance(wallet) + amount` exceeds the cap.
+      2. cumulative receive caps — COMPLETED financial-wallet CREDIT activity
+         (principal only) over rolling daily/weekly/monthly windows.
+    No-op when no wallet limit config exists or the relevant caps are NULL.
+
+    `recipient_facing` controls error surface: for a P2P credit to someone
+    else's wallet (True) a breach fails the SENDER with a detail-free
+    `recipient_*` error and the recipient is never notified; for a credit to the
+    actor's own wallet (e.g. top-up, False) the owner gets the specific cap.
+
+    Args:
+        tenant_id: Tenant scope.
+        user_id: The wallet owner being credited.
+        currency: The financial wallet currency.
+        amount: The principal about to be credited.
+        recipient_facing: True when the actor is not the wallet owner (P2P).
+        now: Override for tests.
+
+    Raises:
+        MaxBalanceExceeded / WalletReceiveLimitExceeded: owner-facing (409/429).
+        RecipientMaxBalanceExceeded / RecipientLimitReached: sender-facing (409).
+    """
+    config = await _find_wallet_limit_config(session, tenant_id=tenant_id, currency=currency)
+    if config is None:
+        return  # No config = no wallet limit (intentional pass-through).
+
+    wallet_id = await _user_financial_wallet_id(
+        session, tenant_id=tenant_id, user_id=user_id, currency=currency
+    )
+
+    # 1. Max-balance ceiling. balance is 0 when the wallet doesn't exist yet
+    # (the credit would create it), so a first credit over the cap is rejected.
+    if config.max_balance is not None:
+        balance = Decimal("0")
+        if wallet_id is not None:
+            balance, _reserved = await derive_balance(session, wallet_id)
+        if balance + amount > Decimal(str(config.max_balance)):
+            if recipient_facing:
+                raise RecipientMaxBalanceExceeded()
+            raise MaxBalanceExceeded(str(config.max_balance))
+
+    # 2. Cumulative receive caps.
+    breach = await _first_wallet_window_breach(
+        session,
+        config=config,
+        direction="receive",
+        entry_type=ENTRY_CREDIT,
+        tenant_id=tenant_id,
+        wallet_id=wallet_id,
+        amount=amount,
+        current=now or datetime.now(UTC),
+    )
+    if breach is not None:
+        if recipient_facing:
+            raise RecipientLimitReached()
+        label, axis, cap = breach
+        raise WalletReceiveLimitExceeded(label, axis, cap)
 
 
 # -----------------------------------------------------------------------------

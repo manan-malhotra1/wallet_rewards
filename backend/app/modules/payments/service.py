@@ -219,6 +219,7 @@ async def p2p_transfer(
     # wallet SEND cap (WAL-235).
     from app.modules.limits.service import (  # noqa: PLC0415
         check_limits,
+        check_wallet_receive_limits,
         check_wallet_send_limits,
     )
 
@@ -237,6 +238,16 @@ async def p2p_transfer(
         user_id=sender_user_id,
         currency=currency,
         amount=amount,
+    )
+    # Recipient-side caps + max balance (WAL-236). A breach fails THIS transfer
+    # with a detail-free recipient_* error; the recipient is never notified.
+    await check_wallet_receive_limits(
+        session,
+        tenant_id=tenant_id,
+        user_id=recipient_user_id,
+        currency=currency,
+        amount=amount,
+        recipient_facing=True,
     )
 
     # 6.5. Step-up PIN check (Phase H). Comes AFTER limits so an
@@ -434,6 +445,20 @@ async def top_up(
     user_wallet = await _find_user_wallet(
         session, tenant_id=tenant_id, user_id=user_id, currency=currency
     )
+
+    # Receive caps + max balance on the funded wallet (WAL-236). Owner-facing:
+    # the credit is to this user's own wallet, so a breach returns the specific
+    # cap rather than a recipient_* error. No-op when no wallet config exists.
+    from app.modules.limits.service import check_wallet_receive_limits  # noqa: PLC0415
+
+    await check_wallet_receive_limits(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        currency=currency,
+        amount=amount,
+    )
+
     inflow = await _get_or_create_system_cash_inflow(session, tenant_id, currency)
 
     return await post_transaction(

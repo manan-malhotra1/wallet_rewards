@@ -26,7 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.principals import AdminPrincipal
 from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_admin
-from app.modules.limits.schemas import LimitConfigCreateRequest
+from app.modules.limits.schemas import (
+    LimitConfigCreateRequest,
+    WalletLimitConfigCreateRequest,
+)
 from app.shared.exceptions import (
     AmountAboveMax,
     AmountBelowMin,
@@ -40,6 +43,7 @@ from app.shared.exceptions import (
     RecipientLimitReached,
     RecipientMaxBalanceExceeded,
     TenantNotFound,
+    WalletLimitConfigNotFound,
     WalletReceiveLimitExceeded,
     WalletSendLimitExceeded,
     WeeklyCountExceeded,
@@ -494,6 +498,15 @@ async def check_wallet_receive_limits(
 # -----------------------------------------------------------------------------
 
 
+def _caps_snapshot(config: object, fields: tuple[str, ...]) -> dict[str, object]:
+    """Serialise cap fields for an audit snapshot — Decimals to str, ints as-is."""
+    snapshot: dict[str, object] = {}
+    for field in fields:
+        value = getattr(config, field)
+        snapshot[field] = value if (value is None or isinstance(value, int)) else str(value)
+    return snapshot
+
+
 async def create_limit_config(
     session: AsyncSession,
     request: LimitConfigCreateRequest,
@@ -516,6 +529,10 @@ async def create_limit_config(
         max_amount=request.max_amount,
         daily_count_cap=request.daily_count_cap,
         daily_value_cap=request.daily_value_cap,
+        weekly_count_cap=request.weekly_count_cap,
+        weekly_value_cap=request.weekly_value_cap,
+        monthly_count_cap=request.monthly_count_cap,
+        monthly_value_cap=request.monthly_value_cap,
     )
     session.add(config)
     try:
@@ -540,11 +557,18 @@ async def create_limit_config(
                 "transaction_type": config.transaction_type,
                 "account_type": config.account_type,
                 "currency": config.currency,
-                "min_amount": (str(config.min_amount) if config.min_amount is not None else None),
-                "max_amount": (str(config.max_amount) if config.max_amount is not None else None),
-                "daily_count_cap": config.daily_count_cap,
-                "daily_value_cap": (
-                    str(config.daily_value_cap) if config.daily_value_cap is not None else None
+                **_caps_snapshot(
+                    config,
+                    (
+                        "min_amount",
+                        "max_amount",
+                        "daily_count_cap",
+                        "daily_value_cap",
+                        "weekly_count_cap",
+                        "weekly_value_cap",
+                        "monthly_count_cap",
+                        "monthly_value_cap",
+                    ),
                 ),
             },
             ip_address=ip_address,
@@ -596,6 +620,122 @@ async def delete_limit_config(
             tenant_id=tenant_id,
             action="limit_config.deleted",
             entity_type="limit_config",
+            entity_id=str(config_id),
+            before_state=before,
+            ip_address=ip_address,
+        )
+    await session.commit()
+
+
+# -----------------------------------------------------------------------------
+# Admin CRUD — wallet limit configs (WAL-237)
+# -----------------------------------------------------------------------------
+
+# ORM column names carried straight from the request to the row + audit snapshot.
+_WALLET_CONFIG_FIELDS = (
+    "max_balance",
+    "send_daily_count_cap",
+    "send_daily_value_cap",
+    "send_weekly_count_cap",
+    "send_weekly_value_cap",
+    "send_monthly_count_cap",
+    "send_monthly_value_cap",
+    "receive_daily_count_cap",
+    "receive_daily_value_cap",
+    "receive_weekly_count_cap",
+    "receive_weekly_value_cap",
+    "receive_monthly_count_cap",
+    "receive_monthly_value_cap",
+)
+
+
+async def create_wallet_limit_config(
+    session: AsyncSession,
+    request: WalletLimitConfigCreateRequest,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> WalletLimitConfig:
+    """Create a per-(tenant, currency) wallet limit config.
+
+    Raises 409 on unique-index collision (one config per (tenant, currency)).
+    """
+    await _assert_tenant_exists(session, request.tenant_id)
+    config = WalletLimitConfig(
+        tenant_id=request.tenant_id,
+        currency=request.currency.upper(),
+        **{field: getattr(request, field) for field in _WALLET_CONFIG_FIELDS},
+    )
+    session.add(config)
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise AppHTTPException(
+            409,
+            "wallet_limit_config_already_exists",
+            "A wallet limit config already exists for this currency.",
+        ) from exc
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=request.tenant_id,
+            action="wallet_limit_config.created",
+            entity_type="wallet_limit_config",
+            entity_id=str(config.id),
+            after_state={
+                "currency": config.currency,
+                **_caps_snapshot(config, _WALLET_CONFIG_FIELDS),
+            },
+            ip_address=ip_address,
+        )
+
+    await session.commit()
+    await session.refresh(config)
+    return config
+
+
+async def list_wallet_limit_configs(
+    session: AsyncSession, tenant_id: UUID
+) -> list[WalletLimitConfig]:
+    """Return every wallet limit config in a tenant, newest-first."""
+    result = await session.execute(
+        select(WalletLimitConfig)
+        .where(WalletLimitConfig.tenant_id == tenant_id)
+        .order_by(WalletLimitConfig.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def delete_wallet_limit_config(
+    session: AsyncSession,
+    config_id: UUID,
+    tenant_id: UUID,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Delete a wallet limit config. Tenant-isolated; 404 when not found."""
+    result = await session.execute(
+        select(WalletLimitConfig).where(
+            WalletLimitConfig.id == config_id,
+            WalletLimitConfig.tenant_id == tenant_id,
+        )
+    )
+    config = result.scalar_one_or_none()
+    if config is None:
+        raise WalletLimitConfigNotFound()
+    before = {"currency": config.currency}
+    await session.delete(config)
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=tenant_id,
+            action="wallet_limit_config.deleted",
+            entity_type="wallet_limit_config",
             entity_id=str(config_id),
             before_state=before,
             ip_address=ip_address,

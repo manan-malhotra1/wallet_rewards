@@ -827,6 +827,13 @@ class LimitConfigNotFound(AppHTTPException):
         super().__init__(404, "limit_config_not_found", "Limit config not found.")
 
 
+class WalletLimitConfigNotFound(AppHTTPException):
+    """The wallet limit config row doesn't exist or belongs to a different tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "wallet_limit_config_not_found", "Wallet limit config not found.")
+
+
 class PricingConfigNotFound(AppHTTPException):
     """The referenced pricing config row doesn't exist or belongs to a different tenant."""
 

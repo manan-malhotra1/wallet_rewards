@@ -39,6 +39,7 @@ import type {
   Tenant,
   User,
   UserDetail,
+  WalletLimitConfig,
 } from "@/lib/api-types";
 
 // ---- Tenants -------------------------------------------------------------
@@ -349,6 +350,10 @@ export interface CreateLimitConfigPayload {
   max_amount?: string;
   daily_count_cap?: number;
   daily_value_cap?: string;
+  weekly_count_cap?: number;
+  weekly_value_cap?: string;
+  monthly_count_cap?: number;
+  monthly_value_cap?: string;
 }
 
 export const listLimitConfigs = (tenant_id: string) =>
@@ -359,6 +364,37 @@ export const createLimitConfig = (payload: CreateLimitConfigPayload) =>
 
 export const deleteLimitConfig = (config_id: string, tenant_id: string) =>
   apiDelete<void>(`/api/v1/limits/configs/${config_id}`, {
+    query: { tenant_id },
+  });
+
+export interface CreateWalletLimitConfigPayload {
+  tenant_id: string;
+  currency: string;
+  max_balance?: string;
+  send_daily_count_cap?: number;
+  send_daily_value_cap?: string;
+  send_weekly_count_cap?: number;
+  send_weekly_value_cap?: string;
+  send_monthly_count_cap?: number;
+  send_monthly_value_cap?: string;
+  receive_daily_count_cap?: number;
+  receive_daily_value_cap?: string;
+  receive_weekly_count_cap?: number;
+  receive_weekly_value_cap?: string;
+  receive_monthly_count_cap?: number;
+  receive_monthly_value_cap?: string;
+}
+
+export const listWalletLimitConfigs = (tenant_id: string) =>
+  apiGet<WalletLimitConfig[]>("/api/v1/limits/wallet-configs", {
+    query: { tenant_id },
+  });
+
+export const createWalletLimitConfig = (payload: CreateWalletLimitConfigPayload) =>
+  apiPost<WalletLimitConfig>("/api/v1/limits/wallet-configs", payload);
+
+export const deleteWalletLimitConfig = (config_id: string, tenant_id: string) =>
+  apiDelete<void>(`/api/v1/limits/wallet-configs/${config_id}`, {
     query: { tenant_id },
   });
 

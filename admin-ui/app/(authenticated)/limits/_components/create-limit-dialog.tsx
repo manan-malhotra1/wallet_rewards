@@ -40,6 +40,10 @@ interface FormState {
   max_amount: string;
   daily_count_cap: string;
   daily_value_cap: string;
+  weekly_count_cap: string;
+  weekly_value_cap: string;
+  monthly_count_cap: string;
+  monthly_value_cap: string;
 }
 
 function initialForm(services: Service[], instruments: Instrument[]): FormState {
@@ -54,6 +58,10 @@ function initialForm(services: Service[], instruments: Instrument[]): FormState 
     max_amount: "",
     daily_count_cap: "",
     daily_value_cap: "",
+    weekly_count_cap: "",
+    weekly_value_cap: "",
+    monthly_count_cap: "",
+    monthly_value_cap: "",
   };
 }
 
@@ -88,27 +96,36 @@ export function CreateLimitDialog({
 
   const onSubmit = async () => {
     setErrorBanner(null);
-    if (
-      !form.min_amount &&
-      !form.max_amount &&
-      !form.daily_count_cap &&
-      !form.daily_value_cap
-    ) {
-      setErrorBanner("Set at least one of min, max, daily count, daily value.");
+    const anyCap = [
+      form.min_amount,
+      form.max_amount,
+      form.daily_count_cap,
+      form.daily_value_cap,
+      form.weekly_count_cap,
+      form.weekly_value_cap,
+      form.monthly_count_cap,
+      form.monthly_value_cap,
+    ].some((v) => v.trim() !== "");
+    if (!anyCap) {
+      setErrorBanner("Set at least one cap.");
       return;
     }
     setSubmitting(true);
+    const num = (v: string) => (v.trim() ? Number(v) : undefined);
+    const str = (v: string) => (v.trim() ? v : undefined);
     const result = await createLimitConfigAction({
       tenant_id: tenantId,
       transaction_type: form.transaction_type,
       account_type: form.account_type,
       currency: form.currency.toUpperCase(),
-      min_amount: form.min_amount || undefined,
-      max_amount: form.max_amount || undefined,
-      daily_count_cap: form.daily_count_cap
-        ? Number(form.daily_count_cap)
-        : undefined,
-      daily_value_cap: form.daily_value_cap || undefined,
+      min_amount: str(form.min_amount),
+      max_amount: str(form.max_amount),
+      daily_count_cap: num(form.daily_count_cap),
+      daily_value_cap: str(form.daily_value_cap),
+      weekly_count_cap: num(form.weekly_count_cap),
+      weekly_value_cap: str(form.weekly_value_cap),
+      monthly_count_cap: num(form.monthly_count_cap),
+      monthly_value_cap: str(form.monthly_value_cap),
     });
     setSubmitting(false);
     if (!result.ok) {
@@ -129,7 +146,8 @@ export function CreateLimitDialog({
         <DialogHeader>
           <DialogTitle>New limit</DialogTitle>
           <DialogDescription>
-            At least one of min, max, daily count, or daily value must be set.
+            Per-txn min/max plus rolling daily/weekly/monthly caps. At least one
+            must be set.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -229,6 +247,44 @@ export function CreateLimitDialog({
                 value={form.daily_value_cap}
                 onChange={(e) => update("daily_value_cap", e.target.value)}
                 placeholder="25000"
+              />
+            </div>
+            <div>
+              <Label htmlFor="wc">Weekly count cap</Label>
+              <Input
+                id="wc"
+                type="number"
+                value={form.weekly_count_cap}
+                onChange={(e) => update("weekly_count_cap", e.target.value)}
+                placeholder="50"
+              />
+            </div>
+            <div>
+              <Label htmlFor="wv">Weekly value cap</Label>
+              <Input
+                id="wv"
+                value={form.weekly_value_cap}
+                onChange={(e) => update("weekly_value_cap", e.target.value)}
+                placeholder="100000"
+              />
+            </div>
+            <div>
+              <Label htmlFor="mc">Monthly count cap</Label>
+              <Input
+                id="mc"
+                type="number"
+                value={form.monthly_count_cap}
+                onChange={(e) => update("monthly_count_cap", e.target.value)}
+                placeholder="200"
+              />
+            </div>
+            <div>
+              <Label htmlFor="mv">Monthly value cap</Label>
+              <Input
+                id="mv"
+                value={form.monthly_value_cap}
+                onChange={(e) => update("monthly_value_cap", e.target.value)}
+                placeholder="400000"
               />
             </div>
           </div>

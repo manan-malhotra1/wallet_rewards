@@ -325,6 +325,36 @@ export interface LimitConfig {
   max_amount: string | null;
   daily_count_cap: number | null;
   daily_value_cap: string | null;
+  weekly_count_cap: number | null;
+  weekly_value_cap: string | null;
+  monthly_count_cap: number | null;
+  monthly_value_cap: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Per-(tenant, currency) financial-wallet limit config (WAL-236): a max-balance
+ * ceiling plus cumulative send + receive count/value caps across rolling
+ * daily/weekly/monthly windows. Every cap is nullable (null = no limit).
+ */
+export interface WalletLimitConfig {
+  id: string;
+  tenant_id: string;
+  currency: string;
+  max_balance: string | null;
+  send_daily_count_cap: number | null;
+  send_daily_value_cap: string | null;
+  send_weekly_count_cap: number | null;
+  send_weekly_value_cap: string | null;
+  send_monthly_count_cap: number | null;
+  send_monthly_value_cap: string | null;
+  receive_daily_count_cap: number | null;
+  receive_daily_value_cap: string | null;
+  receive_weekly_count_cap: number | null;
+  receive_weekly_value_cap: string | null;
+  receive_monthly_count_cap: number | null;
+  receive_monthly_value_cap: string | null;
   created_at: string;
   updated_at: string;
 }

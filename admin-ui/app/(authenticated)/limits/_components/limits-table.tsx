@@ -63,6 +63,10 @@ export function LimitsTable({
             <TableHeaderCell className="text-right">Max</TableHeaderCell>
             <TableHeaderCell className="text-right">Daily count</TableHeaderCell>
             <TableHeaderCell className="text-right">Daily value</TableHeaderCell>
+            <TableHeaderCell className="text-right">Weekly count</TableHeaderCell>
+            <TableHeaderCell className="text-right">Weekly value</TableHeaderCell>
+            <TableHeaderCell className="text-right">Monthly count</TableHeaderCell>
+            <TableHeaderCell className="text-right">Monthly value</TableHeaderCell>
             <TableHeaderCell className="w-[40px]"> </TableHeaderCell>
           </TableRow>
         </TableHead>
@@ -87,6 +91,18 @@ export function LimitsTable({
               </TableCell>
               <TableCell className="text-right font-mono">
                 {cfg.daily_value_cap ?? "—"}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {cfg.weekly_count_cap ?? "—"}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {cfg.weekly_value_cap ?? "—"}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {cfg.monthly_count_cap ?? "—"}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {cfg.monthly_value_cap ?? "—"}
               </TableCell>
               <TableCell>
                 <Button

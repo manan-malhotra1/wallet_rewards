@@ -704,6 +704,371 @@ re-architect under production traffic.
 
 ---
 
+## Epic 12 — User Type Foundation · **Backlog**
+
+User-types initiative. Introduces `user_type` as a first-class dimension on
+users — `consumer`, `agent`, `super_agent`, `merchant`, `head_merchant` —
+plus the shared plumbing Epics 13–17 build on. Merchants are modelled as
+users (Decision D1); `parent_user_id` is stored now with commission logic
+deferred (Decision D4). Import: `docs/LINEAR_BACKLOG_user_types.csv`.
+Spec: `docs/superpowers/specs/2026-07-03-user-types-design.md`.
+
+### Story 12.1 — user_type enum + column migration + backfill · Backlog
+
+**Description:** Add PG enum `user_type` and a NOT NULL column on `users`.
+
+**Acceptance criteria:**
+- Enum values: consumer, agent, super_agent, merchant, head_merchant
+- `users.user_type` NOT NULL default `consumer`; index `(tenant_id, user_type)`
+- Migration backfills existing rows to `consumer`
+- Migration test asserts backfill + enum/constraint integrity
+
+**PRD:** Pay-PRD-0010, 0080
+
+### Story 12.2 — parent_user_id self-FK + hierarchy validation · Backlog
+
+**Description:** Nullable self-FK enabling agent→super_agent and merchant→head_merchant hierarchy, validated in the service layer.
+
+**Acceptance criteria:**
+- `agent` parent must be `super_agent`; `merchant` parent must be `head_merchant`; same tenant
+- `consumer`/`super_agent`/`head_merchant` must have null parent
+- Invalid pairing → 422 `user_type_invalid_parent`
+- Tests cover each pairing
+
+### Story 12.3 — Expose user_type + parent in identity schemas & detail · Backlog
+
+**Description:** Surface `user_type` and `parent_user_id` in create/detail schemas and `GET /users/{id}`.
+
+**Acceptance criteria:**
+- Fields present in user create + detail Pydantic schemas
+- Backwards compatible (defaults `consumer`)
+- API test asserts round-trip
+
+### Story 12.4 — PATCH /users/{id}/type with audit + idempotency · Backlog
+
+**Description:** Admin endpoint to change a user's type with a mandatory reason.
+
+**Acceptance criteria:**
+- `platform-admin` only; body `{new_type, parent_user_id?, reason}`; reason mandatory; Idempotency-Key honoured
+- Leaving a merchant type blocked while any `merchant_collection` balance ≠ 0 → `user_type_transition_blocked`
+- Entering a merchant type requires a merchant profile
+- Audit log records before/after + reason; emits `user.type_changed` post-commit
+- Tests: happy, 401, 403, 422, tenant isolation, idempotency replay
+
+**PRD:** Pay-PRD-0080 · **NFR:** 0170
+
+### Story 12.5 — wallet.users.lifecycle topic + user.created/type_changed events · Backlog
+
+**Description:** New Kafka topic and lifecycle events emitted after commit.
+
+**Acceptance criteria:**
+- Topic added to `config.Topics` and `kafka/topics.sh` (partitions 3, key `user_id`)
+- Emit `user.created` + `user.type_changed` after DB commit; consumer idempotent via `event_ingestion_log`
+- Tests: emit-after-commit, partition key, schema
+
+**PRD:** Pay-PRD-0010 · **NFR:** 0130
+
+### Story 12.6 — PRD Module 1 + glossary update for user types · Backlog
+
+**Description:** Document the five user types in the source PRD.
+
+**Acceptance criteria:**
+- Module 1 documents the 5 types, hierarchy, and type-change flow; glossary (§3) updated
+- New Pay-PRD IDs assigned; cross-refs added from Modules 5 (limits) and 6 (pricing)
+
+---
+
+## Epic 13 — Admin User Creation & Type Management · **Backlog**
+
+Admin can create users (email or phone) with a `user_type` and change a
+user's type from the admin portal — enabling the currently-disabled
+"Register user" (Phase G) button. Backend hardening + admin-ui dialogs
+following the Limits-page pattern.
+
+### Story 13.1 — Harden POST /users: email-or-phone, user_type, parent, merchant profile · Backlog
+
+**Description:** Extend the admin create endpoint for the new dimensions.
+
+**Acceptance criteria:**
+- At least one identifier (email or phone) required → else `identifier_required`
+- Accepts `user_type` (default consumer), `parent_user_id`, and a merchant profile payload for merchant types
+- Idempotency-Key honoured; audit logged
+- Tests: happy (email-only, phone-only, both), 422 no-identifier, tenant isolation, idempotency
+
+**PRD:** Pay-PRD-0010, 0050, 0080
+
+### Story 13.2 — Admin create-user dialog · Backlog
+
+**Description:** Create-user dialog on the Users page (enables the disabled Register-user button).
+
+**Acceptance criteria:**
+- Identifier type toggle (email/phone), profile fields, `user_type` selector
+- Parent picker shown for agent/merchant types; merchant-profile fields for merchant types
+- Server action returns `{ok} | {ok:false, errorCode, message}` + `revalidatePath`
+- Follows the Limits `CreateLimitDialog` pattern
+
+### Story 13.3 — Change-type action + confirm/reason modal on user detail · Backlog
+
+**Description:** Change a user's type from the detail card.
+
+**Acceptance criteria:**
+- Confirm modal requires a reason; calls `PATCH /users/{id}/type`
+- Hidden below `platform-admin`; shows/links parent when set
+- Surfaces `user_type_transition_blocked` and invalid-parent errors
+
+### Story 13.4 — User-type badge + filter on users list · Backlog
+
+**Description:** Show and filter by user type.
+
+**Acceptance criteria:**
+- `user_type` badge on detail + lookup results
+- Filter users by type; reuses StatusPill-style component
+
+### Story 13.5 — Server actions + API client wiring for create/change-type · Backlog
+
+**Description:** Wire the admin-ui data layer.
+
+**Acceptance criteria:**
+- `createUserAction` + `changeUserTypeAction` server actions
+- Typed API client functions + `UserType` TS type mirroring the Pydantic enum in `api-endpoints.ts`/`api-types.ts`
+
+---
+
+## Epic 14 — External User-Creation API · **Backlog**
+
+Externally callable, OpenAPI-documented user-creation API for partners.
+Per-tenant API keys + HMAC request signing (Decision D3, reuses
+`auth/hmac.py`). Rate limited, idempotent, tenant derived from the key.
+Security-reviewed before merge.
+
+### Story 14.1 — api_keys model + migration · Backlog
+
+**Description:** Storage for per-tenant API keys.
+
+**Acceptance criteria:**
+- `api_keys`: tenant_id, key_id, secret_hash (never plaintext), status, created_at, last_used_at
+- Secret shown once on creation; tenant-scoped
+- Migration + tenant isolation test
+
+### Story 14.2 — API key management UI on Tenants screen · Backlog
+
+**Description:** Manage keys from the existing Tenants detail tabs.
+
+**Acceptance criteria:**
+- API keys tab: create (show secret once), list, revoke
+- Follows existing tenant-tabs layout
+
+### Story 14.3 — API-key + HMAC auth dependency · Backlog
+
+**Description:** FastAPI dependency authenticating external callers.
+
+**Acceptance criteria:**
+- Verifies `X-Sasai-Api-Key` + `X-Sasai-Signature` (HMAC-SHA256, `t=<unix>,v1=<hex>`, 300s replay window via `auth/hmac.py`)
+- Resolves tenant from the key
+- Error codes: `api_key_invalid`, `signature_invalid`, `signature_replayed`
+- Tests: valid, bad key, bad signature, replayed, expired timestamp
+
+**NFR:** 0210
+
+### Story 14.4 — POST /api/v1/external/users · Backlog
+
+**Description:** Partner-facing create-user endpoint.
+
+**Acceptance criteria:**
+- Same semantics as admin create; tenant from API key (never from payload); email or phone; Idempotency-Key required
+- Reuses `identity.create_user`
+- Tests: happy, auth failures, 422, idempotency, cross-tenant rejection
+
+**PRD:** Pay-PRD-0010, 0050
+
+### Story 14.5 — Per-key rate limiting (Redis) · Backlog
+
+**Description:** Throttle external callers per key.
+
+**Acceptance criteria:**
+- Per-API-key token bucket in Redis; exceed → 429 `rate_limited`
+- Test asserts limit + reset
+
+### Story 14.6 — Curated OpenAPI external tag + exported partner spec · Backlog
+
+**Description:** Partner-ready API documentation.
+
+**Acceptance criteria:**
+- External endpoints tagged; curated request/response examples + `{error_code, message}` envelope
+- Exported partner OpenAPI spec checked into `docs/`
+
+### Story 14.7 — Security review: external surface (STRIDE + OWASP API) · Backlog
+
+**Description:** Adversarial review of the new external surface.
+
+**Acceptance criteria:**
+- `security` agent: STRIDE threat model + OWASP API Top 10 pass on API keys, HMAC, rate limiting, external create
+- Sign-off required before merge (auth + money + PII trigger)
+
+---
+
+## Epic 15 — Type-Aware Limits · **Backlog**
+
+Make limit configs resolvable by `user_type`. Add a nullable `user_type` to
+`limit_configs` and `wallet_limit_configs` (NULL = default for all types);
+an exact-type row beats the default at enforcement. Extends the
+WAL-233…238 limits work.
+
+### Story 15.1 — Add nullable user_type to limit_configs + wallet_limit_configs · Backlog
+
+**Description:** Schema change adding the new dimension to both limit tables.
+
+**Acceptance criteria:**
+- Nullable `user_type` on both tables; unique constraints extended with `user_type` using `NULLS NOT DISTINCT` (or paired partial unique indexes if local PG < 15 — decided in the migration)
+- Tenant isolation preserved; migration test
+
+### Story 15.2 — Resolution precedence in limit enforcement · Backlog
+
+**Description:** Enforcement prefers a type-specific row over the default.
+
+**Acceptance criteria:**
+- Resolves exact (existing dims + caller `user_type`) first, else the `user_type IS NULL` default (`ORDER BY user_type NULLS LAST LIMIT 1`)
+- Applies to both service and wallet limits; no per-user overrides
+
+### Story 15.3 — Limits CRUD schema + router updates for user_type · Backlog
+
+**Description:** Expose the dimension through the admin API.
+
+**Acceptance criteria:**
+- Optional `user_type` on create schemas + list/delete filters; validated against the enum
+- API tests
+
+### Story 15.4 — Limits UI: user_type column + selector · Backlog
+
+**Description:** Surface the dimension on the Limits page.
+
+**Acceptance criteria:**
+- `user_type` column ("All types" when NULL) + selector in create dialogs
+
+### Story 15.5 — Precedence matrix tests for limits · Backlog
+
+**Description:** Prove the resolution rules.
+
+**Acceptance criteria:**
+- Tests for typed row vs NULL default vs no config, across service and wallet limits
+
+---
+
+## Epic 16 — Type-Aware Pricing · **Backlog**
+
+Make pricing/fees resolvable by `user_type`. Add a nullable `user_type` to
+`pricing_configs`; `quote_fee` resolves an exact-type row first, else the
+default. Mirrors Epic 15 for fees.
+
+### Story 16.1 — Add nullable user_type to pricing_configs · Backlog
+
+**Description:** Schema change adding the dimension to pricing.
+
+**Acceptance criteria:**
+- Nullable `user_type` on `pricing_configs`; unique constraint extended (`NULLS NOT DISTINCT` or paired partial indexes)
+- Migration + tenant isolation test
+
+### Story 16.2 — quote_fee precedence resolution by user_type · Backlog
+
+**Description:** Fee resolution prefers a type-specific row.
+
+**Acceptance criteria:**
+- Resolves exact (existing dims + `user_type`) first, else `user_type IS NULL` default (`ORDER BY user_type NULLS LAST LIMIT 1`)
+- Fee still quoted before the ledger write
+
+**PRD:** Pay-PRD-0260
+
+### Story 16.3 — Pricing CRUD schema + router updates for user_type · Backlog
+
+**Description:** Expose the dimension through the admin API.
+
+**Acceptance criteria:**
+- Optional `user_type` on the pricing create schema + list/delete filters; validated against the enum
+- API tests
+
+### Story 16.4 — Pricing UI: user_type column + selector · Backlog
+
+**Description:** Surface the dimension on the Pricing page.
+
+**Acceptance criteria:**
+- `user_type` column ("All types" when NULL) + selector in the create dialog
+
+### Story 16.5 — Precedence matrix tests for pricing · Backlog
+
+**Description:** Prove the fee resolution rules.
+
+**Acceptance criteria:**
+- Tests for typed row vs NULL default vs no config in `quote_fee`
+
+---
+
+## Epic 17 — Airtime Merchant Vertical · **Backlog**
+
+First merchant vertical. An airtime merchant collects user funds into a
+`merchant_collection` ledger account, then provisions airtime via an
+external provider after commit. Uses merchants-as-users (D1) and builds on
+the existing `AirtimeRecharge` model and `airtime_merchant_holding`
+groundwork. Depends on Epics 12, 15, 16.
+
+### Story 17.1 — merchant_profiles model + migration · Backlog
+
+**Description:** Business-profile extension for merchant users.
+
+**Acceptance criteria:**
+- One-to-one with merchant/head_merchant users: user_id PK/FK, tenant_id, business_name, category, `provider_config` JSONB, settlement fields, timestamps
+- Created transactionally with the user or on type change into a merchant type
+- Migration + tenant isolation test
+
+### Story 17.2 — merchant_collection account type + provisioning · Backlog
+
+**Description:** Ledger account that collects merchant funds.
+
+**Acceptance criteria:**
+- New `merchant_collection` account type constant
+- One account per (tenant, merchant user, merchant_collection, currency) provisioned on profile creation via the existing partial unique index
+- Reuses `accounts.user_id` ownership
+
+### Story 17.3 — Airtime purchase flow: double-entry + pricing + limits · Backlog
+
+**Description:** The buy-airtime money movement.
+
+**Acceptance criteria:**
+- One transaction: debit consumer `financial_wallet`, credit merchant `merchant_collection`, fee legs to `system_fee_collected` via type-aware pricing
+- Limits enforced with the consumer's `user_type`; `AirtimeRecharge` created PENDING and linked to the transaction; Idempotency-Key
+- Ledger-invariant tests (entries balance, append-only)
+
+**PRD:** Pay-PRD-0310 · **NFR:** 0100
+
+### Story 17.4 — Provider adapter interface + Celery provisioning task · Backlog
+
+**Description:** External airtime provisioning after commit.
+
+**Acceptance criteria:**
+- After DB commit, a Celery task calls the provider via an adapter interface (config from `merchant_profiles.provider_config`)
+- Success → recharge COMPLETED + event; bounded retries with backoff
+- External call never inside the DB transaction
+
+**NFR:** 0130
+
+### Story 17.5 — Failure reversal path + reconciliation hook · Backlog
+
+**Description:** Make failed provisioning safe and observable.
+
+**Acceptance criteria:**
+- On failure after retries: append a reversal transaction (merchant_collection → consumer wallet; ledger stays append-only); recharge FAILED/REVERSED
+- Stuck PENDING recharges surface in the existing reconciliation queue
+- Reversal ledger-invariant test (net-zero)
+
+### Story 17.6 — Events + ledger-invariant tests for airtime flow · Backlog
+
+**Description:** Eventing and test coverage for the vertical.
+
+**Acceptance criteria:**
+- Provisioning outcomes ride `wallet.transactions.completed` with recharge status
+- Tests: ledger sum-to-zero, append-only, reversal correctness, idempotency, tenant isolation
+
+---
+
 ## Summary
 
 | Epic | Status | Stories | Done | Backlog |
@@ -719,10 +1084,22 @@ re-architect under production traffic.
 | 9. Catalog Expansion | Backlog | 5 | 0 | 5 |
 | 10. Rules Engine Expansion | Backlog | 7 | 0 | 7 |
 | 11. Hot-path Balance & Ledger Partitioning | Backlog | 6 | 0 | 6 |
-| **Total** | — | **59** | **25** | **34** |
+| 12. User Type Foundation | Backlog | 6 | 0 | 6 |
+| 13. Admin User Creation & Type Management | Backlog | 5 | 0 | 5 |
+| 14. External User-Creation API | Backlog | 7 | 0 | 7 |
+| 15. Type-Aware Limits | Backlog | 5 | 0 | 5 |
+| 16. Type-Aware Pricing | Backlog | 5 | 0 | 5 |
+| 17. Airtime Merchant Vertical | Backlog | 6 | 0 | 6 |
+| **Total** | — | **93** | **25** | **68** |
 
-**~42% delivered** by story count. Money-movement loop (earn → hold →
+**~27% delivered** by story count. Money-movement loop (earn → hold →
 redeem → reconcile) is complete and the first auth gate (Keycloak admin JWT
 validation, Phase F.1) is live on reconciliation endpoints. Remaining
 auth work covers user PIN/OTP, roles module, HMAC, and applying auth gates
 across the rest of the admin surface.
+
+The **user-types initiative** (Epics 12–17) adds five user types
+(consumer/agent/super_agent/merchant/head_merchant) driving type-aware
+pricing and limits, admin + external user creation, and the first merchant
+vertical (airtime). New items import via `docs/LINEAR_BACKLOG_user_types.csv`;
+design in `docs/superpowers/specs/2026-07-03-user-types-design.md`.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.principals import AdminPrincipal
 from app.modules.audit.service import record_audit_for_admin
 from app.modules.rules.schemas import (
+    BudgetScope,
     RuleCreateRequest,
     RulePerformanceOut,
     RuleUpdateRequest,
@@ -19,7 +21,7 @@ from app.shared.exceptions import RuleNotFound, TenantNotFound
 from app.shared.models import RewardBudget, RewardEvent, Rule, Tenant
 
 
-async def _assert_tenant_exists(session: AsyncSession, tenant_id) -> None:
+async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
     """Reject if the tenant_id is unknown."""
     result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
     if result.scalar_one_or_none() is None:
@@ -98,7 +100,7 @@ async def create_rule(
     return rule
 
 
-async def list_rules_for_tenant(session: AsyncSession, tenant_id) -> list[Rule]:
+async def list_rules_for_tenant(session: AsyncSession, tenant_id: UUID) -> list[Rule]:
     """Return every Rule in the tenant — newest first."""
     result = await session.execute(
         select(Rule).where(Rule.tenant_id == tenant_id).order_by(Rule.created_at.desc())
@@ -296,7 +298,7 @@ async def list_rule_performance_for_tenant(
             total_reward_value=Decimal(str(total_value or 0)),
             first_fired_at=first_at,
             last_fired_at=last_at,
-            budget_scope=scopes.get(rule_id, "none"),
+            budget_scope=cast(BudgetScope, scopes.get(rule_id, "none")),
         )
         for rule_id, total_fires, unique_users, total_value, first_at, last_at in rows
     ]
@@ -354,5 +356,5 @@ async def get_rule_performance(
         total_reward_value=Decimal(str(total_value or 0)),
         first_fired_at=first_at,
         last_fired_at=last_at,
-        budget_scope=scopes.get(rule_id, "none"),
+        budget_scope=cast(BudgetScope, scopes.get(rule_id, "none")),
     )

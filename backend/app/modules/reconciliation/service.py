@@ -12,7 +12,8 @@ overnight without trusting application logs.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from decimal import Decimal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from sqlalchemy import desc, select, update
@@ -62,7 +63,7 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
         raise TenantNotFound()
 
 
-def _redemption_snapshot(r: Redemption) -> dict:
+def _redemption_snapshot(r: Redemption) -> dict[str, Any]:
     """JSON-serialisable snapshot of a Redemption row.
 
     Used for audit_log before/after states. Keep the field set narrow — only
@@ -207,7 +208,7 @@ async def list_pending(
             transaction_id=r.transaction_id,
             user_id=r.user_id,
             provider_id=r.provider_id,
-            points_amount=r.points_amount,
+            points_amount=Decimal(str(r.points_amount)),
             retry_count=r.retry_count,
             last_checked_at=r.last_checked_at,
             created_at=r.created_at,
@@ -241,7 +242,7 @@ async def list_manual_review(session: AsyncSession, *, tenant_id: UUID) -> list[
             transaction_id=r.transaction_id,
             user_id=r.user_id,
             provider_id=r.provider_id,
-            points_amount=r.points_amount,
+            points_amount=Decimal(str(r.points_amount)),
             retry_count=r.retry_count,
             last_checked_at=r.last_checked_at,
             created_at=r.created_at,
@@ -304,7 +305,11 @@ async def manually_resolve(
     before = _redemption_snapshot(redemption)
 
     if request.outcome == "COMPLETED":
-        await _flip_entries(session, redemption.transaction_id, ENTRY_STATUS_COMPLETED)
+        await _flip_entries(
+            session,
+            redemption.transaction_id,
+            cast('Literal["COMPLETED", "REVERSED"]', ENTRY_STATUS_COMPLETED),
+        )
         await session.execute(
             update(Transaction)
             .where(Transaction.id == redemption.transaction_id)
@@ -315,7 +320,11 @@ async def manually_resolve(
         redemption.completed_at = datetime.now(UTC)
         action = ACTION_RECON_RESOLVED_COMPLETED
     elif request.outcome == "REVERSED":
-        await _flip_entries(session, redemption.transaction_id, ENTRY_STATUS_REVERSED)
+        await _flip_entries(
+            session,
+            redemption.transaction_id,
+            cast('Literal["COMPLETED", "REVERSED"]', ENTRY_STATUS_REVERSED),
+        )
         await session.execute(
             update(Transaction)
             .where(Transaction.id == redemption.transaction_id)

@@ -14,6 +14,7 @@ Every action below writes an `audit_log` row with the admin's reason.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import desc, select
@@ -22,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.principals import AdminPrincipal
 from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_admin
+from app.modules.identity.schemas import IdentifierType
 from app.modules.identity.service import resolve_identifier
 from app.modules.ledger.service import (
     LedgerEntryRequest,
@@ -210,7 +212,9 @@ async def fund_user(
         UserNotFound: identifier doesn't resolve in this tenant.
     """
     await _assert_tenant_exists(session, tenant_id)
-    identifier_row = await resolve_identifier(session, tenant_id, identifier_type, identifier_value)
+    identifier_row = await resolve_identifier(
+        session, tenant_id, cast(IdentifierType, identifier_type), identifier_value
+    )
     user_id = identifier_row.user_id
 
     idempotency_key = f"admin-fund-{uuid4().hex}"
@@ -309,7 +313,9 @@ async def withdraw_from_user(
         Commits the session.
     """
     await _assert_tenant_exists(session, tenant_id)
-    identifier_row = await resolve_identifier(session, tenant_id, identifier_type, identifier_value)
+    identifier_row = await resolve_identifier(
+        session, tenant_id, cast(IdentifierType, identifier_type), identifier_value
+    )
     user_id = identifier_row.user_id
     currency = currency.upper()
 

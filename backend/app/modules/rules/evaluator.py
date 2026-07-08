@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -129,7 +130,9 @@ async def _find_candidate_rules(session: AsyncSession, event: NormalisedEvent) -
     return list(result.scalars().all())
 
 
-async def _get_or_create_progress(session: AsyncSession, user_id, rule_id) -> UserRuleProgress:
+async def _get_or_create_progress(
+    session: AsyncSession, user_id: UUID, rule_id: UUID
+) -> UserRuleProgress:
     """Find or insert the UserRuleProgress row for this (user, rule) pair.
 
     Uses INSERT-then-fetch with the unique constraint as the race guard. On

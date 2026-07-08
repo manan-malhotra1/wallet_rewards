@@ -7,6 +7,7 @@ The ingestion log dedupes by `(source_key, external_event_id)` (Pay-PRD-0500).
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
@@ -56,7 +57,7 @@ class ExternalEventSource(Base):
     # Globally unique — used as the partition key for routing events to the
     # correct source registration row.
     source_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
-    field_mapping: Mapped[dict] = mapped_column(
+    field_mapping: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     shared_secret: Mapped[str | None] = mapped_column(Text, nullable=True)

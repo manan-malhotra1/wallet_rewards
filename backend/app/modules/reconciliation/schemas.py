@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -88,8 +88,8 @@ class AuditEntry(BaseModel):
     action: str
     entity_type: str
     entity_id: str
-    before_state: dict | None
-    after_state: dict | None
+    before_state: dict[str, Any] | None
+    after_state: dict[str, Any] | None
     ip_address: str | None
     note: str | None
     created_at: datetime

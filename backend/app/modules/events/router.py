@@ -15,6 +15,8 @@ same `process_external_event` entrypoint and the same HMAC enforcement.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -136,7 +138,7 @@ async def post_sim_ingest_event(
 @router.get("/sim-bootstrap")
 async def get_sim_bootstrap(
     session: AsyncSession = Depends(get_async_session),
-) -> dict:
+) -> dict[str, Any]:
     """Return tenant + seeded-user ids the simulator needs at startup.
 
     Looks up the first tenant in the DB and returns it along with the
@@ -187,7 +189,7 @@ async def get_sim_bootstrap(
 @router.post("/sim-kafka-produce", status_code=202)
 async def post_sim_kafka_produce(
     fastapi_request: Request,
-) -> dict:
+) -> dict[str, Any]:
     """Mobile-simulator's Kafka producer path.
 
     Produces one message to `wallet.events.external`. The existing

@@ -75,10 +75,14 @@ async def update_tenant(
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
-        # The only UNIQUE on this table is (name). Translate to a clean 409.
-        if (
-            payload.name is not None and "uq_tenants_name" in str(exc.orig).lower()
-        ) or "tenants_name_key" in str(exc.orig).lower():
+        # The only UNIQUE on this table is (name), so a name collision can only
+        # occur when we actually wrote a new name (payload.name is not None).
+        # Guarding both spellings of the constraint name with that check also
+        # narrows payload.name to str for the exception constructor.
+        if payload.name is not None and (
+            "uq_tenants_name" in str(exc.orig).lower()
+            or "tenants_name_key" in str(exc.orig).lower()
+        ):
             raise TenantNameAlreadyExists(payload.name) from exc
         raise
 

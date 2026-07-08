@@ -18,7 +18,7 @@ NEVER appear in DB rows, audit log, or application logs.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from app.auth.hashing import generate_token
@@ -55,7 +55,7 @@ async def create_session(user_id: UUID, tenant_id: UUID, channel: str = "mobile"
     return token
 
 
-async def read_session(token: str, *, refresh_ttl: bool = True) -> dict | None:
+async def read_session(token: str, *, refresh_ttl: bool = True) -> dict[str, Any] | None:
     """Look up a session by token. Sliding TTL by default.
 
     Args:
@@ -71,7 +71,7 @@ async def read_session(token: str, *, refresh_ttl: bool = True) -> dict | None:
         return None
     if refresh_ttl:
         await redis_client.expire(SESSION_PREFIX + token, settings.SESSION_TTL_SECONDS)
-    return json.loads(raw)
+    return cast("dict[str, Any]", json.loads(raw))
 
 
 async def invalidate_session(token: str) -> None:
@@ -101,13 +101,13 @@ async def create_registration_token(user_id: UUID, phone: str) -> str:
     return token
 
 
-async def read_registration_token(token: str) -> dict | None:
+async def read_registration_token(token: str) -> dict[str, Any] | None:
     """Return the payload or None. Does NOT refresh TTL — this is single-use."""
     raw = await redis_client.get(REGTOKEN_PREFIX + token)
     return json.loads(raw) if raw else None
 
 
-async def consume_registration_token(token: str) -> dict | None:
+async def consume_registration_token(token: str) -> dict[str, Any] | None:
     """Read-and-delete: atomic single-use semantics.
 
     Returns the payload if the token was valid; None otherwise. After this

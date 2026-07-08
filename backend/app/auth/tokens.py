@@ -18,7 +18,7 @@ Anything else (`aud`, `azp`, custom claims) is up to the caller.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
@@ -121,4 +121,4 @@ async def verify_jwt(token: str, *, client: KeycloakClient | None = None) -> dic
     except JWTError as exc:
         raise InvalidToken("Token signature verification failed.") from exc
 
-    return claims
+    return cast("dict[str, Any]", claims)

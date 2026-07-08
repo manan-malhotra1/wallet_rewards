@@ -75,7 +75,7 @@ async def post_p2p(
     return P2PResponse(
         transaction_id=txn.id,
         status=txn.status,
-        amount=txn.amount,
+        amount=Decimal(str(txn.amount)),
         fee=fee,
         total_debited=Decimal(str(txn.amount)) + fee,
         currency=txn.currency,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -106,7 +106,7 @@ class KeycloakClient:
             return None
         for key in self._jwks.get("keys", []):
             if key.get("kid") == kid:
-                return key
+                return cast("dict[str, Any]", key)
         return None
 
     # ------------------------------------------------------------------ test hooks

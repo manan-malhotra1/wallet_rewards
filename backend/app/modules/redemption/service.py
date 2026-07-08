@@ -18,6 +18,7 @@ entrypoint. Confirm/fail remain as admin operator overrides.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
@@ -401,7 +402,7 @@ async def _find_redemption_for_transition(
     return redemption
 
 
-def _redemption_audit_snapshot(redemption: Redemption) -> dict:
+def _redemption_audit_snapshot(redemption: Redemption) -> dict[str, Any]:
     """Compact JSON-safe snapshot of the audit-relevant redemption fields."""
     return {
         "status": redemption.status,

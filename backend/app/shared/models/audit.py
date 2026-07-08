@@ -11,6 +11,7 @@ activation, redemption confirm/fail, etc.).
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
@@ -67,8 +68,8 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    before_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    after_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    before_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    after_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     # Free-text note for human-readable context (e.g. reconciliation reason).
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

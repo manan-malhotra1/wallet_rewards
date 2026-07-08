@@ -16,6 +16,7 @@ from sqlalchemy import (
     TIMESTAMP,
     Boolean,
     CheckConstraint,
+    Connection,
     Date,
     ForeignKey,
     Index,
@@ -23,7 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Mapper, mapped_column, relationship
 
 from app.shared.models.base import Base, created_at_col, updated_at_col, uuid_pk
 
@@ -239,7 +240,9 @@ from sqlalchemy import event as _sa_event  # noqa: E402
 
 @_sa_event.listens_for(UserIdentifier, "before_insert")
 @_sa_event.listens_for(UserIdentifier, "before_update")
-def _normalize_identifier_before_write(mapper, connection, target):
+def _normalize_identifier_before_write(
+    mapper: Mapper[UserIdentifier], connection: Connection, target: UserIdentifier
+) -> None:
     """Run `normalize_identifier(type, value)` before every INSERT / UPDATE.
 
     Lives at the model layer (not the service) so any code path — ORM

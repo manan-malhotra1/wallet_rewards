@@ -8,6 +8,7 @@ Three routes:
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
@@ -68,7 +69,7 @@ async def post_user_to_segment(
     fastapi_request: Request,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
-) -> dict:
+) -> dict[str, Any]:
     """Assign a user to a segment. Idempotent."""
     membership = await add_user_to_segment(
         session,

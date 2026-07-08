@@ -8,6 +8,7 @@ file.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -384,7 +385,9 @@ async def change_user_type(
     return await _reload_user(session, user.id)
 
 
-async def get_user_detail(session: AsyncSession, *, user_id: UUID, tenant_id: UUID):
+async def get_user_detail(
+    session: AsyncSession, *, user_id: UUID, tenant_id: UUID
+) -> dict[str, Any]:
     """Load the full admin user-detail payload — identifiers, profile, accounts.
 
     Returns a plain dict so the router can map to the Pydantic response
@@ -451,7 +454,7 @@ async def get_user_detail(session: AsyncSession, *, user_id: UUID, tenant_id: UU
     }
 
 
-async def get_my_wallet(session: AsyncSession, *, user_id: UUID, tenant_id: UUID) -> dict:
+async def get_my_wallet(session: AsyncSession, *, user_id: UUID, tenant_id: UUID) -> dict[str, Any]:
     """Return the authenticated user's own wallet view.
 
     Mirrors what a real mobile app needs: accounts with derived balances
@@ -510,7 +513,7 @@ async def get_my_wallet(session: AsyncSession, *, user_id: UUID, tenant_id: UUID
     # Recent transactions: DISTINCT through the user's accounts' ledger
     # entries so both sent + received movements appear. Limit 10 — mobile
     # surfaces a short feed; a full statement is a separate endpoint.
-    txns_payload: list[dict] = await _build_recent_txns_payload(
+    txns_payload: list[dict[str, Any]] = await _build_recent_txns_payload(
         session, tenant_id=tenant_id, account_ids=account_ids
     )
 
@@ -529,7 +532,7 @@ async def _build_recent_txns_payload(
     tenant_id: UUID,
     account_ids: list[UUID],
     limit: int = 10,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Build the recent-transactions list for /me/wallet.
 
     Loads up to 10 recent transactions touching the caller's accounts,
@@ -608,7 +611,7 @@ async def _build_recent_txns_payload(
         for acct_id, first_name in cp_rows.all():
             first_name_by_account[acct_id] = first_name
 
-    payload: list[dict] = []
+    payload: list[dict[str, Any]] = []
     for t in txns:
         entries = entries_by_txn.get(t.id, [])
         user_entry = next((e for e in entries if e.account_id in own_account_set), None)
@@ -650,7 +653,7 @@ async def list_user_transactions(
     tenant_id: UUID,
     user_id: UUID,
     limit: int = 50,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return a user's recent transactions for the admin user-detail view.
 
     Resolves the user's accounts then delegates to the same payload
@@ -694,7 +697,7 @@ async def admin_reset_pin(
     tenant_id: UUID,
     admin: AdminPrincipal,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Generate a fresh random 4-digit PIN for the user and persist its hash.
 
     Admin-only. Tenant-scoped — admin must supply the user's tenant_id;

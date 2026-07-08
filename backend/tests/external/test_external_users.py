@@ -1,0 +1,158 @@
+"""Integration tests for POST /api/v1/external/users (Epic 14 S4).
+
+The external partner API: HMAC-signed, tenant derived from the API key,
+reuses identity.create_user, idempotent on retry.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import time
+from collections.abc import AsyncIterator
+
+import pytest
+import pytest_asyncio
+from httpx import AsyncClient
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.secret_box import encrypt_secret
+from app.shared.models import ApiKey, Tenant, User
+
+_SECRET = "ext-partner-secret-do-not-log"
+
+
+@pytest_asyncio.fixture
+async def api_key(db_session: AsyncSession, test_tenant: Tenant) -> AsyncIterator[dict[str, str]]:
+    """An active API key for the test tenant, with a known plaintext secret."""
+    db_session.add(
+        ApiKey(
+            tenant_id=test_tenant.id,
+            key_id="sak_live_ext",
+            secret_encrypted=encrypt_secret(_SECRET),
+        )
+    )
+    await db_session.commit()
+    yield {"key_id": "sak_live_ext", "secret": _SECRET}
+
+
+def _sign_headers(
+    key_id: str, secret: str, raw: bytes, *, idem: str = "idem-key-1"
+) -> dict[str, str]:
+    """Build the header set a partner would send for a signed request."""
+    ts = int(time.time())
+    digest = hmac.new(secret.encode(), f"{ts}.".encode() + raw, hashlib.sha256).hexdigest()
+    return {
+        "X-Sasai-Api-Key": key_id,
+        "X-Sasai-Signature": f"t={ts},v1={digest}",
+        "Idempotency-Key": idem,
+        "Content-Type": "application/json",
+    }
+
+
+def _body(email: str = "partner.user@example.com") -> dict:
+    return {"identifiers": [{"identifier_type": "email", "identifier_value": email}]}
+
+
+@pytest.mark.asyncio
+async def test_valid_request_creates_user_in_key_tenant(
+    async_client: AsyncClient, test_tenant: Tenant, api_key: dict[str, str]
+) -> None:
+    """A correctly-signed request creates a consumer in the KEY's tenant."""
+    raw = json.dumps(_body()).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["tenant_id"] == str(test_tenant.id)  # tenant from key, not body
+    assert data["user_type"] == "consumer"
+    assert data["identifiers"][0]["identifier_value"] == "partner.user@example.com"
+
+
+@pytest.mark.asyncio
+async def test_missing_auth_headers_rejected(
+    async_client: AsyncClient, api_key: dict[str, str]
+) -> None:
+    """No API key / signature -> 401 api_key_invalid."""
+    raw = json.dumps(_body()).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers={"Idempotency-Key": "x", "Content-Type": "application/json"},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["error_code"] == "api_key_invalid"
+
+
+@pytest.mark.asyncio
+async def test_bad_signature_rejected(async_client: AsyncClient, api_key: dict[str, str]) -> None:
+    """A signature computed with the wrong secret -> 401 invalid_signature."""
+    raw = json.dumps(_body()).encode()
+    headers = _sign_headers(api_key["key_id"], "the-wrong-secret", raw)
+    resp = await async_client.post("/api/v1/external/users", content=raw, headers=headers)
+    assert resp.status_code == 401
+    assert resp.json()["error_code"] == "invalid_signature"
+
+
+@pytest.mark.asyncio
+async def test_missing_idempotency_key_rejected(
+    async_client: AsyncClient, api_key: dict[str, str]
+) -> None:
+    """The Idempotency-Key header is required (Pay-PRD-0200)."""
+    raw = json.dumps(_body()).encode()
+    headers = _sign_headers(api_key["key_id"], api_key["secret"], raw)
+    del headers["Idempotency-Key"]
+    resp = await async_client.post("/api/v1/external/users", content=raw, headers=headers)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_missing_email_or_phone_rejected(
+    async_client: AsyncClient, api_key: dict[str, str]
+) -> None:
+    """A partner-created user must be contactable by email or phone."""
+    body = {"identifiers": [{"identifier_type": "account_number", "identifier_value": "ZA-1"}]}
+    raw = json.dumps(body).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_idempotent_replay_returns_same_user(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    api_key: dict[str, str],
+) -> None:
+    """Re-sending the same create (same identifier) returns the existing user
+    rather than a 409 — retries are safe, and only one user is created."""
+    raw = json.dumps(_body("dup@example.com")).encode()
+    first = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert first.status_code == 201, first.text
+
+    raw2 = json.dumps(_body("dup@example.com")).encode()
+    second = await async_client.post(
+        "/api/v1/external/users",
+        content=raw2,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw2, idem="idem-key-2"),
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["id"] == first.json()["id"]
+
+    count = await db_session.scalar(
+        select(func.count()).select_from(User).where(User.tenant_id == test_tenant.id)
+    )
+    assert count == 1

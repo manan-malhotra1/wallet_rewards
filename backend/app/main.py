@@ -13,6 +13,7 @@ from app.modules.accounts import router as accounts_router
 from app.modules.budgets import router as budgets_router
 from app.modules.catalog import router as catalog_router
 from app.modules.events import router as events_router
+from app.modules.external import router as external_router
 from app.modules.identity import router as identity_router
 from app.modules.instruments import router as instruments_router
 from app.modules.limits import router as limits_router
@@ -76,6 +77,7 @@ app.include_router(accounts_router)
 app.include_router(payments_router)
 app.include_router(rules_router)
 app.include_router(events_router)
+app.include_router(external_router)
 app.include_router(redemption_router)
 app.include_router(catalog_router)
 app.include_router(reconciliation_router)

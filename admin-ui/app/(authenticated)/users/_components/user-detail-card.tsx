@@ -38,6 +38,8 @@ import type { UserTransaction } from "@/lib/api-endpoints";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
 import { ResetPinButton } from "./reset-pin-button";
+import { ChangeTypeDialog } from "./change-type-dialog";
+import { UserTypeBadge } from "./user-type-badge";
 
 const TRANSACTION_TYPE_LABEL: Record<string, string> = {
   p2p: "Peer-to-Peer",
@@ -127,11 +129,22 @@ export function UserDetailCard({
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <StatusPill status={detail.status.toUpperCase()} variant="full" />
+              <div className="flex items-center gap-2">
+                <UserTypeBadge type={detail.user_type} />
+                <StatusPill status={detail.status.toUpperCase()} variant="full" />
+              </div>
               <span className="text-[11px] text-muted-foreground">
                 Created {formatTimestamp(detail.created_at)}
               </span>
-              <ResetPinButton userId={detail.id} tenantId={detail.tenant_id} />
+              <div className="flex items-center gap-2">
+                <ChangeTypeDialog
+                  userId={detail.id}
+                  tenantId={detail.tenant_id}
+                  currentType={detail.user_type}
+                  currentParentId={detail.parent_user_id}
+                />
+                <ResetPinButton userId={detail.id} tenantId={detail.tenant_id} />
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -147,6 +160,14 @@ export function UserDetailCard({
               </p>
             </div>
           </div>
+          {detail.parent_user_id && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Reports to{" "}
+              <span className="font-mono">
+                {shortId(detail.parent_user_id, "usr")}
+              </span>
+            </p>
+          )}
         </CardContent>
       </Card>
 

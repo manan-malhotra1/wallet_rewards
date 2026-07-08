@@ -9,6 +9,14 @@
 
 export type BusinessType = "wallet" | "rewards" | "both";
 
+/** The five first-class user types (Epic 12). */
+export type UserType =
+  | "consumer"
+  | "agent"
+  | "super_agent"
+  | "merchant"
+  | "head_merchant";
+
 export interface Tenant {
   id: string;
   name: string;
@@ -49,6 +57,8 @@ export interface User {
   id: string;
   tenant_id: string;
   status: string;
+  user_type: UserType;
+  parent_user_id: string | null;
   created_at: string;
   identifiers: UserIdentifier[];
 }
@@ -73,6 +83,8 @@ export interface UserDetail {
   id: string;
   tenant_id: string;
   status: string;
+  user_type: UserType;
+  parent_user_id: string | null;
   created_at: string;
   identifiers: UserIdentifier[];
   profile: UserProfile | null;

@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.shared.utils.normalize import normalize_phone
 
 IdentifierType = Literal["phone", "email", "account_number", "card_number"]
+UserType = Literal["consumer", "agent", "super_agent", "merchant", "head_merchant"]
 
 
 class IdentifierIn(BaseModel):
@@ -44,6 +45,24 @@ class CreateUserRequest(BaseModel):
     tenant_id: UUID
     identifiers: list[IdentifierIn] = Field(min_length=1)
     profile: UserProfileIn | None = None
+    # User type (Epic 12). Defaults to consumer so existing callers are
+    # unaffected. `parent_user_id` is only valid for agent/merchant types —
+    # compatibility is enforced in the service layer.
+    user_type: UserType = "consumer"
+    parent_user_id: UUID | None = None
+
+
+class ChangeUserTypeRequest(BaseModel):
+    """Body for PATCH /identity/users/{user_id}/type (Epic 12).
+
+    `reason` is mandatory — it is recorded on the audit_log entry so type
+    changes are traceable (NFR-0250). `parent_user_id` follows the same
+    Decision D4 compatibility rules as creation.
+    """
+
+    new_type: UserType
+    parent_user_id: UUID | None = None
+    reason: str = Field(min_length=1, max_length=500)
 
 
 class IdentifierOut(BaseModel):
@@ -65,6 +84,8 @@ class UserOut(BaseModel):
     id: UUID
     tenant_id: UUID
     status: str
+    user_type: str
+    parent_user_id: UUID | None = None
     identifiers: list[IdentifierOut]
 
 
@@ -115,6 +136,8 @@ class UserDetailOut(BaseModel):
     id: UUID
     tenant_id: UUID
     status: str
+    user_type: str
+    parent_user_id: UUID | None
     created_at: datetime
     identifiers: list[IdentifierOut]
     profile: UserProfileOut | None

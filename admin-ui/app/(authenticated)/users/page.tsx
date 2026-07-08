@@ -23,6 +23,7 @@ import { PageHeader } from "@/components/ui/page-header";
 
 import { UserLookupForm } from "./_components/user-lookup-form";
 import { UserDetailCard } from "./_components/user-detail-card";
+import { CreateUserDialog } from "./_components/create-user-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -73,10 +74,15 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         title="Users"
         subtitle="Look up by phone, email, account, or card identifier."
         actions={
-          <Button variant="outline" disabled title="Phase G">
-            <UserPlus className="h-3.5 w-3.5" />
-            Register user
-          </Button>
+          <CreateUserDialog
+            tenantId={activeTenantId}
+            trigger={
+              <Button variant="outline">
+                <UserPlus className="h-3.5 w-3.5" />
+                Register user
+              </Button>
+            }
+          />
         }
       />
       <div className="space-y-6 p-6">

@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +61,7 @@ from app.shared.models import (
     TXN_STATUS_COMPLETED,
     WalletLimitConfig,
 )
+from app.shared.utils.user_types import resolve_user_type
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -77,15 +78,25 @@ async def _find_limit_config(
     transaction_type: str,
     account_type: str,
     currency: str,
+    user_type: str,
 ) -> LimitConfig | None:
-    """Lookup helper — returns None when no config matches (pass-through)."""
+    """Resolve the limit config for a slot, type-aware (Epic 15).
+
+    Matches the exact-dimensions row for the caller's `user_type` OR the
+    `user_type IS NULL` default, and prefers the typed row (ORDER BY user_type
+    NULLS LAST). Returns None when neither exists (graceful pass-through).
+    """
     result = await session.execute(
-        select(LimitConfig).where(
+        select(LimitConfig)
+        .where(
             LimitConfig.tenant_id == tenant_id,
             LimitConfig.transaction_type == transaction_type,
             LimitConfig.account_type == account_type,
             LimitConfig.currency == currency.upper(),
+            or_(LimitConfig.user_type == user_type, LimitConfig.user_type.is_(None)),
         )
+        .order_by(LimitConfig.user_type.nulls_last())
+        .limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -191,12 +202,14 @@ async def check_limits(
         AmountBelowMin / AmountAboveMax: 422.
         Daily/Weekly/Monthly Count/Value Exceeded: 429.
     """
+    user_type = await resolve_user_type(session, tenant_id, user_id)
     config = await _find_limit_config(
         session,
         tenant_id=tenant_id,
         transaction_type=transaction_type,
         account_type=account_type,
         currency=currency,
+        user_type=user_type,
     )
     if config is None:
         return  # No config = no limit (intentional pass-through).
@@ -262,14 +275,25 @@ def _wallet_windows(direction: str) -> tuple[tuple[str, str, str, timedelta], ..
 
 
 async def _find_wallet_limit_config(
-    session: AsyncSession, *, tenant_id: UUID, currency: str
+    session: AsyncSession, *, tenant_id: UUID, currency: str, user_type: str
 ) -> WalletLimitConfig | None:
-    """Return the (tenant, currency) wallet limit config, or None (pass-through)."""
+    """Resolve the (tenant, currency) wallet limit config, type-aware (Epic 15).
+
+    Exact-type row beats the `user_type IS NULL` default; None when neither
+    exists (pass-through).
+    """
     result = await session.execute(
-        select(WalletLimitConfig).where(
+        select(WalletLimitConfig)
+        .where(
             WalletLimitConfig.tenant_id == tenant_id,
             WalletLimitConfig.currency == currency.upper(),
+            or_(
+                WalletLimitConfig.user_type == user_type,
+                WalletLimitConfig.user_type.is_(None),
+            ),
         )
+        .order_by(WalletLimitConfig.user_type.nulls_last())
+        .limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -399,7 +423,10 @@ async def check_wallet_send_limits(
         WalletSendLimitExceeded: 429 — a daily/weekly/monthly count or value
             cap would be breached.
     """
-    config = await _find_wallet_limit_config(session, tenant_id=tenant_id, currency=currency)
+    user_type = await resolve_user_type(session, tenant_id, user_id)
+    config = await _find_wallet_limit_config(
+        session, tenant_id=tenant_id, currency=currency, user_type=user_type
+    )
     if config is None:
         return  # No config = no wallet limit (intentional pass-through).
 
@@ -456,7 +483,10 @@ async def check_wallet_receive_limits(
         MaxBalanceExceeded / WalletReceiveLimitExceeded: owner-facing (409/429).
         RecipientMaxBalanceExceeded / RecipientLimitReached: sender-facing (409).
     """
-    config = await _find_wallet_limit_config(session, tenant_id=tenant_id, currency=currency)
+    user_type = await resolve_user_type(session, tenant_id, user_id)
+    config = await _find_wallet_limit_config(
+        session, tenant_id=tenant_id, currency=currency, user_type=user_type
+    )
     if config is None:
         return  # No config = no wallet limit (intentional pass-through).
 
@@ -525,6 +555,7 @@ async def create_limit_config(
         transaction_type=request.transaction_type,
         account_type=request.account_type,
         currency=request.currency.upper(),
+        user_type=request.user_type,
         min_amount=request.min_amount,
         max_amount=request.max_amount,
         daily_count_cap=request.daily_count_cap,
@@ -664,6 +695,7 @@ async def create_wallet_limit_config(
     config = WalletLimitConfig(
         tenant_id=request.tenant_id,
         currency=request.currency.upper(),
+        user_type=request.user_type,
         **{field: getattr(request, field) for field in _WALLET_CONFIG_FIELDS},
     )
     session.add(config)

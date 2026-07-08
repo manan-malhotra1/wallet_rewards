@@ -34,6 +34,7 @@ from app.config import settings
 from app.modules.identity.schemas import (
     AuthStartRequest,
     AuthStartResponse,
+    ChangeUserTypeRequest,
     CreateUserRequest,
     IdentifierType,
     OtpSendRequest,
@@ -52,6 +53,7 @@ from app.shared.exceptions import (
     InvalidOtp,
     InvalidPinFormat,
     InvalidRegistrationToken,
+    InvalidUserTypeParent,
     OtpRateLimited,
     PinAlreadySet,
     PinNotSet,
@@ -60,6 +62,7 @@ from app.shared.exceptions import (
 )
 from app.shared.utils.normalize import normalize_identifier, normalize_phone
 from app.shared.models import (
+    PARENT_TYPE_BY_CHILD,
     AuthAttempt,
     OtpRequest,
     Tenant,
@@ -82,6 +85,54 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
     result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
     if result.scalar_one_or_none() is None:
         raise TenantNotFound()
+
+
+async def _validate_type_hierarchy(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_type: str,
+    parent_user_id: UUID | None,
+) -> None:
+    """Enforce user-type <-> parent compatibility (Decision D4, Epic 12).
+
+    Rules (spec §3.1):
+      - consumer / super_agent / head_merchant must have a NULL parent.
+      - agent's parent, when supplied, must be a super_agent in the same tenant.
+      - merchant's parent, when supplied, must be a head_merchant in the same
+        tenant.
+      - The parent is optional for agent / merchant.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant the child user belongs to; the parent must share it.
+        user_type: The child's type — already validated against the enum by the
+            Pydantic layer.
+        parent_user_id: The proposed parent, or None.
+
+    Raises:
+        InvalidUserTypeParent: 422 when a parent is set on a type that forbids
+            one, or the parent's tenant/type does not match the requirement.
+    """
+    expected_parent_type = PARENT_TYPE_BY_CHILD.get(user_type)
+
+    # Types with no slot in the hierarchy must never carry a parent.
+    if expected_parent_type is None:
+        if parent_user_id is not None:
+            raise InvalidUserTypeParent()
+        return
+
+    # agent / merchant: parent is optional, but when present it must be the
+    # right type AND live in the same tenant (no cross-tenant hierarchies).
+    if parent_user_id is None:
+        return
+
+    result = await session.execute(
+        select(User).where(User.id == parent_user_id, User.tenant_id == tenant_id)
+    )
+    parent = result.scalar_one_or_none()
+    if parent is None or parent.user_type != expected_parent_type:
+        raise InvalidUserTypeParent()
 
 
 async def create_user(
@@ -110,10 +161,27 @@ async def create_user(
     Raises:
         TenantNotFound: 404 when request.tenant_id is unknown.
         IdentifierAlreadyInUse: 409 when an identifier collides in this tenant.
+        InvalidUserTypeParent: 422 when user_type / parent_user_id are
+            incompatible (Decision D4).
+
+    Note:
+        Merchant types (`merchant`, `head_merchant`) are accepted here, but the
+        `merchant_profiles` row + collection account they need are provisioned
+        in Epic 17 — this endpoint does not yet require a profile payload.
     """
     await _assert_tenant_exists(session, request.tenant_id)
+    await _validate_type_hierarchy(
+        session,
+        tenant_id=request.tenant_id,
+        user_type=request.user_type,
+        parent_user_id=request.parent_user_id,
+    )
 
-    user = User(tenant_id=request.tenant_id)
+    user = User(
+        tenant_id=request.tenant_id,
+        user_type=request.user_type,
+        parent_user_id=request.parent_user_id,
+    )
     session.add(user)
     # Flush to populate user.id before we insert identifiers that reference it.
     await session.flush()
@@ -220,6 +288,105 @@ async def _reload_user(session: AsyncSession, user_id: UUID) -> User:
     return user
 
 
+async def change_user_type(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    request: ChangeUserTypeRequest,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> User:
+    """Change a user's type (and optional parent), audit-logged. Admin-only.
+
+    Tenant-scoped: a user in another tenant returns 404 (no existence leak).
+    Parent compatibility is enforced per Decision D4 (see
+    `_validate_type_hierarchy`), and a user may never be its own parent.
+
+    Idempotency is state-based (Epic 12 decision — the repo has no non-ledger
+    idempotency store): if the user already has `new_type` with the same
+    `parent_user_id`, this is a no-op — no audit row is written and the current
+    state is returned, so retries are safe.
+
+    The spec's merchant-specific guards (entering a merchant type requires a
+    `merchant_profiles` row; leaving a merchant type is blocked while a
+    `merchant_collection` account is non-zero) are DEFERRED to Epic 17 — those
+    tables do not exist yet.
+
+    Args:
+        session: Async DB session (committed here on a real change).
+        user_id: Target user.
+        tenant_id: Caller's tenant; the user must belong to it.
+        request: Validated {new_type, parent_user_id?, reason}.
+        admin: Authenticated admin — the audit actor.
+        ip_address: Caller IP recorded on the audit row.
+
+    Returns:
+        The user with identifiers loaded (maps to `UserOut`).
+
+    Raises:
+        UserNotFound: 404 — unknown user or a user in another tenant.
+        InvalidUserTypeParent: 422 — parent incompatible with new_type (D4),
+            or the user was set as its own parent.
+
+    Side effects:
+        On a real change: updates `users.user_type` / `parent_user_id` and
+        writes one `user.type_changed` audit row. Emits no Kafka event
+        (lifecycle events are deferred).
+    """
+    from app.modules.audit.service import record_audit_for_admin
+
+    result = await session.execute(
+        select(User).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise UserNotFound()
+
+    # A user can never sit under itself in the hierarchy — reject before the
+    # generic parent-type check (which would otherwise pass if the user is
+    # currently the parent type it's pointing at).
+    if request.parent_user_id == user.id:
+        raise InvalidUserTypeParent()
+
+    await _validate_type_hierarchy(
+        session,
+        tenant_id=tenant_id,
+        user_type=request.new_type,
+        parent_user_id=request.parent_user_id,
+    )
+
+    # State-based idempotency: already in the target state → no-op, no audit.
+    if user.user_type == request.new_type and user.parent_user_id == request.parent_user_id:
+        return await _reload_user(session, user.id)
+
+    before = {
+        "user_type": user.user_type,
+        "parent_user_id": str(user.parent_user_id) if user.parent_user_id else None,
+    }
+    user.user_type = request.new_type
+    user.parent_user_id = request.parent_user_id
+    after = {
+        "user_type": request.new_type,
+        "parent_user_id": str(request.parent_user_id) if request.parent_user_id else None,
+    }
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="user.type_changed",
+        entity_type="user",
+        entity_id=str(user.id),
+        before_state=before,
+        after_state=after,
+        note=request.reason,
+        ip_address=ip_address,
+    )
+    await session.commit()
+    return await _reload_user(session, user.id)
+
+
 async def get_user_detail(
     session: AsyncSession, *, user_id: UUID, tenant_id: UUID
 ):
@@ -285,6 +452,8 @@ async def get_user_detail(
         "id": user.id,
         "tenant_id": user.tenant_id,
         "status": user.status,
+        "user_type": user.user_type,
+        "parent_user_id": user.parent_user_id,
         "created_at": user.created_at,
         "identifiers": user.identifiers,
         "profile": profile,

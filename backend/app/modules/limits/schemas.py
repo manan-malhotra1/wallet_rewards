@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.identity.schemas import UserType
+
 
 class LimitConfigCreateRequest(BaseModel):
     """Admin payload for creating a service-wise limit config.
@@ -22,6 +24,8 @@ class LimitConfigCreateRequest(BaseModel):
     transaction_type: str = Field(min_length=1, max_length=50)
     account_type: str = Field(min_length=1, max_length=30)
     currency: str = Field(min_length=2, max_length=10)
+    # Type-aware scope (Epic 15): None = default config for all user types.
+    user_type: UserType | None = None
     min_amount: Decimal | None = None
     max_amount: Decimal | None = None
     daily_count_cap: int | None = Field(default=None, gt=0)
@@ -65,6 +69,7 @@ class LimitConfigOut(BaseModel):
     transaction_type: str
     account_type: str
     currency: str
+    user_type: str | None
     min_amount: Decimal | None
     max_amount: Decimal | None
     daily_count_cap: int | None
@@ -109,6 +114,7 @@ class WalletLimitConfigCreateRequest(BaseModel):
 
     tenant_id: UUID
     currency: str = Field(min_length=2, max_length=10)
+    user_type: UserType | None = None
     max_balance: Decimal | None = Field(default=None, gt=Decimal("0"))
 
     send_daily_count_cap: int | None = Field(default=None, gt=0)
@@ -142,6 +148,7 @@ class WalletLimitConfigOut(BaseModel):
     id: UUID
     tenant_id: UUID
     currency: str
+    user_type: str | None
     max_balance: Decimal | None
     send_daily_count_cap: int | None
     send_daily_value_cap: Decimal | None

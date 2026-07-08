@@ -26,6 +26,33 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.models.base import Base, created_at_col, updated_at_col, uuid_pk
 
+# User type constants (user-types foundation, Epic 12) — keep in sync with the
+# CHECK constraint on `users.user_type` below and migration 0021.
+USER_TYPE_CONSUMER = "consumer"
+USER_TYPE_AGENT = "agent"
+USER_TYPE_SUPER_AGENT = "super_agent"
+USER_TYPE_MERCHANT = "merchant"
+USER_TYPE_HEAD_MERCHANT = "head_merchant"
+
+USER_TYPES = (
+    USER_TYPE_CONSUMER,
+    USER_TYPE_AGENT,
+    USER_TYPE_SUPER_AGENT,
+    USER_TYPE_MERCHANT,
+    USER_TYPE_HEAD_MERCHANT,
+)
+
+# Types backed by a merchant_profiles row + collection account (Epic 17).
+MERCHANT_USER_TYPES = (USER_TYPE_MERCHANT, USER_TYPE_HEAD_MERCHANT)
+
+# Parent-type compatibility (Decision D4): a child type maps to the single
+# parent type it may hang under. Types absent from this map must have a NULL
+# parent. Enforced in the identity service (cross-row rule, not a CHECK).
+PARENT_TYPE_BY_CHILD = {
+    USER_TYPE_AGENT: USER_TYPE_SUPER_AGENT,
+    USER_TYPE_MERCHANT: USER_TYPE_HEAD_MERCHANT,
+}
+
 
 class User(Base):
     """A natural person registered on the platform.
@@ -43,6 +70,11 @@ class User(Base):
             "status IN ('active', 'suspended', 'closed')",
             name="ck_users_status",
         ),
+        CheckConstraint(
+            "user_type IN ('consumer', 'agent', 'super_agent', 'merchant', 'head_merchant')",
+            name="ck_users_user_type",
+        ),
+        Index("ix_users_tenant_user_type", "tenant_id", "user_type"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -54,6 +86,18 @@ class User(Base):
     )
     # bcrypt hash; never the plain PIN. NULL until user sets PIN (Phase 2).
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # First-class user type (Epic 12). VARCHAR + CHECK per repo DB conventions
+    # (native PG enums avoided — see .claude/rules/database.md). Existing rows
+    # backfill to 'consumer' via the server_default.
+    user_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=USER_TYPE_CONSUMER
+    )
+    # Nullable self-link for the agent/merchant hierarchy (Decision D4). Type
+    # compatibility (agent->super_agent, merchant->head_merchant, same tenant)
+    # is enforced in the identity service — it's a cross-row rule, not a CHECK.
+    parent_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
     deleted_at: Mapped[datetime | None] = mapped_column(

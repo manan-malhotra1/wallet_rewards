@@ -53,6 +53,22 @@ class IdentifierAlreadyInUse(AppHTTPException):
         )
 
 
+class InvalidUserTypeParent(AppHTTPException):
+    """The parent_user_id is incompatible with the user's type (Decision D4, Epic 12).
+
+    Raised when a consumer/super_agent/head_merchant is given a parent, or an
+    agent/merchant's supplied parent is missing, in another tenant, or not the
+    required parent type (super_agent for agent, head_merchant for merchant).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "user_type_invalid_parent",
+            "The parent user is not compatible with this user type.",
+        )
+
+
 # --- Tenants ----------------------------------------------------------------
 
 

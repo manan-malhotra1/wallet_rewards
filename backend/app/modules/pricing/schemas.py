@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.identity.schemas import UserType
+
 
 class PricingConfigCreateRequest(BaseModel):
     """Admin payload to create a fee config.
@@ -20,6 +22,8 @@ class PricingConfigCreateRequest(BaseModel):
     transaction_type: str = Field(min_length=1, max_length=50)
     account_type: str = Field(min_length=1, max_length=30)
     currency: str = Field(min_length=3, max_length=3)
+    # Type-aware scope (Epic 16): None = default fee for all user types.
+    user_type: UserType | None = None
     fixed_fee: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     variable_fee_pct: Decimal = Field(
         default=Decimal("0"), ge=Decimal("0"), lt=Decimal("1")
@@ -45,6 +49,7 @@ class PricingConfigOut(BaseModel):
     transaction_type: str
     account_type: str
     currency: str
+    user_type: str | None
     fixed_fee: Decimal
     variable_fee_pct: Decimal
     fee_cap: Decimal | None

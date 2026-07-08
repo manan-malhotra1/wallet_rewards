@@ -17,6 +17,12 @@ from app.shared.models.accounts import (
     Account,
     AccountBalanceSnapshot,
 )
+from app.shared.models.api_keys import (
+    API_KEY_STATUS_ACTIVE,
+    API_KEY_STATUS_REVOKED,
+    API_KEY_STATUSES,
+    ApiKey,
+)
 from app.shared.models.audit import (
     ACTION_RECON_ESCALATED,
     ACTION_RECON_RESOLVED_COMPLETED,
@@ -146,6 +152,9 @@ __all__ = [
     "ACTOR_ADMIN",
     "ACTOR_SYSTEM",
     "ACTOR_USER",
+    "API_KEY_STATUSES",
+    "API_KEY_STATUS_ACTIVE",
+    "API_KEY_STATUS_REVOKED",
     "BUDGET_SCOPE_RULE",
     "BUDGET_SCOPE_TENANT",
     "BUDGET_STATUS_ACTIVE",
@@ -204,6 +213,8 @@ __all__ = [
     # Accounts
     "Account",
     "AccountBalanceSnapshot",
+    # External API keys (Epic 14)
+    "ApiKey",
     # Audit
     "AuditLog",
     "AuthAttempt",

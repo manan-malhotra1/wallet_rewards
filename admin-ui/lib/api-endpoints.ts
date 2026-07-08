@@ -16,6 +16,8 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import type {
   AdjustSystemWalletResponse,
   AdminPinResetResponse,
+  ApiKey,
+  ApiKeyCreated,
   AuditEntry,
   BonusMultiplier,
   BudgetConsumption,
@@ -601,5 +603,21 @@ export const createMultiplier = (payload: CreateMultiplierPayload) =>
 
 export const deleteMultiplier = (multiplier_id: string, tenant_id: string) =>
   apiDelete<void>(`/api/v1/multipliers/${multiplier_id}`, {
+    query: { tenant_id },
+  });
+
+export interface CreateApiKeyPayload {
+  tenant_id: string;
+  label?: string;
+}
+
+export const listApiKeys = (tenant_id: string) =>
+  apiGet<ApiKey[]>("/api/v1/api-keys", { query: { tenant_id } });
+
+export const createApiKey = (payload: CreateApiKeyPayload) =>
+  apiPost<ApiKeyCreated>("/api/v1/api-keys", payload);
+
+export const revokeApiKey = (key_pk: string, tenant_id: string) =>
+  apiPost<ApiKey>(`/api/v1/api-keys/${key_pk}/revoke`, undefined, {
     query: { tenant_id },
   });

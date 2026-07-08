@@ -17,6 +17,22 @@ export type UserType =
   | "merchant"
   | "head_merchant";
 
+/** External-API key (Epic 14). The secret is only ever returned once. */
+export interface ApiKey {
+  id: string;
+  tenant_id: string;
+  key_id: string;
+  label: string | null;
+  status: string;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+/** Create response — carries the plaintext secret, shown once and never again. */
+export interface ApiKeyCreated extends ApiKey {
+  secret: string;
+}
+
 export interface Tenant {
   id: string;
   name: string;

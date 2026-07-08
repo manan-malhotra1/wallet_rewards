@@ -10,6 +10,7 @@ import {
   Coins,
   CreditCard,
   Gauge,
+  KeyRound,
   Layers,
   ListChecks,
   Megaphone,
@@ -55,6 +56,7 @@ const CONFIG: NavItem[] = [
   { label: "Services", href: "/services", icon: Tag },
   { label: "Instruments", href: "/instruments", icon: Ticket },
   { label: "Tenants", href: "/tenants", icon: Settings2 },
+  { label: "API keys", href: "/api-keys", icon: KeyRound },
 ];
 
 const AUDIT: NavItem[] = [

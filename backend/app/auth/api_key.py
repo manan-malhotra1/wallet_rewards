@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
+from cryptography.fernet import InvalidToken
 from fastapi import Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,7 +79,12 @@ async def verify_api_key_request(
     if api_key is None:
         raise ApiKeyInvalid()
 
-    secret = decrypt_secret(api_key.secret_encrypted)
+    try:
+        secret = decrypt_secret(api_key.secret_encrypted)
+    except InvalidToken as exc:
+        # Stored secret can't be decrypted (e.g. SECRET_KEY rotated) — treat as
+        # an unusable key rather than a 500 (S7 M5).
+        raise ApiKeyInvalid() from exc
     verify_signature(header=signature_header, raw_body=raw_body, secret=secret, now=now)
 
     api_key.last_used_at = datetime.now(UTC)

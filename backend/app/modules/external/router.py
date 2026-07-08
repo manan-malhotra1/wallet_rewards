@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 from app.auth.api_key import ApiKeyPrincipal, require_api_key
 from app.database import get_async_session
 from app.modules.external.schemas import ExternalCreateUserRequest
-from app.modules.identity.schemas import CreateUserRequest, UserOut
+from app.modules.identity.schemas import CreateUserRequest, IdentifierIn, UserOut
 from app.modules.identity.service import create_user, resolve_identifier
 from app.shared.exceptions import IdentifierAlreadyInUse, UserNotFound
 from app.shared.models import User
@@ -54,12 +54,21 @@ async def create_external_user(
     that collides with an existing identifier, returns the existing user (200)
     rather than 409 — the identifier is the natural idempotency key.
     """
+    # Force privilege/trust-relevant fields server-side (S7 H1): a partner gets
+    # a consumer with no parent and cannot assert identifier verification.
     create_req = CreateUserRequest(
         tenant_id=principal.tenant_id,
-        identifiers=payload.identifiers,
+        identifiers=[
+            IdentifierIn(
+                identifier_type=i.identifier_type,
+                identifier_value=i.identifier_value,
+                verified=False,
+            )
+            for i in payload.identifiers
+        ],
         profile=payload.profile,
-        user_type=payload.user_type,
-        parent_user_id=payload.parent_user_id,
+        user_type="consumer",
+        parent_user_id=None,
     )
     try:
         user = await create_user(session, create_req)

@@ -11,6 +11,7 @@ import hmac
 import json
 import time
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -19,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.secret_box import encrypt_secret
-from app.shared.models import ApiKey, Tenant, User
+from app.shared.models import ApiKey, Tenant, User, UserIdentifier
 
 _SECRET = "ext-partner-secret-do-not-log"
 
@@ -182,3 +183,40 @@ async def test_rate_limit_returns_429(
     )
     assert second.status_code == 429
     assert second.json()["error_code"] == "rate_limited"
+
+
+@pytest.mark.asyncio
+async def test_partner_cannot_mass_assign_privileged_fields(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    api_key: dict[str, str],
+) -> None:
+    """A partner cannot set user_type / verified / parent_user_id (S7 H1);
+    they are forced server-side to consumer / False / none."""
+    body = {
+        "identifiers": [
+            {
+                "identifier_type": "email",
+                "identifier_value": "escalate@example.com",
+                "verified": True,
+            }
+        ],
+        "user_type": "head_merchant",
+        "parent_user_id": str(uuid4()),
+    }
+    raw = json.dumps(body).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["user_type"] == "consumer"  # not head_merchant
+    assert data["parent_user_id"] is None  # not the supplied uuid
+    row = (
+        await db_session.execute(
+            select(UserIdentifier).where(UserIdentifier.identifier_value == "escalate@example.com")
+        )
+    ).scalar_one()
+    assert row.verified is False  # partner-supplied verified=True was ignored

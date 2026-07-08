@@ -1243,9 +1243,10 @@
         "properties": {
           "identifiers": {
             "items": {
-              "$ref": "#/components/schemas/IdentifierIn"
+              "$ref": "#/components/schemas/ExternalIdentifierIn"
             },
             "type": "array",
+            "maxItems": 10,
             "minItems": 1,
             "title": "Identifiers"
           },
@@ -1258,30 +1259,6 @@
                 "type": "null"
               }
             ]
-          },
-          "user_type": {
-            "type": "string",
-            "enum": [
-              "consumer",
-              "agent",
-              "super_agent",
-              "merchant",
-              "head_merchant"
-            ],
-            "title": "User Type",
-            "default": "consumer"
-          },
-          "parent_user_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent User Id"
           }
         },
         "type": "object",
@@ -1289,7 +1266,34 @@
           "identifiers"
         ],
         "title": "ExternalCreateUserRequest",
-        "description": "Partner-facing create-user payload.\n\nUnlike the admin `CreateUserRequest`, there is no `tenant_id` in the body \u2014\nthe tenant is derived from the authenticating API key so a partner can only\never create users in its own tenant."
+        "description": "Partner-facing create-user payload.\n\nNo `tenant_id` (derived from the API key), and no `user_type` /\n`parent_user_id` \u2014 the endpoint forces `consumer` with no parent so a\npartner can't self-assign a limit/pricing tier or graft the tenant\nhierarchy (S7 H1)."
+      },
+      "ExternalIdentifierIn": {
+        "properties": {
+          "identifier_type": {
+            "type": "string",
+            "enum": [
+              "phone",
+              "email",
+              "account_number",
+              "card_number"
+            ],
+            "title": "Identifier Type"
+          },
+          "identifier_value": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Identifier Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier_type",
+          "identifier_value"
+        ],
+        "title": "ExternalIdentifierIn",
+        "description": "A partner-supplied identifier \u2014 no `verified` flag.\n\nPartners cannot assert that a phone/email is verified; the platform only\nmarks an identifier verified through its own OTP flow."
       },
       "FailRedemptionRequest": {
         "properties": {

@@ -1,30 +1,47 @@
-"""Request schemas for the external partner API (Epic 14)."""
+"""Request schemas for the external partner API (Epic 14).
+
+Deliberately a RESTRICTED shape (Epic 14 S7 / mass-assignment hardening,
+finding H1): a partner CANNOT set `user_type`, `parent_user_id`, or an
+identifier's `verified` flag — those are privilege/trust-relevant and are
+forced server-side in the router. Reusing the admin `CreateUserRequest` /
+`IdentifierIn` shapes for an untrusted caller would let a partner pick its own
+limit/pricing tier or assert unverified contact details as verified.
+"""
 
 from __future__ import annotations
 
 from typing import Self
-from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.modules.identity.schemas import IdentifierIn, UserProfileIn, UserType
+from app.modules.identity.schemas import IdentifierType, UserProfileIn
 
 # Identifier types a partner-created end-user can be reached on.
 _CONTACTABLE = {"email", "phone"}
 
 
+class ExternalIdentifierIn(BaseModel):
+    """A partner-supplied identifier — no `verified` flag.
+
+    Partners cannot assert that a phone/email is verified; the platform only
+    marks an identifier verified through its own OTP flow.
+    """
+
+    identifier_type: IdentifierType
+    identifier_value: str = Field(min_length=1, max_length=255)
+
+
 class ExternalCreateUserRequest(BaseModel):
     """Partner-facing create-user payload.
 
-    Unlike the admin `CreateUserRequest`, there is no `tenant_id` in the body —
-    the tenant is derived from the authenticating API key so a partner can only
-    ever create users in its own tenant.
+    No `tenant_id` (derived from the API key), and no `user_type` /
+    `parent_user_id` — the endpoint forces `consumer` with no parent so a
+    partner can't self-assign a limit/pricing tier or graft the tenant
+    hierarchy (S7 H1).
     """
 
-    identifiers: list[IdentifierIn] = Field(min_length=1)
+    identifiers: list[ExternalIdentifierIn] = Field(min_length=1, max_length=10)
     profile: UserProfileIn | None = None
-    user_type: UserType = "consumer"
-    parent_user_id: UUID | None = None
 
     @model_validator(mode="after")
     def _require_email_or_phone(self) -> Self:

@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for the pricing module (Phase G.3)."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -25,17 +26,13 @@ class PricingConfigCreateRequest(BaseModel):
     # Type-aware scope (Epic 16): None = default fee for all user types.
     user_type: UserType | None = None
     fixed_fee: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
-    variable_fee_pct: Decimal = Field(
-        default=Decimal("0"), ge=Decimal("0"), lt=Decimal("1")
-    )
+    variable_fee_pct: Decimal = Field(default=Decimal("0"), ge=Decimal("0"), lt=Decimal("1"))
     fee_cap: Decimal | None = Field(default=None, gt=Decimal("0"))
 
     @model_validator(mode="after")
-    def _fee_cap_only_with_variable(self) -> "PricingConfigCreateRequest":
+    def _fee_cap_only_with_variable(self) -> PricingConfigCreateRequest:
         if self.fee_cap is not None and self.variable_fee_pct == 0:
-            raise ValueError(
-                "fee_cap only makes sense when variable_fee_pct > 0."
-            )
+            raise ValueError("fee_cap only makes sense when variable_fee_pct > 0.")
         return self
 
 

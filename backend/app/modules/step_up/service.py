@@ -4,6 +4,7 @@ The hot path is `enforce_step_up` — one query, one bcrypt verify when
 the threshold is exceeded, otherwise a no-op. Callers (P2P, redemption)
 invoke it inside their orchestration sequence BEFORE any ledger write.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -29,7 +30,6 @@ from app.shared.exceptions import (
     TenantNotFound,
 )
 from app.shared.models import StepUpPolicy, Tenant, User
-
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -120,9 +120,7 @@ async def enforce_step_up(
 
     # Load the bcrypt hash. Selecting only the column keeps this cheap
     # and avoids loading the relationships graph.
-    pin_hash_q = await session.execute(
-        select(User.pin_hash).where(User.id == principal.id)
-    )
+    pin_hash_q = await session.execute(select(User.pin_hash).where(User.id == principal.id))
     pin_hash = pin_hash_q.scalar_one_or_none()
     if not pin_hash or not hashing.verify_pin(pin, pin_hash):
         await register_failure(principal.id)
@@ -212,9 +210,7 @@ async def create_policy(
     return policy
 
 
-async def list_policies_for_tenant(
-    session: AsyncSession, tenant_id: UUID
-) -> list[StepUpPolicyOut]:
+async def list_policies_for_tenant(session: AsyncSession, tenant_id: UUID) -> list[StepUpPolicyOut]:
     """Return every step-up policy in the tenant — newest first."""
     result = await session.execute(
         select(StepUpPolicy)

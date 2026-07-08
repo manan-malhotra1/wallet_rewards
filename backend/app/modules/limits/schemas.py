@@ -36,7 +36,7 @@ class LimitConfigCreateRequest(BaseModel):
     monthly_value_cap: Decimal | None = None
 
     @model_validator(mode="after")
-    def _at_least_one_cap(self) -> "LimitConfigCreateRequest":
+    def _at_least_one_cap(self) -> LimitConfigCreateRequest:
         """Reject configs that don't limit anything."""
         caps = (
             self.min_amount,
@@ -132,7 +132,7 @@ class WalletLimitConfigCreateRequest(BaseModel):
     receive_monthly_value_cap: Decimal | None = Field(default=None, ge=Decimal("0"))
 
     @model_validator(mode="after")
-    def _at_least_one_cap(self) -> "WalletLimitConfigCreateRequest":
+    def _at_least_one_cap(self) -> WalletLimitConfigCreateRequest:
         """Reject a config that limits nothing."""
         fields = ("max_balance", *_WALLET_CAP_FIELDS, *_WALLET_VALUE_FIELDS)
         if all(getattr(self, f) is None for f in fields):

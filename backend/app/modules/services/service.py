@@ -4,8 +4,9 @@ Owns the CRUD over the `services` table. The catalog backs the dropdowns
 in Limits / Pricing / Campaigns admin pages and replaces what used to be
 a free-text transaction_type field.
 """
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
@@ -67,9 +68,7 @@ async def get_service_by_id(
     return service
 
 
-async def create_service(
-    session: AsyncSession, payload: ServiceCreateRequest
-) -> Service:
+async def create_service(session: AsyncSession, payload: ServiceCreateRequest) -> Service:
     """Insert a new catalog row.
 
     Raises:
@@ -155,7 +154,7 @@ async def soft_delete_service(
         Commits the session.
     """
     service = await get_service_by_id(session, tenant_id, service_id)
-    service.deleted_at = datetime.now(timezone.utc)
+    service.deleted_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(service)
     log.info(

@@ -13,6 +13,7 @@ Resolution rules (in order of strength):
   5. Among matches, the LARGEST multiplier wins. (Overlapping multipliers
      don't stack — the biggest single multiplier applies.)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -79,12 +80,9 @@ async def resolve_multiplier_for_issuance(
     candidates_q = await session.execute(
         select(BonusMultiplier).where(
             BonusMultiplier.tenant_id == tenant_id,
-            (BonusMultiplier.rule_id.is_(None))
-            | (BonusMultiplier.rule_id == rule_id),
-            (BonusMultiplier.valid_from.is_(None))
-            | (BonusMultiplier.valid_from <= current),
-            (BonusMultiplier.valid_until.is_(None))
-            | (BonusMultiplier.valid_until > current),
+            (BonusMultiplier.rule_id.is_(None)) | (BonusMultiplier.rule_id == rule_id),
+            (BonusMultiplier.valid_from.is_(None)) | (BonusMultiplier.valid_from <= current),
+            (BonusMultiplier.valid_until.is_(None)) | (BonusMultiplier.valid_until > current),
         )
     )
     candidates = list(candidates_q.scalars().all())
@@ -96,9 +94,7 @@ async def resolve_multiplier_for_issuance(
         if m.segment_id is None:
             eligible.append(m)
             continue
-        if await user_is_in_segment(
-            session, user_id=user_id, segment_id=m.segment_id
-        ):
+        if await user_is_in_segment(session, user_id=user_id, segment_id=m.segment_id):
             eligible.append(m)
 
     if not eligible:
@@ -147,12 +143,8 @@ async def create_multiplier(
                 "rule_id": str(row.rule_id) if row.rule_id else None,
                 "segment_id": str(row.segment_id) if row.segment_id else None,
                 "multiplier": str(row.multiplier),
-                "valid_from": (
-                    row.valid_from.isoformat() if row.valid_from else None
-                ),
-                "valid_until": (
-                    row.valid_until.isoformat() if row.valid_until else None
-                ),
+                "valid_from": (row.valid_from.isoformat() if row.valid_from else None),
+                "valid_until": (row.valid_until.isoformat() if row.valid_until else None),
             },
             ip_address=ip_address,
         )

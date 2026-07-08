@@ -8,6 +8,7 @@ in the test config so the OTP is returned in the response body. The
 test_redis fixture (in conftest) flushes Redis between tests so lockout +
 rate-limit state doesn't leak.
 """
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -84,9 +85,7 @@ async def test_otp_send_unknown_tenant(async_client: AsyncClient) -> None:
 # -----------------------------------------------------------------------------
 
 
-async def _send_and_get_otp(
-    async_client: AsyncClient, tenant: Tenant, phone: str
-) -> str:
+async def _send_and_get_otp(async_client: AsyncClient, tenant: Tenant, phone: str) -> str:
     """Helper — POST /otp/send, return the OTP from the response."""
     response = await async_client.post(
         "/api/v1/identity/otp/send",
@@ -145,9 +144,7 @@ async def test_otp_verify_unknown_phone_returns_401(
 
 
 @pytest.mark.asyncio
-async def test_otp_verify_single_use(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_otp_verify_single_use(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """Same OTP can't be verified twice."""
     phone = "+27 82 555 9012"
     otp = await _send_and_get_otp(async_client, test_tenant, phone)
@@ -184,9 +181,7 @@ async def _register_user_with_pin(
 
 
 @pytest.mark.asyncio
-async def test_pin_set_with_valid_token(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_pin_set_with_valid_token(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """PIN set with valid registration_token → 204."""
     await _register_user_with_pin(async_client, test_tenant, "+27 82 555 9020")
 
@@ -203,9 +198,7 @@ async def test_pin_set_with_invalid_token(async_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pin_set_token_single_use(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_pin_set_token_single_use(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """registration_token works once — second /pin/set with the same token → 401."""
     phone = "+27 82 555 9021"
     otp = await _send_and_get_otp(async_client, test_tenant, phone)
@@ -229,9 +222,7 @@ async def test_pin_set_token_single_use(
 
 
 @pytest.mark.asyncio
-async def test_pin_set_rejects_non_numeric(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_pin_set_rejects_non_numeric(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """Non-digit PIN → 422 invalid_pin_format."""
     phone = "+27 82 555 9022"
     otp = await _send_and_get_otp(async_client, test_tenant, phone)
@@ -248,9 +239,7 @@ async def test_pin_set_rejects_non_numeric(
 
 
 @pytest.mark.asyncio
-async def test_pin_set_rejects_already_set(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_pin_set_rejects_already_set(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """Trying to set PIN twice for the same user → 409 pin_already_set."""
     phone = "+27 82 555 9023"
     await _register_user_with_pin(async_client, test_tenant, phone)
@@ -282,9 +271,7 @@ async def test_pin_set_rejects_already_set(
 
 
 @pytest.mark.asyncio
-async def test_auth_pin_happy_path(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_auth_pin_happy_path(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """Successful auth returns a session_token + TTL."""
     phone = "+27 82 555 9030"
     await _register_user_with_pin(async_client, test_tenant, phone, pin="1234")
@@ -383,9 +370,7 @@ async def test_auth_pin_user_without_pin_returns_pin_not_set(
 
 
 @pytest.mark.asyncio
-async def test_logout_invalidates_session(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_logout_invalidates_session(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """After logout, the session token no longer works."""
     phone = "+27 82 555 9040"
     await _register_user_with_pin(async_client, test_tenant, phone, pin="1234")

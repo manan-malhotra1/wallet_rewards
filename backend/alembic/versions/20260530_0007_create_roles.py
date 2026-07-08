@@ -9,18 +9,20 @@ Revises: 0006
 Create Date: 2026-05-30
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 revision: str = "0007"
-down_revision: Union[str, Sequence[str], None] = "0006"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0006"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -89,9 +91,7 @@ def upgrade() -> None:
             name="uq_role_permissions_per_type",
         ),
     )
-    op.create_index(
-        "ix_role_permissions_role_id", "role_permissions", ["role_id"]
-    )
+    op.create_index("ix_role_permissions_role_id", "role_permissions", ["role_id"])
 
     # -- user_roles --------------------------------------------------------
     op.create_table(

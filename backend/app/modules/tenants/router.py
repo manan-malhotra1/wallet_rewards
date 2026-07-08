@@ -8,6 +8,7 @@ Phase 1 endpoints:
 The UI's tenant switcher uses LIST; the new tenants admin page uses GET
 and PATCH for the per-tenant identity card.
 """
+
 import uuid
 
 from fastapi import APIRouter, Depends
@@ -36,9 +37,7 @@ async def list_tenants(
     partner identity.
     """
     _ = admin
-    result = await session.execute(
-        select(Tenant).order_by(Tenant.created_at.desc())
-    )
+    result = await session.execute(select(Tenant).order_by(Tenant.created_at.desc()))
     return [TenantOut.model_validate(t) for t in result.scalars().all()]
 
 

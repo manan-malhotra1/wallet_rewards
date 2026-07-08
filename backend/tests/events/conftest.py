@@ -1,6 +1,7 @@
 """Events tests override `async_client` to be pre-authed with a
 platform-admin JWT — both events endpoints are admin-only after Phase F.4.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator

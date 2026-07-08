@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for the budgets module (Phase G.1)."""
+
 from __future__ import annotations
 
 from datetime import datetime

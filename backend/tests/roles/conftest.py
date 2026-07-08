@@ -4,6 +4,7 @@ Same pattern as `tests/reconciliation/conftest.py`. Every role CRUD endpoint
 requires the `platform-admin` realm role (Phase F.1 gate), so the default
 client must carry that token.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator

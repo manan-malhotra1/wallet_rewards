@@ -4,6 +4,7 @@ platform-admin JWT — every accounts endpoint is admin-only after Phase F.4.
 Mirrors `tests/reconciliation/conftest.py`. End-user balance lookups go
 through the catalog `/me/summary` endpoint, tested separately.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator

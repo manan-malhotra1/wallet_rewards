@@ -4,6 +4,7 @@ Phase F.4 made the route `/me/` — user_id + tenant_id come from the
 session token. Cross-tenant isolation is now structural (a tenant-A session
 literally cannot address tenant-B data).
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -223,9 +224,7 @@ async def test_points_history_cross_tenant_isolated(
     )
     db_session.add(role)
     await db_session.flush()
-    db_session.add(
-        RolePermission(role_id=role.id, transaction_type="p2p", permitted=True)
-    )
+    db_session.add(RolePermission(role_id=role.id, transaction_type="p2p", permitted=True))
     db_session.add(UserRole(user_id=other_user.id, role_id=role.id))
     await db_session.commit()
 

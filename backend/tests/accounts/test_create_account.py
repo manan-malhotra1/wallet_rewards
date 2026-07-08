@@ -3,6 +3,7 @@
 Covers happy path for each account type, tenant validation, currency
 normalisation, and invalid account_type rejection.
 """
+
 from __future__ import annotations
 
 from uuid import uuid4

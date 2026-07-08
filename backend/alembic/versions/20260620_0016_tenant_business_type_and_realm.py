@@ -15,12 +15,14 @@ Revision ID: 0016
 Revises: 0015
 Created: 2026-06-20
 """
+
 from __future__ import annotations
 
 import os
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 # Alembic identifiers
 revision = "0016"
@@ -41,12 +43,8 @@ def upgrade() -> None:
     # 3. Backfill: old 'wallet' (full stack) → 'both'; old 'rewards_only' → 'rewards'.
     #    Done as raw UPDATE because the values are well-known constants and we
     #    need this to land in the same transaction as the constraint swap.
-    op.execute(
-        "UPDATE tenants SET business_type = 'both' WHERE business_type = 'wallet'"
-    )
-    op.execute(
-        "UPDATE tenants SET business_type = 'rewards' WHERE business_type = 'rewards_only'"
-    )
+    op.execute("UPDATE tenants SET business_type = 'both' WHERE business_type = 'wallet'")
+    op.execute("UPDATE tenants SET business_type = 'rewards' WHERE business_type = 'rewards_only'")
 
     # 4. Re-apply CHECK with the new three-value enum.
     op.create_check_constraint(
@@ -65,9 +63,7 @@ def upgrade() -> None:
     default_realm = os.environ.get("KEYCLOAK_REALM", "").strip()
     if default_realm:
         op.execute(
-            sa.text("UPDATE tenants SET keycloak_realm = :realm").bindparams(
-                realm=default_realm
-            )
+            sa.text("UPDATE tenants SET keycloak_realm = :realm").bindparams(realm=default_realm)
         )
 
 
@@ -91,12 +87,8 @@ def downgrade() -> None:
     op.drop_column("tenants", "keycloak_realm")
 
     op.drop_constraint("ck_tenants_business_type", "tenants", type_="check")
-    op.execute(
-        "UPDATE tenants SET business_type = 'rewards_only' WHERE business_type = 'rewards'"
-    )
-    op.execute(
-        "UPDATE tenants SET business_type = 'wallet' WHERE business_type = 'both'"
-    )
+    op.execute("UPDATE tenants SET business_type = 'rewards_only' WHERE business_type = 'rewards'")
+    op.execute("UPDATE tenants SET business_type = 'wallet' WHERE business_type = 'both'")
     op.alter_column("tenants", "business_type", new_column_name="deployment_mode")
     op.create_check_constraint(
         "ck_tenants_deployment_mode",

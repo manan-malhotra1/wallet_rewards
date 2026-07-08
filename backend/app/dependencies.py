@@ -3,6 +3,7 @@
 Phase F.1 added Keycloak admin auth (`get_current_admin`, `require_admin_role`).
 PIN/OTP user auth (`get_current_user`) lands in Phase F.2.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable, Coroutine

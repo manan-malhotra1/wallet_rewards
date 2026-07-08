@@ -1,4 +1,5 @@
 """Tests that a segment-bound rule only fires for users in the segment."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -13,7 +14,6 @@ from app.shared.models import (
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
     Rule,
-    Segment,
     Tenant,
     User,
     UserSegment,
@@ -100,9 +100,7 @@ async def test_segment_bound_rule_fires_only_for_members(
         },
     )
     rule_id = rule_resp.json()["id"]
-    rule = (
-        await db_session.execute(select(Rule).where(Rule.id == rule_id))
-    ).scalar_one()
+    rule = (await db_session.execute(select(Rule).where(Rule.id == rule_id))).scalar_one()
     rule.segment_id = segment_id
     await db_session.commit()
 

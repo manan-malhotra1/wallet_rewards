@@ -16,6 +16,7 @@ on (tenant_id, code) WHERE deleted_at IS NULL lets a tenant re-create
 the same code after deleting it. Existing ledger rows referencing the
 deleted code remain valid (no FK enforcement).
 """
+
 import uuid
 from datetime import datetime
 
@@ -70,6 +71,4 @@ class Instrument(Base):
     )
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)

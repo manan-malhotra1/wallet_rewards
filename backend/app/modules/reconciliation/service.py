@@ -8,6 +8,7 @@ Every action — both bumps and escalations — is recorded in the immutable
 `audit_log` table (PRD §6.13) so operators can review what the platform did
 overnight without trusting application logs.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -110,16 +111,18 @@ async def sweep_pending(
     await _assert_tenant_exists(session, tenant_id)
 
     cutoff = datetime.now(UTC) - timedelta(minutes=threshold_minutes)
-    pending = (await session.execute(
-        select(Redemption, RedemptionProvider)
-        .join(RedemptionProvider, RedemptionProvider.id == Redemption.provider_id)
-        .where(
-            Redemption.tenant_id == tenant_id,
-            Redemption.status == REDEMPTION_STATUS_PENDING,
-            Redemption.created_at <= cutoff,
+    pending = (
+        await session.execute(
+            select(Redemption, RedemptionProvider)
+            .join(RedemptionProvider, RedemptionProvider.id == Redemption.provider_id)
+            .where(
+                Redemption.tenant_id == tenant_id,
+                Redemption.status == REDEMPTION_STATUS_PENDING,
+                Redemption.created_at <= cutoff,
+            )
+            .order_by(Redemption.created_at)
         )
-        .order_by(Redemption.created_at)
-    )).all()
+    ).all()
 
     scanned = len(pending)
     bumped = 0
@@ -182,15 +185,21 @@ async def list_pending(
     await _assert_tenant_exists(session, tenant_id)
 
     cutoff = datetime.now(UTC) - timedelta(minutes=threshold_minutes)
-    rows = (await session.execute(
-        select(Redemption)
-        .where(
-            Redemption.tenant_id == tenant_id,
-            Redemption.status == REDEMPTION_STATUS_PENDING,
-            Redemption.created_at <= cutoff,
+    rows = (
+        (
+            await session.execute(
+                select(Redemption)
+                .where(
+                    Redemption.tenant_id == tenant_id,
+                    Redemption.status == REDEMPTION_STATUS_PENDING,
+                    Redemption.created_at <= cutoff,
+                )
+                .order_by(Redemption.created_at)
+            )
         )
-        .order_by(Redemption.created_at)
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return [
         PendingItem(
@@ -207,20 +216,24 @@ async def list_pending(
     ]
 
 
-async def list_manual_review(
-    session: AsyncSession, *, tenant_id: UUID
-) -> list[ManualReviewItem]:
+async def list_manual_review(session: AsyncSession, *, tenant_id: UUID) -> list[ManualReviewItem]:
     """List redemptions awaiting manual operator review (Pay-PRD-0790)."""
     await _assert_tenant_exists(session, tenant_id)
 
-    rows = (await session.execute(
-        select(Redemption)
-        .where(
-            Redemption.tenant_id == tenant_id,
-            Redemption.status == REDEMPTION_STATUS_MANUAL_REVIEW,
+    rows = (
+        (
+            await session.execute(
+                select(Redemption)
+                .where(
+                    Redemption.tenant_id == tenant_id,
+                    Redemption.status == REDEMPTION_STATUS_MANUAL_REVIEW,
+                )
+                .order_by(Redemption.created_at)
+            )
         )
-        .order_by(Redemption.created_at)
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return [
         ManualReviewItem(
@@ -275,12 +288,14 @@ async def manually_resolve(
             (Pydantic Literal already validates; this is defensive).
     """
     # Find tenant-scoped.
-    redemption = (await session.execute(
-        select(Redemption).where(
-            Redemption.id == redemption_id,
-            Redemption.tenant_id == request.tenant_id,
+    redemption = (
+        await session.execute(
+            select(Redemption).where(
+                Redemption.id == redemption_id,
+                Redemption.tenant_id == request.tenant_id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if redemption is None:
         raise RedemptionNotFound()
     if redemption.status != REDEMPTION_STATUS_MANUAL_REVIEW:

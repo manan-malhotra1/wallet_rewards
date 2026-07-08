@@ -5,6 +5,7 @@ tenant_id from the session token via `get_current_user` — a user can only
 read their own catalog data. Phase D delivered `summary`, `redemption-history`,
 and `points-history`; tiers, badges, challenges, and nudges defer.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
@@ -82,7 +83,5 @@ async def get_featured(
     mobile home page can collapse the slot cleanly without treating the
     empty case as an error.
     """
-    campaign = await get_featured_campaign(
-        session, tenant_id=user.tenant_id, user_id=user.id
-    )
+    campaign = await get_featured_campaign(session, tenant_id=user.tenant_id, user_id=user.id)
     return FeaturedCampaignResponse(campaign=campaign)

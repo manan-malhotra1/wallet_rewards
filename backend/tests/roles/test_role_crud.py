@@ -4,6 +4,7 @@ These hit `/api/v1/roles/*` and `/api/v1/users/{id}/roles*` — all gated by
 the `platform-admin` Keycloak realm role from Phase F.1. The auth header is
 attached by the package-local conftest's `async_client` fixture.
 """
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -19,9 +20,7 @@ from app.shared.models import Tenant, User
 
 
 @pytest.mark.asyncio
-async def test_create_role_happy_path(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_create_role_happy_path(async_client: AsyncClient, test_tenant: Tenant) -> None:
     response = await async_client.post(
         "/api/v1/roles",
         json={
@@ -70,9 +69,7 @@ async def test_list_roles_tenant_scoped(
         "/api/v1/roles",
         json={"tenant_id": str(other_tenant.id), "name": "B-role"},
     )
-    a_list = await async_client.get(
-        "/api/v1/roles", params={"tenant_id": str(test_tenant.id)}
-    )
+    a_list = await async_client.get("/api/v1/roles", params={"tenant_id": str(test_tenant.id)})
     names = [r["name"] for r in a_list.json()]
     assert "A-role" in names
     assert "B-role" not in names
@@ -136,9 +133,7 @@ async def test_set_permission_creates_then_updates(
 
 
 @pytest.mark.asyncio
-async def test_remove_permission(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_remove_permission(async_client: AsyncClient, test_tenant: Tenant) -> None:
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "rm-test"},

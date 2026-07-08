@@ -31,18 +31,20 @@ Revises: 0017
 Create Date: 2026-06-20
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 revision: str = "0018"
-down_revision: Union[str, None] = "0017"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0017"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 # Columns to widen: (table, column).
@@ -150,9 +152,9 @@ def upgrade() -> None:
 
     # 3. Seed every existing tenant with the baseline instruments.
     bind = op.get_bind()
-    tenant_ids = bind.execute(
-        sa.text("SELECT id FROM tenants WHERE deleted_at IS NULL")
-    ).scalars().all()
+    tenant_ids = (
+        bind.execute(sa.text("SELECT id FROM tenants WHERE deleted_at IS NULL")).scalars().all()
+    )
 
     for tenant_id in tenant_ids:
         for code, symbol, display_name, description, account_type in _BASELINE_INSTRUMENTS:
@@ -183,9 +185,7 @@ def downgrade() -> None:
     bind = op.get_bind()
     for table, column in _CURRENCY_COLUMNS:
         long_count = bind.execute(
-            sa.text(
-                f"SELECT COUNT(*) FROM {table} WHERE LENGTH({column}) > 3"
-            )
+            sa.text(f"SELECT COUNT(*) FROM {table} WHERE LENGTH({column}) > 3")
         ).scalar()
         if long_count:
             raise RuntimeError(

@@ -10,18 +10,20 @@ Revises: 0003
 Create Date: 2026-05-29
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 revision: str = "0004"
-down_revision: Union[str, Sequence[str], None] = "0003"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0003"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -96,8 +98,7 @@ def upgrade() -> None:
             name="ck_rules_status",
         ),
         sa.CheckConstraint(
-            "time_window IS NULL OR time_window IN "
-            "('lifetime', 'calendar_month', 'rolling_7d')",
+            "time_window IS NULL OR time_window IN ('lifetime', 'calendar_month', 'rolling_7d')",
             name="ck_rules_time_window",
         ),
         sa.CheckConstraint(
@@ -198,9 +199,7 @@ def upgrade() -> None:
             name="ck_user_rule_progress_status",
         ),
     )
-    op.create_index(
-        "ix_user_rule_progress_user_id", "user_rule_progress", ["user_id"]
-    )
+    op.create_index("ix_user_rule_progress_user_id", "user_rule_progress", ["user_id"])
 
     # -- reward_events -----------------------------------------------------
     op.create_table(
@@ -348,9 +347,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "idx_event_ingestion_log_dedup_lookup", table_name="event_ingestion_log"
-    )
+    op.drop_index("idx_event_ingestion_log_dedup_lookup", table_name="event_ingestion_log")
     op.drop_table("event_ingestion_log")
 
     op.drop_index(
@@ -362,9 +359,7 @@ def downgrade() -> None:
     op.drop_index("idx_reward_events_idempotency", table_name="reward_events")
     op.drop_table("reward_events")
 
-    op.drop_index(
-        "ix_user_rule_progress_user_id", table_name="user_rule_progress"
-    )
+    op.drop_index("ix_user_rule_progress_user_id", table_name="user_rule_progress")
     op.drop_table("user_rule_progress")
 
     op.drop_index("ix_rule_conditions_rule_id", table_name="rule_conditions")

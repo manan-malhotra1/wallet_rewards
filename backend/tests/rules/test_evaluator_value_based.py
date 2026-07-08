@@ -3,6 +3,7 @@
 Drives the engine via the public events/external HTTP path so the
 candidate query + dispatcher + branch are all exercised end-to-end.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -76,9 +77,7 @@ async def _create_value_based_rule(
     assert resp.status_code == 201, resp.text
 
 
-def _event(
-    *, tenant: Tenant, user: User, source_key: str, amount: str
-) -> dict:
+def _event(*, tenant: Tenant, user: User, source_key: str, amount: str) -> dict:
     """Build the RawExternalEvent body."""
     return {
         "event_id": uuid4().hex,
@@ -171,9 +170,7 @@ async def test_value_based_stop_after_n_triggers(
     for _ in range(3):
         resp = await async_client.post(
             "/api/v1/events/external",
-            json=_event(
-                tenant=test_tenant, user=test_user, source_key="vb-src-3", amount="500"
-            ),
+            json=_event(tenant=test_tenant, user=test_user, source_key="vb-src-3", amount="500"),
         )
         outcomes.append(len(resp.json()["rules_fired"]))
     assert outcomes == [1, 1, 0]

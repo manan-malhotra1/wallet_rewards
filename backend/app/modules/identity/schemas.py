@@ -4,6 +4,7 @@ All identifier values are accepted as strings; validation of format (phone
 shape, email regex) is intentionally lenient in Phase A. Strict format
 validation is added in Phase 2 alongside the OTP flow.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime

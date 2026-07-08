@@ -1,4 +1,5 @@
 """Tests for the reward-budgets service (Phase G.1)."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -18,9 +19,7 @@ from app.shared.models import Tenant
 
 
 @pytest.mark.asyncio
-async def test_no_budgets_is_pass_through(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_no_budgets_is_pass_through(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """When no budget rows exist, check_budget_available is a no-op."""
     await check_budget_available(
         db_session,

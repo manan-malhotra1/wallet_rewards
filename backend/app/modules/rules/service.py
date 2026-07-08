@@ -1,4 +1,5 @@
 """Rules service — rule CRUD operations for the admin/test surface."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -97,21 +98,15 @@ async def create_rule(
     return rule
 
 
-async def list_rules_for_tenant(
-    session: AsyncSession, tenant_id
-) -> list[Rule]:
+async def list_rules_for_tenant(session: AsyncSession, tenant_id) -> list[Rule]:
     """Return every Rule in the tenant — newest first."""
     result = await session.execute(
-        select(Rule)
-        .where(Rule.tenant_id == tenant_id)
-        .order_by(Rule.created_at.desc())
+        select(Rule).where(Rule.tenant_id == tenant_id).order_by(Rule.created_at.desc())
     )
     return list(result.scalars().all())
 
 
-async def get_rule_by_id(
-    session: AsyncSession, *, tenant_id: UUID, rule_id: UUID
-) -> Rule:
+async def get_rule_by_id(session: AsyncSession, *, tenant_id: UUID, rule_id: UUID) -> Rule:
     """Return one rule. Tenant-scoped — cross-tenant lookups return 404."""
     result = await session.execute(
         select(Rule).where(Rule.id == rule_id, Rule.tenant_id == tenant_id)
@@ -206,9 +201,7 @@ async def soft_delete_rule(
     await session.commit()
 
 
-async def _resolve_budget_scopes(
-    session: AsyncSession, *, tenant_id: UUID
-) -> dict[UUID, str]:
+async def _resolve_budget_scopes(session: AsyncSession, *, tenant_id: UUID) -> dict[UUID, str]:
     """Map each rule in the tenant to its budget scope.
 
     Returns a dict keyed by rule_id, where the value is one of
@@ -239,9 +232,7 @@ async def _resolve_budget_scopes(
 
     # Every rule in the tenant — we want a map for ALL of them, not
     # just the ones with budgets. Default to "tenant_only" or "none".
-    rule_ids_q = await session.execute(
-        select(Rule.id).where(Rule.tenant_id == tenant_id)
-    )
+    rule_ids_q = await session.execute(select(Rule.id).where(Rule.tenant_id == tenant_id))
     rule_ids = list(rule_ids_q.scalars().all())
 
     scopes: dict[UUID, str] = {}

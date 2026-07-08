@@ -53,12 +53,12 @@ from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
+    TXN_STATUS_COMPLETED,
     Account,
     LedgerEntry,
     LimitConfig,
     Tenant,
     Transaction,
-    TXN_STATUS_COMPLETED,
     WalletLimitConfig,
 )
 from app.shared.utils.user_types import resolve_user_type

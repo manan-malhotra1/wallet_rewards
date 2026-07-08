@@ -1,4 +1,5 @@
 """Tests for the step-up PIN enforcement on POST /api/v1/payments/p2p."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -77,9 +78,7 @@ async def _make_tenant_user_with_pin(
     return user, wallet
 
 
-async def _seed_p2p_policy(
-    session: AsyncSession, tenant: Tenant, threshold: str = "200"
-) -> None:
+async def _seed_p2p_policy(session: AsyncSession, tenant: Tenant, threshold: str = "200") -> None:
     """Insert a step-up policy: P2P over `threshold` ZAR requires PIN."""
     session.add(
         StepUpPolicy(
@@ -108,12 +107,8 @@ async def test_p2p_below_threshold_no_pin_needed(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
     """Threshold R 200; sending R 100 should succeed without a PIN."""
-    alice, _ = await _make_tenant_user_with_pin(
-        db_session, test_tenant, phone="+27 82 555 1111"
-    )
-    bob, _ = await _make_tenant_user_with_pin(
-        db_session, test_tenant, phone="+27 82 555 2222"
-    )
+    alice, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 1111")
+    bob, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 2222")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -145,12 +140,8 @@ async def test_p2p_above_threshold_without_pin_returns_step_up_required(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
     """R 500 over a R 200 threshold without a PIN → 401 step_up_required."""
-    alice, _ = await _make_tenant_user_with_pin(
-        db_session, test_tenant, phone="+27 82 555 3333"
-    )
-    _ = await _make_tenant_user_with_pin(
-        db_session, test_tenant, phone="+27 82 555 4444"
-    )
+    alice, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 3333")
+    _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 4444")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -185,9 +176,7 @@ async def test_p2p_above_threshold_with_wrong_pin_returns_invalid_step_up_pin(
     alice, _ = await _make_tenant_user_with_pin(
         db_session, test_tenant, phone="+27 82 555 5555", pin="1234"
     )
-    _ = await _make_tenant_user_with_pin(
-        db_session, test_tenant, phone="+27 82 555 6666"
-    )
+    _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 6666")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -223,9 +212,7 @@ async def test_p2p_above_threshold_with_correct_pin_succeeds(
     alice, _ = await _make_tenant_user_with_pin(
         db_session, test_tenant, phone="+27 82 555 7777", pin="1234"
     )
-    bob, _ = await _make_tenant_user_with_pin(
-        db_session, test_tenant, phone="+27 82 555 8888"
-    )
+    bob, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 8888")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -260,12 +247,8 @@ async def test_p2p_no_policy_means_no_step_up(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
     """With no policy row, even a huge amount goes through without a PIN."""
-    alice, _ = await _make_tenant_user_with_pin(
-        db_session, test_tenant, phone="+27 82 555 9999"
-    )
-    _ = await _make_tenant_user_with_pin(
-        db_session, test_tenant, phone="+27 82 555 0000"
-    )
+    alice, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 9999")
+    _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 0000")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,

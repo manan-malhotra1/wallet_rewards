@@ -8,18 +8,20 @@ Revises: 0005
 Create Date: 2026-05-29
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 revision: str = "0006"
-down_revision: Union[str, Sequence[str], None] = "0005"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0005"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -63,9 +65,7 @@ def upgrade() -> None:
         "audit_log",
         ["entity_type", "entity_id", "created_at"],
     )
-    op.create_index(
-        "idx_audit_actor", "audit_log", ["actor_id", "created_at"]
-    )
+    op.create_index("idx_audit_actor", "audit_log", ["actor_id", "created_at"])
 
 
 def downgrade() -> None:

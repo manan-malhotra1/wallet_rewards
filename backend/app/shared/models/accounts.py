@@ -7,6 +7,7 @@ The account_type enum is extended from PRD §6.5 with `system_points_issuance` �
 see docs/06-data-architecture.md §4 for the rationale (double-entry balance
 requires a source account when issuing rewards).
 """
+
 import uuid
 from datetime import datetime
 
@@ -134,9 +135,7 @@ class Account(Base):
     )  # FK to merchants.id added in a later migration when merchants table exists.
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="active"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
 
@@ -159,9 +158,7 @@ class AccountBalanceSnapshot(Base):
         unique=True,
     )
     # NUMERIC(20, 6) holds both money and points without precision loss.
-    balance: Mapped[float] = mapped_column(
-        Numeric(20, 6), nullable=False, server_default="0"
-    )
+    balance: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False, server_default="0")
     reserved_balance: Mapped[float] = mapped_column(
         Numeric(20, 6), nullable=False, server_default="0"
     )

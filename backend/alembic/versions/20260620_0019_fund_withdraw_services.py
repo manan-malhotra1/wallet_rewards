@@ -12,17 +12,19 @@ Revises: 0018
 Create Date: 2026-06-20
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0019"
-down_revision: Union[str, None] = "0018"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0018"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 # (code, display_name, description) for the two new entries.
@@ -43,9 +45,9 @@ _PHASE_4_SERVICES: list[tuple[str, str, str]] = [
 def upgrade() -> None:
     """Insert fund + withdraw into every existing tenant's catalog."""
     bind = op.get_bind()
-    tenant_ids = bind.execute(
-        sa.text("SELECT id FROM tenants WHERE deleted_at IS NULL")
-    ).scalars().all()
+    tenant_ids = (
+        bind.execute(sa.text("SELECT id FROM tenants WHERE deleted_at IS NULL")).scalars().all()
+    )
 
     for tenant_id in tenant_ids:
         for code, display_name, description in _PHASE_4_SERVICES:
@@ -67,8 +69,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Remove the fund + withdraw rows. Hard delete; the partial-unique
     index lets a follow-up upgrade re-insert them."""
-    op.execute(
-        "DELETE FROM services "
-        "WHERE code IN ('fund', 'withdraw') "
-        "AND deleted_at IS NULL"
-    )
+    op.execute("DELETE FROM services WHERE code IN ('fund', 'withdraw') AND deleted_at IS NULL")

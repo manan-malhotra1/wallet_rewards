@@ -12,16 +12,17 @@ Revises: 0012
 Create Date: 2026-06-17
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
 
 revision: str = "0013"
-down_revision: Union[str, None] = "0012"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0012"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # Keep the constant list in sync with `app.shared.models.accounts`.
 ALLOWED_TYPES = (
@@ -49,9 +50,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Restore the prior 6-value CHECK constraint."""
     op.drop_constraint("ck_accounts_type", "accounts", type_="check")
-    types_sql = ", ".join(
-        f"'{t}'" for t in ALLOWED_TYPES if t != "operator_adjustment"
-    )
+    types_sql = ", ".join(f"'{t}'" for t in ALLOWED_TYPES if t != "operator_adjustment")
     op.create_check_constraint(
         "ck_accounts_type",
         "accounts",

@@ -1,4 +1,5 @@
 """Tests for the pricing service (Phase G.3)."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -22,9 +23,7 @@ from app.shared.models import (
 
 
 @pytest.mark.asyncio
-async def test_missing_config_raises(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_missing_config_raises(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """Per Pay-PRD-0420, missing pricing config is an explicit 422 — not a
     silent zero-fee fallback."""
     with pytest.raises(PricingConfigMissing):
@@ -40,9 +39,7 @@ async def test_missing_config_raises(
 
 
 @pytest.mark.asyncio
-async def test_fixed_fee_only(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_fixed_fee_only(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """fixed_fee=R 5, no variable → fee = R 5 regardless of amount."""
     await create_pricing_config(
         db_session,
@@ -67,9 +64,7 @@ async def test_fixed_fee_only(
 
 
 @pytest.mark.asyncio
-async def test_variable_fee_capped(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_variable_fee_capped(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """2.5% variable + R 50 cap → R 5000 transfer caps at R 50."""
     await create_pricing_config(
         db_session,
@@ -96,9 +91,7 @@ async def test_variable_fee_capped(
 
 
 @pytest.mark.asyncio
-async def test_zero_fee_config_returns_zero(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_zero_fee_config_returns_zero(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """Operators explicitly opting in to zero-fee via the config."""
     await create_pricing_config(
         db_session,

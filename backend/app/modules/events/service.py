@@ -9,6 +9,7 @@ The same `process_external_event` is called by:
   - the test HTTP endpoint (`POST /api/v1/events/external`)
   - the Kafka consumer script (`scripts/run_consumer.py`)
 """
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -117,14 +118,10 @@ async def register_source(
     return source
 
 
-async def find_source(
-    session: AsyncSession, source_key: str
-) -> ExternalEventSource | None:
+async def find_source(session: AsyncSession, source_key: str) -> ExternalEventSource | None:
     """Return the source row for a given source_key, or None."""
     result = await session.execute(
-        select(ExternalEventSource).where(
-            ExternalEventSource.source_key == source_key
-        )
+        select(ExternalEventSource).where(ExternalEventSource.source_key == source_key)
     )
     return result.scalar_one_or_none()
 
@@ -281,9 +278,7 @@ async def process_external_event(
     event = normalise(raw, source.field_mapping)
 
     # 6. Run the rules engine — evaluator returns the list of firings.
-    firings: list[RuleFiring] = await evaluate_active_rules_for_event(
-        session, event
-    )
+    firings: list[RuleFiring] = await evaluate_active_rules_for_event(session, event)
 
     # 7. Issue rewards for each firing. Each call uses post_transaction (which
     #    commits) so the log_row + progress updates + ledger entries land

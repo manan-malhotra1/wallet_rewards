@@ -5,6 +5,7 @@ docs/security/threat-models/phase-b-p2p.md §5, updated for Phase F.4
 which removed `tenant_id` + `sender_user_id` from the body and gates the
 endpoint on `get_current_user` (user session token).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -54,9 +55,7 @@ async def _ensure_default_role(session: AsyncSession, tenant: Tenant):
     session.add(role)
     await session.flush()
     for txn_type in ("p2p", "redemption", "top_up"):
-        session.add(
-            RolePermission(role_id=role.id, transaction_type=txn_type, permitted=True)
-        )
+        session.add(RolePermission(role_id=role.id, transaction_type=txn_type, permitted=True))
     await session.commit()
     return role
 
@@ -127,9 +126,7 @@ async def test_p2p_happy_path_moves_balance(
     alice, alice_wallet = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
-    bob, bob_wallet = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 2222"
-    )
+    bob, bob_wallet = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
 
     # Give Alice opening balance via the internal top_up service.
     await top_up(
@@ -182,9 +179,7 @@ async def test_p2p_rejects_overdraft(
     alice, alice_wallet = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
-    bob, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 2222"
-    )
+    _bob, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -219,9 +214,7 @@ async def test_p2p_rejects_self_transfer(
     idempotency_header: dict[str, str],
 ) -> None:
     """Sender == recipient → 422 self_transfer_not_allowed."""
-    alice, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 1111"
-    )
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -253,9 +246,7 @@ async def test_p2p_rejects_unknown_recipient(
     idempotency_header: dict[str, str],
 ) -> None:
     """Unknown recipient phone → 404 user_not_found."""
-    alice, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 1111"
-    )
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -290,9 +281,7 @@ async def test_p2p_rejects_sender_without_wallet_in_currency(
     alice, _ = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111", currency="ZAR"
     )
-    await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 2222", currency="ZAR"
-    )
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222", currency="ZAR")
 
     alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
@@ -322,9 +311,7 @@ async def test_p2p_cross_tenant_recipient_returns_404(
     tenant comes from the session token, so a tenant-A user genuinely cannot
     address a tenant-B recipient even if they share the phone.
     """
-    alice, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 1111"
-    )
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -334,9 +321,7 @@ async def test_p2p_cross_tenant_recipient_returns_404(
         idempotency_key="seed-alice-cross",
     )
     # Bob exists only in other_tenant with the SAME phone number.
-    await _make_user_with_wallet(
-        db_session, other_tenant, phone="+27 82 555 2222"
-    )
+    await _make_user_with_wallet(db_session, other_tenant, phone="+27 82 555 2222")
 
     alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
@@ -359,9 +344,7 @@ async def test_p2p_rejects_zero_amount(
     idempotency_header: dict[str, str],
 ) -> None:
     """Pydantic gt=0 constraint rejects zero/negative amounts → 422."""
-    alice, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 0001"
-    )
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 0001")
     alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
@@ -382,9 +365,7 @@ async def test_p2p_requires_idempotency_key(
     test_tenant: Tenant,
 ) -> None:
     """Missing Idempotency-Key header → 422 (FastAPI's missing-header default)."""
-    alice, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 0001"
-    )
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 0001")
     alice_auth = await _auth_header_for(alice)
     response = await async_client.post(
         "/api/v1/payments/p2p",
@@ -406,9 +387,7 @@ async def test_p2p_rejects_unauthenticated_caller(
     idempotency_header: dict[str, str],
 ) -> None:
     """No Authorization header → 401 (Phase F.4)."""
-    await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 2222"
-    )
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
     response = await async_client.post(
         "/api/v1/payments/p2p",
         headers=idempotency_header,
@@ -436,9 +415,7 @@ async def test_p2p_idempotent_replay(
     alice, alice_wallet = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
-    _, bob_wallet = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 2222"
-    )
+    _, bob_wallet = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -489,12 +466,8 @@ async def test_p2p_concurrent_double_spend_blocked(
     The SELECT FOR UPDATE on the sender wallet serialises the operations.
     The second one sees the post-debit balance and gets 409 insufficient_funds.
     """
-    alice, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 1111"
-    )
-    await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 2222"
-    )
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,

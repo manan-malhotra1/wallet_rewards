@@ -4,6 +4,7 @@ Covers list (tenant-scoped + status filter), create (happy + dup-code +
 auth + validation), patch (display_name + status + 404), and soft-delete
 (idempotent re-create after delete).
 """
+
 from uuid import uuid4
 
 import pytest
@@ -34,13 +35,9 @@ async def _seed_service(
 
 
 @pytest.mark.asyncio
-async def test_list_services_requires_auth(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_list_services_requires_auth(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """Anonymous list → 401."""
-    resp = await async_client.get(
-        "/api/v1/services", params={"tenant_id": str(test_tenant.id)}
-    )
+    resp = await async_client.get("/api/v1/services", params={"tenant_id": str(test_tenant.id)})
     assert resp.status_code == 401
 
 
@@ -53,9 +50,7 @@ async def test_list_services_returns_active_and_disabled(
 ) -> None:
     """No status filter → both active and disabled rows."""
     await _seed_service(db_session, str(test_tenant.id), "p2p")
-    await _seed_service(
-        db_session, str(test_tenant.id), "legacy_topup", status="disabled"
-    )
+    await _seed_service(db_session, str(test_tenant.id), "legacy_topup", status="disabled")
 
     resp = await async_client.get(
         "/api/v1/services",
@@ -76,9 +71,7 @@ async def test_list_services_status_filter(
 ) -> None:
     """status=active → only active rows."""
     await _seed_service(db_session, str(test_tenant.id), "p2p")
-    await _seed_service(
-        db_session, str(test_tenant.id), "legacy", status="disabled"
-    )
+    await _seed_service(db_session, str(test_tenant.id), "legacy", status="disabled")
     resp = await async_client.get(
         "/api/v1/services",
         params={"tenant_id": str(test_tenant.id), "status": "active"},

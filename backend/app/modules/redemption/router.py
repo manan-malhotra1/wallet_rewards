@@ -12,6 +12,7 @@ Phase F.5 adds `/callback` — production provider callbacks land here with
 HMAC-signed bodies. `/confirm` + `/fail` remain admin-only operator
 overrides for when the provider can't or won't callback.
 """
+
 from __future__ import annotations
 
 from uuid import UUID

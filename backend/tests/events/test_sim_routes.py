@@ -15,6 +15,7 @@ Covers:
   - /sim-kafka-produce 404 when SIMULATOR_DEV_MODE is off
   - /sim-kafka-produce 422 when user_id is missing
 """
+
 from __future__ import annotations
 
 import json
@@ -127,9 +128,7 @@ async def test_sim_ingest_happy_path_with_valid_hmac(
     """Valid HMAC signature over the body → 200 + outcome='processed'."""
     monkeypatch.setattr(settings, "SIMULATOR_DEV_MODE", True)
     secret = "test-secret-abc"
-    source_key = await _seed_source_with_secret(
-        db_session, test_tenant, secret=secret
-    )
+    source_key = await _seed_source_with_secret(db_session, test_tenant, secret=secret)
     await _seed_first_time_rule(async_client, test_tenant, admin_auth_header)
 
     # The rules engine needs a points account on the recipient + a
@@ -224,6 +223,7 @@ async def test_sim_kafka_produce_422_when_user_id_missing(
     )
     assert response.status_code == 422
     assert response.json()["error_code"] == "missing_user_id"
+
 
 # NOTE: The full kafka-produce happy path is not unit-tested here — it
 # would require a running Kafka broker or extensive mocking of confluent

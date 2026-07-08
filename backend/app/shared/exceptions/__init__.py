@@ -540,7 +540,7 @@ class InvalidSession(AppHTTPException):
 
 
 class InvalidPinFormat(AppHTTPException):
-    """PIN doesn't meet the 4–6 digit numeric format."""
+    """PIN doesn't meet the 4-6 digit numeric format."""
 
     def __init__(self) -> None:
         super().__init__(

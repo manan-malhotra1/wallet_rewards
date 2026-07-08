@@ -6,6 +6,7 @@ holds at least one ACTIVE role granting that transaction_type.
 
 Per Pay-PRD-0440: "A user with no assigned role may not initiate transactions."
 """
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -88,9 +89,7 @@ async def list_roles(session: AsyncSession, tenant_id: UUID) -> list[Role]:
     return list(result.scalars().all())
 
 
-async def get_role(
-    session: AsyncSession, role_id: UUID, tenant_id: UUID
-) -> Role:
+async def get_role(session: AsyncSession, role_id: UUID, tenant_id: UUID) -> Role:
     """Tenant-scoped lookup."""
     result = await session.execute(
         select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id)
@@ -178,9 +177,7 @@ async def list_permissions(
     session: AsyncSession, role_id: UUID, tenant_id: UUID
 ) -> list[RolePermission]:
     role = await get_role(session, role_id, tenant_id)
-    result = await session.execute(
-        select(RolePermission).where(RolePermission.role_id == role.id)
-    )
+    result = await session.execute(select(RolePermission).where(RolePermission.role_id == role.id))
     return list(result.scalars().all())
 
 
@@ -189,9 +186,7 @@ async def list_permissions(
 # -----------------------------------------------------------------------------
 
 
-async def _find_user_in_tenant(
-    session: AsyncSession, user_id: UUID, tenant_id: UUID
-) -> User:
+async def _find_user_in_tenant(session: AsyncSession, user_id: UUID, tenant_id: UUID) -> User:
     """Resolve a user_id within the tenant, or 404."""
     result = await session.execute(
         select(User).where(User.id == user_id, User.tenant_id == tenant_id)
@@ -214,9 +209,7 @@ async def assign_role_to_user(
 
     # Check for existing assignment — idempotent.
     existing = await session.execute(
-        select(UserRole).where(
-            UserRole.user_id == user.id, UserRole.role_id == role.id
-        )
+        select(UserRole).where(UserRole.user_id == user.id, UserRole.role_id == role.id)
     )
     row = existing.scalar_one_or_none()
     if row is not None:
@@ -238,9 +231,7 @@ async def remove_role_from_user(
     """Remove a role from a user. No-op if not assigned."""
     user = await _find_user_in_tenant(session, user_id, tenant_id)
     result = await session.execute(
-        select(UserRole).where(
-            UserRole.user_id == user.id, UserRole.role_id == role_id
-        )
+        select(UserRole).where(UserRole.user_id == user.id, UserRole.role_id == role_id)
     )
     row = result.scalar_one_or_none()
     if row is not None:
@@ -248,13 +239,9 @@ async def remove_role_from_user(
         await session.commit()
 
 
-async def list_user_roles(
-    session: AsyncSession, user_id: UUID, tenant_id: UUID
-) -> list[UserRole]:
+async def list_user_roles(session: AsyncSession, user_id: UUID, tenant_id: UUID) -> list[UserRole]:
     user = await _find_user_in_tenant(session, user_id, tenant_id)
-    result = await session.execute(
-        select(UserRole).where(UserRole.user_id == user.id)
-    )
+    result = await session.execute(select(UserRole).where(UserRole.user_id == user.id))
     return list(result.scalars().all())
 
 
@@ -263,9 +250,7 @@ async def list_user_roles(
 # -----------------------------------------------------------------------------
 
 
-async def has_permission(
-    session: AsyncSession, user_id: UUID, transaction_type: str
-) -> bool:
+async def has_permission(session: AsyncSession, user_id: UUID, transaction_type: str) -> bool:
     """True iff the user holds an ACTIVE role granting transaction_type.
 
     Pay-PRD-0440: users with no roles cannot transact.
@@ -290,9 +275,7 @@ async def has_permission(
     return result.scalar_one_or_none() is not None
 
 
-async def require_permission(
-    session: AsyncSession, user_id: UUID, transaction_type: str
-) -> None:
+async def require_permission(session: AsyncSession, user_id: UUID, transaction_type: str) -> None:
     """Raise `NotAuthorised` if the user lacks the permission.
 
     Called as step 1 by `payments/service.p2p_transfer` and

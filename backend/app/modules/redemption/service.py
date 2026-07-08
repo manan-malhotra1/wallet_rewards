@@ -14,6 +14,7 @@ available balance because REVERSED entries don't count in derive_balance.
 Phase F.5 adds `process_provider_callback` — the HMAC-verified production
 entrypoint. Confirm/fail remain as admin operator overrides.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -103,18 +104,14 @@ async def _find_user_points_account(
     return account
 
 
-async def _lock_account_for_update(
-    session: AsyncSession, account_id: UUID
-) -> None:
+async def _lock_account_for_update(session: AsyncSession, account_id: UUID) -> None:
     """Acquire a row-level write lock on the account until commit.
 
     Same pattern as `payments/service._lock_account_for_update`. Prevents
     concurrent redemptions from the same user wallet from both seeing the
     pre-debit balance.
     """
-    await session.execute(
-        select(Account.id).where(Account.id == account_id).with_for_update()
-    )
+    await session.execute(select(Account.id).where(Account.id == account_id).with_for_update())
 
 
 # -----------------------------------------------------------------------------
@@ -266,7 +263,7 @@ async def initiate_redemption(
     # ledger touch. No-op when no policy exists or when amount is below
     # the configured threshold.
     if user is not None:
-        from app.modules.step_up.service import enforce_step_up  # noqa: PLC0415
+        from app.modules.step_up.service import enforce_step_up
 
         await enforce_step_up(
             session,
@@ -286,12 +283,14 @@ async def initiate_redemption(
 
     # Idempotency fast-path: if a redemption with this key already exists in
     # this tenant, return it (no second ledger write).
-    existing = (await session.execute(
-        select(Redemption).where(
-            Redemption.tenant_id == tenant_id,
-            Redemption.idempotency_key == idempotency_key,
+    existing = (
+        await session.execute(
+            select(Redemption).where(
+                Redemption.tenant_id == tenant_id,
+                Redemption.idempotency_key == idempotency_key,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if existing is not None:
         return existing
 
@@ -487,9 +486,7 @@ async def confirm_redemption(
         RedemptionNotFound: 404.
         RedemptionNotPending: 409 — already terminal.
     """
-    redemption = await _find_redemption_for_transition(
-        session, redemption_id, request.tenant_id
-    )
+    redemption = await _find_redemption_for_transition(session, redemption_id, request.tenant_id)
     before = _redemption_audit_snapshot(redemption)
     await _apply_completed_transition(session, redemption, request.external_reference)
     record_audit_for_admin(
@@ -533,9 +530,7 @@ async def fail_redemption(
     Returns:
         The updated Redemption (status FAILED).
     """
-    redemption = await _find_redemption_for_transition(
-        session, redemption_id, request.tenant_id
-    )
+    redemption = await _find_redemption_for_transition(session, redemption_id, request.tenant_id)
     before = _redemption_audit_snapshot(redemption)
     await _apply_failed_transition(session, redemption, request.reason)
     record_audit_for_admin(
@@ -602,17 +597,17 @@ async def process_provider_callback(
 
     from app.modules.redemption.schemas import ProviderCallbackRequest
 
-    redemption = (await session.execute(
-        select(Redemption).where(Redemption.id == redemption_id)
-    )).scalar_one_or_none()
+    redemption = (
+        await session.execute(select(Redemption).where(Redemption.id == redemption_id))
+    ).scalar_one_or_none()
     if redemption is None:
         raise RedemptionNotFound()
 
-    provider = (await session.execute(
-        select(RedemptionProvider).where(
-            RedemptionProvider.id == redemption.provider_id
+    provider = (
+        await session.execute(
+            select(RedemptionProvider).where(RedemptionProvider.id == redemption.provider_id)
         )
-    )).scalar_one()
+    ).scalar_one()
 
     if not provider.shared_secret:
         # Provider exists but isn't wired for HMAC callbacks; operators must
@@ -637,17 +632,13 @@ async def process_provider_callback(
 
     before = _redemption_audit_snapshot(redemption)
     if callback.outcome == "completed":
-        await _apply_completed_transition(
-            session, redemption, callback.external_reference
-        )
+        await _apply_completed_transition(session, redemption, callback.external_reference)
         action = "redemption.confirmed.by_provider"
         note = callback.external_reference
     else:
         # Default reason if the provider didn't send one — never blank to
         # keep the audit row queryable.
-        await _apply_failed_transition(
-            session, redemption, callback.reason or "provider_failed"
-        )
+        await _apply_failed_transition(session, redemption, callback.reason or "provider_failed")
         action = "redemption.failed.by_provider"
         note = callback.reason
 
@@ -678,9 +669,7 @@ async def process_provider_callback(
 # -----------------------------------------------------------------------------
 
 
-async def get_redemption(
-    session: AsyncSession, redemption_id: UUID, tenant_id: UUID
-) -> Redemption:
+async def get_redemption(session: AsyncSession, redemption_id: UUID, tenant_id: UUID) -> Redemption:
     """Tenant-scoped redemption lookup."""
     result = await session.execute(
         select(Redemption).where(

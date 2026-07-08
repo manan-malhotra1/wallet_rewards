@@ -1,4 +1,5 @@
 """Tests for POST /api/v1/events/sources."""
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -10,9 +11,7 @@ from app.shared.models import Tenant
 
 
 @pytest.mark.asyncio
-async def test_register_source_happy_path(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_register_source_happy_path(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """A valid source registers with status='active'."""
     response = await async_client.post(
         "/api/v1/events/sources",

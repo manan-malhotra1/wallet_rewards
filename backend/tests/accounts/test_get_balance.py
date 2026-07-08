@@ -3,6 +3,7 @@
 Validates Pay-PRD-0130 (available_balance = balance - reserved) and
 NFR-0220 (cross-tenant access returns 404).
 """
+
 from __future__ import annotations
 
 from decimal import Decimal

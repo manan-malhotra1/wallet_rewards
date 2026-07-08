@@ -9,6 +9,7 @@ Endpoints:
 The catalog backs the admin UI dropdowns that replaced the free-text
 transaction_type inputs on Limits / Pricing / Campaigns pages.
 """
+
 import uuid
 from typing import Literal
 

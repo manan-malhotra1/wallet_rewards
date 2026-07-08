@@ -1,4 +1,5 @@
 """Tests for POST /api/v1/redemption/providers."""
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -38,9 +39,11 @@ async def test_register_provider_creates_wallet(
     assert body["status"] == "active"
 
     # Verify the wallet account was created and matches.
-    wallet = (await db_session.execute(
-        select(Account).where(Account.id == body["redemption_wallet_account_id"])
-    )).scalar_one_or_none()
+    wallet = (
+        await db_session.execute(
+            select(Account).where(Account.id == body["redemption_wallet_account_id"])
+        )
+    ).scalar_one_or_none()
     assert wallet is not None
     assert wallet.account_type == ACCOUNT_TYPE_PROVIDER_REDEMPTION
     assert wallet.currency == "PTS"

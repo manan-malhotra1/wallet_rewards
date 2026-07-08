@@ -1,4 +1,5 @@
 """Budgets module FastAPI router (Phase G.1, admin-gated)."""
+
 from __future__ import annotations
 
 from uuid import UUID

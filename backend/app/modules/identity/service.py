@@ -4,6 +4,7 @@ All business logic for Module 1 lives here. The router is a thin wrapper.
 Phase F.2 added the OTP, PIN, and session functions at the bottom of the
 file.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -58,7 +59,6 @@ from app.shared.exceptions import (
     TenantNotFound,
     UserNotFound,
 )
-from app.shared.utils.normalize import normalize_identifier, normalize_phone
 from app.shared.models import (
     PARENT_TYPE_BY_CHILD,
     AuthAttempt,
@@ -68,6 +68,7 @@ from app.shared.models import (
     UserIdentifier,
     UserProfile,
 )
+from app.shared.utils.normalize import normalize_identifier
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -276,9 +277,7 @@ async def _find_identifier(
 async def _reload_user(session: AsyncSession, user_id: UUID) -> User:
     """Fetch a user with identifiers eagerly loaded for the response."""
     result = await session.execute(
-        select(User)
-        .where(User.id == user_id)
-        .options(selectinload(User.identifiers))
+        select(User).where(User.id == user_id).options(selectinload(User.identifiers))
     )
     user = result.scalar_one_or_none()
     if user is None:
@@ -385,9 +384,7 @@ async def change_user_type(
     return await _reload_user(session, user.id)
 
 
-async def get_user_detail(
-    session: AsyncSession, *, user_id: UUID, tenant_id: UUID
-):
+async def get_user_detail(session: AsyncSession, *, user_id: UUID, tenant_id: UUID):
     """Load the full admin user-detail payload — identifiers, profile, accounts.
 
     Returns a plain dict so the router can map to the Pydantic response
@@ -403,7 +400,6 @@ async def get_user_detail(
     Raises:
         UserNotFound: 404 — unknown user or user belongs to a different tenant.
     """
-    from decimal import Decimal
 
     from app.modules.accounts.service import derive_balance
     from app.shared.models import Account, UserProfile
@@ -419,16 +415,12 @@ async def get_user_detail(
         raise UserNotFound()
 
     # Profile is 0..1, separate table.
-    profile_q = await session.execute(
-        select(UserProfile).where(UserProfile.user_id == user.id)
-    )
+    profile_q = await session.execute(select(UserProfile).where(UserProfile.user_id == user.id))
     profile = profile_q.scalar_one_or_none()
 
     # Accounts (any account_type) — derive balance per account on demand.
     accounts_q = await session.execute(
-        select(Account).where(
-            Account.tenant_id == tenant_id, Account.user_id == user.id
-        )
+        select(Account).where(Account.tenant_id == tenant_id, Account.user_id == user.id)
     )
     accounts = list(accounts_q.scalars().all())
     account_payload = []
@@ -459,9 +451,7 @@ async def get_user_detail(
     }
 
 
-async def get_my_wallet(
-    session: AsyncSession, *, user_id: UUID, tenant_id: UUID
-) -> dict:
+async def get_my_wallet(session: AsyncSession, *, user_id: UUID, tenant_id: UUID) -> dict:
     """Return the authenticated user's own wallet view.
 
     Mirrors what a real mobile app needs: accounts with derived balances
@@ -485,7 +475,7 @@ async def get_my_wallet(
             and this call, or token's user_id is bogus.
     """
     from app.modules.accounts.service import derive_balance
-    from app.shared.models import Account, LedgerEntry, Transaction, UserProfile
+    from app.shared.models import Account, UserProfile
 
     user_q = await session.execute(
         select(User).where(User.id == user_id, User.tenant_id == tenant_id)
@@ -494,15 +484,11 @@ async def get_my_wallet(
     if user is None:
         raise UserNotFound()
 
-    profile_q = await session.execute(
-        select(UserProfile).where(UserProfile.user_id == user.id)
-    )
+    profile_q = await session.execute(select(UserProfile).where(UserProfile.user_id == user.id))
     profile = profile_q.scalar_one_or_none()
 
     accounts_q = await session.execute(
-        select(Account).where(
-            Account.tenant_id == tenant_id, Account.user_id == user.id
-        )
+        select(Account).where(Account.tenant_id == tenant_id, Account.user_id == user.id)
     )
     accounts = list(accounts_q.scalars().all())
     account_ids = [a.id for a in accounts]
@@ -625,9 +611,7 @@ async def _build_recent_txns_payload(
     payload: list[dict] = []
     for t in txns:
         entries = entries_by_txn.get(t.id, [])
-        user_entry = next(
-            (e for e in entries if e.account_id in own_account_set), None
-        )
+        user_entry = next((e for e in entries if e.account_id in own_account_set), None)
         # Default to "out" if we somehow couldn't find a side; the user
         # would never see this row otherwise but the type system needs
         # a literal value.
@@ -695,9 +679,7 @@ async def list_user_transactions(
         raise UserNotFound()
 
     accounts_q = await session.execute(
-        select(Account.id).where(
-            Account.tenant_id == tenant_id, Account.user_id == user_id
-        )
+        select(Account.id).where(Account.tenant_id == tenant_id, Account.user_id == user_id)
     )
     account_ids = list(accounts_q.scalars().all())
     return await _build_recent_txns_payload(
@@ -819,9 +801,7 @@ async def resolve_identifier(
 # =============================================================================
 
 
-async def _find_user_by_phone(
-    session: AsyncSession, tenant_id: UUID, phone: str
-) -> User | None:
+async def _find_user_by_phone(session: AsyncSession, tenant_id: UUID, phone: str) -> User | None:
     """Resolve a phone number to a User in this tenant, or None."""
     result = await session.execute(
         select(User)
@@ -835,9 +815,7 @@ async def _find_user_by_phone(
     return result.scalar_one_or_none()
 
 
-async def _autocreate_user_with_phone(
-    session: AsyncSession, tenant_id: UUID, phone: str
-) -> User:
+async def _autocreate_user_with_phone(session: AsyncSession, tenant_id: UUID, phone: str) -> User:
     """First-time user: create on-the-fly when /otp/send hits an unknown phone.
 
     Matches Pay-PRD-0010 semantics — registration is a side-effect of the
@@ -860,9 +838,7 @@ async def _autocreate_user_with_phone(
     return user
 
 
-async def send_otp(
-    session: AsyncSession, request: OtpSendRequest
-) -> OtpSendResponse:
+async def send_otp(session: AsyncSession, request: OtpSendRequest) -> OtpSendResponse:
     """Generate, store, and 'deliver' a one-time password.
 
     Auto-registers the phone if it's not already known in this tenant
@@ -888,15 +864,11 @@ async def send_otp(
 
     user = await _find_user_by_phone(session, request.tenant_id, request.phone)
     if user is None:
-        user = await _autocreate_user_with_phone(
-            session, request.tenant_id, request.phone
-        )
+        user = await _autocreate_user_with_phone(session, request.tenant_id, request.phone)
 
     otp = hashing.generate_otp()
     otp_hash = hashing.hash_otp(otp)
-    expires_at = datetime.now(UTC) + timedelta(
-        seconds=settings.OTP_EXPIRY_SECONDS
-    )
+    expires_at = datetime.now(UTC) + timedelta(seconds=settings.OTP_EXPIRY_SECONDS)
     session.add(
         OtpRequest(
             user_id=user.id,
@@ -914,9 +886,7 @@ async def send_otp(
     )
 
 
-async def verify_otp(
-    session: AsyncSession, request: OtpVerifyRequest
-) -> OtpVerifyResponse:
+async def verify_otp(session: AsyncSession, request: OtpVerifyRequest) -> OtpVerifyResponse:
     """Verify an OTP, mark it used, return a short-lived registration_token.
 
     Single-use semantics — `used_at` is set even if the OTP value matches a
@@ -983,7 +953,7 @@ async def verify_otp(
 
 
 def _validate_pin_format(pin: str) -> None:
-    """4–6 digit numeric. Pydantic validates length; we add the digit check."""
+    """4-6 digit numeric. Pydantic validates length; we add the digit check."""
     if not pin.isdigit():
         raise InvalidPinFormat()
 
@@ -999,7 +969,7 @@ async def set_pin(session: AsyncSession, request: PinSetRequest) -> None:
         request: registration_token + pin.
 
     Raises:
-        InvalidPinFormat: PIN isn't 4–6 digits.
+        InvalidPinFormat: PIN isn't 4-6 digits.
         InvalidRegistrationToken: token unknown / expired / already used.
         PinAlreadySet: user has a PIN — must use reset flow (deferred).
         UserNotFound: token's user_id doesn't exist (shouldn't happen).
@@ -1110,9 +1080,7 @@ async def authenticate_pin(
     )
 
 
-async def auth_start_lookup(
-    session: AsyncSession, request: AuthStartRequest
-) -> AuthStartResponse:
+async def auth_start_lookup(session: AsyncSession, request: AuthStartRequest) -> AuthStartResponse:
     """Branch the mobile auth flow on whether (tenant, phone) already has a user.
 
     Pure read-only lookup — UNLIKE `send_otp`, this function MUST NOT

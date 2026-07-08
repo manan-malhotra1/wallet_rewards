@@ -14,6 +14,7 @@ Two scopes:
 Two unique partial indexes enforce the "one budget per slot" invariant
 (Postgres treats NULLs as distinct on plain UNIQUE, so we split).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -55,9 +56,7 @@ class RewardBudget(Base):
             name="ck_reward_budgets_scope_type",
         ),
         CheckConstraint(
-            "window_type IN ("
-            "'rolling_24h', 'rolling_7d', 'calendar_month', 'lifetime'"
-            ")",
+            "window_type IN ('rolling_24h', 'rolling_7d', 'calendar_month', 'lifetime')",
             name="ck_reward_budgets_window_type",
         ),
         CheckConstraint(
@@ -97,14 +96,10 @@ class RewardBudget(Base):
     # NULL when scope_type='tenant'; FK to rules.id when scope_type='rule'.
     # Not a hard FK constraint because budgets can outlive deleted rules
     # for audit purposes — soft reference only.
-    scope_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    scope_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     window_type: Mapped[str] = mapped_column(String(20), nullable=False)
     cap_amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="active"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()

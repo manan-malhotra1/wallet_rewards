@@ -6,6 +6,7 @@ tests cover the happy path, the genericity guarantees (unconfigured service,
 currency-derived account scope, explicit override), auth, validation, and
 tenant isolation.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal

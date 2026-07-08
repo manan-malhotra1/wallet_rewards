@@ -4,6 +4,7 @@ These tables back Module 8 (Event Ingestion & Normalisation). Every external
 event source must be REGISTERED before its events are accepted (Pay-PRD-0495).
 The ingestion log dedupes by `(source_key, external_event_id)` (Pay-PRD-0500).
 """
+
 import uuid
 from datetime import datetime
 
@@ -54,16 +55,12 @@ class ExternalEventSource(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     # Globally unique — used as the partition key for routing events to the
     # correct source registration row.
-    source_key: Mapped[str] = mapped_column(
-        String(100), nullable=False, unique=True
-    )
+    source_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     field_mapping: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     shared_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="active"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     created_at: Mapped[datetime] = created_at_col()
 
 

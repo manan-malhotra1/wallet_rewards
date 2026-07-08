@@ -8,6 +8,7 @@ PRD references:
   - Pay-PRD-0010 to 0100 (Identity & User Management module)
   - NFR-0170, NFR-0240 (credentials/PII handling — never logged)
 """
+
 import uuid
 from datetime import datetime
 
@@ -81,9 +82,7 @@ class User(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
     )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="active"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     # bcrypt hash; never the plain PIN. NULL until user sets PIN (Phase 2).
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # First-class user type (Epic 12). VARCHAR + CHECK per repo DB conventions
@@ -100,13 +99,9 @@ class User(Base):
     )
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
-    identifiers: Mapped[list["UserIdentifier"]] = relationship(
-        back_populates="user", cascade="all"
-    )
+    identifiers: Mapped[list["UserIdentifier"]] = relationship(back_populates="user", cascade="all")
     profile: Mapped["UserProfile | None"] = relationship(
         back_populates="user", uselist=False, cascade="all"
     )
@@ -149,9 +144,7 @@ class UserIdentifier(Base):
     )
     identifier_type: Mapped[str] = mapped_column(String(30), nullable=False)
     identifier_value: Mapped[str] = mapped_column(String(255), nullable=False)
-    verified: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
-    )
+    verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = created_at_col()
 
     user: Mapped[User] = relationship(back_populates="identifiers")
@@ -179,9 +172,7 @@ class UserProfile(Base):
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     date_of_birth: Mapped[datetime | None] = mapped_column(Date, nullable=True)
-    kyc_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="unverified"
-    )
+    kyc_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="unverified")
     updated_at: Mapped[datetime] = updated_at_col()
 
     user: Mapped[User] = relationship(back_populates="profile")
@@ -209,12 +200,8 @@ class OtpRequest(Base):
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False)
     otp_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     purpose: Mapped[str] = mapped_column(String(30), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False
-    )
-    used_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = created_at_col()
 
 

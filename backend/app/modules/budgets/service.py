@@ -11,6 +11,7 @@ Two surfaces:
 Consumption is computed live from `reward_events.reward_value`. No
 separate counter table — `reward_events` is the source of truth.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -46,7 +47,6 @@ from app.shared.models import (
     Tenant,
 )
 
-
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
@@ -70,9 +70,7 @@ def _window_floor(window_type: str, now: datetime) -> datetime | None:
         return now - timedelta(days=7)
     if window_type == BUDGET_WINDOW_CALENDAR_MONTH:
         # First day of the current UTC month.
-        return now.replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0, tzinfo=UTC
-        )
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0, tzinfo=UTC)
     if window_type == BUDGET_WINDOW_LIFETIME:
         return None
     raise ValueError(f"Unknown window_type {window_type!r}")

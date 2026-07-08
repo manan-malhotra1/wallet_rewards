@@ -2,6 +2,7 @@
 
 Covers every threat scenario from the Phase F.1 threat model §5.
 """
+
 from __future__ import annotations
 
 import time
@@ -124,7 +125,9 @@ async def test_verify_rejects_wrong_key_signature(
     foreign_pem = foreign.private_bytes(
         encoding=__import__("cryptography").hazmat.primitives.serialization.Encoding.PEM,
         format=__import__("cryptography").hazmat.primitives.serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=__import__("cryptography").hazmat.primitives.serialization.NoEncryption(),
+        encryption_algorithm=__import__(
+            "cryptography"
+        ).hazmat.primitives.serialization.NoEncryption(),
     )
     forged = jose_jwt.encode(
         {

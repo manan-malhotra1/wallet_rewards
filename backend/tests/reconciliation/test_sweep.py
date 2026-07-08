@@ -4,6 +4,7 @@ Phase F.4: the redemption `/initiate` endpoint is user-only. The helper
 that creates pending redemptions mints a one-shot session token for the
 test user before calling it.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -80,9 +81,7 @@ async def _make_pending_redemption(
     Reaches into the DB to set provider.max_retries + redemption.created_at —
     test-only since these aren't exposed via the API.
     """
-    await _grant_points(
-        db_session, tenant, user, amount + Decimal("10"), key=seed_key
-    )
+    await _grant_points(db_session, tenant, user, amount + Decimal("10"), key=seed_key)
 
     provider_resp = await async_client.post(
         "/api/v1/redemption/providers",
@@ -112,9 +111,9 @@ async def _make_pending_redemption(
     redemption_id = init.json()["id"]
 
     # Backdate created_at so the sweep sees it as stale.
-    redemption = (await db_session.execute(
-        select(Redemption).where(Redemption.id == redemption_id)
-    )).scalar_one()
+    redemption = (
+        await db_session.execute(select(Redemption).where(Redemption.id == redemption_id))
+    ).scalar_one()
     redemption.created_at = datetime.now(UTC) - timedelta(minutes=age_minutes)
     await db_session.commit()
     await db_session.refresh(redemption)
@@ -306,13 +305,19 @@ async def test_sweep_writes_audit_log_per_item(
     # Filter to ONLY the sweep entry — Phase F.5 added a separate
     # `redemption.initiated` audit row that lands when the seed helper
     # calls /initiate, so the unfiltered entity query returns 2 rows.
-    entries = (await db_session.execute(
-        select(AuditLog).where(
-            AuditLog.entity_type == "redemption",
-            AuditLog.entity_id == str(redemption.id),
-            AuditLog.action == "recon.swept",
+    entries = (
+        (
+            await db_session.execute(
+                select(AuditLog).where(
+                    AuditLog.entity_type == "redemption",
+                    AuditLog.entity_id == str(redemption.id),
+                    AuditLog.action == "recon.swept",
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(entries) == 1
     entry = entries[0]
     assert entry.actor_type == "system"

@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for the roles module."""
+
 from __future__ import annotations
 
 from datetime import datetime

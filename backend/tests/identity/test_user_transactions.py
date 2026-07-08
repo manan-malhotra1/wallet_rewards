@@ -4,6 +4,7 @@ Admin-facing version of the mobile /me/wallet recent-transactions feed.
 Shape matches WalletTransactionOut so the admin UI's table component
 can share types with the mobile-simulator's.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -102,9 +103,7 @@ async def test_user_transactions_happy_path(
     admin_auth_header: dict[str, str],
 ) -> None:
     """One funded wallet → one CREDIT row marked as 'in'."""
-    await _seed_wallet_with_credit(
-        db_session, test_tenant, test_user, amount=Decimal("500")
-    )
+    await _seed_wallet_with_credit(db_session, test_tenant, test_user, amount=Decimal("500"))
 
     resp = await async_client.get(
         f"/api/v1/identity/users/{test_user.id}/transactions",
@@ -146,9 +145,7 @@ async def test_user_transactions_cross_tenant_returns_404(
     admin_auth_header: dict[str, str],
 ) -> None:
     """User in tenant A queried via tenant B → 404 (no leak)."""
-    await _seed_wallet_with_credit(
-        db_session, test_tenant, test_user, amount=Decimal("100")
-    )
+    await _seed_wallet_with_credit(db_session, test_tenant, test_user, amount=Decimal("100"))
 
     resp = await async_client.get(
         f"/api/v1/identity/users/{test_user.id}/transactions",

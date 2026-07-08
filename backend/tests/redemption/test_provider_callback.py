@@ -10,6 +10,7 @@ docs/security/threat-models/phase-f5-hmac-and-audit.md §7:
   - Replay against already-terminal redemption → 409
   - audit_log row created on success and on integrity failure
 """
+
 from __future__ import annotations
 
 import json
@@ -94,20 +95,18 @@ async def _seed_pending_redemption(
     )
     assert init.status_code == 201, init.text
 
-    provider = (await db_session.execute(
-        select(RedemptionProvider).where(RedemptionProvider.id == provider_id)
-    )).scalar_one()
+    provider = (
+        await db_session.execute(
+            select(RedemptionProvider).where(RedemptionProvider.id == provider_id)
+        )
+    ).scalar_one()
     return init.json()["id"], provider
 
 
-async def _count_audit(
-    db_session: AsyncSession, *, action: str, entity_id: str
-) -> int:
+async def _count_audit(db_session: AsyncSession, *, action: str, entity_id: str) -> int:
     """Count audit rows for a specific (action, entity)."""
     result = await db_session.execute(
-        select(AuditLog).where(
-            AuditLog.action == action, AuditLog.entity_id == entity_id
-        )
+        select(AuditLog).where(AuditLog.action == action, AuditLog.entity_id == entity_id)
     )
     return len(list(result.scalars().all()))
 
@@ -119,7 +118,7 @@ async def test_callback_happy_path_completes_redemption(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Valid HMAC + outcome=completed → redemption COMPLETED, audit row written."""
     redemption_id, _ = await _seed_pending_redemption(
@@ -132,9 +131,7 @@ async def test_callback_happy_path_completes_redemption(
         seed_key="ok",
     )
 
-    body = json.dumps(
-        {"outcome": "completed", "external_reference": "MUKURU-OK"}
-    ).encode()
+    body = json.dumps({"outcome": "completed", "external_reference": "MUKURU-OK"}).encode()
     signature = build_signature_header(raw_body=body, secret=PROVIDER_SECRET)
 
     response = await async_client.post(
@@ -153,11 +150,14 @@ async def test_callback_happy_path_completes_redemption(
     assert reserved == Decimal("0")
 
     # Audit row recorded under the system actor.
-    assert await _count_audit(
-        db_session,
-        action="redemption.confirmed.by_provider",
-        entity_id=redemption_id,
-    ) == 1
+    assert (
+        await _count_audit(
+            db_session,
+            action="redemption.confirmed.by_provider",
+            entity_id=redemption_id,
+        )
+        == 1
+    )
 
 
 @pytest.mark.asyncio
@@ -167,7 +167,7 @@ async def test_callback_failure_outcome_restores_balance(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Valid HMAC + outcome=failed → redemption FAILED, balance restored."""
     redemption_id, _ = await _seed_pending_redemption(
@@ -203,7 +203,7 @@ async def test_callback_tampered_body_returns_401(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Mutating the body after signing → 401 invalid_signature, no transition."""
     redemption_id, _ = await _seed_pending_redemption(
@@ -236,7 +236,7 @@ async def test_callback_stale_timestamp_returns_401(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Signature timestamp > 5 min ago → 401 signature_timestamp_skew."""
     redemption_id, _ = await _seed_pending_redemption(
@@ -251,9 +251,7 @@ async def test_callback_stale_timestamp_returns_401(
 
     body = json.dumps({"outcome": "completed"}).encode()
     old_ts = int(time.time()) - 600  # 10 minutes ago
-    signature = build_signature_header(
-        raw_body=body, secret=PROVIDER_SECRET, timestamp=old_ts
-    )
+    signature = build_signature_header(raw_body=body, secret=PROVIDER_SECRET, timestamp=old_ts)
 
     response = await async_client.post(
         f"/api/v1/redemption/{redemption_id}/callback",
@@ -271,7 +269,7 @@ async def test_callback_missing_signature_returns_422(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """No X-Sasai-Signature header → 422 (FastAPI's missing-header default)."""
     redemption_id, _ = await _seed_pending_redemption(
@@ -299,7 +297,7 @@ async def test_callback_provider_without_secret_returns_401(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """Provider registered with no shared_secret → 401 signature_not_configured."""
     redemption_id, _ = await _seed_pending_redemption(
@@ -333,7 +331,7 @@ async def test_callback_replay_after_terminal_returns_409(
     test_tenant: Tenant,
     test_user: User,
     user_points: Account,
-    system_points_account: Account,  # noqa: ARG001
+    system_points_account: Account,
 ) -> None:
     """A second valid callback on the same redemption → 409 (already terminal)."""
     redemption_id, _ = await _seed_pending_redemption(
@@ -369,7 +367,7 @@ async def test_callback_replay_after_terminal_returns_409(
 @pytest.mark.asyncio
 async def test_callback_unknown_redemption_returns_404(
     async_client: AsyncClient,
-    test_tenant: Tenant,  # noqa: ARG001
+    test_tenant: Tenant,
 ) -> None:
     """An unknown redemption_id → 404 redemption_not_found."""
     body = json.dumps({"outcome": "completed"}).encode()

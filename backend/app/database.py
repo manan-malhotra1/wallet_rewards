@@ -1,4 +1,5 @@
 """Async SQLAlchemy engine and session factory."""
+
 from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import (

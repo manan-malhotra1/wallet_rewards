@@ -1,4 +1,5 @@
 """Tests for POST /api/v1/identity/users/{user_id}/pin/reset (admin-only)."""
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -35,9 +36,7 @@ async def test_pin_reset_happy_path(
     assert body["new_pin"].isdigit()
 
     # Re-fetch the user; the stored hash must verify against the returned PIN.
-    refreshed = (
-        await db_session.execute(select(User).where(User.id == test_user.id))
-    ).scalar_one()
+    refreshed = (await db_session.execute(select(User).where(User.id == test_user.id))).scalar_one()
     assert refreshed.pin_hash is not None
     assert hashing.verify_pin(body["new_pin"], refreshed.pin_hash)
 

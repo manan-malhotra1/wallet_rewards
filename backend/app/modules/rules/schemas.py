@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for the rules module."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -70,9 +71,7 @@ class RuleCreateRequest(BaseModel):
             self.rule_type in ("first_time", "milestone", "streak", "value_based")
             and not self.transaction_type
         ):
-            raise ValueError(
-                f"{self.rule_type} rules require a transaction_type"
-            )
+            raise ValueError(f"{self.rule_type} rules require a transaction_type")
         if self.rule_type == "streak":
             if self.streak_units is None or self.streak_unit_window is None:
                 raise ValueError(
@@ -81,19 +80,14 @@ class RuleCreateRequest(BaseModel):
                 )
         if self.rule_type == "value_based":
             if self.min_amount is None or self.min_amount <= 0:
-                raise ValueError(
-                    "value_based rules require min_amount > 0"
-                )
+                raise ValueError("value_based rules require min_amount > 0")
         if self.rule_type == "campaign":
             if self.campaign_start_date is None or self.campaign_end_date is None:
                 raise ValueError(
-                    "campaign rules require both campaign_start_date and "
-                    "campaign_end_date"
+                    "campaign rules require both campaign_start_date and campaign_end_date"
                 )
             if self.campaign_start_date > self.campaign_end_date:
-                raise ValueError(
-                    "campaign_start_date must be on or before campaign_end_date"
-                )
+                raise ValueError("campaign_start_date must be on or before campaign_end_date")
             if not self.transaction_type:
                 raise ValueError("campaign rules require a transaction_type")
         return self

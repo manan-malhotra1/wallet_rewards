@@ -4,6 +4,7 @@ The ledger is the single chokepoint for every state-mutating write to
 `ledger_entries`. These tests cover the invariants enforced by the
 service (NFR-0100, Pay-PRD-0170, Pay-PRD-0180, Pay-PRD-0200).
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -58,17 +59,17 @@ async def test_post_transaction_happy_path(
             idempotency_key="happy-1",
             transaction_type="seed",
             currency="ZAR",
-            entries=_balanced_p2p(
-                system_points_account, user_wallet, Decimal("50")
-            ),
+            entries=_balanced_p2p(system_points_account, user_wallet, Decimal("50")),
         ),
     )
     assert txn.status == TXN_STATUS_COMPLETED
     assert txn.amount == Decimal("50")
 
-    rows = (await db_session.execute(
-        select(LedgerEntry).where(LedgerEntry.transaction_id == txn.id)
-    )).scalars().all()
+    rows = (
+        (await db_session.execute(select(LedgerEntry).where(LedgerEntry.transaction_id == txn.id)))
+        .scalars()
+        .all()
+    )
     assert len(rows) == 2
     assert all(r.status == ENTRY_STATUS_COMPLETED for r in rows)
 
@@ -186,9 +187,15 @@ async def test_post_transaction_idempotent_returns_existing(
     assert first.id == second.id
 
     # Only 2 ledger entries should exist for this idempotency key.
-    rows = (await db_session.execute(
-        select(LedgerEntry).where(LedgerEntry.transaction_id == first.id)
-    )).scalars().all()
+    rows = (
+        (
+            await db_session.execute(
+                select(LedgerEntry).where(LedgerEntry.transaction_id == first.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert len(rows) == 2
 
 

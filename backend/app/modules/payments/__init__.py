@@ -5,6 +5,7 @@ bill-pay and the public top-up endpoint are deferred to later phases. An
 internal `top_up()` service function is provided so the seed can give users
 opening balances via double-entry.
 """
+
 from app.modules.payments.router import router
 
 __all__ = ["router"]

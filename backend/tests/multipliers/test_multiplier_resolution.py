@@ -1,4 +1,5 @@
 """Tests for the multipliers module — CRUD + hot-path resolution."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta

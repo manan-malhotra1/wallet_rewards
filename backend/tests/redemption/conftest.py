@@ -5,6 +5,7 @@ The user-facing `/initiate` endpoint and `/{redemption_id}` GET are user-auth
 — individual tests override the Authorization header per call with the
 `alice_auth_header` fixture from the top-level conftest.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator

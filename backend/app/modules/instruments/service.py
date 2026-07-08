@@ -5,8 +5,9 @@ one account per existing tenant user so the new instrument is spendable
 immediately (mirrors the operator UX expectation that flipping on a new
 currency "shows up" in every user wallet, not just future signups).
 """
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
@@ -209,7 +210,7 @@ async def soft_delete_instrument(
 ) -> Instrument:
     """Mark the instrument deleted_at=now(). Existing accounts are not touched."""
     instrument = await get_instrument_by_id(session, tenant_id, instrument_id)
-    instrument.deleted_at = datetime.now(timezone.utc)
+    instrument.deleted_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(instrument)
     log.info(

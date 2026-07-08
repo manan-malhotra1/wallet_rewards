@@ -4,6 +4,7 @@ These exercise the pure functions in `app.auth.hmac` — no DB, no FastAPI.
 The E2E behaviour against the provider-callback endpoint is in
 `tests/redemption/test_provider_callback.py`.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -87,17 +88,13 @@ def test_wrong_secret_raises_invalid_signature():
 def test_missing_v1_raises_malformed():
     """Header without a `v1=` field is malformed."""
     with pytest.raises(SignatureMalformed):
-        verify_signature(
-            header="t=1718473200", raw_body=BODY, secret=SECRET, now=1718473200
-        )
+        verify_signature(header="t=1718473200", raw_body=BODY, secret=SECRET, now=1718473200)
 
 
 def test_missing_timestamp_raises_malformed():
     """Header without a `t=` field is malformed."""
     with pytest.raises(SignatureMalformed):
-        verify_signature(
-            header="v1=deadbeef", raw_body=BODY, secret=SECRET, now=1718473200
-        )
+        verify_signature(header="v1=deadbeef", raw_body=BODY, secret=SECRET, now=1718473200)
 
 
 def test_non_integer_timestamp_raises_malformed():

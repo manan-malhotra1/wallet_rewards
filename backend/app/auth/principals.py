@@ -4,6 +4,7 @@ A `Principal` is "the verified, authenticated party making this request."
 After `get_current_admin()` returns, route handlers can trust every field on
 the principal — the JWT has been signature-checked and unexpired.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

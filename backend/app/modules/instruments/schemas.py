@@ -6,6 +6,7 @@ fixes the kind of account auto-provisioned for users holding the
 instrument: 'financial_wallet' for fiat, 'points_account' for loyalty
 points. New types can be added if the platform grows new account kinds.
 """
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID

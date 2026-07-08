@@ -4,6 +4,7 @@ We test the service directly (faster + more focused than going through
 the admin HTTP layer) and the integration via the p2p_transfer service
 to confirm the orchestration honours limits.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -27,9 +28,7 @@ from app.shared.models import (
 
 
 @pytest.mark.asyncio
-async def test_no_config_is_pass_through(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_no_config_is_pass_through(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """When no limit config exists, check_limits is a no-op."""
     await check_limits(
         db_session,
@@ -43,9 +42,7 @@ async def test_no_config_is_pass_through(
 
 
 @pytest.mark.asyncio
-async def test_amount_below_min_rejected(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_amount_below_min_rejected(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """Configuring min_amount=R 50 → R 10 transfer raises AmountBelowMin."""
     await create_limit_config(
         db_session,
@@ -70,9 +67,7 @@ async def test_amount_below_min_rejected(
 
 
 @pytest.mark.asyncio
-async def test_amount_above_max_rejected(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_amount_above_max_rejected(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """max_amount=R 1000 → R 5000 transfer raises AmountAboveMax."""
     await create_limit_config(
         db_session,
@@ -101,7 +96,7 @@ async def test_daily_count_cap_enforced(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
     """Once daily_count_cap=2 is reached, a 3rd transfer raises 429."""
-    from app.shared.models import Transaction, TXN_STATUS_COMPLETED
+    from app.shared.models import TXN_STATUS_COMPLETED, Transaction
 
     # `test_user` is a real DB row so the FK on `transactions.initiated_by`
     # resolves; uuid4() would FK-violate.

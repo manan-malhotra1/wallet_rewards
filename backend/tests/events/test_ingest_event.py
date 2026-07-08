@@ -3,6 +3,7 @@
 Covers the scenarios listed in
 docs/security/threat-models/phase-c-rewards-inflow.md §5.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -27,9 +28,7 @@ from app.shared.models import (
 # -----------------------------------------------------------------------------
 
 
-async def _seed_source(
-    async_client: AsyncClient, tenant: Tenant, source_key: str
-) -> None:
+async def _seed_source(async_client: AsyncClient, tenant: Tenant, source_key: str) -> None:
     """Register the source via the API so subsequent ingest calls have a target."""
     resp = await async_client.post(
         "/api/v1/events/sources",
@@ -112,16 +111,16 @@ def _make_event(
     }
 
 
-async def _ensure_system_points_issuance(
-    db_session: AsyncSession, tenant: Tenant
-) -> Account:
+async def _ensure_system_points_issuance(db_session: AsyncSession, tenant: Tenant) -> Account:
     """Create system_points_issuance for the tenant (test helper)."""
-    existing = (await db_session.execute(
-        select(Account).where(
-            Account.tenant_id == tenant.id,
-            Account.account_type == ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+    existing = (
+        await db_session.execute(
+            select(Account).where(
+                Account.tenant_id == tenant.id,
+                Account.account_type == ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if existing is not None:
         return existing
     account = Account(
@@ -209,9 +208,11 @@ async def test_ingest_dedupes_replayed_event(
     assert second.json()["rules_fired"] == []
 
     # Only ONE reward_events row exists.
-    rewards = (await db_session.execute(
-        select(RewardEvent).where(RewardEvent.user_id == test_user.id)
-    )).scalars().all()
+    rewards = (
+        (await db_session.execute(select(RewardEvent).where(RewardEvent.user_id == test_user.id)))
+        .scalars()
+        .all()
+    )
     assert len(rewards) == 1
 
 
@@ -318,16 +319,16 @@ async def test_ingestion_log_records_outcome(
     await _seed_source(async_client, test_tenant, "log-src")
     await _seed_first_time_rule(async_client, test_tenant)
 
-    evt = _make_event(
-        source_key="log-src", tenant=test_tenant, user=test_user
-    )
+    evt = _make_event(source_key="log-src", tenant=test_tenant, user=test_user)
     await async_client.post("/api/v1/events/external", json=evt)
 
-    log = (await db_session.execute(
-        select(EventIngestionLog).where(
-            EventIngestionLog.source_key == "log-src",
-            EventIngestionLog.external_event_id == evt["event_id"],
+    log = (
+        await db_session.execute(
+            select(EventIngestionLog).where(
+                EventIngestionLog.source_key == "log-src",
+                EventIngestionLog.external_event_id == evt["event_id"],
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     assert log is not None
     assert log.status == "PROCESSED"

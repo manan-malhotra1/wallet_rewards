@@ -9,9 +9,9 @@ Three surfaces:
     currency) system_fee_collected account on first need.
   - Admin CRUD on `pricing_configs`.
 """
+
 from __future__ import annotations
 
-from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
@@ -152,11 +152,7 @@ def account_type_for_currency(currency: str) -> str:
     points_account). Callers needing a different scope pass `account_type`
     explicitly to `quote_fee`.
     """
-    return (
-        ACCOUNT_TYPE_POINTS
-        if currency.upper() == "PTS"
-        else ACCOUNT_TYPE_FINANCIAL_WALLET
-    )
+    return ACCOUNT_TYPE_POINTS if currency.upper() == "PTS" else ACCOUNT_TYPE_FINANCIAL_WALLET
 
 
 async def quote_fee(
@@ -318,9 +314,7 @@ async def create_pricing_config(
     return config
 
 
-async def list_pricing_configs(
-    session: AsyncSession, tenant_id: UUID
-) -> list[PricingConfig]:
+async def list_pricing_configs(session: AsyncSession, tenant_id: UUID) -> list[PricingConfig]:
     """Return every pricing config in a tenant, newest-first."""
     result = await session.execute(
         select(PricingConfig)

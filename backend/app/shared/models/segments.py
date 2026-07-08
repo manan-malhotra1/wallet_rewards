@@ -4,6 +4,7 @@ Static cohorts of users that admins can target with rules or
 multipliers. Membership is explicit (admin assigns each user); dynamic
 "users who did X" segments are deferred to Phase 2.
 """
+
 from __future__ import annotations
 
 import uuid

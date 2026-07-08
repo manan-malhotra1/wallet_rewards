@@ -10,6 +10,7 @@ Examples:
     mask_account("ZA-001-887-2210") -> "ZA-001-***-2210"
     mask_card("5234 5678 9012 3456") -> "5234 **** **** 3456"
 """
+
 from __future__ import annotations
 
 

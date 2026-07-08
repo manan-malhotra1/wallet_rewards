@@ -10,6 +10,7 @@ reconciliation sweep resolves it.
 Mirrors the Redemption pattern (PRD §6.10) — same lifecycle, different
 ledger accounts. Tests cover the full state machine.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -98,15 +99,9 @@ class AirtimeRecharge(Base):
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     # Provider-returned reference (e.g. MTN voucher PIN, Vodacom recharge id).
     # Stored for ops + customer support lookups. Not PII.
-    provider_reference: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    provider_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    retry_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()

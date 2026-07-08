@@ -9,6 +9,7 @@ ledger entry. The UNIQUE INDEX on (user_id, rule_id, triggering_event_id)
 is the idempotency guard (NFR-0110) — duplicates are caught at insert and
 treated as no-op.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -57,9 +58,7 @@ async def _find_user_points_account(
     return account
 
 
-async def _find_system_points_issuance(
-    session: AsyncSession, tenant_id: UUID
-) -> Account:
+async def _find_system_points_issuance(session: AsyncSession, tenant_id: UUID) -> Account:
     """Return the tenant's master system_points_issuance account, or raise."""
     result = await session.execute(
         select(Account).where(
@@ -123,9 +122,7 @@ async def issue_points_reward(
         SystemPointsIssuanceMissing: 500 — tenant misconfigured.
     """
     # Fast-path: already issued — return existing row.
-    existing = await _find_existing_reward_event(
-        session, user_id, rule.id, triggering_event_id
-    )
+    existing = await _find_existing_reward_event(session, user_id, rule.id, triggering_event_id)
     if existing is not None:
         return existing
 
@@ -136,7 +133,7 @@ async def issue_points_reward(
     # budget check + ledger write. The multiplied amount is what the
     # budget guards against and what ends up on the ledger. Lazy import
     # to avoid a service-layer cycle.
-    from app.modules.multipliers.service import (  # noqa: PLC0415
+    from app.modules.multipliers.service import (
         resolve_multiplier_for_issuance,
     )
 
@@ -149,7 +146,7 @@ async def issue_points_reward(
     # the ledger. `check_budget_available` locks each matching budget row
     # FOR UPDATE, so two concurrent fires can't both pass at 99%
     # consumption. Raises BudgetExceeded on breach.
-    from app.modules.budgets.service import check_budget_available  # noqa: PLC0415
+    from app.modules.budgets.service import check_budget_available
 
     await check_budget_available(
         session,
@@ -165,9 +162,7 @@ async def issue_points_reward(
     # The idempotency_key on the underlying transaction is deterministic —
     # replays will hit the post_transaction idempotency guard, not write
     # a second transaction.
-    idempotency_key = (
-        f"reward:{rule.id}:{user_id}:{triggering_event_id}"
-    )
+    idempotency_key = f"reward:{rule.id}:{user_id}:{triggering_event_id}"
 
     txn = await post_transaction(
         session,
@@ -222,9 +217,7 @@ async def issue_points_reward(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        existing = await _find_existing_reward_event(
-            session, user_id, rule.id, triggering_event_id
-        )
+        existing = await _find_existing_reward_event(session, user_id, rule.id, triggering_event_id)
         if existing is None:
             raise  # unexpected — bubble up
         return existing

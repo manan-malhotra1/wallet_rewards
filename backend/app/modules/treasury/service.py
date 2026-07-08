@@ -10,6 +10,7 @@ The model:
 
 Every action below writes an `audit_log` row with the admin's reason.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -21,12 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.principals import AdminPrincipal
 from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_admin
+from app.modules.identity.service import resolve_identifier
 from app.modules.ledger.service import (
     LedgerEntryRequest,
     PostTransactionRequest,
     post_transaction,
 )
-from app.modules.identity.service import resolve_identifier
 from app.modules.payments.service import top_up
 from app.modules.treasury.schemas import (
     AdjustSystemWalletResponse,
@@ -49,7 +50,6 @@ from app.shared.models import (
     Tenant,
     Transaction,
 )
-
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -99,18 +99,20 @@ async def _get_or_create_operator_adjustment(
 # -----------------------------------------------------------------------------
 
 
-async def list_system_wallets(
-    session: AsyncSession, *, tenant_id: UUID
-) -> list[SystemWalletOut]:
+async def list_system_wallets(session: AsyncSession, *, tenant_id: UUID) -> list[SystemWalletOut]:
     """Return every system-owned account in the tenant with its live balance."""
     await _assert_tenant_exists(session, tenant_id)
     rows = (
-        await session.execute(
-            select(Account)
-            .where(Account.tenant_id == tenant_id, Account.user_id.is_(None))
-            .order_by(Account.account_type, Account.currency)
+        (
+            await session.execute(
+                select(Account)
+                .where(Account.tenant_id == tenant_id, Account.user_id.is_(None))
+                .order_by(Account.account_type, Account.currency)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     out: list[SystemWalletOut] = []
     for acct in rows:
         balance, _reserved = await derive_balance(session, acct.id)
@@ -208,9 +210,7 @@ async def fund_user(
         UserNotFound: identifier doesn't resolve in this tenant.
     """
     await _assert_tenant_exists(session, tenant_id)
-    identifier_row = await resolve_identifier(
-        session, tenant_id, identifier_type, identifier_value
-    )
+    identifier_row = await resolve_identifier(session, tenant_id, identifier_type, identifier_value)
     user_id = identifier_row.user_id
 
     idempotency_key = f"admin-fund-{uuid4().hex}"
@@ -309,9 +309,7 @@ async def withdraw_from_user(
         Commits the session.
     """
     await _assert_tenant_exists(session, tenant_id)
-    identifier_row = await resolve_identifier(
-        session, tenant_id, identifier_type, identifier_value
-    )
+    identifier_row = await resolve_identifier(session, tenant_id, identifier_type, identifier_value)
     user_id = identifier_row.user_id
     currency = currency.upper()
 
@@ -427,9 +425,7 @@ async def adjust_system_wallet(
     would just be a no-op rebalance, so we reject it as well.
     """
     if amount == 0:
-        raise AppHTTPException(
-            422, "amount_zero", "Amount must be non-zero."
-        )
+        raise AppHTTPException(422, "amount_zero", "Amount must be non-zero.")
 
     await _assert_tenant_exists(session, tenant_id)
 
@@ -460,22 +456,14 @@ async def adjust_system_wallet(
     if amount > 0:
         # Fund: float goes up.
         entries = [
-            LedgerEntryRequest(
-                account_id=counter.id, entry_type="DEBIT", amount=magnitude
-            ),
-            LedgerEntryRequest(
-                account_id=target.id, entry_type="CREDIT", amount=magnitude
-            ),
+            LedgerEntryRequest(account_id=counter.id, entry_type="DEBIT", amount=magnitude),
+            LedgerEntryRequest(account_id=target.id, entry_type="CREDIT", amount=magnitude),
         ]
     else:
         # Withdraw: float goes down.
         entries = [
-            LedgerEntryRequest(
-                account_id=target.id, entry_type="DEBIT", amount=magnitude
-            ),
-            LedgerEntryRequest(
-                account_id=counter.id, entry_type="CREDIT", amount=magnitude
-            ),
+            LedgerEntryRequest(account_id=target.id, entry_type="DEBIT", amount=magnitude),
+            LedgerEntryRequest(account_id=counter.id, entry_type="CREDIT", amount=magnitude),
         ]
 
     txn = await post_transaction(

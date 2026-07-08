@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for the treasury module."""
+
 from __future__ import annotations
 
 from datetime import datetime

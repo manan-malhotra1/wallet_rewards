@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for the bonus multipliers module."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -19,7 +20,7 @@ class BonusMultiplierCreateRequest(BaseModel):
     valid_until: datetime | None = None
 
     @model_validator(mode="after")
-    def _validate_window(self) -> "BonusMultiplierCreateRequest":
+    def _validate_window(self) -> BonusMultiplierCreateRequest:
         """When both bounds are set, valid_from must precede valid_until."""
         if (
             self.valid_from is not None

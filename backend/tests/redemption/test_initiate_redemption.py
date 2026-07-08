@@ -4,6 +4,7 @@ Covers the overdraft-prevention scenarios from Phase D threat model §5.
 Phase F.4 removed `tenant_id` + `user_id` from the body — both come from
 the user's session token. Provider registration remains admin-only.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -99,9 +100,7 @@ async def test_initiate_happy_path(
     idempotency_header: dict[str, str],
 ) -> None:
     """Alice 150 pts → redeem 100 → PENDING redemption, available drops to 50."""
-    await _credit_user_points(
-        db_session, test_tenant, test_user, Decimal("150"), seed_key="happy"
-    )
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("150"), seed_key="happy")
     provider_id = await _register_provider(async_client, test_tenant)
 
     response = await async_client.post(
@@ -135,9 +134,7 @@ async def test_initiate_rejects_insufficient_points(
     idempotency_header: dict[str, str],
 ) -> None:
     """Redeeming more than available → 409 insufficient_funds, no ledger write."""
-    await _credit_user_points(
-        db_session, test_tenant, test_user, Decimal("50"), seed_key="insuf"
-    )
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("50"), seed_key="insuf")
     provider_id = await _register_provider(async_client, test_tenant)
 
     response = await async_client.post(
@@ -167,9 +164,7 @@ async def test_initiate_rejects_unknown_provider(
     idempotency_header: dict[str, str],
 ) -> None:
     """Unknown provider_id → 404."""
-    await _credit_user_points(
-        db_session, test_tenant, test_user, Decimal("100"), seed_key="up"
-    )
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"), seed_key="up")
     response = await async_client.post(
         "/api/v1/redemption/initiate",
         headers={**(await _user_auth_header(test_user)), **idempotency_header},
@@ -192,9 +187,7 @@ async def test_initiate_idempotent_replay(
     system_points_account: Account,
 ) -> None:
     """Same Idempotency-Key returns same redemption_id — no double-debit."""
-    await _credit_user_points(
-        db_session, test_tenant, test_user, Decimal("100"), seed_key="idem"
-    )
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"), seed_key="idem")
     provider_id = await _register_provider(async_client, test_tenant)
     user_header = await _user_auth_header(test_user)
     key = uuid4().hex
@@ -232,9 +225,7 @@ async def test_initiate_concurrent_double_spend_blocked(
     system_points_account: Account,
 ) -> None:
     """Two simultaneous full-balance redemptions: only ONE succeeds."""
-    await _credit_user_points(
-        db_session, test_tenant, test_user, Decimal("100"), seed_key="race"
-    )
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"), seed_key="race")
     provider_id = await _register_provider(async_client, test_tenant)
     user_header = await _user_auth_header(test_user)
 
@@ -250,9 +241,7 @@ async def test_initiate_concurrent_double_spend_blocked(
             )
         )
 
-    res_a, res_b = await asyncio.gather(
-        request(uuid4().hex), request(uuid4().hex)
-    )
+    res_a, res_b = await asyncio.gather(request(uuid4().hex), request(uuid4().hex))
     statuses = sorted([res_a.status_code, res_b.status_code])
     assert statuses == [201, 409], f"expected one 201 + one 409, got {statuses}"
 
@@ -274,12 +263,8 @@ async def test_initiate_cross_tenant_provider_rejects(
     provider_id that belongs to other_tenant — the tenant-scoped lookup
     returns 404, no existence leak across tenants.
     """
-    await _credit_user_points(
-        db_session, test_tenant, test_user, Decimal("100"), seed_key="xt"
-    )
-    other_provider_id = await _register_provider(
-        async_client, other_tenant, name="Other Provider"
-    )
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"), seed_key="xt")
+    other_provider_id = await _register_provider(async_client, other_tenant, name="Other Provider")
 
     response = await async_client.post(
         "/api/v1/redemption/initiate",

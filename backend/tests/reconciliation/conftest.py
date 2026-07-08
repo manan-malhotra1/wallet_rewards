@@ -5,6 +5,7 @@ changes.
 Auth-specific tests live in tests/auth/ and use the plain `async_client`
 from the top-level conftest.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable

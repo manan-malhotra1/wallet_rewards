@@ -7,7 +7,7 @@ The full PRD orchestration sequence (Pay-PRD-0260) is:
     3. Pricing calculation
     4. Ledger write
 
-Phase B implements step 4 only. Steps 1–3 are explicitly TODO with the relevant
+Phase B implements step 4 only. Steps 1-3 are explicitly TODO with the relevant
 PRD references. The architecture supports plugging them in without changing the
 caller — they belong inside this service, before the `post_transaction` call.
 
@@ -16,6 +16,7 @@ The user-facing `topup()` function (Pay-PRD-0320) wraps the internal
 enforcement, audit attribution to the user, and surfacing any earned
 points back to the caller.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -48,7 +49,6 @@ from app.shared.models import (
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     Account,
-    LedgerEntry,
     RewardEvent,
     Tenant,
     Transaction,
@@ -98,18 +98,14 @@ async def _find_user_wallet(
     return account
 
 
-async def _lock_account_for_update(
-    session: AsyncSession, account_id: UUID
-) -> None:
+async def _lock_account_for_update(session: AsyncSession, account_id: UUID) -> None:
     """Acquire a row-level write lock on the account.
 
     Prevents the classic double-spend race: two concurrent P2P transfers from
     the same wallet that each see the full balance and both write debits.
     The lock holds until the surrounding DB transaction commits.
     """
-    await session.execute(
-        select(Account.id).where(Account.id == account_id).with_for_update()
-    )
+    await session.execute(select(Account.id).where(Account.id == account_id).with_for_update())
 
 
 async def p2p_transfer(
@@ -217,7 +213,7 @@ async def p2p_transfer(
     # or rolling cap breach. No-op when no config exists. Two independent
     # layers: the service-wise (p2p) cap, then the cross-service cumulative
     # wallet SEND cap (WAL-235).
-    from app.modules.limits.service import (  # noqa: PLC0415
+    from app.modules.limits.service import (
         check_limits,
         check_wallet_receive_limits,
         check_wallet_send_limits,
@@ -253,8 +249,7 @@ async def p2p_transfer(
     # 6.5. Step-up PIN check (Phase H). Comes AFTER limits so an
     # over-cap transaction returns 422 without prompting the user for
     # a PIN it can't satisfy anyway. No-op when no policy exists.
-    from app.auth.principals import UserPrincipal  # noqa: PLC0415
-    from app.modules.step_up.service import enforce_step_up  # noqa: PLC0415
+    from app.modules.step_up.service import enforce_step_up
 
     if isinstance(sender_principal, UserPrincipal):
         await enforce_step_up(
@@ -272,11 +267,11 @@ async def p2p_transfer(
     # / tests). Production tenants MUST configure a zero-fee row or the
     # pricing call raises PricingConfigMissing. To stay backward-compatible
     # with the existing test suite we swallow that specific case here.
-    from app.modules.pricing.service import (  # noqa: PLC0415
+    from app.modules.pricing.service import (
         calculate_fee,
         get_or_create_system_fee_account,
     )
-    from app.shared.exceptions import PricingConfigMissing  # noqa: PLC0415
+    from app.shared.exceptions import PricingConfigMissing
 
     fee = Decimal("0")
     try:
@@ -353,8 +348,6 @@ async def p2p_transfer(
     # NFR-0250: every P2P state change is audit-logged. Caller (router) passes
     # a UserPrincipal; if absent (internal callers / seeds) we skip — the
     # transaction itself is the financial record of truth.
-    from app.auth.principals import UserPrincipal
-
     if isinstance(sender_principal, UserPrincipal):
         record_audit_for_user(
             session,
@@ -450,7 +443,7 @@ async def top_up(
     # Receive caps + max balance on the funded wallet (WAL-236). Owner-facing:
     # the credit is to this user's own wallet, so a breach returns the specific
     # cap rather than a recipient_* error. No-op when no wallet config exists.
-    from app.modules.limits.service import check_wallet_receive_limits  # noqa: PLC0415
+    from app.modules.limits.service import check_wallet_receive_limits
 
     await check_wallet_receive_limits(
         session,
@@ -492,9 +485,7 @@ async def top_up(
 _ = User
 
 
-async def _resolve_earned_points_for_txn(
-    session: AsyncSession, txn_id: UUID
-) -> int | None:
+async def _resolve_earned_points_for_txn(session: AsyncSession, txn_id: UUID) -> int | None:
     """Sum reward points issued by the rules engine for an internal txn.
 
     The rules engine writes `reward_events` rows keyed by
@@ -517,9 +508,7 @@ async def _resolve_earned_points_for_txn(
         Total points credited as an int, or `None` if no rules fired.
     """
     result = await session.execute(
-        select(RewardEvent.reward_value).where(
-            RewardEvent.triggering_event_id == str(txn_id)
-        )
+        select(RewardEvent.reward_value).where(RewardEvent.triggering_event_id == str(txn_id))
     )
     rows = result.scalars().all()
     if not rows:
@@ -527,5 +516,3 @@ async def _resolve_earned_points_for_txn(
     total = sum((Decimal(str(v)) for v in rows), start=Decimal("0"))
     # Round to int — mobile UI does not surface fractional points.
     return int(total)
-
-

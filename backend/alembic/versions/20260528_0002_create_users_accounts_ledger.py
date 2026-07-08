@@ -12,19 +12,21 @@ Revises: 0001
 Create Date: 2026-05-28
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0002"
-down_revision: Union[str, Sequence[str], None] = "0001"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0001"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -444,18 +446,14 @@ def upgrade() -> None:
             "status IN ('PENDING', 'COMPLETED', 'REVERSED')",
             name="ck_ledger_entries_status",
         ),
-        sa.CheckConstraint(
-            "amount > 0", name="ck_ledger_entries_amount_positive"
-        ),
+        sa.CheckConstraint("amount > 0", name="ck_ledger_entries_amount_positive"),
     )
     op.create_index(
         "ix_ledger_entries_account",
         "ledger_entries",
         ["account_id", "status", "created_at"],
     )
-    op.create_index(
-        "ix_ledger_entries_transaction", "ledger_entries", ["transaction_id"]
-    )
+    op.create_index("ix_ledger_entries_transaction", "ledger_entries", ["transaction_id"])
 
 
 def downgrade() -> None:

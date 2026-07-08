@@ -4,6 +4,7 @@ Validates Pay-PRD-0060: any registered identifier maps to a canonical
 user_id, scoped per tenant. Phase F.4 gates this endpoint behind
 `platform-admin` — end users don't need it.
 """
+
 from __future__ import annotations
 
 import pytest

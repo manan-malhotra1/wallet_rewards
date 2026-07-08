@@ -4,6 +4,7 @@ The realm's JSON Web Key Set is fetched lazily and cached for 24 hours
 (standard JWKS rotation cadence). A cache-floor of 60 seconds is enforced
 to prevent DoS via forced refetches on unknown kids.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -55,10 +56,7 @@ class KeycloakClient:
         """Floor refetches to one per minute — DoS guard."""
         if self._last_refetch_attempt is None:
             return True
-        return (
-            datetime.now(UTC) - self._last_refetch_attempt
-            > _JWKS_REFETCH_FLOOR
-        )
+        return datetime.now(UTC) - self._last_refetch_attempt > _JWKS_REFETCH_FLOOR
 
     async def _refetch(self) -> None:
         """Fetch the JWKS over HTTPS and overwrite the cache.

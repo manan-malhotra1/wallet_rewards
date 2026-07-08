@@ -16,6 +16,7 @@ Endpoints:
   DELETE /api/v1/users/{user_id}/roles/{role_id}    remove role
   GET    /api/v1/users/{user_id}/roles              list user roles
 """
+
 from __future__ import annotations
 
 from uuid import UUID

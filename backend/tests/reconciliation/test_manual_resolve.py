@@ -3,6 +3,7 @@
 Phase F.4: helper calls `/initiate` (user-only) with a freshly-minted
 session token, overriding the admin Bearer from the reconciliation conftest.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -86,9 +87,9 @@ async def _push_redemption_into_manual_review(
     redemption_id = init.json()["id"]
 
     # Backdate + sweep so the sweep escalates it.
-    redemption = (await db_session.execute(
-        select(Redemption).where(Redemption.id == redemption_id)
-    )).scalar_one()
+    redemption = (
+        await db_session.execute(select(Redemption).where(Redemption.id == redemption_id))
+    ).scalar_one()
     redemption.created_at = datetime.now(UTC) - timedelta(minutes=10)
     await db_session.commit()
 
@@ -212,9 +213,7 @@ async def test_manual_resolve_rejects_non_manual_review(
         "/api/v1/redemption/providers",
         json={"tenant_id": str(test_tenant.id), "name": "P-pending"},
     )
-    user_token = await create_session_token_for_user(
-        test_user.id, test_user.tenant_id
-    )
+    user_token = await create_session_token_for_user(test_user.id, test_user.tenant_id)
     init = await async_client.post(
         "/api/v1/redemption/initiate",
         headers={
@@ -301,13 +300,19 @@ async def test_manual_resolve_writes_audit_entry(
         },
     )
 
-    entries = (await db_session.execute(
-        select(AuditLog).where(
-            AuditLog.entity_type == "redemption",
-            AuditLog.entity_id == str(redemption.id),
-            AuditLog.action == "recon.resolved.reversed",
+    entries = (
+        (
+            await db_session.execute(
+                select(AuditLog).where(
+                    AuditLog.entity_type == "redemption",
+                    AuditLog.entity_id == str(redemption.id),
+                    AuditLog.action == "recon.resolved.reversed",
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(entries) == 1
     entry = entries[0]
     assert entry.actor_type == "admin"

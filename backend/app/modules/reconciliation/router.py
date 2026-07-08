@@ -11,6 +11,7 @@ Phase F.1: every endpoint requires a valid Keycloak JWT. State-changing
 endpoints additionally require the `platform-admin` realm role; read
 endpoints accept `finance-reviewer` or `platform-admin`.
 """
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -54,9 +55,7 @@ def _require_finance_or_admin(
     fine for finance-reviewer; state-changing routes use the stricter
     platform-admin gate via `require_admin_role`.
     """
-    if not (
-        admin.has_role("platform-admin") or admin.has_role("finance-reviewer")
-    ):
+    if not (admin.has_role("platform-admin") or admin.has_role("finance-reviewer")):
         raise InsufficientRole("finance-reviewer")
     return admin
 
@@ -91,9 +90,7 @@ async def get_pending(
     Read-only — accepts `finance-reviewer` or `platform-admin`.
     """
     _ = admin
-    return await list_pending(
-        session, tenant_id=tenant_id, threshold_minutes=threshold_minutes
-    )
+    return await list_pending(session, tenant_id=tenant_id, threshold_minutes=threshold_minutes)
 
 
 @router.get("/manual-review", response_model=list[ManualReviewItem])
@@ -119,9 +116,7 @@ async def post_resolve(
     Requires `platform-admin` role. The admin's `sub` is passed to the audit
     log as the actor (rest of the audit-everywhere wiring lands in F.5).
     """
-    redemption = await manually_resolve(
-        session, redemption_id, request, actor_id=admin.id
-    )
+    redemption = await manually_resolve(session, redemption_id, request, actor_id=admin.id)
     return RedemptionOut.model_validate(redemption)
 
 

@@ -13,6 +13,7 @@ Without this, "+27 82 555 0001" and "+27825550001" are different rows and
 lookups silently miss. NFR-0220 (tenant isolation) is also weakened
 because near-duplicates can slip into different tenants.
 """
+
 from __future__ import annotations
 
 import re

@@ -6,6 +6,7 @@ how to translate raw field names into the standard ones.
 
 Phase C treats empty mapping as identity (raw already uses standard names).
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -15,9 +16,7 @@ from uuid import UUID
 from app.modules.events.schemas import NormalisedEvent, RawExternalEvent
 
 
-def normalise(
-    raw: RawExternalEvent, field_mapping: dict[str, str] | None
-) -> NormalisedEvent:
+def normalise(raw: RawExternalEvent, field_mapping: dict[str, str] | None) -> NormalisedEvent:
     """Translate a RawExternalEvent into a NormalisedEvent.
 
     Args:

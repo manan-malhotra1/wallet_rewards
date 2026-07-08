@@ -8,6 +8,7 @@ The membership lookup is hot-path — `user_is_in_segment` is called
 from `_find_candidate_rules` for every rule that has a segment binding.
 A composite index on user_segments(user_id, segment_id) backs it.
 """
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -82,14 +83,10 @@ async def create_segment(
     return segment
 
 
-async def list_segments_for_tenant(
-    session: AsyncSession, tenant_id: UUID
-) -> list[SegmentOut]:
+async def list_segments_for_tenant(session: AsyncSession, tenant_id: UUID) -> list[SegmentOut]:
     """Return every segment in the tenant — newest first."""
     result = await session.execute(
-        select(Segment)
-        .where(Segment.tenant_id == tenant_id)
-        .order_by(Segment.created_at.desc())
+        select(Segment).where(Segment.tenant_id == tenant_id).order_by(Segment.created_at.desc())
     )
     return [SegmentOut.model_validate(s) for s in result.scalars().all()]
 
@@ -115,18 +112,14 @@ async def add_user_to_segment(
     """
     segment = (
         await session.execute(
-            select(Segment).where(
-                Segment.id == segment_id, Segment.tenant_id == tenant_id
-            )
+            select(Segment).where(Segment.id == segment_id, Segment.tenant_id == tenant_id)
         )
     ).scalar_one_or_none()
     if segment is None:
         raise AppHTTPException(404, "segment_not_found", "Segment not found.")
 
     user = (
-        await session.execute(
-            select(User).where(User.id == user_id, User.tenant_id == tenant_id)
-        )
+        await session.execute(select(User).where(User.id == user_id, User.tenant_id == tenant_id))
     ).scalar_one_or_none()
     if user is None:
         raise UserNotFound()
@@ -163,9 +156,7 @@ async def add_user_to_segment(
     return membership
 
 
-async def user_is_in_segment(
-    session: AsyncSession, *, user_id: UUID, segment_id: UUID
-) -> bool:
+async def user_is_in_segment(session: AsyncSession, *, user_id: UUID, segment_id: UUID) -> bool:
     """Hot-path membership check used by the evaluator + multiplier resolver."""
     result = await session.execute(
         select(UserSegment.id).where(

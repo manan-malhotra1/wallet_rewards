@@ -10,6 +10,7 @@ The existing P2P happy / sad path matrix lives in
 `tests/payments/test_p2p_transfer.py`; this file is intentionally narrow —
 two tests that exercise *only* the new `earned_points` plumbing.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -56,9 +57,7 @@ async def _ensure_default_role(session: AsyncSession, tenant: Tenant):
     session.add(role)
     await session.flush()
     for txn_type in ("p2p", "redemption", "top_up"):
-        session.add(
-            RolePermission(role_id=role.id, transaction_type=txn_type, permitted=True)
-        )
+        session.add(RolePermission(role_id=role.id, transaction_type=txn_type, permitted=True))
     await session.commit()
     return role
 
@@ -146,12 +145,8 @@ async def test_p2p_response_includes_earned_points_field(
     asserts presence + null-when-no-rules; the next test covers the
     integer-when-rules-fired branch.
     """
-    alice, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 7771"
-    )
-    bob, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 7772"
-    )
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7771")
+    bob, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7772")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,
@@ -207,12 +202,8 @@ async def test_p2p_earned_points_reflects_rule_issuance(
     construction; a single seeded row is sufficient since the resolver
     is a SUM aggregate that already collapses to identity for one row.
     """
-    alice, _ = await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 8881"
-    )
-    await _make_user_with_wallet(
-        db_session, test_tenant, phone="+27 82 555 8882"
-    )
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 8881")
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 8882")
     await top_up(
         db_session,
         tenant_id=test_tenant.id,

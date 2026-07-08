@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for the catalog module."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -50,11 +51,11 @@ class PointsHistoryItem(BaseModel):
     """
 
     ledger_entry_id: UUID
-    direction: str           # "CREDIT" or "DEBIT"
+    direction: str  # "CREDIT" or "DEBIT"
     amount: Decimal
-    status: str              # PENDING, COMPLETED, REVERSED
-    transaction_type: str    # reward_issuance, redemption, etc.
-    rule_name: str | None    # populated for reward_issuance entries
+    status: str  # PENDING, COMPLETED, REVERSED
+    transaction_type: str  # reward_issuance, redemption, etc.
+    rule_name: str | None  # populated for reward_issuance entries
     triggering_event_id: str | None
     occurred_at: datetime
 
@@ -71,7 +72,7 @@ class FeaturedCampaignItem(BaseModel):
     id: UUID
     name: str
     description: str | None
-    reward_type: str         # "points" or "cashback"
+    reward_type: str  # "points" or "cashback"
     reward_value: Decimal
     campaign_start_date: date | None
     campaign_end_date: date | None

@@ -15,6 +15,7 @@ What `verify_jwt` guarantees on success:
 
 Anything else (`aud`, `azp`, custom claims) is up to the caller.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -53,15 +54,11 @@ def extract_bearer_token(authorization: str | None) -> str:
 
     parts = authorization.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
-        raise InvalidAuthorizationHeader(
-            "Authorization header must be 'Bearer <token>'."
-        )
+        raise InvalidAuthorizationHeader("Authorization header must be 'Bearer <token>'.")
     return parts[1].strip()
 
 
-async def verify_jwt(
-    token: str, *, client: KeycloakClient | None = None
-) -> dict[str, Any]:
+async def verify_jwt(token: str, *, client: KeycloakClient | None = None) -> dict[str, Any]:
     """Verify a Keycloak-issued JWT and return its claims.
 
     Args:

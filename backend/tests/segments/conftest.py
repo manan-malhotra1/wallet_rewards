@@ -1,4 +1,5 @@
 """Segments tests override `async_client` to send the admin JWT by default."""
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator

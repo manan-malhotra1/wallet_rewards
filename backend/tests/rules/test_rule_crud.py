@@ -3,9 +3,8 @@
 DELETE is soft — sets status='inactive'. Hard-delete is rejected by the
 FK on `reward_events.rule_id` once the rule has fired.
 """
-from __future__ import annotations
 
-from uuid import uuid4
+from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
@@ -144,16 +143,12 @@ async def test_delete_rule_soft_deletes(
     )
     assert resp.status_code == 204
 
-    rule = (
-        await db_session.execute(select(Rule).where(Rule.id == rule_id))
-    ).scalar_one()
+    rule = (await db_session.execute(select(Rule).where(Rule.id == rule_id))).scalar_one()
     assert rule.status == "inactive"
 
 
 @pytest.mark.asyncio
-async def test_delete_rule_is_idempotent(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_delete_rule_is_idempotent(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """Deleting an already-inactive rule returns 204 (no-op)."""
     rule_id = await _create_rule(async_client, test_tenant, "to-delete-twice")
     a = await async_client.delete(

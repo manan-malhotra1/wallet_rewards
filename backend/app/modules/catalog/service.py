@@ -5,6 +5,7 @@ are always consistent with the user's actual balance. Snapshot tables are
 intentionally NOT used here — see ledger-invariants.md and the
 `account_balance_snapshots` design note.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -99,9 +100,7 @@ async def get_user_summary(
     """
     points_account = await _find_user_points_account(session, tenant_id, user_id)
     if points_account is None:
-        return CatalogSummaryResponse(
-            user_id=user_id, tenant_id=tenant_id, points=None
-        )
+        return CatalogSummaryResponse(user_id=user_id, tenant_id=tenant_id, points=None)
 
     balance, reserved = await derive_balance(session, points_account.id)
     lifetime_earned = await _sum_by_transaction_type(
@@ -174,9 +173,7 @@ async def get_user_points_history(
             RewardEvent.triggering_event_id,
         )
         .join(Transaction, Transaction.id == LedgerEntry.transaction_id)
-        .outerjoin(
-            RewardEvent, RewardEvent.ledger_entry_id == LedgerEntry.id
-        )
+        .outerjoin(RewardEvent, RewardEvent.ledger_entry_id == LedgerEntry.id)
         .outerjoin(Rule, Rule.id == RewardEvent.rule_id)
         .where(LedgerEntry.account_id == account.id)
         .order_by(LedgerEntry.created_at.desc())

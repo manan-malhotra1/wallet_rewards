@@ -6,6 +6,7 @@ on every redemption). This isn't in the PRD's literal schema but is the
 natural relationship — the platform needs to know which wallet receives
 points for each provider.
 """
+
 import uuid
 from datetime import datetime
 
@@ -65,18 +66,10 @@ class RedemptionProvider(Base):
         UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False
     )
     status_check_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    max_retries: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="3"
-    )
-    retry_interval_secs: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="300"
-    )
-    escalate_after_mins: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="60"
-    )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="active"
-    )
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
+    retry_interval_secs: Mapped[int] = mapped_column(Integer, nullable=False, server_default="300")
+    escalate_after_mins: Mapped[int] = mapped_column(Integer, nullable=False, server_default="60")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     # HMAC-SHA256 shared secret for verifying provider callback signatures
     # (Phase F.5, Pay-PRD-0495). NULL = provider has no automated callback;
     # all transitions must come through the admin `/confirm` + `/fail`
@@ -125,24 +118,18 @@ class Redemption(Base):
         UUID(as_uuid=True), ForeignKey("transactions.id"), nullable=False
     )
     points_amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(30), nullable=False, server_default="PENDING"
-    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="PENDING")
     # Idempotency key from initiate — unique per (tenant, key).
     # This duplicates `transactions.idempotency_key` for direct redemption
     # lookups but enables faster filtering.
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    retry_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     last_checked_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
 

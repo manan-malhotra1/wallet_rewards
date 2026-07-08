@@ -7,6 +7,7 @@ never check-then-insert.
 Badges, tiers, and challenges are scaffolded in PRD §6.9 but deferred to
 Phase D (catalog).
 """
+
 import uuid
 from datetime import datetime
 

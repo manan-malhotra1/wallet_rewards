@@ -13,6 +13,7 @@ per connection at a time. Sharing a session between a fixture and an
 endpoint coroutine triggers `another operation in progress`. The
 TRUNCATE-between-tests pattern avoids that entirely.
 """
+
 from __future__ import annotations
 
 import time
@@ -62,9 +63,7 @@ from app.shared.models import (
 # Engine + schema lifecycle
 # -----------------------------------------------------------------------------
 
-TEST_DATABASE_URL = settings.DATABASE_URL.replace(
-    "/wallet_platform", "/wallet_platform_test"
-)
+TEST_DATABASE_URL = settings.DATABASE_URL.replace("/wallet_platform", "/wallet_platform_test")
 
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
@@ -75,9 +74,7 @@ test_engine = create_async_engine(
     # connections shared across coroutines / event loops in pytest-asyncio.
     poolclass=NullPool,
 )
-TestSessionLocal = async_sessionmaker(
-    test_engine, expire_on_commit=False, class_=AsyncSession
-)
+TestSessionLocal = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
@@ -98,9 +95,7 @@ async def _truncate_all_tables() -> None:
     version table to keep the schema metadata intact.
     """
     async with test_engine.begin() as conn:
-        table_names = [
-            t.name for t in Base.metadata.sorted_tables if t.name != "alembic_version"
-        ]
+        table_names = [t.name for t in Base.metadata.sorted_tables if t.name != "alembic_version"]
         if table_names:
             joined = ", ".join(f'"{name}"' for name in table_names)
             await conn.execute(text(f"TRUNCATE TABLE {joined} RESTART IDENTITY CASCADE"))
@@ -184,9 +179,7 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
 
 
 @pytest_asyncio.fixture
-async def test_user(
-    db_session: AsyncSession, test_tenant: Tenant, default_user_role: Role
-) -> User:
+async def test_user(db_session: AsyncSession, test_tenant: Tenant, default_user_role: Role) -> User:
     """A simple active user with one phone identifier + default role.
 
     The default role grants p2p + redemption + top_up — exercises Phase F.3
@@ -211,9 +204,7 @@ async def test_user(
 
 
 @pytest_asyncio.fixture
-async def default_user_role(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> Role:
+async def default_user_role(db_session: AsyncSession, test_tenant: Tenant) -> Role:
     """Per-tenant default role granting common user transaction types.
 
     Phase F.3 requires every user to hold an active role permitting a
@@ -241,9 +232,7 @@ async def default_user_role(
 
 
 @pytest_asyncio.fixture
-async def default_user_role_other_tenant(
-    db_session: AsyncSession, other_tenant: Tenant
-) -> Role:
+async def default_user_role_other_tenant(db_session: AsyncSession, other_tenant: Tenant) -> Role:
     """Default role for `other_tenant` — same shape as default_user_role."""
     role = Role(
         tenant_id=other_tenant.id,
@@ -266,9 +255,7 @@ async def default_user_role_other_tenant(
 
 
 @pytest_asyncio.fixture
-async def system_points_account(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> Account:
+async def system_points_account(db_session: AsyncSession, test_tenant: Tenant) -> Account:
     """The tenant's master system_points_issuance account.
 
     All reward issuance debits this account.
@@ -285,9 +272,7 @@ async def system_points_account(
 
 
 @pytest_asyncio.fixture
-async def user_wallet(
-    db_session: AsyncSession, test_tenant: Tenant, test_user: User
-) -> Account:
+async def user_wallet(db_session: AsyncSession, test_tenant: Tenant, test_user: User) -> Account:
     """A ZAR financial wallet for the test_user."""
     account = Account(
         tenant_id=test_tenant.id,
@@ -302,9 +287,7 @@ async def user_wallet(
 
 
 @pytest_asyncio.fixture
-async def user_points(
-    db_session: AsyncSession, test_tenant: Tenant, test_user: User
-) -> Account:
+async def user_points(db_session: AsyncSession, test_tenant: Tenant, test_user: User) -> Account:
     """A points account for the test_user."""
     account = Account(
         tenant_id=test_tenant.id,
@@ -419,9 +402,7 @@ def make_admin_token(private_key_pem: bytes) -> Callable[..., str]:
         if extra_claims:
             claims.update(extra_claims)
         headers = {"kid": kid} if kid is not None else {}
-        return jose_jwt.encode(
-            claims, private_key_pem, algorithm=alg, headers=headers
-        )
+        return jose_jwt.encode(claims, private_key_pem, algorithm=alg, headers=headers)
 
     return _build
 
@@ -464,9 +445,7 @@ async def _redis_per_test(
     from app.auth import rate_limit as rate_limit_module
     from app.auth import sessions as sessions_module
 
-    client = redis_lib.from_url(
-        settings.REDIS_URL, encoding="utf-8", decode_responses=True
-    )
+    client = redis_lib.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
     await client.flushdb()
 
     # Patch every importer. Without this, the modules still reference the

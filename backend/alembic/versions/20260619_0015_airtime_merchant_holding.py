@@ -12,16 +12,17 @@ Revises: 0014
 Create Date: 2026-06-19
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
 
 revision: str = "0015"
-down_revision: Union[str, None] = "0014"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0014"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 ALLOWED_TYPES = (
     "financial_wallet",
@@ -49,9 +50,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Restore the prior 7-value CHECK constraint."""
     op.drop_constraint("ck_accounts_type", "accounts", type_="check")
-    types_sql = ", ".join(
-        f"'{t}'" for t in ALLOWED_TYPES if t != "airtime_merchant_holding"
-    )
+    types_sql = ", ".join(f"'{t}'" for t in ALLOWED_TYPES if t != "airtime_merchant_holding")
     op.create_check_constraint(
         "ck_accounts_type",
         "accounts",

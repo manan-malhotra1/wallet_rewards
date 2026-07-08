@@ -5,6 +5,7 @@ auth + validation), patch (display_name + status + 404), soft-delete
 (idempotent re-create after delete), and the assign_to_existing_users
 backfill side-effect.
 """
+
 from uuid import uuid4
 
 import pytest
@@ -44,9 +45,7 @@ async def test_list_instruments_requires_auth(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
     """Anonymous list → 401."""
-    resp = await async_client.get(
-        "/api/v1/instruments", params={"tenant_id": str(test_tenant.id)}
-    )
+    resp = await async_client.get("/api/v1/instruments", params={"tenant_id": str(test_tenant.id)})
     assert resp.status_code == 401
 
 
@@ -59,9 +58,7 @@ async def test_list_instruments_returns_active_and_disabled(
 ) -> None:
     """No status filter → both active and disabled rows."""
     await _seed_instrument(db_session, str(test_tenant.id), "ZAR", "R")
-    await _seed_instrument(
-        db_session, str(test_tenant.id), "BTC", "₿", status="disabled"
-    )
+    await _seed_instrument(db_session, str(test_tenant.id), "BTC", "₿", status="disabled")
     resp = await async_client.get(
         "/api/v1/instruments",
         params={"tenant_id": str(test_tenant.id)},
@@ -81,9 +78,7 @@ async def test_list_instruments_status_filter(
 ) -> None:
     """status=active filter excludes disabled rows."""
     await _seed_instrument(db_session, str(test_tenant.id), "ZAR", "R")
-    await _seed_instrument(
-        db_session, str(test_tenant.id), "OLD", "x", status="disabled"
-    )
+    await _seed_instrument(db_session, str(test_tenant.id), "OLD", "x", status="disabled")
     resp = await async_client.get(
         "/api/v1/instruments",
         params={"tenant_id": str(test_tenant.id), "status": "active"},
@@ -208,15 +203,19 @@ async def test_create_instrument_with_backfill_creates_user_accounts(
 
     # Verify the user got a USDC financial_wallet account.
     accounts = (
-        await db_session.execute(
-            select(Account).where(
-                Account.tenant_id == test_tenant.id,
-                Account.user_id == test_user.id,
-                Account.currency == "USDC",
-                Account.account_type == "financial_wallet",
+        (
+            await db_session.execute(
+                select(Account).where(
+                    Account.tenant_id == test_tenant.id,
+                    Account.user_id == test_user.id,
+                    Account.currency == "USDC",
+                    Account.account_type == "financial_wallet",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(accounts) == 1
 
 
@@ -241,14 +240,18 @@ async def test_create_instrument_without_backfill_skips_user_accounts(
         },
     )
     accounts = (
-        await db_session.execute(
-            select(Account).where(
-                Account.tenant_id == test_tenant.id,
-                Account.user_id == test_user.id,
-                Account.currency == "USDC",
+        (
+            await db_session.execute(
+                select(Account).where(
+                    Account.tenant_id == test_tenant.id,
+                    Account.user_id == test_user.id,
+                    Account.currency == "USDC",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert accounts == []
 
 
@@ -260,9 +263,7 @@ async def test_patch_instrument_display_name_and_status(
     admin_auth_header: dict[str, str],
 ) -> None:
     """PATCH updates symbol/display_name/status; code + account_type stay put."""
-    inst = await _seed_instrument(
-        db_session, str(test_tenant.id), "PTS", "p", "Points"
-    )
+    inst = await _seed_instrument(db_session, str(test_tenant.id), "PTS", "p", "Points")
     resp = await async_client.patch(
         f"/api/v1/instruments/{inst.id}",
         params={"tenant_id": str(test_tenant.id)},

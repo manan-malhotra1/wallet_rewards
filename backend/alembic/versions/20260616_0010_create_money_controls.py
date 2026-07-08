@@ -10,17 +10,19 @@ Revises: 0009
 Create Date: 2026-06-16
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0010"
-down_revision: Union[str, Sequence[str], None] = "0009"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0009"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -85,9 +87,7 @@ def upgrade() -> None:
             name="ck_reward_budgets_cap_positive",
         ),
     )
-    op.create_index(
-        "ix_reward_budgets_tenant_id", "reward_budgets", ["tenant_id"]
-    )
+    op.create_index("ix_reward_budgets_tenant_id", "reward_budgets", ["tenant_id"])
     # Partial unique indexes — Postgres treats NULL as distinct on plain
     # UNIQUE, so we split into two indexes (one per scope type).
     op.create_index(
@@ -147,9 +147,7 @@ def upgrade() -> None:
             name="uq_limit_configs_scope",
         ),
     )
-    op.create_index(
-        "ix_limit_configs_tenant_id", "limit_configs", ["tenant_id"]
-    )
+    op.create_index("ix_limit_configs_tenant_id", "limit_configs", ["tenant_id"])
 
     # --- 3. pricing_configs --------------------------------------------------
     op.create_table(
@@ -210,9 +208,7 @@ def upgrade() -> None:
             name="ck_pricing_configs_variable_fee_pct_range",
         ),
     )
-    op.create_index(
-        "ix_pricing_configs_tenant_id", "pricing_configs", ["tenant_id"]
-    )
+    op.create_index("ix_pricing_configs_tenant_id", "pricing_configs", ["tenant_id"])
 
     # --- 4. Extend accounts.account_type CHECK ------------------------------
     # Add 'system_fee_collected' so pricing fees can credit a real account.

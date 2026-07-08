@@ -1,4 +1,5 @@
 """Tests for the treasury read endpoints — list system wallets + transactions."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -116,9 +117,7 @@ async def test_system_wallet_transactions_drill_down(
         params={"tenant_id": str(test_tenant.id)},
         headers=admin_auth_header,
     )
-    cash_inflow = next(
-        r for r in wallets.json() if r["account_type"] == "system_cash_inflow"
-    )
+    cash_inflow = next(r for r in wallets.json() if r["account_type"] == "system_cash_inflow")
 
     txns = await async_client.get(
         f"/api/v1/treasury/system-wallets/{cash_inflow['id']}/transactions",
@@ -129,8 +128,7 @@ async def test_system_wallet_transactions_drill_down(
     rows = txns.json()
     assert len(rows) >= 1
     assert any(
-        r["entry_type"] == "DEBIT" and Decimal(r["entry_amount"]) == Decimal("100")
-        for r in rows
+        r["entry_type"] == "DEBIT" and Decimal(r["entry_amount"]) == Decimal("100") for r in rows
     )
 
 

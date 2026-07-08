@@ -4,6 +4,7 @@ Balance is computed from `ledger_entries` (the source of truth) — the
 `account_balance_snapshots` table is a future read optimisation, not used
 in Phase A.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -39,9 +40,7 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
         raise TenantNotFound()
 
 
-async def create_account(
-    session: AsyncSession, request: CreateAccountRequest
-) -> Account:
+async def create_account(session: AsyncSession, request: CreateAccountRequest) -> Account:
     """Create a new account.
 
     Validates that:
@@ -91,9 +90,7 @@ async def create_account(
     return account
 
 
-async def get_account(
-    session: AsyncSession, account_id: UUID, tenant_id: UUID
-) -> Account:
+async def get_account(session: AsyncSession, account_id: UUID, tenant_id: UUID) -> Account:
     """Fetch an account, enforcing tenant isolation.
 
     Cross-tenant lookups MUST return 404, never the data (NFR-0220).
@@ -111,9 +108,7 @@ async def get_account(
             different tenant — we do NOT leak existence).
     """
     result = await session.execute(
-        select(Account).where(
-            Account.id == account_id, Account.tenant_id == tenant_id
-        )
+        select(Account).where(Account.id == account_id, Account.tenant_id == tenant_id)
     )
     account = result.scalar_one_or_none()
     if account is None:
@@ -121,9 +116,7 @@ async def get_account(
     return account
 
 
-async def derive_balance(
-    session: AsyncSession, account_id: UUID
-) -> tuple[Decimal, Decimal]:
+async def derive_balance(session: AsyncSession, account_id: UUID) -> tuple[Decimal, Decimal]:
     """Compute (balance, reserved_balance) from ledger entries.
 
     Per the ledger invariants:

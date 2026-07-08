@@ -4,6 +4,7 @@ Phase 1: read a single tenant by id, and patch an existing tenant's
 editable identity-card fields (name, business_type). Keycloak realm is
 read-only and not exposed on the update path.
 """
+
 import uuid
 
 import structlog
@@ -75,8 +76,9 @@ async def update_tenant(
     except IntegrityError as exc:
         await session.rollback()
         # The only UNIQUE on this table is (name). Translate to a clean 409.
-        if payload.name is not None and "uq_tenants_name" in str(exc.orig).lower() \
-                or "tenants_name_key" in str(exc.orig).lower():
+        if (
+            payload.name is not None and "uq_tenants_name" in str(exc.orig).lower()
+        ) or "tenants_name_key" in str(exc.orig).lower():
             raise TenantNameAlreadyExists(payload.name) from exc
         raise
 

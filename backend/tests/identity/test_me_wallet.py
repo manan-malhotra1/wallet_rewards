@@ -10,6 +10,7 @@ Covers:
   - 401: bad / expired token
   - No data leak: a second user's accounts never appear in the response
 """
+
 from __future__ import annotations
 
 import pytest
@@ -53,9 +54,7 @@ async def test_me_wallet_returns_caller_accounts(
     )
     await db_session.commit()
 
-    response = await async_client.get(
-        "/api/v1/identity/me/wallet", headers=alice_auth_header
-    )
+    response = await async_client.get("/api/v1/identity/me/wallet", headers=alice_auth_header)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["user_id"] == str(test_user.id)
@@ -105,9 +104,7 @@ async def test_me_wallet_does_not_leak_other_users_accounts(
     )
     await db_session.commit()
 
-    response = await async_client.get(
-        "/api/v1/identity/me/wallet", headers=alice_auth_header
-    )
+    response = await async_client.get("/api/v1/identity/me/wallet", headers=alice_auth_header)
     assert response.status_code == 200
     body = response.json()
     # test_user has no accounts of its own in this test — the only account

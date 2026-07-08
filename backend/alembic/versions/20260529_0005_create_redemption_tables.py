@@ -9,18 +9,20 @@ Revises: 0004
 Create Date: 2026-05-29
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 revision: str = "0005"
-down_revision: Union[str, Sequence[str], None] = "0004"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "0004"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -47,9 +49,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("status_check_url", sa.String(length=500), nullable=True),
-        sa.Column(
-            "max_retries", sa.Integer(), nullable=False, server_default="3"
-        ),
+        sa.Column("max_retries", sa.Integer(), nullable=False, server_default="3"),
         sa.Column(
             "retry_interval_secs",
             sa.Integer(),
@@ -128,9 +128,7 @@ def upgrade() -> None:
         sa.Column("idempotency_key", sa.String(length=255), nullable=False),
         sa.Column("external_reference", sa.String(length=255), nullable=True),
         sa.Column("failure_reason", sa.String(length=500), nullable=True),
-        sa.Column(
-            "retry_count", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("retry_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("last_checked_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("completed_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column(
@@ -153,9 +151,7 @@ def upgrade() -> None:
             name="ck_redemptions_status",
         ),
     )
-    op.create_index(
-        "ix_redemptions_tenant_id", "redemptions", ["tenant_id"]
-    )
+    op.create_index("ix_redemptions_tenant_id", "redemptions", ["tenant_id"])
     op.create_index("ix_redemptions_user_id", "redemptions", ["user_id"])
 
 
@@ -164,7 +160,5 @@ def downgrade() -> None:
     op.drop_index("ix_redemptions_tenant_id", table_name="redemptions")
     op.drop_table("redemptions")
 
-    op.drop_index(
-        "ix_redemption_providers_tenant_id", table_name="redemption_providers"
-    )
+    op.drop_index("ix_redemption_providers_tenant_id", table_name="redemption_providers")
     op.drop_table("redemption_providers")

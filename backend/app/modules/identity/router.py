@@ -8,6 +8,7 @@ Admin endpoints (require `platform-admin`) — direct user registration and
 identifier resolution (Phase F.4):
   - POST /users, GET /resolve/{type}/{value}
 """
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -104,9 +105,7 @@ async def get_resolve(
     need this endpoint (P2P resolves the recipient internally).
     """
     _ = admin
-    row = await resolve_identifier(
-        session, tenant_id, identifier_type, identifier_value
-    )
+    row = await resolve_identifier(session, tenant_id, identifier_type, identifier_value)
     return ResolveResponse(
         user_id=row.user_id,
         tenant_id=row.tenant_id,
@@ -177,15 +176,11 @@ async def get_user_transactions(
     a user that belongs to a different tenant returns 404 (no leak).
     """
     _ = admin
-    rows = await list_user_transactions(
-        session, tenant_id=tenant_id, user_id=user_id, limit=limit
-    )
+    rows = await list_user_transactions(session, tenant_id=tenant_id, user_id=user_id, limit=limit)
     return [WalletTransactionOut.model_validate(r) for r in rows]
 
 
-@router.post(
-    "/users/{user_id}/pin/reset", response_model=AdminPinResetResponse
-)
+@router.post("/users/{user_id}/pin/reset", response_model=AdminPinResetResponse)
 async def post_admin_pin_reset(
     user_id: UUID,
     tenant_id: UUID,
@@ -328,7 +323,5 @@ async def get_me_wallet(
     admin role required. The mobile-simulator and the eventual real
     mobile app are the primary consumers.
     """
-    payload = await get_my_wallet(
-        session, user_id=user.id, tenant_id=user.tenant_id
-    )
+    payload = await get_my_wallet(session, user_id=user.id, tenant_id=user.tenant_id)
     return WalletOut.model_validate(payload)

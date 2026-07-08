@@ -5,6 +5,7 @@ in limits / pricing / rules / transactions, renaming it would orphan that
 configuration, so the PATCH schema does not include it. Only display_name,
 description and status are editable.
 """
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID

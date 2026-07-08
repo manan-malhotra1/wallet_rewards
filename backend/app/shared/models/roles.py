@@ -8,6 +8,7 @@ Step 1 of Pay-PRD-0260 orchestration sequence consumes these — a user must
 hold at least one active role granting the transaction_type before the
 ledger is touched.
 """
+
 import uuid
 from datetime import datetime
 
@@ -60,9 +61,7 @@ class Role(Base):
     )
     created_at: Mapped[datetime] = created_at_col()
 
-    permissions: Mapped[list["RolePermission"]] = relationship(
-        back_populates="role", cascade="all"
-    )
+    permissions: Mapped[list["RolePermission"]] = relationship(back_populates="role", cascade="all")
 
 
 class RolePermission(Base):
@@ -88,9 +87,7 @@ class RolePermission(Base):
         UUID(as_uuid=True), ForeignKey("roles.id"), nullable=False, index=True
     )
     transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    permitted: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="true"
-    )
+    permitted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
     role: Mapped[Role] = relationship(back_populates="permissions")
 

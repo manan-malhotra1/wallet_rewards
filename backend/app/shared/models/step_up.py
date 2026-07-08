@@ -8,6 +8,7 @@ Separate from `limit_configs` because the semantics differ: limits
 REJECT past the cap; step-up ESCALATES past the threshold. The two
 can coexist on the same (txn_type, currency) — limits apply first.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -42,9 +43,7 @@ class StepUpPolicy(Base):
             "currency",
             name="uq_step_up_policies_scope",
         ),
-        CheckConstraint(
-            "threshold_amount >= 0", name="ck_step_up_policies_threshold_nonneg"
-        ),
+        CheckConstraint("threshold_amount >= 0", name="ck_step_up_policies_threshold_nonneg"),
         Index("ix_step_up_policies_tenant", "tenant_id"),
     )
 

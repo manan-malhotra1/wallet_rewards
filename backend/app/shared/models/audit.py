@@ -8,6 +8,7 @@ In Phase E.1 the only writer is the reconciliation service. Phase F will add
 audit writes from every state-changing endpoint (user suspension, rule
 activation, redemption confirm/fail, etc.).
 """
+
 import uuid
 from datetime import datetime
 
@@ -50,9 +51,7 @@ class AuditLog(Base):
             "actor_type IN ('user', 'admin', 'system')",
             name="ck_audit_log_actor_type",
         ),
-        Index(
-            "idx_audit_entity", "entity_type", "entity_id", "created_at"
-        ),
+        Index("idx_audit_entity", "entity_type", "entity_id", "created_at"),
         Index("idx_audit_actor", "actor_id", "created_at"),
         # No idx_audit_tenant separately — entity_type+entity_id usually narrow enough.
     )

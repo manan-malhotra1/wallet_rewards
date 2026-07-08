@@ -10,6 +10,7 @@ The catalog is the dropdown source for currency fields on Limits and
 Pricing forms. Creating a new instrument with `assign_to_existing_users`
 also backfills user accounts so the instrument is spendable immediately.
 """
+
 import uuid
 from typing import Literal
 
@@ -69,9 +70,7 @@ async def patch_instrument(
 ) -> InstrumentOut:
     """Update symbol / display_name / description / status."""
     _ = admin
-    instrument = await update_instrument(
-        session, tenant_id, instrument_id, payload
-    )
+    instrument = await update_instrument(session, tenant_id, instrument_id, payload)
     return InstrumentOut.model_validate(instrument)
 
 
@@ -84,7 +83,5 @@ async def delete_instrument(
 ) -> InstrumentOut:
     """Soft-delete the instrument so it disappears from dropdowns."""
     _ = admin
-    instrument = await soft_delete_instrument(
-        session, tenant_id, instrument_id
-    )
+    instrument = await soft_delete_instrument(session, tenant_id, instrument_id)
     return InstrumentOut.model_validate(instrument)

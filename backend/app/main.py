@@ -3,6 +3,7 @@
 Registers all module routers and the global exception handler that converts
 AppHTTPException instances into the standard error envelope.
 """
+
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
@@ -15,13 +16,13 @@ from app.modules.events import router as events_router
 from app.modules.identity import router as identity_router
 from app.modules.instruments import router as instruments_router
 from app.modules.limits import router as limits_router
+from app.modules.multipliers import router as multipliers_router
 from app.modules.payments import router as payments_router
 from app.modules.pricing import router as pricing_router
 from app.modules.reconciliation import router as reconciliation_router
 from app.modules.redemption import router as redemption_router
 from app.modules.roles import router as roles_router
 from app.modules.rules import router as rules_router
-from app.modules.multipliers import router as multipliers_router
 from app.modules.segments import router as segments_router
 from app.modules.services import router as services_router
 from app.modules.step_up import router as step_up_router
@@ -41,9 +42,7 @@ app = FastAPI(
 
 
 @app.exception_handler(AppHTTPException)
-async def app_exception_handler(
-    request: Request, exc: AppHTTPException
-) -> JSONResponse:
+async def app_exception_handler(request: Request, exc: AppHTTPException) -> JSONResponse:
     """Render AppHTTPException as {error_code, message}.
 
     The FastAPI default would wrap our `detail` dict under `{"detail": {...}}`;

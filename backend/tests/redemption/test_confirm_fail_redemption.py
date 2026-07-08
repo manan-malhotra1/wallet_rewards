@@ -3,6 +3,7 @@
 Phase F.4: confirm + fail are admin-only. Initiate (used in setup) is
 user-only — the helper mints a session token for the test user.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -178,13 +179,9 @@ async def test_confirm_then_confirm_rejects(
         seed_key="dconf",
     )
     body = {"tenant_id": str(test_tenant.id)}
-    first = await async_client.post(
-        f"/api/v1/redemption/{redemption_id}/confirm", json=body
-    )
+    first = await async_client.post(f"/api/v1/redemption/{redemption_id}/confirm", json=body)
     assert first.status_code == 200
-    second = await async_client.post(
-        f"/api/v1/redemption/{redemption_id}/confirm", json=body
-    )
+    second = await async_client.post(f"/api/v1/redemption/{redemption_id}/confirm", json=body)
     assert second.status_code == 409
     assert second.json()["error_code"] == "redemption_not_pending"
 

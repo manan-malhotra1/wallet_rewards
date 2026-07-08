@@ -8,6 +8,7 @@ belt-and-braces structural check.
 The invariant must always hold: for every COMPLETED entry, every CREDIT
 amount is offset by an equal DEBIT amount somewhere in the system.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal

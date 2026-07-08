@@ -20,6 +20,7 @@ Idempotency is delegated to the rewards layer via the unique index on
 itself is not idempotent on counter increments. We rely on
 event_ingestion_log dedup to prevent re-evaluation of the same event.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -86,7 +87,7 @@ async def evaluate_active_rules_for_event(
         # segment, only users in that segment are eligible. Lazy-imported
         # to avoid a service-layer import cycle.
         if rule.segment_id is not None:
-            from app.modules.segments.service import user_is_in_segment  # noqa: PLC0415
+            from app.modules.segments.service import user_is_in_segment
 
             if not await user_is_in_segment(
                 session, user_id=event.user_id, segment_id=rule.segment_id
@@ -110,9 +111,7 @@ async def evaluate_active_rules_for_event(
     return firings
 
 
-async def _find_candidate_rules(
-    session: AsyncSession, event: NormalisedEvent
-) -> list[Rule]:
+async def _find_candidate_rules(session: AsyncSession, event: NormalisedEvent) -> list[Rule]:
     """Return all active rules in the event's tenant whose transaction_type matches.
 
     All currently-supported rule types are flat single-event rules with a
@@ -130,9 +129,7 @@ async def _find_candidate_rules(
     return list(result.scalars().all())
 
 
-async def _get_or_create_progress(
-    session: AsyncSession, user_id, rule_id
-) -> UserRuleProgress:
+async def _get_or_create_progress(session: AsyncSession, user_id, rule_id) -> UserRuleProgress:
     """Find or insert the UserRuleProgress row for this (user, rule) pair.
 
     Uses INSERT-then-fetch with the unique constraint as the race guard. On
@@ -165,9 +162,7 @@ async def _get_or_create_progress(
     return progress
 
 
-def _evaluate(
-    rule: Rule, progress: UserRuleProgress, event: NormalisedEvent
-) -> RuleFiring | None:
+def _evaluate(rule: Rule, progress: UserRuleProgress, event: NormalisedEvent) -> RuleFiring | None:
     """Type-specific decision for whether this rule fires on this event.
 
     Mutates the progress row (current_count, trigger_count, etc.). The caller

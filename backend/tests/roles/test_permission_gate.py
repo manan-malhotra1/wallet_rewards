@@ -7,6 +7,7 @@ write.
 Phase F.4 layered session-token auth on top. These tests mint a session for
 the test user (Alice) and assert the role-gate still fires correctly.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -78,9 +79,7 @@ async def test_p2p_rejects_user_with_no_role(
     default_user_role: Role,
 ) -> None:
     """User without any role → 403 not_authorised at step 1. No ledger write."""
-    alice = await _make_user_with_phone(
-        db_session, test_tenant, phone="+27 82 999 1001"
-    )
+    alice = await _make_user_with_phone(db_session, test_tenant, phone="+27 82 999 1001")
     await _make_user_with_phone(
         db_session,
         test_tenant,
@@ -296,11 +295,7 @@ async def test_redemption_initiate_also_gated(
     p2p_only = Role(tenant_id=test_tenant.id, name="p2p-only")
     db_session.add(p2p_only)
     await db_session.flush()
-    db_session.add(
-        RolePermission(
-            role_id=p2p_only.id, transaction_type="p2p", permitted=True
-        )
-    )
+    db_session.add(RolePermission(role_id=p2p_only.id, transaction_type="p2p", permitted=True))
     await db_session.commit()
     await db_session.refresh(p2p_only)
 

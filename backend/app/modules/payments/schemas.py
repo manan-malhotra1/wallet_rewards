@@ -5,6 +5,7 @@ mobile-facing demo top-up endpoint (Pay-PRD-0320). All `tenant_id` /
 `user_id` resolution comes from the session token — never the request
 body.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -82,5 +83,3 @@ class P2PResponse(BaseModel):
     recipient_user_id: UUID
     created_at: datetime
     earned_points: int | None = None
-
-

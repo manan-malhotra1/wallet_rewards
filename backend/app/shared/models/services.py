@@ -14,6 +14,7 @@ Soft-deletion (`deleted_at` set) removes the row from list endpoints; the
 partial-unique index on (tenant_id, code) WHERE deleted_at IS NULL lets a
 tenant re-create the same code after deleting it.
 """
+
 import uuid
 from datetime import datetime
 
@@ -69,6 +70,4 @@ class Service(Base):
     )
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)

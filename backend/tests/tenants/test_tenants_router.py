@@ -3,6 +3,7 @@
 Covers the LIST endpoint plus the new GET-one and PATCH endpoints added
 when the deployment_mode → business_type rename landed in migration 0016.
 """
+
 from uuid import uuid4
 
 import pytest
@@ -42,9 +43,7 @@ async def test_get_tenant_happy_path(
     admin_auth_header: dict[str, str],
 ) -> None:
     """GET /{id} returns the identity card."""
-    resp = await async_client.get(
-        f"/api/v1/tenants/{test_tenant.id}", headers=admin_auth_header
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{test_tenant.id}", headers=admin_auth_header)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["id"] == str(test_tenant.id)
@@ -58,9 +57,7 @@ async def test_get_tenant_unknown_id_returns_404(
     admin_auth_header: dict[str, str],
 ) -> None:
     """Unknown UUID → tenant_not_found 404."""
-    resp = await async_client.get(
-        f"/api/v1/tenants/{uuid4()}", headers=admin_auth_header
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{uuid4()}", headers=admin_auth_header)
     assert resp.status_code == 404
     assert resp.json()["error_code"] == "tenant_not_found"
 

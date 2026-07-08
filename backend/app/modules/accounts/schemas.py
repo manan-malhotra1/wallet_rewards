@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for the accounts module."""
+
 from __future__ import annotations
 
 from decimal import Decimal

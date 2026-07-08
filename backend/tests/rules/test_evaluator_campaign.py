@@ -4,6 +4,7 @@ Campaign rules fire once per user, only within
 [campaign_start_date, campaign_end_date]. Outside the window the rule
 is a no-op.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
@@ -89,9 +90,7 @@ async def _create_campaign_rule(
     assert resp.status_code == 201, resp.text
 
 
-def _event_at(
-    *, tenant: Tenant, user: User, source_key: str, when: datetime
-) -> dict:
+def _event_at(*, tenant: Tenant, user: User, source_key: str, when: datetime) -> dict:
     """Build a RawExternalEvent with an explicit timestamp."""
     return {
         "event_id": uuid4().hex,

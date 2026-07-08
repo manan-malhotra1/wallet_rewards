@@ -6,12 +6,13 @@ Two windows enforced separately:
 
 If either window is exceeded, `/otp/send` returns 429.
 """
+
 from __future__ import annotations
 
 from app.redis_client import redis_client
 
-SHORT_KEY = "otp_short:{phone}"   # 60-second window
-LONG_KEY = "otp_long:{phone}"     # 1-hour rolling counter
+SHORT_KEY = "otp_short:{phone}"  # 60-second window
+LONG_KEY = "otp_long:{phone}"  # 1-hour rolling counter
 
 SHORT_WINDOW_SECONDS = 60
 LONG_WINDOW_SECONDS = 60 * 60

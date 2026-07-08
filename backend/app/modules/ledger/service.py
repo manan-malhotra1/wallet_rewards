@@ -12,6 +12,7 @@ External callers (payments, rewards, redemption) build a list of entries
 and pass it here. They handle their own external-API calls AFTER this
 function commits — never inside (NFR-0130).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -87,9 +88,7 @@ class PostTransactionRequest:
     status: str = TXN_STATUS_COMPLETED
 
 
-async def post_transaction(
-    session: AsyncSession, request: PostTransactionRequest
-) -> Transaction:
+async def post_transaction(session: AsyncSession, request: PostTransactionRequest) -> Transaction:
     """Append a balanced double-entry transaction atomically.
 
     On success the transaction and all entries are committed in a single DB
@@ -120,22 +119,16 @@ async def post_transaction(
     await _assert_accounts_belong_to_tenant(session, request)
 
     # Idempotency check FIRST — return existing transaction if any.
-    existing = await _find_by_idempotency(
-        session, request.tenant_id, request.idempotency_key
-    )
+    existing = await _find_by_idempotency(session, request.tenant_id, request.idempotency_key)
     if existing is not None:
         return existing
 
     entry_status = (
-        ENTRY_STATUS_COMPLETED
-        if request.status == TXN_STATUS_COMPLETED
-        else ENTRY_STATUS_PENDING
+        ENTRY_STATUS_COMPLETED if request.status == TXN_STATUS_COMPLETED else ENTRY_STATUS_PENDING
     )
 
     headline_amount = (
-        request.amount
-        if request.amount is not None
-        else max(e.amount for e in request.entries)
+        request.amount if request.amount is not None else max(e.amount for e in request.entries)
     )
 
     txn = Transaction(
@@ -169,9 +162,7 @@ async def post_transaction(
         await session.rollback()
         # The most likely cause is a concurrent insert that won the unique
         # constraint race. Re-check; if a row exists, return it.
-        existing = await _find_by_idempotency(
-            session, request.tenant_id, request.idempotency_key
-        )
+        existing = await _find_by_idempotency(session, request.tenant_id, request.idempotency_key)
         if existing is not None:
             return existing
         # Otherwise this is a genuine conflict — surface as 409.
@@ -230,9 +221,7 @@ async def _find_by_idempotency(
     return result.scalar_one_or_none()
 
 
-async def sum_completed_balance(
-    session: AsyncSession, account_id: UUID
-) -> Decimal:
+async def sum_completed_balance(session: AsyncSession, account_id: UUID) -> Decimal:
     """Convenience: SUM(CREDIT) - SUM(DEBIT) over COMPLETED entries.
 
     Use this for places that don't need the full (balance, reserved) tuple

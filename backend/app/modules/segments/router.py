@@ -5,6 +5,7 @@ Three routes:
   - GET  /segments                      list segments in tenant
   - POST /segments/{id}/users           add a user to the segment
 """
+
 from __future__ import annotations
 
 from uuid import UUID

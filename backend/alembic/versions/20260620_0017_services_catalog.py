@@ -14,18 +14,20 @@ Revises: 0016
 Create Date: 2026-06-20
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 revision: str = "0017"
-down_revision: Union[str, None] = "0016"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0016"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 # (code, display_name, description) — the Phase-2 baseline catalog.
@@ -112,9 +114,9 @@ def upgrade() -> None:
     # Done inline (rather than at app boot) so a fresh `alembic upgrade head`
     # leaves the platform usable end-to-end with no extra commands.
     bind = op.get_bind()
-    tenant_ids = bind.execute(
-        sa.text("SELECT id FROM tenants WHERE deleted_at IS NULL")
-    ).scalars().all()
+    tenant_ids = (
+        bind.execute(sa.text("SELECT id FROM tenants WHERE deleted_at IS NULL")).scalars().all()
+    )
 
     for tenant_id in tenant_ids:
         for code, display_name, description in _BASELINE_SERVICES:

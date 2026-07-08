@@ -1,4 +1,5 @@
 """Tests for POST /api/v1/treasury/fund-user (admin top-up)."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -20,15 +21,11 @@ from app.shared.models import (
 def _user_phone(user: User) -> str:
     """Return the seeded phone identifier (test_user fixture creates one)."""
     return next(
-        ident.identifier_value
-        for ident in user.identifiers
-        if ident.identifier_type == "phone"
+        ident.identifier_value for ident in user.identifiers if ident.identifier_type == "phone"
     )
 
 
-async def _seed_user_wallet(
-    session: AsyncSession, tenant: Tenant, user: User
-) -> Account:
+async def _seed_user_wallet(session: AsyncSession, tenant: Tenant, user: User) -> Account:
     """Give the user a ZAR financial wallet."""
     wallet = Account(
         tenant_id=tenant.id,

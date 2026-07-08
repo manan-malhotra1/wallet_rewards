@@ -20,6 +20,7 @@ supported during secret rotation — verification passes if any match.
 This module is intentionally pure (no DB, no network) so it can be unit
 tested in isolation. Callers pass the lookup result (shared_secret string).
 """
+
 from __future__ import annotations
 
 import hmac
@@ -59,15 +60,11 @@ def _parse_signature_header(header: str) -> tuple[int, list[str]]:
             try:
                 timestamp = int(value)
             except ValueError as exc:
-                raise SignatureMalformed(
-                    "Signature timestamp is not an integer."
-                ) from exc
+                raise SignatureMalformed("Signature timestamp is not an integer.") from exc
         elif key == "v1":
             digests.append(value)
     if timestamp is None or not digests:
-        raise SignatureMalformed(
-            "Signature header must contain `t=` and at least one `v1=`."
-        )
+        raise SignatureMalformed("Signature header must contain `t=` and at least one `v1=`.")
     return timestamp, digests
 
 
@@ -121,9 +118,7 @@ def verify_signature(
     raise InvalidSignature()
 
 
-def build_signature_header(
-    *, raw_body: bytes, secret: str, timestamp: int | None = None
-) -> str:
+def build_signature_header(*, raw_body: bytes, secret: str, timestamp: int | None = None) -> str:
     """Construct an X-Sasai-Signature value (used by tests + signing clients).
 
     The platform itself never signs callbacks — third parties do that. This

@@ -7,6 +7,7 @@ Five routes:
   - POST /withdraw                           admin pull-back wrapper
   - POST /adjust-system-wallet               fund/withdraw via operator_adjustment
 """
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -72,9 +73,7 @@ async def get_system_wallet_transactions(
     )
 
 
-@router.post(
-    "/fund-user", response_model=FundUserResponse, status_code=201
-)
+@router.post("/fund-user", response_model=FundUserResponse, status_code=201)
 async def post_fund_user(
     request: FundUserRequest,
     fastapi_request: Request,
@@ -99,9 +98,7 @@ async def post_fund_user(
     )
 
 
-@router.post(
-    "/withdraw", response_model=WithdrawFromUserResponse, status_code=201
-)
+@router.post("/withdraw", response_model=WithdrawFromUserResponse, status_code=201)
 async def post_withdraw_from_user(
     request: WithdrawFromUserRequest,
     fastapi_request: Request,

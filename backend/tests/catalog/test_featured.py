@@ -5,6 +5,7 @@ and the 401 auth-failure case. Campaign rules are seeded directly via
 SQLAlchemy — the rules-engine admin endpoint requires a richer payload
 than the catalog read-side needs to exercise.
 """
+
 from __future__ import annotations
 
 from datetime import date, timedelta

@@ -3,6 +3,7 @@
 Wraps `redis.asyncio` so the rest of the app doesn't depend on the library
 directly. Test fixtures can override `redis_client` to a fake.
 """
+
 from __future__ import annotations
 
 import redis.asyncio as redis

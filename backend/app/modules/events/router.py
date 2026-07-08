@@ -12,6 +12,7 @@ The admin HTTP endpoint exists for test + operator use; production traffic
 arrives via the Kafka consumer (`scripts/run_consumer.py`) which uses the
 same `process_external_event` entrypoint and the same HMAC enforcement.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -157,21 +158,23 @@ async def get_sim_bootstrap(
     from app.shared.models import Tenant, UserIdentifier
 
     tenant_row = (
-        await session.execute(select(Tenant).order_by(Tenant.created_at.asc()))
-    ).scalars().first()
+        (await session.execute(select(Tenant).order_by(Tenant.created_at.asc()))).scalars().first()
+    )
     if tenant_row is None:
-        raise AppHTTPException(
-            404, "no_tenant_seeded", "No tenant exists yet — run `make seed`."
-        )
+        raise AppHTTPException(404, "no_tenant_seeded", "No tenant exists yet — run `make seed`.")
 
     phones = (
-        await session.execute(
-            select(UserIdentifier).where(
-                UserIdentifier.tenant_id == tenant_row.id,
-                UserIdentifier.identifier_type == "phone",
+        (
+            await session.execute(
+                select(UserIdentifier).where(
+                    UserIdentifier.tenant_id == tenant_row.id,
+                    UserIdentifier.identifier_type == "phone",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     user_by_phone = {ident.identifier_value: str(ident.user_id) for ident in phones}
 
     return {

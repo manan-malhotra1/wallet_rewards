@@ -1,4 +1,5 @@
 """Tests for /api/v1/segments admin CRUD + membership."""
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -39,13 +40,9 @@ async def test_create_segment_duplicate_name_409(
 ) -> None:
     """Same name twice within the tenant → 409."""
     payload = {"tenant_id": str(test_tenant.id), "name": "dup"}
-    a = await async_client.post(
-        "/api/v1/segments", headers=admin_auth_header, json=payload
-    )
+    a = await async_client.post("/api/v1/segments", headers=admin_auth_header, json=payload)
     assert a.status_code == 201
-    b = await async_client.post(
-        "/api/v1/segments", headers=admin_auth_header, json=payload
-    )
+    b = await async_client.post("/api/v1/segments", headers=admin_auth_header, json=payload)
     assert b.status_code == 409
     assert b.json()["error_code"] == "segment_already_exists"
 

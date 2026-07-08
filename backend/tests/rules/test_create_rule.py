@@ -1,4 +1,5 @@
 """Tests for POST /api/v1/rules (Phase C rule CRUD)."""
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -142,9 +143,7 @@ async def test_list_rules_returns_only_tenant_rules(
         },
     )
 
-    response = await async_client.get(
-        "/api/v1/rules", params={"tenant_id": str(test_tenant.id)}
-    )
+    response = await async_client.get("/api/v1/rules", params={"tenant_id": str(test_tenant.id)})
     assert response.status_code == 200
     names = [r["name"] for r in response.json()]
     assert names == ["Tenant A rule"]

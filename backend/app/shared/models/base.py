@@ -3,6 +3,7 @@
 Every domain model uses `uuid_pk()`, `created_at_col()`, `updated_at_col()` to
 guarantee project-wide consistency: UUID PKs, TIMESTAMPTZ everywhere.
 """
+
 import uuid
 from datetime import datetime
 

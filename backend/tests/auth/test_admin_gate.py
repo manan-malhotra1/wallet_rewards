@@ -3,6 +3,7 @@
 Exercises the dependency end-to-end through an httpx request to a
 reconciliation endpoint (which we picked as the Phase F.1 pilot surface).
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable

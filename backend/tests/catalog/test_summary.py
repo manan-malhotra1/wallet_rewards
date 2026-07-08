@@ -4,6 +4,7 @@ Phase F.4: catalog endpoints are user-only. tenant_id + user_id come from
 the session token — there is no longer a `/{user_id}/` path. Provider
 register + redemption confirm in setup helpers stay admin-only.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal

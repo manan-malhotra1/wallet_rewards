@@ -8,6 +8,7 @@ The writer ADDS the row to the session — it does NOT commit. Callers
 commit alongside the domain-state change so the audit row lands or
 disappears atomically with the action it records.
 """
+
 from __future__ import annotations
 
 from typing import Any

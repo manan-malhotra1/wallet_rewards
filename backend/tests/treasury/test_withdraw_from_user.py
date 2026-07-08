@@ -5,6 +5,7 @@ debited, operator_adjustment credited). Admin operations are PIN-less and
 fee-less — step-up PIN policies apply to user-initiated transactions
 only, not back-office moves.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -34,9 +35,7 @@ from app.shared.models import (
 def _user_phone(user: User) -> str:
     """Return the seeded phone identifier for the user fixture."""
     return next(
-        ident.identifier_value
-        for ident in user.identifiers
-        if ident.identifier_type == "phone"
+        ident.identifier_value for ident in user.identifiers if ident.identifier_type == "phone"
     )
 
 

@@ -3,6 +3,7 @@
 Validates the ledger structure of a reward (DEBIT system, CREDIT user),
 idempotency on replay, and the structural double-issuance guard.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -106,17 +107,19 @@ async def test_issue_reward_is_idempotent_on_replay(
     assert r1.id == r2.id
 
     # Only ONE reward_event row.
-    rows = (await db_session.execute(
-        select(RewardEvent).where(RewardEvent.rule_id == rule.id)
-    )).scalars().all()
+    rows = (
+        (await db_session.execute(select(RewardEvent).where(RewardEvent.rule_id == rule.id)))
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
 
     # The CREDIT entry referenced from the reward row exists (no duplicate
     # transactions were written on replay — the ledger's idempotency_key
     # handled it).
-    credit = (await db_session.execute(
-        select(LedgerEntry).where(LedgerEntry.id == r1.ledger_entry_id)
-    )).scalar_one()
+    credit = (
+        await db_session.execute(select(LedgerEntry).where(LedgerEntry.id == r1.ledger_entry_id))
+    ).scalar_one()
     assert credit.entry_type == "CREDIT"
     assert credit.amount == Decimal("50")
 

@@ -3,6 +3,7 @@
 Covers happy path, validation, duplicate identifier rejection (Pay-PRD-0070),
 and cross-tenant identifier reuse (allowed — Pay-PRD-0070 is per-tenant).
 """
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -54,9 +55,7 @@ async def test_create_user_rejects_unknown_tenant(
         headers=admin_auth_header,
         json={
             "tenant_id": str(uuid4()),
-            "identifiers": [
-                {"identifier_type": "phone", "identifier_value": "+27 82 555 9999"}
-            ],
+            "identifiers": [{"identifier_type": "phone", "identifier_value": "+27 82 555 9999"}],
         },
     )
     assert response.status_code == 404
@@ -90,9 +89,7 @@ async def test_create_user_validates_identifier_type(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "identifiers": [
-                {"identifier_type": "passport", "identifier_value": "X1234567"}
-            ],
+            "identifiers": [{"identifier_type": "passport", "identifier_value": "X1234567"}],
         },
     )
     assert response.status_code == 422
@@ -107,9 +104,7 @@ async def test_create_user_rejects_duplicate_phone_in_same_tenant(
     """Re-registering the same phone within one tenant returns 409 (Pay-PRD-0070)."""
     payload = {
         "tenant_id": str(test_tenant.id),
-        "identifiers": [
-            {"identifier_type": "phone", "identifier_value": "+27 82 555 0001"}
-        ],
+        "identifiers": [{"identifier_type": "phone", "identifier_value": "+27 82 555 0001"}],
     }
     first = await async_client.post(
         "/api/v1/identity/users", headers=admin_auth_header, json=payload
@@ -138,9 +133,7 @@ async def test_create_user_allows_same_phone_in_different_tenant(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "identifiers": [
-                {"identifier_type": "phone", "identifier_value": phone}
-            ],
+            "identifiers": [{"identifier_type": "phone", "identifier_value": phone}],
         },
     )
     assert a.status_code == 201, a.text
@@ -150,9 +143,7 @@ async def test_create_user_allows_same_phone_in_different_tenant(
         headers=admin_auth_header,
         json={
             "tenant_id": str(other_tenant.id),
-            "identifiers": [
-                {"identifier_type": "phone", "identifier_value": phone}
-            ],
+            "identifiers": [{"identifier_type": "phone", "identifier_value": phone}],
         },
     )
     assert b.status_code == 201, b.text
@@ -171,9 +162,7 @@ async def test_create_user_with_profile(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "identifiers": [
-                {"identifier_type": "email", "identifier_value": "jane@example.com"}
-            ],
+            "identifiers": [{"identifier_type": "email", "identifier_value": "jane@example.com"}],
             "profile": {
                 "first_name": "Jane",
                 "last_name": "Mokoena",
@@ -194,9 +183,7 @@ async def test_create_user_rejects_unauthenticated_caller(
         "/api/v1/identity/users",
         json={
             "tenant_id": str(test_tenant.id),
-            "identifiers": [
-                {"identifier_type": "phone", "identifier_value": "+27 82 555 0888"}
-            ],
+            "identifiers": [{"identifier_type": "phone", "identifier_value": "+27 82 555 0888"}],
         },
     )
     assert response.status_code == 401

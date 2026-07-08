@@ -3,6 +3,7 @@
 Both endpoints are admin-only: rule creation directly controls reward
 issuance, and the listing exposes the tenant's full rule catalogue.
 """
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -95,9 +96,7 @@ async def get_performance(
     leaking the rule's existence.
     """
     _ = admin
-    return await get_rule_performance(
-        session, tenant_id=tenant_id, rule_id=rule_id
-    )
+    return await get_rule_performance(session, tenant_id=tenant_id, rule_id=rule_id)
 
 
 @router.get("/{rule_id}", response_model=RuleOut)

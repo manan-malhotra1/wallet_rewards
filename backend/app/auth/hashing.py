@@ -13,6 +13,7 @@ Why bcrypt for OTP (a 6-digit code with limited entropy)? Two reasons:
   1. Defence in depth — even if `otp_requests` leaks, OTPs aren't readable.
   2. Consistency — same primitive as PIN, easy to reason about.
 """
+
 from __future__ import annotations
 
 import secrets

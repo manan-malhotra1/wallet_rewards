@@ -13,6 +13,7 @@ Uses the same fixtures as the rest of the rules suite. Reward events
 are seeded directly via the ORM — no need to go through the rule
 evaluator, which would couple this to Module 9.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -22,7 +23,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.models import RewardEvent, Rule, Tenant, User
+from app.shared.models import RewardEvent, Tenant, User
 
 
 async def _create_rule(client: AsyncClient, tenant_id: str, name: str) -> str:

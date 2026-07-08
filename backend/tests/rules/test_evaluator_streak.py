@@ -4,6 +4,7 @@ Streak rules track `current_streak` on UserRuleProgress: increments on a
 qualifying event in the immediately-next period (day/week), resets on a
 gap > 1 period, and is a no-op when two events land in the same period.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -91,9 +92,7 @@ async def _create_streak_rule(
     assert resp.status_code == 201, resp.text
 
 
-def _event_at(
-    *, tenant: Tenant, user: User, source_key: str, when: datetime
-) -> dict:
+def _event_at(*, tenant: Tenant, user: User, source_key: str, when: datetime) -> dict:
     """Build a RawExternalEvent with an explicit timestamp."""
     return {
         "event_id": uuid4().hex,
@@ -134,12 +133,8 @@ async def test_streak_fires_on_n_consecutive_days(
     base = datetime(2026, 6, 15, 10, 0, tzinfo=UTC)
     outcomes = [
         await _ingest(async_client, test_tenant, test_user, "streak-3d", base),
-        await _ingest(
-            async_client, test_tenant, test_user, "streak-3d", base + timedelta(days=1)
-        ),
-        await _ingest(
-            async_client, test_tenant, test_user, "streak-3d", base + timedelta(days=2)
-        ),
+        await _ingest(async_client, test_tenant, test_user, "streak-3d", base + timedelta(days=1)),
+        await _ingest(async_client, test_tenant, test_user, "streak-3d", base + timedelta(days=2)),
     ]
     assert outcomes == [0, 0, 1]
 
@@ -287,9 +282,7 @@ async def test_streak_progress_state_increments(
 
     progress = (
         await db_session.execute(
-            select(UserRuleProgress).where(
-                UserRuleProgress.user_id == test_user.id
-            )
+            select(UserRuleProgress).where(UserRuleProgress.user_id == test_user.id)
         )
     ).scalar_one()
     assert progress.current_streak == 3

@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for the events module."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

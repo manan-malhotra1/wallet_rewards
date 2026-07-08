@@ -3,16 +3,17 @@
 Reads DATABASE_URL from app.config so the migration tool uses the same
 connection string as the application. Uses asyncpg.
 """
+
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from app.config import settings
-from app.shared.models import Base  # noqa: F401  (registers tables on Base.metadata)
+from app.shared.models import Base
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)

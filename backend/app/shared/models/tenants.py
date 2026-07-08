@@ -1,4 +1,5 @@
 """Tenant and TenantConfig models — PRD §6.1."""
+
 import uuid
 from datetime import datetime
 
@@ -46,14 +47,10 @@ class Tenant(Base):
     business_type: Mapped[str] = mapped_column(String(20), nullable=False)
     keycloak_realm: Mapped[str | None] = mapped_column(String(100), nullable=True)
     base_currency: Mapped[str] = mapped_column(String(10), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="active"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
     configs: Mapped[list["TenantConfig"]] = relationship(back_populates="tenant")
 
@@ -62,9 +59,7 @@ class TenantConfig(Base):
     """Per-tenant key/value configuration overrides."""
 
     __tablename__ = "tenant_config"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "config_key", name="uq_tenant_config_key"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "config_key", name="uq_tenant_config_key"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -72,9 +67,7 @@ class TenantConfig(Base):
     )
     config_key: Mapped[str] = mapped_column(String(100), nullable=False)
     config_value: Mapped[str] = mapped_column(Text, nullable=False)
-    updated_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     updated_at: Mapped[datetime] = updated_at_col()
 
     tenant: Mapped[Tenant] = relationship(back_populates="configs")

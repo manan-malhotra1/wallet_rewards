@@ -7,6 +7,7 @@ modules (Phases B/C/D). The service is consumed internally.
 The invariants in `.claude/rules/ledger-invariants.md` are mandatory:
 append-only, double-entry, idempotent, sum-to-zero, external calls after commit.
 """
+
 from app.modules.ledger.service import (
     LedgerEntryRequest,
     PostTransactionRequest,

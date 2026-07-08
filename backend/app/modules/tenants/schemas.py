@@ -4,6 +4,7 @@ Phase 1 surfaces the tenant *identity card*: name (editable),
 business_type (editable Wallet/Rewards/Both), plus the read-only
 keycloak_realm tag the admin UI displays next to the ID.
 """
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID

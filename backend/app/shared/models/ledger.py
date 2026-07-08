@@ -13,6 +13,7 @@ PRD references:
 The non-negotiable invariants in `.claude/rules/ledger-invariants.md` govern
 every write to these tables.
 """
+
 import uuid
 from datetime import datetime
 
@@ -91,20 +92,14 @@ class Transaction(Base):
     initiated_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    merchant_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    merchant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # NUMERIC(20, 6) for money + points without precision loss.
     amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
-    fee_amount: Mapped[float] = mapped_column(
-        Numeric(20, 6), nullable=False, server_default="0"
-    )
+    fee_amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False, server_default="0")
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     external_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    retry_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
 

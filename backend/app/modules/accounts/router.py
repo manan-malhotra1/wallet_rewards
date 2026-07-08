@@ -4,6 +4,7 @@ Both endpoints expose tenant-wide account data — only admins should see
 balances for arbitrary accounts. End-users see their own balance via the
 catalog `/me/summary` endpoint, not this router.
 """
+
 from __future__ import annotations
 
 from uuid import UUID

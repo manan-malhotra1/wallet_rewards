@@ -17,18 +17,20 @@ Revises: 0013
 Create Date: 2026-06-18
 
 """
+
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 revision: str = "0014"
-down_revision: Union[str, None] = "0013"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0013"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -61,9 +63,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.UniqueConstraint(
-            "tenant_id", "name", name="uq_segments_name_per_tenant"
-        ),
+        sa.UniqueConstraint("tenant_id", "name", name="uq_segments_name_per_tenant"),
     )
     op.create_index("ix_segments_tenant", "segments", ["tenant_id"])
 
@@ -95,12 +95,8 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("user_id", "segment_id", name="uq_user_segments_pair"),
     )
-    op.create_index(
-        "ix_user_segments_user", "user_segments", ["user_id"]
-    )
-    op.create_index(
-        "ix_user_segments_segment", "user_segments", ["segment_id"]
-    )
+    op.create_index("ix_user_segments_user", "user_segments", ["user_id"])
+    op.create_index("ix_user_segments_segment", "user_segments", ["segment_id"])
 
     op.create_table(
         "bonus_multipliers",
@@ -147,25 +143,16 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.CheckConstraint(
-            "multiplier > 0", name="ck_bonus_multipliers_positive"
-        ),
+        sa.CheckConstraint("multiplier > 0", name="ck_bonus_multipliers_positive"),
         # Either valid_from < valid_until (when both set) or one/both NULL.
         sa.CheckConstraint(
-            "valid_from IS NULL OR valid_until IS NULL OR "
-            "valid_from < valid_until",
+            "valid_from IS NULL OR valid_until IS NULL OR valid_from < valid_until",
             name="ck_bonus_multipliers_window",
         ),
     )
-    op.create_index(
-        "ix_bonus_multipliers_tenant", "bonus_multipliers", ["tenant_id"]
-    )
-    op.create_index(
-        "ix_bonus_multipliers_rule", "bonus_multipliers", ["rule_id"]
-    )
-    op.create_index(
-        "ix_bonus_multipliers_segment", "bonus_multipliers", ["segment_id"]
-    )
+    op.create_index("ix_bonus_multipliers_tenant", "bonus_multipliers", ["tenant_id"])
+    op.create_index("ix_bonus_multipliers_rule", "bonus_multipliers", ["rule_id"])
+    op.create_index("ix_bonus_multipliers_segment", "bonus_multipliers", ["segment_id"])
 
     # Add the FK on rules.segment_id (column already existed, unconstrained).
     op.create_foreign_key(

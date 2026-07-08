@@ -1,4 +1,5 @@
 """Bonus multipliers FastAPI router (admin-gated)."""
+
 from __future__ import annotations
 
 from uuid import UUID

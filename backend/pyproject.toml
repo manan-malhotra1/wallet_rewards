@@ -10,8 +10,27 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "RUF"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI DI callables (Depends/Query/Header/...) are evaluated once at import
+# time and are safe as argument defaults; B008 is a known false positive here.
+# require_admin_role is a project dependency-factory used the same way.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Security",
+    "fastapi.Cookie",
+    "fastapi.Form",
+    "fastapi.File",
+    "app.dependencies.require_admin_role",
+]
+
 [tool.ruff.lint.per-file-ignores]
 "alembic/versions/*" = ["E501"]
+# conftest configures sys.path / env before importing app modules (intentional).
+"tests/conftest.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.12"

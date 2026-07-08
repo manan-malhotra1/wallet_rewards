@@ -5,6 +5,7 @@ synchronous initiate / confirm / fail / lookup endpoints. Reconciliation
 sweep (Pay-PRD-0750) and the actual external provider HTTP call are
 deferred — confirm/fail are simulated by admin/test endpoints in Phase D.
 """
+
 from app.modules.redemption.router import router
 
 __all__ = ["router"]

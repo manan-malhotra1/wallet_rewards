@@ -15,6 +15,7 @@ Critical invariants exercised here:
   - Phone normalisation. Whitespace / dashes / parens variants of the
     same number resolve identically.
 """
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -63,9 +64,7 @@ async def test_auth_start_returns_needs_otp_for_unknown_phone(
     """
     new_phone = "+27 82 555 7777"
 
-    users_before = (
-        await db_session.execute(select(func.count(User.id)))
-    ).scalar_one()
+    users_before = (await db_session.execute(select(func.count(User.id)))).scalar_one()
     identifiers_before = (
         await db_session.execute(select(func.count(UserIdentifier.id)))
     ).scalar_one()
@@ -78,16 +77,12 @@ async def test_auth_start_returns_needs_otp_for_unknown_phone(
     assert response.status_code == 200, response.text
     assert response.json() == {"status": "needs_otp"}
 
-    users_after = (
-        await db_session.execute(select(func.count(User.id)))
-    ).scalar_one()
+    users_after = (await db_session.execute(select(func.count(User.id)))).scalar_one()
     identifiers_after = (
         await db_session.execute(select(func.count(UserIdentifier.id)))
     ).scalar_one()
     assert users_after == users_before, "auth/start must not create users"
-    assert identifiers_after == identifiers_before, (
-        "auth/start must not create user_identifiers"
-    )
+    assert identifiers_after == identifiers_before, "auth/start must not create user_identifiers"
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,6 @@ from app.modules.limits.service import (
 )
 
 __all__ = [
-    "router",
     "check_limits",
     "check_wallet_receive_limits",
     "check_wallet_send_limits",
@@ -24,4 +23,5 @@ __all__ = [
     "delete_wallet_limit_config",
     "list_limit_configs",
     "list_wallet_limit_configs",
+    "router",
 ]

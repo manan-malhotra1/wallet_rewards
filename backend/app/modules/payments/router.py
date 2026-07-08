@@ -7,6 +7,7 @@ users never fund themselves. Airtime recharge (a user-initiated SPEND
 that triggers a third-party provisioning call) lives in
 `app.modules.airtime`.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal

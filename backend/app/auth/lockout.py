@@ -10,6 +10,7 @@ Counter and lockout are tracked SEPARATELY:
   `pin_fails:<user_id>`   counter — increment on fail; reset on success or lock
   `lockout:<user_id>`     present iff account is currently locked; TTL = lockout window
 """
+
 from __future__ import annotations
 
 from uuid import UUID

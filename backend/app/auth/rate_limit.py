@@ -48,3 +48,30 @@ async def consume_otp_send_quota(phone: str) -> tuple[bool, int]:
     if new_long_count == 1:
         await redis_client.expire(long_key, LONG_WINDOW_SECONDS)
     return True, 0
+
+
+# --- External-API per-key rate limit (Epic 14) -----------------------------
+# Fixed-window counter per API key. Read at call time (module globals, not
+# default args) so tests — and a future settings-backed override — can adjust
+# the ceiling without rebinding the function.
+API_KEY_RATE_LIMIT = 60  # requests per window
+API_KEY_RATE_WINDOW_SECONDS = 60  # window length (1 minute)
+API_KEY_RL_KEY = "apikey_rl:{key_id}"
+
+
+async def consume_api_key_quota(key_id: str) -> tuple[bool, int]:
+    """Consume one request token for `key_id` in the current fixed window.
+
+    Returns:
+        (allowed, retry_after_seconds). `allowed=False` once the window count
+        exceeds API_KEY_RATE_LIMIT; `retry_after_seconds` is the time until the
+        window resets.
+    """
+    rl_key = API_KEY_RL_KEY.format(key_id=key_id)
+    count = await redis_client.incr(rl_key)
+    if count == 1:
+        await redis_client.expire(rl_key, API_KEY_RATE_WINDOW_SECONDS)
+    if count > API_KEY_RATE_LIMIT:
+        ttl = await redis_client.ttl(rl_key)
+        return False, max(ttl, 1)
+    return True, 0

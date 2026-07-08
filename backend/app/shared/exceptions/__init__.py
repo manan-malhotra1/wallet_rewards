@@ -462,6 +462,17 @@ class OtpRateLimited(AppHTTPException):
         )
 
 
+class RateLimited(AppHTTPException):
+    """Per-key request quota exceeded on the external API (Epic 14)."""
+
+    def __init__(self, retry_after: int) -> None:
+        super().__init__(
+            429,
+            "rate_limited",
+            f"Rate limit exceeded. Try again in {retry_after} seconds.",
+        )
+
+
 class InvalidOtp(AppHTTPException):
     """OTP wrong, expired, already used, or no active OTP for this phone.
 

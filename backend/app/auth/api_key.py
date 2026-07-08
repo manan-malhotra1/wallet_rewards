@@ -24,9 +24,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.hmac import verify_signature
+from app.auth.rate_limit import consume_api_key_quota
 from app.auth.secret_box import decrypt_secret
 from app.database import get_async_session
-from app.shared.exceptions import ApiKeyInvalid
+from app.shared.exceptions import ApiKeyInvalid, RateLimited
 from app.shared.models import API_KEY_STATUS_ACTIVE, ApiKey
 
 
@@ -100,9 +101,15 @@ async def require_api_key(
     if not x_sasai_api_key or not x_sasai_signature:
         raise ApiKeyInvalid()
     raw_body = await request.body()
-    return await verify_api_key_request(
+    principal = await verify_api_key_request(
         session,
         key_id=x_sasai_api_key,
         signature_header=x_sasai_signature,
         raw_body=raw_body,
     )
+    # Per-key throttle (Epic 14 S5) — applied only after the key authenticates,
+    # so quota is charged to a real key, not to brute-force probes.
+    allowed, retry_after = await consume_api_key_quota(principal.key_id)
+    if not allowed:
+        raise RateLimited(retry_after)
+    return principal

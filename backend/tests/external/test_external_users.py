@@ -156,3 +156,29 @@ async def test_idempotent_replay_returns_same_user(
         select(func.count()).select_from(User).where(User.tenant_id == test_tenant.id)
     )
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_returns_429(
+    async_client: AsyncClient, api_key: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once a key exceeds its per-window quota, further requests get 429."""
+    import app.auth.rate_limit as rl
+
+    monkeypatch.setattr(rl, "API_KEY_RATE_LIMIT", 1)
+    raw1 = json.dumps(_body("rl1@example.com")).encode()
+    first = await async_client.post(
+        "/api/v1/external/users",
+        content=raw1,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw1),
+    )
+    assert first.status_code == 201, first.text
+
+    raw2 = json.dumps(_body("rl2@example.com")).encode()
+    second = await async_client.post(
+        "/api/v1/external/users",
+        content=raw2,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw2, idem="idem-key-2"),
+    )
+    assert second.status_code == 429
+    assert second.json()["error_code"] == "rate_limited"

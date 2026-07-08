@@ -1,0 +1,5696 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sasai Wallet \u2014 Partner API",
+    "version": "0.1.0",
+    "description": "Partner-facing external API. Authenticate with X-Sasai-Api-Key plus an HMAC X-Sasai-Signature over the raw request body."
+  },
+  "paths": {
+    "/api/v1/external/users": {
+      "post": {
+        "tags": [
+          "external"
+        ],
+        "summary": "Create a user",
+        "description": "Create a user in the API key's tenant, reusing the identity service.\n\nThe tenant comes from `principal` (the key), never the body. On a retry\nthat collides with an existing identifier, returns the existing user (200)\nrather than 409 \u2014 the identifier is the natural idempotency key.",
+        "operationId": "create_external_user_api_v1_external_users_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Sasai-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sasai-Api-Key"
+            }
+          },
+          {
+            "name": "X-Sasai-Signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2048
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sasai-Signature"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalCreateUserRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay \u2014 the user already existed; returned unchanged."
+          },
+          "401": {
+            "description": "Missing or invalid API key / signature."
+          },
+          "422": {
+            "description": "Validation error \u2014 e.g. no email/phone identifier, or a missing Idempotency-Key header."
+          },
+          "429": {
+            "description": "Per-key rate limit exceeded."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "merchant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Id"
+          },
+          "account_type": {
+            "type": "string",
+            "title": "Account Type"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "user_id",
+          "merchant_id",
+          "account_type",
+          "currency",
+          "status"
+        ],
+        "title": "AccountOut",
+        "description": "Account resource returned from the API."
+      },
+      "AddUserToSegmentRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "AddUserToSegmentRequest",
+        "description": "Admin payload to assign a user to a segment."
+      },
+      "AdjustSystemWalletRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Amount"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "account_id",
+          "amount",
+          "reason"
+        ],
+        "title": "AdjustSystemWalletRequest",
+        "description": "Admin fund/withdraw payload for a system wallet.\n\nPositive `amount` = fund (operator deposit). Negative = withdraw\n(operator cash-out). `reason` is required for the audit row."
+      },
+      "AdjustSystemWalletResponse": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id"
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "new_balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "New Balance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "account_id",
+          "amount",
+          "currency",
+          "new_balance"
+        ],
+        "title": "AdjustSystemWalletResponse",
+        "description": "Result of a system-wallet adjustment."
+      },
+      "AdminPinResetResponse": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "delivered_via": {
+            "type": "string",
+            "enum": [
+              "inline",
+              "sms"
+            ],
+            "title": "Delivered Via"
+          },
+          "new_pin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Pin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "delivered_via",
+          "new_pin"
+        ],
+        "title": "AdminPinResetResponse",
+        "description": "Result of an admin-triggered PIN reset.\n\n`delivered_via` is `\"sms\"` in production (notifications module \u2014\nPhase 2). Today it's `\"inline\"`, meaning the new PIN is included\nin the response so the operator can read it back to the user\nover a verified channel. NEVER expose this endpoint to non-admins."
+      },
+      "ApiKeyCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id"
+        ],
+        "title": "ApiKeyCreateRequest",
+        "description": "Admin payload to mint a new API key for a tenant."
+      },
+      "ApiKeyCreatedOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "key_id": {
+            "type": "string",
+            "title": "Key Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "secret": {
+            "type": "string",
+            "title": "Secret"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "key_id",
+          "label",
+          "status",
+          "last_used_at",
+          "created_at",
+          "secret"
+        ],
+        "title": "ApiKeyCreatedOut",
+        "description": "Returned ONCE at creation \u2014 carries the plaintext secret. It is never\nretrievable again; the operator must copy it now."
+      },
+      "ApiKeyOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "key_id": {
+            "type": "string",
+            "title": "Key Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "key_id",
+          "label",
+          "status",
+          "last_used_at",
+          "created_at"
+        ],
+        "title": "ApiKeyOut",
+        "description": "API-key resource as listed \u2014 never includes the secret."
+      },
+      "AssignRoleRequest": {
+        "properties": {
+          "role_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Role Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role_id"
+        ],
+        "title": "AssignRoleRequest",
+        "description": "Assign a role to a user."
+      },
+      "AuditEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id"
+          },
+          "actor_type": {
+            "type": "string",
+            "title": "Actor Type"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "before_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before State"
+          },
+          "after_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After State"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Address"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "actor_id",
+          "actor_type",
+          "action",
+          "entity_type",
+          "entity_id",
+          "before_state",
+          "after_state",
+          "ip_address",
+          "note",
+          "created_at"
+        ],
+        "title": "AuditEntry",
+        "description": "Read-side representation of an audit_log row."
+      },
+      "AuthStartRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 5,
+            "title": "Phone"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "phone"
+        ],
+        "title": "AuthStartRequest",
+        "description": "Request body for `POST /identity/auth/start`.\n\nMirrors the shape of `OtpSendRequest` (tenant_id + phone) so the mobile\nclient uses the same input fields across the auth flow. Phone is\nnormalised here so the lookup compares canonical forms."
+      },
+      "AuthStartResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "needs_otp",
+              "needs_pin"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "AuthStartResponse",
+        "description": "`POST /auth/start` response \u2014 drives the mobile auth branch.\n\n- `needs_otp` \u2192 no user exists for (tenant, phone); route through\n  OTP \u2192 set-PIN registration.\n- `needs_pin` \u2192 user already exists; route to PIN entry."
+      },
+      "BalanceResponse": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id"
+          },
+          "balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance"
+          },
+          "reserved_balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Reserved Balance"
+          },
+          "available_balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Available Balance"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "balance",
+          "reserved_balance",
+          "available_balance",
+          "currency"
+        ],
+        "title": "BalanceResponse",
+        "description": "Available balance for an account.\n\n`available = balance - reserved_balance`. Per Pay-PRD-0130, this is the\nfigure used for transaction eligibility checks (overdraft prevention)."
+      },
+      "BonusMultiplierCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "segment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Id"
+          },
+          "multiplier": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Multiplier"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "multiplier"
+        ],
+        "title": "BonusMultiplierCreateRequest",
+        "description": "Admin create payload \u2014 at least one of rule_id/segment_id may be NULL."
+      },
+      "BonusMultiplierOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "segment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Id"
+          },
+          "multiplier": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Multiplier"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "rule_id",
+          "segment_id",
+          "multiplier",
+          "valid_from",
+          "valid_until",
+          "created_at"
+        ],
+        "title": "BonusMultiplierOut",
+        "description": "BonusMultiplier resource."
+      },
+      "BudgetConsumptionOut": {
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/BudgetOut"
+          },
+          "consumed_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Consumed Amount"
+          },
+          "remaining_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Remaining Amount"
+          },
+          "percent_consumed": {
+            "type": "number",
+            "title": "Percent Consumed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "budget",
+          "consumed_amount",
+          "remaining_amount",
+          "percent_consumed"
+        ],
+        "title": "BudgetConsumptionOut",
+        "description": "Budget + computed consumption + percent used. Used by the admin UI."
+      },
+      "BudgetCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "scope_type": {
+            "type": "string",
+            "enum": [
+              "tenant",
+              "rule"
+            ],
+            "title": "Scope Type"
+          },
+          "scope_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Id"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency"
+          },
+          "window_type": {
+            "type": "string",
+            "enum": [
+              "rolling_24h",
+              "rolling_7d",
+              "calendar_month",
+              "lifetime"
+            ],
+            "title": "Window Type"
+          },
+          "cap_amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Cap Amount"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused"
+            ],
+            "title": "Status",
+            "default": "active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "scope_type",
+          "currency",
+          "window_type",
+          "cap_amount"
+        ],
+        "title": "BudgetCreateRequest",
+        "description": "Admin payload to create a reward budget.\n\n`scope_id` is required when `scope_type='rule'` (the rule_id); MUST\nbe null when `scope_type='tenant'`."
+      },
+      "BudgetOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "scope_type": {
+            "type": "string",
+            "title": "Scope Type"
+          },
+          "scope_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Id"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "window_type": {
+            "type": "string",
+            "title": "Window Type"
+          },
+          "cap_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cap Amount"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "scope_type",
+          "scope_id",
+          "currency",
+          "window_type",
+          "cap_amount",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BudgetOut",
+        "description": "Budget resource returned by the API."
+      },
+      "CatalogSummaryResponse": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "points": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PointsSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "tenant_id",
+          "points"
+        ],
+        "title": "CatalogSummaryResponse",
+        "description": "Top-level user catalog response."
+      },
+      "ChangeUserTypeRequest": {
+        "properties": {
+          "new_type": {
+            "type": "string",
+            "enum": [
+              "consumer",
+              "agent",
+              "super_agent",
+              "merchant",
+              "head_merchant"
+            ],
+            "title": "New Type"
+          },
+          "parent_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent User Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "new_type",
+          "reason"
+        ],
+        "title": "ChangeUserTypeRequest",
+        "description": "Body for PATCH /identity/users/{user_id}/type (Epic 12).\n\n`reason` is mandatory \u2014 it is recorded on the audit_log entry so type\nchanges are traceable (NFR-0250). `parent_user_id` follows the same\nDecision D4 compatibility rules as creation."
+      },
+      "ConfirmRedemptionRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id"
+        ],
+        "title": "ConfirmRedemptionRequest",
+        "description": "Admin payload simulating provider success callback (Pay-PRD-0690).\n\nPhase F.5 will replace this with HMAC-verified provider callbacks. For\nPhase F.4 the endpoint is admin-gated; tenant scopes the lookup."
+      },
+      "CreateAccountRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "merchant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Id"
+          },
+          "account_type": {
+            "type": "string",
+            "enum": [
+              "financial_wallet",
+              "points_account",
+              "system_points_issuance",
+              "provider_redemption_wallet"
+            ],
+            "title": "Account Type"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 2,
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "account_type",
+          "currency"
+        ],
+        "title": "CreateAccountRequest",
+        "description": "Test-only account creation payload.\n\nEither `user_id` or `merchant_id` is set for user/merchant accounts; both\nomitted for system-owned accounts (`system_points_issuance`,\n`provider_redemption_wallet`)."
+      },
+      "CreateRoleRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "name"
+        ],
+        "title": "CreateRoleRequest",
+        "description": "Admin payload for creating a role."
+      },
+      "CreateUserRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierIn"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Identifiers"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_type": {
+            "type": "string",
+            "enum": [
+              "consumer",
+              "agent",
+              "super_agent",
+              "merchant",
+              "head_merchant"
+            ],
+            "title": "User Type",
+            "default": "consumer"
+          },
+          "parent_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "identifiers"
+        ],
+        "title": "CreateUserRequest",
+        "description": "Test-only registration payload.\n\n`tenant_id` is accepted in the body because Phase A has no auth.\nProduction registration (Phase 2) will resolve tenant from the request's\nKeycloak realm context."
+      },
+      "ExternalCreateUserRequest": {
+        "properties": {
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierIn"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Identifiers"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_type": {
+            "type": "string",
+            "enum": [
+              "consumer",
+              "agent",
+              "super_agent",
+              "merchant",
+              "head_merchant"
+            ],
+            "title": "User Type",
+            "default": "consumer"
+          },
+          "parent_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifiers"
+        ],
+        "title": "ExternalCreateUserRequest",
+        "description": "Partner-facing create-user payload.\n\nUnlike the admin `CreateUserRequest`, there is no `tenant_id` in the body \u2014\nthe tenant is derived from the authenticating API key so a partner can only\never create users in its own tenant."
+      },
+      "FailRedemptionRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "reason"
+        ],
+        "title": "FailRedemptionRequest",
+        "description": "Admin payload simulating provider failure (Pay-PRD-0700).\n\nSame auth gate as ConfirmRedemptionRequest. Phase F.5 added the real\nHMAC-verified provider callback (`/callback`); these `/confirm` and\n`/fail` admin endpoints remain as operator overrides."
+      },
+      "FeaturedCampaignItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "reward_type": {
+            "type": "string",
+            "title": "Reward Type"
+          },
+          "reward_value": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Reward Value"
+          },
+          "campaign_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Start Date"
+          },
+          "campaign_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign End Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "reward_type",
+          "reward_value",
+          "campaign_start_date",
+          "campaign_end_date"
+        ],
+        "title": "FeaturedCampaignItem",
+        "description": "One featured campaign \u2014 surfaced fields mapped directly from `Rule`.\n\nBacks the mobile home featured-card slot. Only columns that exist on\nthe `Rule` model are surfaced; no derived or computed fields beyond\n`reward_type` + `reward_value` which together act as the \"reward hint\"\nthe card needs to render (e.g. \"100 points\")."
+      },
+      "FeaturedCampaignResponse": {
+        "properties": {
+          "campaign": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeaturedCampaignItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "campaign"
+        ],
+        "title": "FeaturedCampaignResponse",
+        "description": "Featured-campaign envelope.\n\nWrapping the item in `{campaign: ...}` lets the empty case stay a\nclean 200 with `{\"campaign\": null}` \u2014 the mobile home page collapses\nthe slot in that case rather than treating it as an error."
+      },
+      "FeeQuoteRequest": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Service"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency"
+          },
+          "account_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 30
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "service",
+          "amount",
+          "currency"
+        ],
+        "title": "FeeQuoteRequest",
+        "description": "User-facing request to preview the service charge for ANY service.\n\nService-agnostic by design: `service` is the service code, which is the\nsame value as `transaction_type` \u2014 the shared lookup key across\npricing_configs, rules, and transactions. Adding a new user service\n(cash-in, airtime, redemption, ...) needs no new endpoint; the client\njust passes that service's code here.\n\n`account_type` is optional: when omitted it is derived from `currency`\n(points instruments settle on the points account, everything else on the\nfinancial wallet), which covers every current service. Pass it explicitly\nonly to override that default."
+      },
+      "FeeQuoteResponse": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "fee": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fee"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "service",
+          "amount",
+          "fee",
+          "total",
+          "currency"
+        ],
+        "title": "FeeQuoteResponse",
+        "description": "Computed service charge for one service + amount (no ledger write).\n\nAttributes:\n    service: Echoes the requested service code.\n    amount: The amount the operation would move (echoes the request).\n    fee: Service charge the user would pay on top (Pay-PRD-0260). Zero\n        when no pricing config applies to the tuple.\n    total: `amount + fee` \u2014 what would leave the user's account.\n    currency: 3-letter ISO 4217 (uppercase)."
+      },
+      "FiringOut": {
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Rule Id"
+          },
+          "rule_name": {
+            "type": "string",
+            "title": "Rule Name"
+          },
+          "reward_type": {
+            "type": "string",
+            "title": "Reward Type"
+          },
+          "reward_value": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Reward Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_id",
+          "rule_name",
+          "reward_type",
+          "reward_value"
+        ],
+        "title": "FiringOut",
+        "description": "Summary of a single rule firing for the response."
+      },
+      "FundUserRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "identifier_type": {
+            "type": "string",
+            "enum": [
+              "phone",
+              "email",
+              "account_number",
+              "card_number"
+            ],
+            "title": "Identifier Type"
+          },
+          "identifier_value": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Identifier Value"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 2,
+            "title": "Currency"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "identifier_type",
+          "identifier_value",
+          "amount",
+          "currency",
+          "reason"
+        ],
+        "title": "FundUserRequest",
+        "description": "Admin top-up payload \u2014 credits a user wallet from `system_cash_inflow`.\n\nThe user is identified by a registered identifier (phone, email,\naccount or card) rather than a raw UUID \u2014 operators don't have\nUUIDs to hand at the counter."
+      },
+      "FundUserResponse": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "new_balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "New Balance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "user_id",
+          "amount",
+          "currency",
+          "new_balance"
+        ],
+        "title": "FundUserResponse",
+        "description": "Result of an admin top-up."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "IdentifierIn": {
+        "properties": {
+          "identifier_type": {
+            "type": "string",
+            "enum": [
+              "phone",
+              "email",
+              "account_number",
+              "card_number"
+            ],
+            "title": "Identifier Type"
+          },
+          "identifier_value": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Identifier Value"
+          },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier_type",
+          "identifier_value"
+        ],
+        "title": "IdentifierIn",
+        "description": "One identifier provided at registration time."
+      },
+      "IdentifierOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "identifier_type": {
+            "type": "string",
+            "title": "Identifier Type"
+          },
+          "identifier_value": {
+            "type": "string",
+            "title": "Identifier Value"
+          },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "identifier_type",
+          "identifier_value",
+          "verified"
+        ],
+        "title": "IdentifierOut",
+        "description": "An identifier echoed back on responses."
+      },
+      "IngestResponse": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "processed",
+              "duplicate",
+              "rejected",
+              "failed"
+            ],
+            "title": "Outcome"
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "rules_fired": {
+            "items": {
+              "$ref": "#/components/schemas/FiringOut"
+            },
+            "type": "array",
+            "title": "Rules Fired"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "event_id"
+        ],
+        "title": "IngestResponse",
+        "description": "Result of processing one external event."
+      },
+      "InitiateRedemptionRequest": {
+        "properties": {
+          "provider_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Provider Id"
+          },
+          "points_amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Points Amount"
+          },
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 12,
+                "minLength": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider_id",
+          "points_amount"
+        ],
+        "title": "InitiateRedemptionRequest",
+        "description": "Redemption initiation payload (Phase F.4 \u2014 auth-gated).\n\n`tenant_id` and `user_id` come from the session token via\n`get_current_user`. Body carries only the provider + amount.\n\n`pin` is optional \u2014 only required when a `step_up_policies` row\nfor (\"redemption\", \"PTS\") sets a threshold below `points_amount`."
+      },
+      "InstrumentCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 2,
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "title": "Code",
+            "description": "Uppercase identifier stored in every currency column on the platform. Cannot be changed after creation."
+          },
+          "symbol": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 1,
+            "title": "Symbol"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "account_type": {
+            "type": "string",
+            "enum": [
+              "financial_wallet",
+              "points_account"
+            ],
+            "title": "Account Type"
+          },
+          "assign_to_existing_users": {
+            "type": "boolean",
+            "title": "Assign To Existing Users",
+            "description": "When true, immediately create one account per existing user for this instrument so they can transact right away.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "code",
+          "symbol",
+          "display_name",
+          "account_type"
+        ],
+        "title": "InstrumentCreateRequest",
+        "description": "Create payload.\n\n`assign_to_existing_users` controls a one-shot backfill \u2014 when true\nthe service creates one account per existing user in the tenant\n(idempotent) so the new instrument is immediately spendable."
+      },
+      "InstrumentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "account_type": {
+            "type": "string",
+            "title": "Account Type"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "code",
+          "symbol",
+          "display_name",
+          "description",
+          "account_type",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InstrumentOut",
+        "description": "Instrument catalog row returned by the API."
+      },
+      "InstrumentUpdateRequest": {
+        "properties": {
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "disabled"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "InstrumentUpdateRequest",
+        "description": "Patch body \u2014 display_name / description / status / symbol."
+      },
+      "LimitConfigCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Transaction Type"
+          },
+          "account_type": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Account Type"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 2,
+            "title": "Currency"
+          },
+          "user_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "consumer",
+                  "agent",
+                  "super_agent",
+                  "merchant",
+                  "head_merchant"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Type"
+          },
+          "min_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount"
+          },
+          "max_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount"
+          },
+          "daily_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Count Cap"
+          },
+          "daily_value_cap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Value Cap"
+          },
+          "weekly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Count Cap"
+          },
+          "weekly_value_cap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Value Cap"
+          },
+          "monthly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Count Cap"
+          },
+          "monthly_value_cap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Value Cap"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "transaction_type",
+          "account_type",
+          "currency"
+        ],
+        "title": "LimitConfigCreateRequest",
+        "description": "Admin payload for creating a service-wise limit config.\n\nPer-transaction min/max plus rolling count + value caps over\ndaily/weekly/monthly windows. Every cap is optional but at least one\nMUST be set \u2014 a row with every field NULL is a no-op config that we\nreject at parse time."
+      },
+      "LimitConfigOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "title": "Transaction Type"
+          },
+          "account_type": {
+            "type": "string",
+            "title": "Account Type"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "user_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Type"
+          },
+          "min_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount"
+          },
+          "max_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount"
+          },
+          "daily_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Count Cap"
+          },
+          "daily_value_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Value Cap"
+          },
+          "weekly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Count Cap"
+          },
+          "weekly_value_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Value Cap"
+          },
+          "monthly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Count Cap"
+          },
+          "monthly_value_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Value Cap"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "transaction_type",
+          "account_type",
+          "currency",
+          "user_type",
+          "min_amount",
+          "max_amount",
+          "daily_count_cap",
+          "daily_value_cap",
+          "weekly_count_cap",
+          "weekly_value_cap",
+          "monthly_count_cap",
+          "monthly_value_cap",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LimitConfigOut",
+        "description": "Limit config resource returned by the API."
+      },
+      "LogoutResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "LogoutResponse",
+        "description": "`POST /auth/logout` ack."
+      },
+      "ManualReviewItem": {
+        "properties": {
+          "redemption_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Redemption Id"
+          },
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Provider Id"
+          },
+          "points_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Points Amount"
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "redemption_id",
+          "transaction_id",
+          "user_id",
+          "provider_id",
+          "points_amount",
+          "retry_count",
+          "last_checked_at",
+          "created_at"
+        ],
+        "title": "ManualReviewItem",
+        "description": "One row in the MANUAL_REVIEW queue."
+      },
+      "OtpSendRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 5,
+            "title": "Phone"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "phone"
+        ],
+        "title": "OtpSendRequest",
+        "description": "Request body for `POST /identity/otp/send`."
+      },
+      "OtpSendResponse": {
+        "properties": {
+          "delivered": {
+            "type": "boolean",
+            "title": "Delivered"
+          },
+          "otp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "delivered"
+        ],
+        "title": "OtpSendResponse",
+        "description": "`POST /otp/send` response.\n\n`otp` is populated ONLY when the server is configured with\n`OTP_DEV_RETURN=true` (local dev only) \u2014 see Settings. In production the\nfield is omitted and SMS gateway delivers the code."
+      },
+      "OtpVerifyRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 5,
+            "title": "Phone"
+          },
+          "otp": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 4,
+            "title": "Otp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "phone",
+          "otp"
+        ],
+        "title": "OtpVerifyRequest",
+        "description": "Request body for `POST /identity/otp/verify`."
+      },
+      "OtpVerifyResponse": {
+        "properties": {
+          "registration_token": {
+            "type": "string",
+            "title": "Registration Token"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "registration_token",
+          "expires_in"
+        ],
+        "title": "OtpVerifyResponse",
+        "description": "`POST /otp/verify` returns the short-lived registration token."
+      },
+      "P2PRequest": {
+        "properties": {
+          "recipient": {
+            "$ref": "#/components/schemas/RecipientIdentifier"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 12,
+                "minLength": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recipient",
+          "amount",
+          "currency"
+        ],
+        "title": "P2PRequest",
+        "description": "P2P transfer payload (Phase F.4 \u2014 auth-gated).\n\n`tenant_id` and `sender_user_id` are no longer accepted in the body \u2014\nboth come from the session token via `get_current_user`. Spoofing the\nsender is no longer possible.\n\n`pin` is optional: include it only when a `step_up_policies` row\nrequires re-verification for the requested amount/currency. The\nbackend rejects with `step_up_required` if missing when needed; the\nmobile client retries with the PIN attached."
+      },
+      "P2PResponse": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "fee": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fee"
+          },
+          "total_debited": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Debited"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "sender_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Sender User Id"
+          },
+          "recipient_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Recipient User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "earned_points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earned Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "status",
+          "amount",
+          "fee",
+          "total_debited",
+          "currency",
+          "sender_user_id",
+          "recipient_user_id",
+          "created_at"
+        ],
+        "title": "P2PResponse",
+        "description": "Result of a successful P2P transfer.\n\nAttributes:\n    transaction_id: The double-entry transaction id (Pay-PRD-0170).\n    status: Lifecycle state of the transaction (\"COMPLETED\" on the\n        happy path).\n    amount: The transferred amount the recipient receives (echoes the\n        request).\n    fee: Service charge debited from the sender on top of `amount`\n        (Pay-PRD-0260). Zero when no pricing config applies.\n    total_debited: What actually left the sender's wallet\n        (`amount + fee`) \u2014 saves the client doing the arithmetic.\n    currency: 3-letter ISO 4217 (uppercase) \u2014 echoes the request.\n    sender_user_id: The authenticated sender (resolved from the\n        session token, NOT the request body).\n    recipient_user_id: Resolved from the recipient identifier.\n    created_at: When the transaction landed (UTC).\n    earned_points: Total PTS issued by the rules engine for this\n        transfer, or `null` if no rules fired. Surfacing this avoids\n        a polling round-trip on the mobile success screen."
+      },
+      "PendingItem": {
+        "properties": {
+          "redemption_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Redemption Id"
+          },
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Provider Id"
+          },
+          "points_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Points Amount"
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "redemption_id",
+          "transaction_id",
+          "user_id",
+          "provider_id",
+          "points_amount",
+          "retry_count",
+          "last_checked_at",
+          "created_at"
+        ],
+        "title": "PendingItem",
+        "description": "One row in the PENDING redemption list (Pay-PRD-0750)."
+      },
+      "PinAuthRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 5,
+            "title": "Phone"
+          },
+          "pin": {
+            "type": "string",
+            "maxLength": 6,
+            "minLength": 4,
+            "title": "Pin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "phone",
+          "pin"
+        ],
+        "title": "PinAuthRequest",
+        "description": "Request body for `POST /identity/auth/pin`."
+      },
+      "PinSetRequest": {
+        "properties": {
+          "registration_token": {
+            "type": "string",
+            "minLength": 8,
+            "title": "Registration Token"
+          },
+          "pin": {
+            "type": "string",
+            "maxLength": 6,
+            "minLength": 4,
+            "title": "Pin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "registration_token",
+          "pin"
+        ],
+        "title": "PinSetRequest",
+        "description": "Request body for `POST /identity/pin/set`."
+      },
+      "PointsHistoryItem": {
+        "properties": {
+          "ledger_entry_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ledger Entry Id"
+          },
+          "direction": {
+            "type": "string",
+            "title": "Direction"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "transaction_type": {
+            "type": "string",
+            "title": "Transaction Type"
+          },
+          "rule_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Name"
+          },
+          "triggering_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggering Event Id"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ledger_entry_id",
+          "direction",
+          "amount",
+          "status",
+          "transaction_type",
+          "rule_name",
+          "triggering_event_id",
+          "occurred_at"
+        ],
+        "title": "PointsHistoryItem",
+        "description": "One row in the user's points ledger history (Pay-PRD-0980).\n\nA direct view of `ledger_entries` on the user's points_account, enriched\nwith the parent transaction's type and (for reward credits) the rule\nname that caused the entry."
+      },
+      "PointsSummary": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "available": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Available"
+          },
+          "reserved": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Reserved"
+          },
+          "lifetime_earned": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Lifetime Earned"
+          },
+          "lifetime_redeemed": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Lifetime Redeemed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "available",
+          "reserved",
+          "lifetime_earned",
+          "lifetime_redeemed"
+        ],
+        "title": "PointsSummary",
+        "description": "Snapshot of a user's points-account state (Pay-PRD-0970)."
+      },
+      "PricingConfigCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Transaction Type"
+          },
+          "account_type": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Account Type"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency"
+          },
+          "user_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "consumer",
+                  "agent",
+                  "super_agent",
+                  "merchant",
+                  "head_merchant"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Type"
+          },
+          "fixed_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Fixed Fee",
+            "default": "0"
+          },
+          "variable_fee_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Variable Fee Pct",
+            "default": "0"
+          },
+          "fee_cap": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Cap"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "transaction_type",
+          "account_type",
+          "currency"
+        ],
+        "title": "PricingConfigCreateRequest",
+        "description": "Admin payload to create a fee config.\n\n`fixed_fee + variable_fee_pct` can be zero on either side \u2014 but\n\"zero on both\" is the explicit \"no-fee\" config and is permitted\n(operators have to declare it; pricing is never silently skipped)."
+      },
+      "PricingConfigOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "title": "Transaction Type"
+          },
+          "account_type": {
+            "type": "string",
+            "title": "Account Type"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "user_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Type"
+          },
+          "fixed_fee": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fixed Fee"
+          },
+          "variable_fee_pct": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Variable Fee Pct"
+          },
+          "fee_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Cap"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "transaction_type",
+          "account_type",
+          "currency",
+          "user_type",
+          "fixed_fee",
+          "variable_fee_pct",
+          "fee_cap",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PricingConfigOut",
+        "description": "Pricing config resource returned by the API."
+      },
+      "ProviderOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "redemption_wallet_account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Redemption Wallet Account Id"
+          },
+          "status_check_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Check Url"
+          },
+          "max_retries": {
+            "type": "integer",
+            "title": "Max Retries"
+          },
+          "retry_interval_secs": {
+            "type": "integer",
+            "title": "Retry Interval Secs"
+          },
+          "escalate_after_mins": {
+            "type": "integer",
+            "title": "Escalate After Mins"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "redemption_wallet_account_id",
+          "status_check_url",
+          "max_retries",
+          "retry_interval_secs",
+          "escalate_after_mins",
+          "status"
+        ],
+        "title": "ProviderOut",
+        "description": "Provider resource returned by the API."
+      },
+      "ProviderRegistrationRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "status_check_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Check Url"
+          },
+          "max_retries": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Max Retries",
+            "default": 3
+          },
+          "retry_interval_secs": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Retry Interval Secs",
+            "default": 300
+          },
+          "escalate_after_mins": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Escalate After Mins",
+            "default": 60
+          },
+          "shared_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024,
+                "minLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shared Secret"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "name"
+        ],
+        "title": "ProviderRegistrationRequest",
+        "description": "Admin request to register a redemption provider (Phase F.4 \u2014 admin-gated).\n\nCreates the provider row AND the associated provider_redemption_wallet\naccount (in PTS) atomically. `tenant_id` is in the body because\nKeycloak admins span tenants (matches the reconciliation router pattern).\n\n`shared_secret` (Phase F.5) is the HMAC-SHA256 key the provider uses\nto sign callback payloads. NULL = provider does not callback; all\ntransitions must come through the admin operator override endpoints."
+      },
+      "RecipientIdentifier": {
+        "properties": {
+          "identifier_type": {
+            "type": "string",
+            "enum": [
+              "phone",
+              "email",
+              "account_number",
+              "card_number"
+            ],
+            "title": "Identifier Type"
+          },
+          "identifier_value": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Identifier Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier_type",
+          "identifier_value"
+        ],
+        "title": "RecipientIdentifier",
+        "description": "The way the sender refers to the recipient (Pay-PRD-0250)."
+      },
+      "RedemptionHistoryItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Provider Id"
+          },
+          "points_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Points Amount"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "provider_id",
+          "points_amount",
+          "status",
+          "external_reference",
+          "failure_reason",
+          "completed_at",
+          "created_at"
+        ],
+        "title": "RedemptionHistoryItem",
+        "description": "One row in the user's redemption history (Pay-PRD-1030)."
+      },
+      "RedemptionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Provider Id"
+          },
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id"
+          },
+          "points_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Points Amount"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "user_id",
+          "provider_id",
+          "transaction_id",
+          "points_amount",
+          "status",
+          "external_reference",
+          "failure_reason",
+          "completed_at",
+          "created_at"
+        ],
+        "title": "RedemptionOut",
+        "description": "Redemption resource returned by the API."
+      },
+      "ResolveRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "COMPLETED",
+              "REVERSED"
+            ],
+            "title": "Outcome"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "outcome",
+          "reason"
+        ],
+        "title": "ResolveRequest",
+        "description": "Request body for manual resolve.\n\n`outcome=COMPLETED` flips the ledger entries PENDING -> COMPLETED (the\noperator vouches the provider actually succeeded).\n`outcome=REVERSED` flips PENDING -> REVERSED, restoring the user's points\n(the operator vouches the provider failed or the redemption is unsafe)."
+      },
+      "ResolveResponse": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "identifier_type": {
+            "type": "string",
+            "title": "Identifier Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "tenant_id",
+          "identifier_type"
+        ],
+        "title": "ResolveResponse",
+        "description": "Result of identifier resolution (Pay-PRD-0060)."
+      },
+      "RoleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "description",
+          "status",
+          "created_at"
+        ],
+        "title": "RoleOut",
+        "description": "Role resource returned by the API."
+      },
+      "RolePermissionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "role_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Role Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "title": "Transaction Type"
+          },
+          "permitted": {
+            "type": "boolean",
+            "title": "Permitted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role_id",
+          "transaction_type",
+          "permitted"
+        ],
+        "title": "RolePermissionOut",
+        "description": "One permission row."
+      },
+      "RuleCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "rule_type": {
+            "type": "string",
+            "enum": [
+              "milestone",
+              "streak",
+              "first_time",
+              "value_based",
+              "composite",
+              "campaign",
+              "referral"
+            ],
+            "title": "Rule Type"
+          },
+          "transaction_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Type"
+          },
+          "count_threshold": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count Threshold"
+          },
+          "time_window": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "lifetime",
+                  "calendar_month",
+                  "rolling_7d"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Window"
+          },
+          "min_amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount"
+          },
+          "streak_units": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 2.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streak Units"
+          },
+          "streak_unit_window": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "week"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streak Unit Window"
+          },
+          "campaign_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Start Date"
+          },
+          "campaign_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign End Date"
+          },
+          "reward_type": {
+            "type": "string",
+            "enum": [
+              "points",
+              "cashback"
+            ],
+            "title": "Reward Type"
+          },
+          "reward_value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Reward Value"
+          },
+          "stop_after_n_triggers": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop After N Triggers"
+          },
+          "resets_after_trigger": {
+            "type": "boolean",
+            "title": "Resets After Trigger",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "name",
+          "rule_type",
+          "reward_type",
+          "reward_value"
+        ],
+        "title": "RuleCreateRequest",
+        "description": "Rule creation payload \u2014 Phase C (first_time, milestone) +\nEpic 10 expansion (value_based, campaign, streak).\n\nThe 3 remaining rule types (composite, referral) still persist OK\nbut their evaluator branches are deferred to follow-up commits."
+      },
+      "RuleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "rule_type": {
+            "type": "string",
+            "title": "Rule Type"
+          },
+          "transaction_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Type"
+          },
+          "count_threshold": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count Threshold"
+          },
+          "min_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount"
+          },
+          "streak_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streak Units"
+          },
+          "streak_unit_window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streak Unit Window"
+          },
+          "campaign_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Start Date"
+          },
+          "campaign_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign End Date"
+          },
+          "reward_type": {
+            "type": "string",
+            "title": "Reward Type"
+          },
+          "reward_value": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Reward Value"
+          },
+          "stop_after_n_triggers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop After N Triggers"
+          },
+          "resets_after_trigger": {
+            "type": "boolean",
+            "title": "Resets After Trigger"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "rule_type",
+          "transaction_type",
+          "count_threshold",
+          "reward_type",
+          "reward_value",
+          "stop_after_n_triggers",
+          "resets_after_trigger",
+          "status"
+        ],
+        "title": "RuleOut",
+        "description": "Rule resource returned by the API."
+      },
+      "RulePerformanceOut": {
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Rule Id"
+          },
+          "total_fires": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Fires"
+          },
+          "unique_users_rewarded": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Unique Users Rewarded"
+          },
+          "total_reward_value": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Reward Value"
+          },
+          "first_fired_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Fired At"
+          },
+          "last_fired_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fired At"
+          },
+          "budget_scope": {
+            "type": "string",
+            "enum": [
+              "none",
+              "tenant_only",
+              "rule_only",
+              "both"
+            ],
+            "title": "Budget Scope",
+            "default": "none"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_id",
+          "total_fires",
+          "unique_users_rewarded",
+          "total_reward_value",
+          "first_fired_at",
+          "last_fired_at"
+        ],
+        "title": "RulePerformanceOut",
+        "description": "Campaign performance metrics for a single rule.\n\nComputed live from `reward_events` \u2014 no separate counter table. The\nUI surfaces these on the campaigns list and detail drawer.\n\nFields:\n    rule_id: The rule (campaign) these metrics describe.\n    total_fires: Count of every issuance for this rule. A user who\n        triggered the rule 3 times contributes 3 to this number.\n    unique_users_rewarded: DISTINCT user_id count \u2014 how many separate\n        people have been rewarded at least once.\n    total_reward_value: SUM of every reward_value issued. Sum is\n        in the rule's reward_type unit (points or cashback currency).\n    first_fired_at / last_fired_at: Earliest and latest reward_event\n        timestamps. Null when the rule has never fired.\n    budget_scope: Which budgets (if any) gate this campaign.\n        `none` = uncapped; `tenant_only` = only the tenant-wide cap;\n        `rule_only` = only a per-rule cap; `both` = layered (both\n        must pass)."
+      },
+      "RuleUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "reward_value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward Value"
+          },
+          "stop_after_n_triggers": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop After N Triggers"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "title": "RuleUpdateRequest",
+        "description": "Partial update \u2014 admin can change description, reward_value, status.\n\nFields that change the rule's TYPE or its trigger conditions are\nintentionally not editable: an in-flight `user_rule_progress` row\nassumes those values are stable. Operators wanting to change them\nshould deactivate this rule and create a new one."
+      },
+      "SegmentCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "name"
+        ],
+        "title": "SegmentCreateRequest",
+        "description": "Admin create payload."
+      },
+      "SegmentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "description",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SegmentOut",
+        "description": "Segment resource returned by the API."
+      },
+      "ServiceCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 2,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Code",
+            "description": "Lowercase identifier used in transaction_type fields across the platform. Cannot be changed after creation."
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "code",
+          "display_name"
+        ],
+        "title": "ServiceCreateRequest",
+        "description": "Create payload \u2014 code locked at creation."
+      },
+      "ServiceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "code",
+          "display_name",
+          "description",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ServiceOut",
+        "description": "Service catalog row returned by the API."
+      },
+      "ServiceUpdateRequest": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "disabled"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ServiceUpdateRequest",
+        "description": "Patch body for catalog admin edits."
+      },
+      "SessionTokenResponse": {
+        "properties": {
+          "session_token": {
+            "type": "string",
+            "title": "Session Token"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_token",
+          "expires_in"
+        ],
+        "title": "SessionTokenResponse",
+        "description": "`POST /auth/pin` returns the opaque bearer token."
+      },
+      "SetPermissionRequest": {
+        "properties": {
+          "transaction_type": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Transaction Type"
+          },
+          "permitted": {
+            "type": "boolean",
+            "title": "Permitted",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_type"
+        ],
+        "title": "SetPermissionRequest",
+        "description": "Create/update a single (role, transaction_type) permission."
+      },
+      "SourceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "source_key": {
+            "type": "string",
+            "title": "Source Key"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "source_key",
+          "status"
+        ],
+        "title": "SourceOut",
+        "description": "A registered source returned by the API."
+      },
+      "SourceRegistrationRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "source_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Source Key"
+          },
+          "field_mapping": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Field Mapping"
+          },
+          "shared_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shared Secret"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "name",
+          "source_key"
+        ],
+        "title": "SourceRegistrationRequest",
+        "description": "Test-only payload to register a new external event source."
+      },
+      "StepUpPolicyCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "enum": [
+              "p2p",
+              "redemption"
+            ],
+            "title": "Transaction Type"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency"
+          },
+          "threshold_amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Threshold Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "transaction_type",
+          "currency",
+          "threshold_amount"
+        ],
+        "title": "StepUpPolicyCreateRequest",
+        "description": "Admin create payload for a new step-up policy."
+      },
+      "StepUpPolicyOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "title": "Transaction Type"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "threshold_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Threshold Amount"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "transaction_type",
+          "currency",
+          "threshold_amount",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "StepUpPolicyOut",
+        "description": "Step-up policy resource returned by the API."
+      },
+      "SweepOutcome": {
+        "properties": {
+          "scanned_count": {
+            "type": "integer",
+            "title": "Scanned Count"
+          },
+          "bumped_count": {
+            "type": "integer",
+            "title": "Bumped Count"
+          },
+          "escalated_count": {
+            "type": "integer",
+            "title": "Escalated Count"
+          },
+          "audit_entry_count": {
+            "type": "integer",
+            "title": "Audit Entry Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scanned_count",
+          "bumped_count",
+          "escalated_count",
+          "audit_entry_count"
+        ],
+        "title": "SweepOutcome",
+        "description": "Result of a sweep run."
+      },
+      "SweepRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "threshold_minutes": {
+            "type": "integer",
+            "maximum": 10080.0,
+            "minimum": 0.0,
+            "title": "Threshold Minutes",
+            "default": 5
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id"
+        ],
+        "title": "SweepRequest",
+        "description": "Request body for `POST /reconciliation/sweep`.\n\n`threshold_minutes` is how long a redemption must have been PENDING before\nit's considered stale and eligible for retry. Default 5 \u2014 short enough for\ntest demos, long enough that healthy redemptions aren't disturbed."
+      },
+      "SystemWalletOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "account_type": {
+            "type": "string",
+            "title": "Account Type"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "account_type",
+          "currency",
+          "status",
+          "balance",
+          "created_at"
+        ],
+        "title": "SystemWalletOut",
+        "description": "A system-owned account (user_id IS NULL) with its derived balance."
+      },
+      "SystemWalletTransactionOut": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "title": "Transaction Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "entry_type": {
+            "type": "string",
+            "title": "Entry Type"
+          },
+          "entry_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Entry Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "transaction_type",
+          "status",
+          "entry_type",
+          "entry_amount",
+          "currency",
+          "created_at"
+        ],
+        "title": "SystemWalletTransactionOut",
+        "description": "A transaction touching a system wallet, surfaced for the drill-down.\n\n`entry_amount` is the amount on the leg that touched this account.\n`entry_type` says whether the system account was DEBITed or CREDITed\nin this transaction (i.e. did its balance go up or down)."
+      },
+      "TenantOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "business_type": {
+            "type": "string",
+            "enum": [
+              "wallet",
+              "rewards",
+              "both"
+            ],
+            "title": "Business Type"
+          },
+          "keycloak_realm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keycloak Realm"
+          },
+          "base_currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "business_type",
+          "keycloak_realm",
+          "base_currency",
+          "status",
+          "created_at"
+        ],
+        "title": "TenantOut",
+        "description": "Tenant resource returned by the API."
+      },
+      "TenantUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "New display name. Must remain unique across all tenants."
+          },
+          "business_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "wallet",
+                  "rewards",
+                  "both"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Type",
+            "description": "Which services are switched on for this tenant."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TenantUpdateRequest",
+        "description": "Patch body for tenant identity-card edits.\n\nBoth fields are optional \u2014 the UI may send just `name` or just\n`business_type` depending on which control the operator touched. An\nempty body is rejected by the service layer (no-op call indicates a\nclient bug, not a valid request)."
+      },
+      "UpdateRoleRequest": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "title": "UpdateRoleRequest",
+        "description": "PATCH body \u2014 partial update."
+      },
+      "UserAccountOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "account_type": {
+            "type": "string",
+            "title": "Account Type"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "balance": {
+            "type": "string",
+            "title": "Balance"
+          },
+          "reserved_balance": {
+            "type": "string",
+            "title": "Reserved Balance"
+          },
+          "available_balance": {
+            "type": "string",
+            "title": "Available Balance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "account_type",
+          "currency",
+          "status",
+          "balance",
+          "reserved_balance",
+          "available_balance"
+        ],
+        "title": "UserAccountOut",
+        "description": "Account summary surfaced on the user-detail response.\n\nIncludes the derived balance + reserved so the admin UI can render a\nfull account row without an extra round trip per account."
+      },
+      "UserDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "user_type": {
+            "type": "string",
+            "title": "User Type"
+          },
+          "parent_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierOut"
+            },
+            "type": "array",
+            "title": "Identifiers"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/UserAccountOut"
+            },
+            "type": "array",
+            "title": "Accounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "status",
+          "user_type",
+          "parent_user_id",
+          "created_at",
+          "identifiers",
+          "profile",
+          "accounts"
+        ],
+        "title": "UserDetailOut",
+        "description": "Full user-detail response \u2014 admin-only.\n\nSurfaces the data the admin UI needs to render the user drawer:\nidentifiers, profile, accounts with balances. Transactions /\nredemptions arrive via the audit log + reconciliation surfaces."
+      },
+      "UserOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "user_type": {
+            "type": "string",
+            "title": "User Type"
+          },
+          "parent_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent User Id"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierOut"
+            },
+            "type": "array",
+            "title": "Identifiers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "status",
+          "user_type",
+          "identifiers"
+        ],
+        "title": "UserOut",
+        "description": "User resource returned from the API."
+      },
+      "UserProfileIn": {
+        "properties": {
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          }
+        },
+        "type": "object",
+        "title": "UserProfileIn",
+        "description": "Optional profile data provided at registration."
+      },
+      "UserProfileOut": {
+        "properties": {
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          }
+        },
+        "type": "object",
+        "title": "UserProfileOut",
+        "description": "User profile fields (KYC). All optional."
+      },
+      "UserRoleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "role_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Role Id"
+          },
+          "assigned_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Assigned At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "role_id",
+          "assigned_at"
+        ],
+        "title": "UserRoleOut",
+        "description": "One user-role assignment."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WalletLimitConfigCreateRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 2,
+            "title": "Currency"
+          },
+          "user_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "consumer",
+                  "agent",
+                  "super_agent",
+                  "merchant",
+                  "head_merchant"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Type"
+          },
+          "max_balance": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Balance"
+          },
+          "send_daily_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Daily Count Cap"
+          },
+          "send_daily_value_cap": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Daily Value Cap"
+          },
+          "send_weekly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Weekly Count Cap"
+          },
+          "send_weekly_value_cap": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Weekly Value Cap"
+          },
+          "send_monthly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Monthly Count Cap"
+          },
+          "send_monthly_value_cap": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Monthly Value Cap"
+          },
+          "receive_daily_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Daily Count Cap"
+          },
+          "receive_daily_value_cap": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Daily Value Cap"
+          },
+          "receive_weekly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Weekly Count Cap"
+          },
+          "receive_weekly_value_cap": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Weekly Value Cap"
+          },
+          "receive_monthly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Monthly Count Cap"
+          },
+          "receive_monthly_value_cap": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Monthly Value Cap"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "currency"
+        ],
+        "title": "WalletLimitConfigCreateRequest",
+        "description": "Admin payload for a per-(tenant, currency) financial-wallet limit config.\n\nA max-balance ceiling plus cumulative send + receive count/value caps over\nrolling daily/weekly/monthly windows. Every cap is optional but at least\none MUST be set. Count caps and max_balance must be positive; value caps\nnon-negative."
+      },
+      "WalletLimitConfigOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "user_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Type"
+          },
+          "max_balance": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Balance"
+          },
+          "send_daily_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Daily Count Cap"
+          },
+          "send_daily_value_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Daily Value Cap"
+          },
+          "send_weekly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Weekly Count Cap"
+          },
+          "send_weekly_value_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Weekly Value Cap"
+          },
+          "send_monthly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Monthly Count Cap"
+          },
+          "send_monthly_value_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Monthly Value Cap"
+          },
+          "receive_daily_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Daily Count Cap"
+          },
+          "receive_daily_value_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Daily Value Cap"
+          },
+          "receive_weekly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Weekly Count Cap"
+          },
+          "receive_weekly_value_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Weekly Value Cap"
+          },
+          "receive_monthly_count_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Monthly Count Cap"
+          },
+          "receive_monthly_value_cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receive Monthly Value Cap"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "currency",
+          "user_type",
+          "max_balance",
+          "send_daily_count_cap",
+          "send_daily_value_cap",
+          "send_weekly_count_cap",
+          "send_weekly_value_cap",
+          "send_monthly_count_cap",
+          "send_monthly_value_cap",
+          "receive_daily_count_cap",
+          "receive_daily_value_cap",
+          "receive_weekly_count_cap",
+          "receive_weekly_value_cap",
+          "receive_monthly_count_cap",
+          "receive_monthly_value_cap",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WalletLimitConfigOut",
+        "description": "Wallet limit config resource returned by the API."
+      },
+      "WalletOut": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/UserAccountOut"
+            },
+            "type": "array",
+            "title": "Accounts"
+          },
+          "recent_transactions": {
+            "items": {
+              "$ref": "#/components/schemas/WalletTransactionOut"
+            },
+            "type": "array",
+            "title": "Recent Transactions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "tenant_id",
+          "first_name",
+          "accounts",
+          "recent_transactions"
+        ],
+        "title": "WalletOut",
+        "description": "Authenticated user's own wallet \u2014 accounts + recent transactions.\n\nUsed by the mobile-simulator and the eventual real mobile app. Pure\nuser-facing: NEVER returns admin-only fields (kyc state, audit ids,\netc). Tenant is implicit \u2014 taken from the session token."
+      },
+      "WalletTransactionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "transaction_type": {
+            "type": "string",
+            "title": "Transaction Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "fee_amount": {
+            "type": "string",
+            "title": "Fee Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "in",
+              "out"
+            ],
+            "title": "Direction"
+          },
+          "counterparty_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "transaction_type",
+          "status",
+          "amount",
+          "fee_amount",
+          "currency",
+          "created_at",
+          "direction"
+        ],
+        "title": "WalletTransactionOut",
+        "description": "One transaction row surfaced on /me/wallet \u2014 same data the mobile\napp shows in its recent-activity feed.\n\n`direction` is derived from the ledger entry on one of the caller's\nown accounts: CREDIT \u2192 \"in\" (money/points arrived), DEBIT \u2192 \"out\".\n`counterparty_name` is populated for P2P transfers \u2014 the other\nuser's profile first_name \u2014 and null otherwise (top-ups, reward\nissuance, redemptions where the other side is a system/provider\naccount with no owning user)."
+      },
+      "WithdrawFromUserRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "identifier_type": {
+            "type": "string",
+            "enum": [
+              "phone",
+              "email",
+              "account_number",
+              "card_number"
+            ],
+            "title": "Identifier Type"
+          },
+          "identifier_value": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Identifier Value"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 2,
+            "title": "Currency"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "identifier_type",
+          "identifier_value",
+          "amount",
+          "currency",
+          "reason"
+        ],
+        "title": "WithdrawFromUserRequest",
+        "description": "Admin withdraw payload \u2014 debits a user wallet and credits operator_adjustment.\n\nIdentified the same way as fund \u2014 by registered identifier, not UUID.\nAdmin operations are PIN-less and fee-less; operator authentication\nis the Keycloak session."
+      },
+      "WithdrawFromUserResponse": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "new_balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "New Balance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "user_id",
+          "amount",
+          "currency",
+          "new_balance"
+        ],
+        "title": "WithdrawFromUserResponse",
+        "description": "Result of an admin withdraw."
+      }
+    }
+  }
+}

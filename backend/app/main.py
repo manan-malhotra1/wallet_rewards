@@ -32,6 +32,29 @@ from app.modules.tenants import router as tenants_router
 from app.modules.treasury import router as treasury_router
 from app.shared.exceptions import AppHTTPException
 
+# Tag descriptions surfaced in /docs and the exported partner spec (Epic 14 S6).
+_OPENAPI_TAGS = [
+    {
+        "name": "external",
+        "description": (
+            "Partner-facing API. Authenticate with `X-Sasai-Api-Key` (your "
+            "public key id) plus `X-Sasai-Signature` — an HMAC-SHA256 over "
+            "`{unix_ts}.{raw_body}` using your key secret, formatted "
+            "`t=<unix_ts>,v1=<hex>` (300-second replay window). The tenant is "
+            "derived from the key, never the body. Writes require an "
+            "`Idempotency-Key` header; a retry that collides with an existing "
+            "identifier returns the existing user (HTTP 200)."
+        ),
+    },
+    {
+        "name": "api-keys",
+        "description": (
+            "Admin management of external-API keys (platform-admin). The key "
+            "secret is returned once at creation and only stored encrypted."
+        ),
+    },
+]
+
 app = FastAPI(
     title="Sasai Wallet & Rewards Platform",
     version="0.1.0",
@@ -40,6 +63,7 @@ app = FastAPI(
         "surface. Phase A endpoints are TEST-ONLY (no auth); Phase 2 adds "
         "Keycloak gating."
     ),
+    openapi_tags=_OPENAPI_TAGS,
 )
 
 

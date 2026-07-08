@@ -26,7 +26,21 @@ from app.shared.models import User
 router = APIRouter(prefix="/api/v1/external", tags=["external"])
 
 
-@router.post("/users", response_model=UserOut, status_code=201)
+@router.post(
+    "/users",
+    response_model=UserOut,
+    status_code=201,
+    summary="Create a user",
+    responses={
+        200: {"description": "Idempotent replay — the user already existed; returned unchanged."},
+        401: {"description": "Missing or invalid API key / signature."},
+        422: {
+            "description": "Validation error — e.g. no email/phone identifier, "
+            "or a missing Idempotency-Key header."
+        },
+        429: {"description": "Per-key rate limit exceeded."},
+    },
+)
 async def create_external_user(
     payload: ExternalCreateUserRequest,
     response: Response,

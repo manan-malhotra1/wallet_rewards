@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { createPricingConfigAction } from "@/app/(authenticated)/pricing/_actions";
+import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,12 +25,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { Instrument, Service } from "@/lib/api-types";
+import type { Instrument, Service, UserType } from "@/lib/api-types";
 
 interface FormState {
   transaction_type: string;
   account_type: string;
   currency: string;
+  user_type: string;
   fixed_fee: string;
   variable_fee_pct: string;
   fee_cap: string;
@@ -43,6 +45,7 @@ function initialForm(services: Service[], instruments: Instrument[]): FormState 
       instruments.find((i) => i.account_type === "financial_wallet")?.code ??
       instruments[0]?.code ??
       "",
+    user_type: "all",
     fixed_fee: "0",
     variable_fee_pct: "0",
     fee_cap: "",
@@ -86,6 +89,7 @@ export function CreatePricingDialog({
       transaction_type: form.transaction_type,
       account_type: form.account_type,
       currency: form.currency.toUpperCase(),
+      user_type: form.user_type === "all" ? null : (form.user_type as UserType),
       fixed_fee: form.fixed_fee || "0",
       variable_fee_pct: form.variable_fee_pct || "0",
       fee_cap: form.fee_cap || undefined,
@@ -177,6 +181,27 @@ export function CreatePricingDialog({
                   {instruments.map((i) => (
                     <SelectItem key={i.id} value={i.code}>
                       {i.code} · {i.symbol}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="utype">User type</Label>
+              <Select
+                value={form.user_type}
+                onValueChange={(v) => update("user_type", v)}
+              >
+                <SelectTrigger id="utype">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types (default)</SelectItem>
+                  {USER_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -8,6 +8,7 @@ import { Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { deleteLimitConfigAction } from "@/app/(authenticated)/limits/_actions";
+import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +60,7 @@ export function LimitsTable({
             <TableHeaderCell>Txn type</TableHeaderCell>
             <TableHeaderCell>Account</TableHeaderCell>
             <TableHeaderCell>Currency</TableHeaderCell>
+            <TableHeaderCell>User type</TableHeaderCell>
             <TableHeaderCell className="text-right">Min</TableHeaderCell>
             <TableHeaderCell className="text-right">Max</TableHeaderCell>
             <TableHeaderCell className="text-right">Daily count</TableHeaderCell>
@@ -80,6 +82,13 @@ export function LimitsTable({
                 {ACCOUNT_TYPE_LABEL[cfg.account_type] ?? cfg.account_type}
               </TableCell>
               <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
+              <TableCell>
+                {cfg.user_type ? (
+                  <UserTypeBadge type={cfg.user_type} />
+                ) : (
+                  <span className="text-xs text-muted-foreground">All types</span>
+                )}
+              </TableCell>
               <TableCell className="text-right font-mono">
                 {cfg.min_amount ?? "—"}
               </TableCell>

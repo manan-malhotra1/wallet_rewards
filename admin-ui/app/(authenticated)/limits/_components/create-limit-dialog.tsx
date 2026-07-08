@@ -9,6 +9,7 @@
 import * as React from "react";
 
 import { createLimitConfigAction } from "@/app/(authenticated)/limits/_actions";
+import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,12 +31,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { Instrument, Service } from "@/lib/api-types";
+import type { Instrument, Service, UserType } from "@/lib/api-types";
 
 interface FormState {
   transaction_type: string;
   account_type: string;
   currency: string;
+  user_type: string;
   min_amount: string;
   max_amount: string;
   daily_count_cap: string;
@@ -54,6 +56,7 @@ function initialForm(services: Service[], instruments: Instrument[]): FormState 
       instruments.find((i) => i.account_type === "financial_wallet")?.code ??
       instruments[0]?.code ??
       "",
+    user_type: "all",
     min_amount: "",
     max_amount: "",
     daily_count_cap: "",
@@ -118,6 +121,7 @@ export function CreateLimitDialog({
       transaction_type: form.transaction_type,
       account_type: form.account_type,
       currency: form.currency.toUpperCase(),
+      user_type: form.user_type === "all" ? null : (form.user_type as UserType),
       min_amount: str(form.min_amount),
       max_amount: str(form.max_amount),
       daily_count_cap: num(form.daily_count_cap),
@@ -205,6 +209,27 @@ export function CreateLimitDialog({
                   {instruments.map((i) => (
                     <SelectItem key={i.id} value={i.code}>
                       {i.code} · {i.symbol}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="utype">User type</Label>
+              <Select
+                value={form.user_type}
+                onValueChange={(v) => update("user_type", v)}
+              >
+                <SelectTrigger id="utype">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types (default)</SelectItem>
+                  {USER_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

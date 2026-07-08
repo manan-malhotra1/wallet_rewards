@@ -333,6 +333,7 @@ export interface LimitConfig {
   transaction_type: string;
   account_type: string;
   currency: string;
+  user_type: UserType | null;
   min_amount: string | null;
   max_amount: string | null;
   daily_count_cap: number | null;
@@ -354,6 +355,7 @@ export interface WalletLimitConfig {
   id: string;
   tenant_id: string;
   currency: string;
+  user_type: UserType | null;
   max_balance: string | null;
   send_daily_count_cap: number | null;
   send_daily_value_cap: string | null;
@@ -377,6 +379,7 @@ export interface PricingConfig {
   transaction_type: string;
   account_type: string;
   currency: string;
+  user_type: UserType | null;
   fixed_fee: string;
   variable_fee_pct: string;
   fee_cap: string | null;

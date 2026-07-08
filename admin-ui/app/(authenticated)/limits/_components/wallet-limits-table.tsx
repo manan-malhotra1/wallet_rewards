@@ -9,6 +9,7 @@ import { Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { deleteWalletLimitConfigAction } from "@/app/(authenticated)/limits/_actions";
+import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -71,6 +72,7 @@ export function WalletLimitsTable({
         <TableHead>
           <TableRow>
             <TableHeaderCell>Currency</TableHeaderCell>
+            <TableHeaderCell>User type</TableHeaderCell>
             <TableHeaderCell className="text-right">Max balance</TableHeaderCell>
             <TableHeaderCell>Send caps (count / value)</TableHeaderCell>
             <TableHeaderCell>Receive caps (count / value)</TableHeaderCell>
@@ -81,6 +83,13 @@ export function WalletLimitsTable({
           {configs.map((cfg) => (
             <TableRow key={cfg.id}>
               <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
+              <TableCell>
+                {cfg.user_type ? (
+                  <UserTypeBadge type={cfg.user_type} />
+                ) : (
+                  <span className="text-xs text-muted-foreground">All types</span>
+                )}
+              </TableCell>
               <TableCell className="text-right font-mono">
                 {cfg.max_balance ?? "—"}
               </TableCell>

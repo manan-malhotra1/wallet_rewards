@@ -371,6 +371,7 @@ export interface CreateLimitConfigPayload {
   transaction_type: string;
   account_type: string;
   currency: string;
+  user_type?: UserType | null;
   min_amount?: string;
   max_amount?: string;
   daily_count_cap?: number;
@@ -395,6 +396,7 @@ export const deleteLimitConfig = (config_id: string, tenant_id: string) =>
 export interface CreateWalletLimitConfigPayload {
   tenant_id: string;
   currency: string;
+  user_type?: UserType | null;
   max_balance?: string;
   send_daily_count_cap?: number;
   send_daily_value_cap?: string;
@@ -428,6 +430,7 @@ export interface CreatePricingConfigPayload {
   transaction_type: string;
   account_type: string;
   currency: string;
+  user_type?: UserType | null;
   fixed_fee?: string;
   variable_fee_pct?: string;
   fee_cap?: string;

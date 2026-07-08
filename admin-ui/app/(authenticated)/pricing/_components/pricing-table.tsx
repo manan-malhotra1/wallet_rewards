@@ -4,6 +4,7 @@ import { Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { deletePricingConfigAction } from "@/app/(authenticated)/pricing/_actions";
+import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,6 +57,7 @@ export function PricingTable({
             <TableHeaderCell>Txn type</TableHeaderCell>
             <TableHeaderCell>Account</TableHeaderCell>
             <TableHeaderCell>Currency</TableHeaderCell>
+            <TableHeaderCell>User type</TableHeaderCell>
             <TableHeaderCell className="text-right">Fixed</TableHeaderCell>
             <TableHeaderCell className="text-right">Variable %</TableHeaderCell>
             <TableHeaderCell className="text-right">Fee cap</TableHeaderCell>
@@ -72,6 +74,13 @@ export function PricingTable({
                 {ACCOUNT_TYPE_LABEL[cfg.account_type] ?? cfg.account_type}
               </TableCell>
               <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
+              <TableCell>
+                {cfg.user_type ? (
+                  <UserTypeBadge type={cfg.user_type} />
+                ) : (
+                  <span className="text-xs text-muted-foreground">All types</span>
+                )}
+              </TableCell>
               <TableCell className="text-right font-mono">
                 {formatAmount(cfg.fixed_fee, { fractionDigits: 2 })}
               </TableCell>

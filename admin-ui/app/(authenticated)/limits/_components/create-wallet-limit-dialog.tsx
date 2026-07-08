@@ -10,6 +10,7 @@
 import * as React from "react";
 
 import { createWalletLimitConfigAction } from "@/app/(authenticated)/limits/_actions";
+import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,10 +33,13 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import type { CreateWalletLimitConfigPayload } from "@/lib/api-endpoints";
-import type { Instrument } from "@/lib/api-types";
+import type { Instrument, UserType } from "@/lib/api-types";
 
 // [payload key, label, isCount] — drives both the inputs and the payload build.
-type CapKey = keyof Omit<CreateWalletLimitConfigPayload, "tenant_id" | "currency">;
+type CapKey = keyof Omit<
+  CreateWalletLimitConfigPayload,
+  "tenant_id" | "currency" | "user_type"
+>;
 const CAP_FIELDS: [CapKey, string, boolean][] = [
   ["send_daily_count_cap", "Send · daily count", true],
   ["send_daily_value_cap", "Send · daily value", false],
@@ -51,12 +55,13 @@ const CAP_FIELDS: [CapKey, string, boolean][] = [
   ["receive_monthly_value_cap", "Receive · monthly value", false],
 ];
 
-type FormState = Record<"currency" | "max_balance" | CapKey, string>;
+type FormState = Record<"currency" | "max_balance" | "user_type" | CapKey, string>;
 
 function initialForm(instruments: Instrument[]): FormState {
   const base = {
     currency: instruments[0]?.code ?? "",
     max_balance: "",
+    user_type: "all",
   } as FormState;
   for (const [key] of CAP_FIELDS) base[key] = "";
   return base;
@@ -98,6 +103,7 @@ export function CreateWalletLimitDialog({
     const payload: CreateWalletLimitConfigPayload = {
       tenant_id: tenantId,
       currency: form.currency.toUpperCase(),
+      user_type: form.user_type === "all" ? null : (form.user_type as UserType),
       max_balance: form.max_balance.trim() || undefined,
     };
     for (const [key, , isCount] of CAP_FIELDS) {
@@ -157,6 +163,27 @@ export function CreateWalletLimitDialog({
                 onChange={(e) => update("max_balance", e.target.value)}
                 placeholder="50000"
               />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="wlc-utype">User type</Label>
+              <Select
+                value={form.user_type}
+                onValueChange={(v) => update("user_type", v)}
+              >
+                <SelectTrigger id="wlc-utype">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types (default)</SelectItem>
+                  {USER_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

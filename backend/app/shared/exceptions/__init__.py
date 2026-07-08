@@ -658,6 +658,13 @@ class ApiKeyInvalid(AppHTTPException):
         super().__init__(401, "api_key_invalid", "API key is invalid or revoked.")
 
 
+class ApiKeyNotFound(AppHTTPException):
+    """No API key with that id in this tenant (e.g. revoke target missing)."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "api_key_not_found", "API key not found.")
+
+
 # --- Money controls (Phase G) ----------------------------------------------
 
 

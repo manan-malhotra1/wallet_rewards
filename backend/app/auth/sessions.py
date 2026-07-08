@@ -2,13 +2,19 @@
 
 Two token shapes use the same store, different prefixes:
 
-  `session:<token>`      — user session, TTL = SESSION_TTL_SECONDS (15min)
-  `regtoken:<token>`     — short-lived proof of phone-ownership after OTP verify
-                           used as the auth for /pin/set; TTL = 10min
+  `session:<token>`      — user session; TTL = settings.SESSION_TTL_SECONDS
+                           sliding (refreshed on every authenticated read)
+  `regtoken:<token>`     — short-lived proof of phone-ownership after OTP
+                           verify, used as the auth for /pin/set; TTL =
+                           settings.REGTOKEN_TTL_SECONDS, single-use
 
-The value is a JSON dict — small, opaque to the client. Never logged. Per
-NFR-0170: tokens NEVER appear in DB rows, audit log, or application logs.
+Both TTLs live in `app.config.Settings` so they can be tuned per
+environment (NFR-0180: mobile ≤ 15 min, USSD ≤ 5 min in production;
+local dev wants headroom for setup + load testing). The value is a JSON
+dict — small, opaque to the client. Never logged. Per NFR-0170: tokens
+NEVER appear in DB rows, audit log, or application logs.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,20 +22,14 @@ from typing import Any
 from uuid import UUID
 
 from app.auth.hashing import generate_token
+from app.config import settings
 from app.redis_client import redis_client
 
 SESSION_PREFIX = "session:"
 REGTOKEN_PREFIX = "regtoken:"
 
-# 15 minutes inactivity per NFR-0180 (mobile app). USSD will be 5 min in a
-# later phase when the USSD channel ships.
-SESSION_TTL_SECONDS = 15 * 60
-REGTOKEN_TTL_SECONDS = 10 * 60
 
-
-async def create_session(
-    user_id: UUID, tenant_id: UUID, channel: str = "mobile"
-) -> str:
+async def create_session(user_id: UUID, tenant_id: UUID, channel: str = "mobile") -> str:
     """Issue a fresh session_token for a successful PIN-auth.
 
     Args:
@@ -50,7 +50,7 @@ async def create_session(
     await redis_client.set(
         SESSION_PREFIX + token,
         json.dumps(payload),
-        ex=SESSION_TTL_SECONDS,
+        ex=settings.SESSION_TTL_SECONDS,
     )
     return token
 
@@ -70,7 +70,7 @@ async def read_session(token: str, *, refresh_ttl: bool = True) -> dict | None:
     if raw is None:
         return None
     if refresh_ttl:
-        await redis_client.expire(SESSION_PREFIX + token, SESSION_TTL_SECONDS)
+        await redis_client.expire(SESSION_PREFIX + token, settings.SESSION_TTL_SECONDS)
     return json.loads(raw)
 
 
@@ -96,7 +96,7 @@ async def create_registration_token(user_id: UUID, phone: str) -> str:
     await redis_client.set(
         REGTOKEN_PREFIX + token,
         json.dumps(payload),
-        ex=REGTOKEN_TTL_SECONDS,
+        ex=settings.REGTOKEN_TTL_SECONDS,
     )
     return token
 

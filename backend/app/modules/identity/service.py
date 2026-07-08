@@ -24,8 +24,6 @@ from app.auth.lockout import (
 from app.auth.principals import AdminPrincipal
 from app.auth.rate_limit import consume_otp_send_quota
 from app.auth.sessions import (
-    REGTOKEN_TTL_SECONDS,
-    SESSION_TTL_SECONDS,
     consume_registration_token,
     create_registration_token,
     create_session,
@@ -980,7 +978,7 @@ async def verify_otp(
     reg_token = await create_registration_token(user.id, request.phone)
     return OtpVerifyResponse(
         registration_token=reg_token,
-        expires_in=REGTOKEN_TTL_SECONDS,
+        expires_in=settings.REGTOKEN_TTL_SECONDS,
     )
 
 
@@ -1108,7 +1106,7 @@ async def authenticate_pin(
     )
     return SessionTokenResponse(
         session_token=session_token,
-        expires_in=SESSION_TTL_SECONDS,
+        expires_in=settings.SESSION_TTL_SECONDS,
     )
 
 

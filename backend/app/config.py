@@ -1,4 +1,5 @@
 """Application settings loaded from .env (via pydantic-settings)."""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,9 +18,7 @@ class Topics:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     DATABASE_URL: str
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
@@ -34,6 +33,14 @@ class Settings(BaseSettings):
     OTP_EXPIRY_SECONDS: int = 300
     PIN_MAX_ATTEMPTS: int = 5
     PIN_LOCKOUT_MINUTES: int = 30
+    # User session token TTL (sliding — refreshed on every authenticated
+    # request via read_session). 60 min default; NFR-0180 caps mobile at
+    # 15 min and USSD at 5 min, so production tenants will dial this DOWN
+    # in their `.env`. Local dev / load testing wants headroom.
+    SESSION_TTL_SECONDS: int = 60 * 60
+    # Short-lived bridge between /otp/verify and /pin/set. Single-use, no
+    # sliding window. Sized so a user has plenty of time to type a PIN.
+    REGTOKEN_TTL_SECONDS: int = 60 * 60
     # Local-dev only: return the generated OTP in /otp/send response so tests
     # and manual demos can verify without an SMS gateway. MUST be False
     # outside local dev (NFR-0170 — OTPs are credentials and never leave the

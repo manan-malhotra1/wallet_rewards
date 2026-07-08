@@ -636,6 +636,17 @@ class SignatureNotConfigured(AppHTTPException):
         )
 
 
+class ApiKeyInvalid(AppHTTPException):
+    """External-API key is unknown, revoked, or missing (Epic 14).
+
+    Deliberately vague — an unknown key and a revoked key return the same
+    response so an attacker can't enumerate valid key_ids (NFR-0220).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(401, "api_key_invalid", "API key is invalid or revoked.")
+
+
 # --- Money controls (Phase G) ----------------------------------------------
 
 

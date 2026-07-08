@@ -48,6 +48,7 @@ async def post_fee_quote(
     fee = await quote_fee(
         session,
         tenant_id=user.tenant_id,
+        user_id=user.id,
         service=request.service,
         amount=request.amount,
         currency=request.currency,

@@ -24,6 +24,7 @@ from app.modules.identity.schemas import (
     AdminPinResetResponse,
     AuthStartRequest,
     AuthStartResponse,
+    ChangeUserTypeRequest,
     CreateUserRequest,
     IdentifierType,
     LogoutResponse,
@@ -44,6 +45,7 @@ from app.modules.identity.service import (
     admin_reset_pin,
     auth_start_lookup,
     authenticate_pin,
+    change_user_type,
     create_user,
     get_my_wallet,
     get_user_detail,
@@ -128,6 +130,33 @@ async def get_user(
     _ = admin
     payload = await get_user_detail(session, user_id=user_id, tenant_id=tenant_id)
     return UserDetailOut.model_validate(payload, from_attributes=True)
+
+
+@router.patch("/users/{user_id}/type", response_model=UserOut)
+async def patch_user_type(
+    user_id: UUID,
+    tenant_id: UUID,
+    request: ChangeUserTypeRequest,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> UserOut:
+    """Change a user's type (+ optional parent) — admin-only (Epic 12).
+
+    Body: `{new_type, parent_user_id?, reason}`. `reason` is mandatory and is
+    recorded in the audit log. Parent compatibility follows Decision D4.
+    Tenant-scoped: a user in another tenant returns 404. Idempotent by state —
+    re-issuing the same target type + parent is a no-op (no duplicate audit row).
+    """
+    user = await change_user_type(
+        session,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        request=request,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
+    return UserOut.model_validate(user)
 
 
 @router.get(

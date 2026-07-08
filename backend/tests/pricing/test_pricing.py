@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,7 @@ async def test_missing_config_raises(
         await calculate_fee(
             db_session,
             tenant_id=test_tenant.id,
+            user_id=uuid4(),
             transaction_type="p2p",
             account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
             currency="ZAR",
@@ -55,6 +57,7 @@ async def test_fixed_fee_only(
     fee = await calculate_fee(
         db_session,
         tenant_id=test_tenant.id,
+        user_id=uuid4(),
         transaction_type="p2p",
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency="ZAR",
@@ -82,6 +85,7 @@ async def test_variable_fee_capped(
     fee = await calculate_fee(
         db_session,
         tenant_id=test_tenant.id,
+        user_id=uuid4(),
         transaction_type="p2p",
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency="ZAR",
@@ -110,6 +114,7 @@ async def test_zero_fee_config_returns_zero(
     fee = await calculate_fee(
         db_session,
         tenant_id=test_tenant.id,
+        user_id=uuid4(),
         transaction_type="p2p",
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency="ZAR",

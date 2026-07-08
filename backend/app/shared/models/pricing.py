@@ -29,12 +29,16 @@ class PricingConfig(Base):
 
     __tablename__ = "pricing_configs"
     __table_args__ = (
+        # NULLS NOT DISTINCT so two NULL-type rows for the same other dims
+        # collide (PG 15+). Epic 16 — type-aware pricing.
         UniqueConstraint(
             "tenant_id",
             "transaction_type",
             "account_type",
             "currency",
+            "user_type",
             name="uq_pricing_configs_scope",
+            postgresql_nulls_not_distinct=True,
         ),
         CheckConstraint(
             "fixed_fee >= 0",
@@ -43,6 +47,10 @@ class PricingConfig(Base):
         CheckConstraint(
             "variable_fee_pct >= 0 AND variable_fee_pct < 1",
             name="ck_pricing_configs_variable_fee_pct_range",
+        ),
+        CheckConstraint(
+            "user_type IN ('consumer', 'agent', 'super_agent', 'merchant', 'head_merchant')",
+            name="ck_pricing_configs_user_type",
         ),
     )
 
@@ -53,6 +61,9 @@ class PricingConfig(Base):
     transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Type-aware scope (Epic 16): NULL = default fee for all user types; an
+    # exact-type row wins over the NULL default in quote_fee resolution.
+    user_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # `fixed_fee` is always charged regardless of amount. `variable_fee_pct`
     # is multiplied by the transaction amount (0.025 = 2.5%). `fee_cap`

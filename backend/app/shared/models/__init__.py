@@ -113,6 +113,14 @@ from app.shared.models.rules import (
 )
 from app.shared.models.tenants import Tenant, TenantConfig
 from app.shared.models.users import (
+    MERCHANT_USER_TYPES,
+    PARENT_TYPE_BY_CHILD,
+    USER_TYPE_AGENT,
+    USER_TYPE_CONSUMER,
+    USER_TYPE_HEAD_MERCHANT,
+    USER_TYPE_MERCHANT,
+    USER_TYPE_SUPER_AGENT,
+    USER_TYPES,
     AuthAttempt,
     OtpRequest,
     User,
@@ -132,6 +140,14 @@ __all__ = [
     "UserProfile",
     "OtpRequest",
     "AuthAttempt",
+    "USER_TYPE_CONSUMER",
+    "USER_TYPE_AGENT",
+    "USER_TYPE_SUPER_AGENT",
+    "USER_TYPE_MERCHANT",
+    "USER_TYPE_HEAD_MERCHANT",
+    "USER_TYPES",
+    "MERCHANT_USER_TYPES",
+    "PARENT_TYPE_BY_CHILD",
     # Accounts
     "Account",
     "AccountBalanceSnapshot",

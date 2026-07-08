@@ -15,7 +15,7 @@ from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +36,7 @@ from app.shared.models import (
     PricingConfig,
     Tenant,
 )
+from app.shared.utils.user_types import resolve_user_type
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -52,15 +53,28 @@ async def _find_pricing_config(
     transaction_type: str,
     account_type: str,
     currency: str,
+    user_type: str,
 ) -> PricingConfig | None:
-    """Lookup helper — returns None when no config exists."""
+    """Resolve the fee config for a slot, type-aware (Epic 16).
+
+    Matches the exact-dimensions row for the caller's `user_type` OR the
+    `user_type IS NULL` default, preferring the typed row (ORDER BY user_type
+    NULLS LAST). Returns None when neither exists.
+    """
     result = await session.execute(
-        select(PricingConfig).where(
+        select(PricingConfig)
+        .where(
             PricingConfig.tenant_id == tenant_id,
             PricingConfig.transaction_type == transaction_type,
             PricingConfig.account_type == account_type,
             PricingConfig.currency == currency.upper(),
+            or_(
+                PricingConfig.user_type == user_type,
+                PricingConfig.user_type.is_(None),
+            ),
         )
+        .order_by(PricingConfig.user_type.nulls_last())
+        .limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -74,6 +88,7 @@ async def calculate_fee(
     session: AsyncSession,
     *,
     tenant_id: UUID,
+    user_id: UUID,
     transaction_type: str,
     account_type: str,
     currency: str,
@@ -104,12 +119,14 @@ async def calculate_fee(
     Raises:
         PricingConfigMissing: 422 — no config for this tuple.
     """
+    user_type = await resolve_user_type(session, tenant_id, user_id)
     config = await _find_pricing_config(
         session,
         tenant_id=tenant_id,
         transaction_type=transaction_type,
         account_type=account_type,
         currency=currency,
+        user_type=user_type,
     )
     if config is None:
         raise PricingConfigMissing(transaction_type)
@@ -146,6 +163,7 @@ async def quote_fee(
     session: AsyncSession,
     *,
     tenant_id: UUID,
+    user_id: UUID,
     service: str,
     amount: Decimal,
     currency: str,
@@ -175,6 +193,7 @@ async def quote_fee(
         return await calculate_fee(
             session,
             tenant_id=tenant_id,
+            user_id=user_id,
             transaction_type=service,
             account_type=resolved_account_type,
             currency=currency,
@@ -259,6 +278,7 @@ async def create_pricing_config(
         transaction_type=request.transaction_type,
         account_type=request.account_type,
         currency=request.currency.upper(),
+        user_type=request.user_type,
         fixed_fee=request.fixed_fee,
         variable_fee_pct=request.variable_fee_pct,
         fee_cap=request.fee_cap,

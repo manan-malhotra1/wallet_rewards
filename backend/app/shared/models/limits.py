@@ -19,6 +19,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     ForeignKey,
     Integer,
     Numeric,
@@ -36,12 +37,20 @@ class LimitConfig(Base):
 
     __tablename__ = "limit_configs"
     __table_args__ = (
+        # NULLS NOT DISTINCT: two NULL-type rows for the same other dims collide
+        # (PG 15+). A specific-type row and the NULL default coexist.
         UniqueConstraint(
             "tenant_id",
             "transaction_type",
             "account_type",
             "currency",
+            "user_type",
             name="uq_limit_configs_scope",
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint(
+            "user_type IN ('consumer', 'agent', 'super_agent', 'merchant', 'head_merchant')",
+            name="ck_limit_configs_user_type",
         ),
     )
 
@@ -52,6 +61,9 @@ class LimitConfig(Base):
     transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Type-aware scope (Epic 15): NULL = default for all user types; an
+    # exact-type row wins over the NULL default at enforcement.
+    user_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Every cap is nullable — operators configure any combination. NULL means
     # "no limit on this axis". Rolling windows: daily=24h, weekly=7d,
@@ -89,7 +101,13 @@ class WalletLimitConfig(Base):
         UniqueConstraint(
             "tenant_id",
             "currency",
+            "user_type",
             name="uq_wallet_limit_configs_scope",
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint(
+            "user_type IN ('consumer', 'agent', 'super_agent', 'merchant', 'head_merchant')",
+            name="ck_wallet_limit_configs_user_type",
         ),
     )
 
@@ -98,6 +116,8 @@ class WalletLimitConfig(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
     )
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Type-aware scope (Epic 15): NULL = default for all user types.
+    user_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     max_balance: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
 

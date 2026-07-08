@@ -283,6 +283,7 @@ async def p2p_transfer(
         fee = await calculate_fee(
             session,
             tenant_id=tenant_id,
+            user_id=sender_user_id,
             transaction_type="p2p",
             account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
             currency=currency,

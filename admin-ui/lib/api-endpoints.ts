@@ -39,6 +39,7 @@ import type {
   Tenant,
   User,
   UserDetail,
+  UserType,
   WalletLimitConfig,
 } from "@/lib/api-types";
 
@@ -153,10 +154,34 @@ export interface CreateUserPayload {
     last_name?: string;
     date_of_birth?: string;
   };
+  // Epic 12/13 — user type + optional hierarchy parent. Default consumer.
+  user_type?: UserType;
+  parent_user_id?: string;
 }
 
 export const createUser = (payload: CreateUserPayload) =>
   apiPost<User>("/api/v1/identity/users", payload);
+
+export interface ChangeUserTypePayload {
+  new_type: UserType;
+  /** Only valid for agent/merchant types; null clears the parent. */
+  parent_user_id?: string | null;
+  /** Mandatory — recorded on the audit log entry. */
+  reason: string;
+}
+
+/**
+ * Change a user's type (+ optional parent). Admin-only, tenant-scoped,
+ * audit-logged. Idempotent by state on the backend.
+ */
+export const changeUserType = (
+  user_id: string,
+  tenant_id: string,
+  payload: ChangeUserTypePayload,
+) =>
+  apiPatch<User>(`/api/v1/identity/users/${user_id}/type`, payload, {
+    query: { tenant_id },
+  });
 
 /**
  * Resolve any registered identifier to a user. Used by the Users page

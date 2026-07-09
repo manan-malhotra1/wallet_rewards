@@ -295,3 +295,123 @@ async def test_withdraw_cross_tenant_returns_404(
         },
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_withdraw_all_empties_the_wallet(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """withdraw_all with no amount pulls the full available balance (E18-S1)."""
+    wallet = await _seed_user_wallet_with_balance(
+        db_session, test_tenant, test_user, starting_balance=Decimal("500")
+    )
+    resp = await async_client.post(
+        "/api/v1/treasury/withdraw",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
+            "withdraw_all": True,
+            "currency": "ZAR",
+            "reason": "Close account — withdraw all.",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert Decimal(body["amount"]) == Decimal("500")
+    assert Decimal(body["new_balance"]) == Decimal("0")
+    new_balance, _ = await derive_balance(db_session, wallet.id)
+    assert new_balance == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_withdraw_all_with_amount_is_rejected(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Sending both amount and withdraw_all is a validation error."""
+    await _seed_user_wallet_with_balance(
+        db_session, test_tenant, test_user, starting_balance=Decimal("100")
+    )
+    resp = await async_client.post(
+        "/api/v1/treasury/withdraw",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
+            "amount": "10",
+            "withdraw_all": True,
+            "currency": "ZAR",
+            "reason": "conflicting",
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_withdraw_without_amount_or_all_is_rejected(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Neither amount nor withdraw_all → validation error."""
+    await _seed_user_wallet_with_balance(
+        db_session, test_tenant, test_user, starting_balance=Decimal("100")
+    )
+    resp = await async_client.post(
+        "/api/v1/treasury/withdraw",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
+            "currency": "ZAR",
+            "reason": "no amount",
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_withdraw_all_on_empty_wallet_is_rejected(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """withdraw_all on a zero-balance wallet → 409 nothing_to_withdraw."""
+    wallet = Account(
+        tenant_id=test_tenant.id,
+        user_id=test_user.id,
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency="ZAR",
+    )
+    db_session.add(wallet)
+    await db_session.commit()
+
+    resp = await async_client.post(
+        "/api/v1/treasury/withdraw",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
+            "withdraw_all": True,
+            "currency": "ZAR",
+            "reason": "nothing there",
+        },
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "nothing_to_withdraw"

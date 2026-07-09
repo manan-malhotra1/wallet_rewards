@@ -219,6 +219,17 @@ class InsufficientFunds(AppHTTPException):
         )
 
 
+class NothingToWithdraw(AppHTTPException):
+    """A withdraw_all was requested but the wallet has no available balance."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "nothing_to_withdraw",
+            "The wallet has no available balance to withdraw.",
+        )
+
+
 class CurrencyMismatch(AppHTTPException):
     """Sender and recipient wallets are in different currencies.
 

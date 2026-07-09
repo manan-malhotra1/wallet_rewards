@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Identifier types accepted by Fund and Withdraw — operators never type
 # a raw UUID. Mirrors the UserIdentifier model's enum.
@@ -81,14 +81,28 @@ class WithdrawFromUserRequest(BaseModel):
     Identified the same way as fund — by registered identifier, not UUID.
     Admin operations are PIN-less and fee-less; operator authentication
     is the Keycloak session.
+
+    Supply exactly one of `amount` or `withdraw_all`. `withdraw_all=true` (with
+    no amount) pulls the wallet's full available balance. Both only ever target
+    the user's financial_wallet — never a system wallet.
     """
 
     tenant_id: UUID
     identifier_type: TreasuryIdentifierType
     identifier_value: str = Field(min_length=1, max_length=255)
-    amount: Decimal = Field(gt=Decimal("0"))
+    amount: Decimal | None = Field(default=None, gt=Decimal("0"))
+    withdraw_all: bool = False
     currency: str = Field(min_length=2, max_length=10)
     reason: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def _amount_xor_withdraw_all(self) -> Self:
+        """Exactly one of amount / withdraw_all must be provided."""
+        if self.withdraw_all and self.amount is not None:
+            raise ValueError("Provide either amount or withdraw_all, not both.")
+        if not self.withdraw_all and self.amount is None:
+            raise ValueError("amount is required unless withdraw_all is true.")
+        return self
 
 
 class WithdrawFromUserResponse(BaseModel):

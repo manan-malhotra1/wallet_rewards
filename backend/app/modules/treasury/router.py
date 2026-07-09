@@ -116,6 +116,7 @@ async def post_withdraw_from_user(
         identifier_type=request.identifier_type,
         identifier_value=request.identifier_value,
         amount=request.amount,
+        withdraw_all=request.withdraw_all,
         currency=request.currency,
         reason=request.reason,
         admin=admin,

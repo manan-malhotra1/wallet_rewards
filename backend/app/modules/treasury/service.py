@@ -42,6 +42,7 @@ from app.shared.exceptions import (
     AccountNotFound,
     AppHTTPException,
     InsufficientFunds,
+    NothingToWithdraw,
     TenantNotFound,
 )
 from app.shared.models import (
@@ -94,6 +95,110 @@ async def _get_or_create_operator_adjustment(
     await session.commit()
     await session.refresh(account)
     return account
+
+
+async def resolve_user_financial_wallet(
+    session: AsyncSession,
+    tenant_id: UUID,
+    identifier_type: str,
+    identifier_value: str,
+    currency: str,
+) -> tuple[UUID, Account]:
+    """Resolve a user by identifier and return (user_id, their financial_wallet).
+
+    Shared by the operator and external fund/withdraw paths. It can NEVER return
+    a system wallet — system accounts have `user_id IS NULL`, so filtering by the
+    resolved `user_id` guarantees a user-owned wallet. This is precisely why
+    fund / withdraw / withdraw_all can never touch a system wallet.
+
+    Raises:
+        UserNotFound: identifier doesn't resolve in this tenant.
+        AccountNotFound: the user has no financial_wallet for `currency`.
+    """
+    identifier_row = await resolve_identifier(
+        session, tenant_id, cast(IdentifierType, identifier_type), identifier_value
+    )
+    user_id = identifier_row.user_id
+    wallet = (
+        await session.execute(
+            select(Account).where(
+                Account.tenant_id == tenant_id,
+                Account.user_id == user_id,
+                Account.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                Account.currency == currency.upper(),
+            )
+        )
+    ).scalar_one_or_none()
+    if wallet is None:
+        raise AccountNotFound()
+    return user_id, wallet
+
+
+async def resolve_withdraw_amount(
+    session: AsyncSession,
+    wallet: Account,
+    *,
+    amount: Decimal | None,
+    withdraw_all: bool,
+) -> Decimal:
+    """Return the amount to withdraw, enforcing overdraft before any write.
+
+    `withdraw_all` resolves to the wallet's full available balance
+    (balance - reserved); otherwise the requested `amount`.
+
+    Raises:
+        NothingToWithdraw: withdraw_all but available <= 0.
+        InsufficientFunds: requested amount > available.
+    """
+    balance, reserved = await derive_balance(session, wallet.id)
+    available = balance - reserved
+    if withdraw_all:
+        if available <= Decimal("0"):
+            raise NothingToWithdraw()
+        return available
+    # The request schema guarantees a positive amount when withdraw_all is False.
+    assert amount is not None
+    if available < amount:
+        raise InsufficientFunds()
+    return amount
+
+
+async def post_user_withdraw(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    wallet: Account,
+    amount: Decimal,
+    currency: str,
+    idempotency_key: str,
+) -> Transaction:
+    """Post the balanced withdraw legs: DEBIT the user wallet, CREDIT the
+    operator_adjustment system account (transaction_type='withdraw').
+
+    The caller owns the audit row + the surrounding commit; this only appends
+    the ledger transaction (which commits internally via `post_transaction`).
+    """
+    operator_adjustment = await _get_or_create_operator_adjustment(
+        session, tenant_id=tenant_id, currency=currency
+    )
+    return await post_transaction(
+        session,
+        PostTransactionRequest(
+            tenant_id=tenant_id,
+            idempotency_key=idempotency_key,
+            transaction_type="withdraw",
+            currency=currency,
+            amount=amount,
+            initiated_by=user_id,
+            entries=[
+                LedgerEntryRequest(account_id=wallet.id, entry_type="DEBIT", amount=amount),
+                LedgerEntryRequest(
+                    account_id=operator_adjustment.id, entry_type="CREDIT", amount=amount
+                ),
+            ],
+        ),
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -273,11 +378,12 @@ async def withdraw_from_user(
     tenant_id: UUID,
     identifier_type: str,
     identifier_value: str,
-    amount: Decimal,
+    amount: Decimal | None,
     currency: str,
     reason: str,
     admin: AdminPrincipal,
     ip_address: str | None = None,
+    withdraw_all: bool = False,
 ) -> WithdrawFromUserResponse:
     """Admin debits a user's wallet and returns the funds to the operator pool.
 
@@ -313,63 +419,21 @@ async def withdraw_from_user(
         Commits the session.
     """
     await _assert_tenant_exists(session, tenant_id)
-    identifier_row = await resolve_identifier(
-        session, tenant_id, cast(IdentifierType, identifier_type), identifier_value
-    )
-    user_id = identifier_row.user_id
     currency = currency.upper()
-
-    # Fetch the user's wallet for the currency. Withdraw is meaningless
-    # without an existing wallet — the operator can't pull funds from a
-    # currency the user never held.
-    user_wallet = (
-        await session.execute(
-            select(Account).where(
-                Account.tenant_id == tenant_id,
-                Account.user_id == user_id,
-                Account.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
-                Account.currency == currency,
-            )
-        )
-    ).scalar_one_or_none()
-    if user_wallet is None:
-        raise AccountNotFound()
-
-    # Overdraft prevention — rule 6 of ledger-invariants.md says reject
-    # before any ledger write. available = balance - reserved.
-    balance, reserved = await derive_balance(session, user_wallet.id)
-    if (balance - reserved) < amount:
-        raise InsufficientFunds()
-
-    # Counter-leg is the operator_adjustment account — money flows back
-    # into the operator's cash pool. Lazy-created per (tenant, currency).
-    operator_adjustment = await _get_or_create_operator_adjustment(
-        session, tenant_id=tenant_id, currency=currency
+    user_id, user_wallet = await resolve_user_financial_wallet(
+        session, tenant_id, identifier_type, identifier_value, currency
     )
-
-    idempotency_key = f"admin-withdraw-{uuid4().hex}"
-    txn = await post_transaction(
+    final_amount = await resolve_withdraw_amount(
+        session, user_wallet, amount=amount, withdraw_all=withdraw_all
+    )
+    txn = await post_user_withdraw(
         session,
-        PostTransactionRequest(
-            tenant_id=tenant_id,
-            idempotency_key=idempotency_key,
-            transaction_type="withdraw",
-            currency=currency,
-            amount=amount,
-            initiated_by=user_id,
-            entries=[
-                LedgerEntryRequest(
-                    account_id=user_wallet.id,
-                    entry_type="DEBIT",
-                    amount=amount,
-                ),
-                LedgerEntryRequest(
-                    account_id=operator_adjustment.id,
-                    entry_type="CREDIT",
-                    amount=amount,
-                ),
-            ],
-        ),
+        tenant_id=tenant_id,
+        user_id=user_id,
+        wallet=user_wallet,
+        amount=final_amount,
+        currency=currency,
+        idempotency_key=f"admin-withdraw-{uuid4().hex}",
     )
 
     record_audit_for_admin(
@@ -380,11 +444,12 @@ async def withdraw_from_user(
         entity_type="user",
         entity_id=str(user_id),
         after_state={
-            "amount": str(amount),
+            "amount": str(final_amount),
             "currency": currency,
             "transaction_id": str(txn.id),
             "reason": reason,
             "identifier_type": identifier_type,
+            "withdraw_all": withdraw_all,
         },
         ip_address=ip_address,
     )
@@ -394,7 +459,7 @@ async def withdraw_from_user(
     return WithdrawFromUserResponse(
         transaction_id=txn.id,
         user_id=user_id,
-        amount=amount,
+        amount=final_amount,
         currency=currency,
         new_balance=new_balance,
     )

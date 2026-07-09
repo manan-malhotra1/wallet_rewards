@@ -95,7 +95,7 @@ async def get_recharge_route(
     user: UserPrincipal = Depends(get_current_user),
 ) -> AirtimeRechargeOut:
     """Auth-gated recharge lookup — tenant-scoped by the session token."""
-    recharge = await get_recharge(session, recharge_id, user.tenant_id)
+    recharge = await get_recharge(session, recharge_id, user.tenant_id, user.id)
     return AirtimeRechargeOut.model_validate(recharge)
 
 

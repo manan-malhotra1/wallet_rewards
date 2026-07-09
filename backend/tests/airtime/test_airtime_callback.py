@@ -315,3 +315,30 @@ async def test_resolve_requires_admin(
         headers=alice_auth_header,
     )
     assert resp.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_resolve_on_terminal_recharge_rejected(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    signed_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Operator resolve on an already-settled recharge -> 409 (S7 A1 guard)."""
+    created = await async_client.post(
+        "/api/v1/airtime/recharge",
+        content=json.dumps(_body(_SUCCESS_MSISDN)),
+        headers=_recharge_headers(alice_auth_header, "resolve-terminal"),
+    )
+    assert created.status_code == 200  # success msisdn settles synchronously
+    recharge_id = created.json()["id"]
+
+    resp = await async_client.post(
+        f"/api/v1/airtime/{recharge_id}/resolve",
+        json={"tenant_id": str(test_tenant.id), "outcome": "COMPLETED"},
+        headers=admin_auth_header,
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "airtime_recharge_already_settled"

@@ -16,8 +16,11 @@ class AirtimeRechargeRequest(BaseModel):
     `tenant_id` and `user_id` come from the session token via
     `get_current_user`; the body carries only the target number, network,
     amount, and an optional step-up PIN. Privilege-relevant fields (status,
-    merchant, provider reference) are never client-settable.
+    merchant, provider reference) are never client-settable — and `extra=forbid`
+    rejects any unexpected field outright rather than silently dropping it (S7 A7).
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     msisdn: str = Field(min_length=6, max_length=20)
     network: str = Field(min_length=1, max_length=30)

@@ -31,7 +31,7 @@ from app.auth.principals import AdminPrincipal, UserPrincipal
 from app.auth.secret_box import decrypt_secret
 from app.modules.accounts.service import derive_balance
 from app.modules.airtime.provider import (
-    PROVIDER_OUTCOME_FAILED,
+    PROVIDER_OUTCOME_PENDING,
     PROVIDER_OUTCOME_SUCCESS,
     ProvisionRequest,
     get_provider,
@@ -67,6 +67,7 @@ from app.shared.models import (
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     ENTRY_STATUS_COMPLETED,
+    ENTRY_STATUS_PENDING,
     ENTRY_STATUS_REVERSED,
     MERCHANT_PROFILE_STATUS_ACTIVE,
     TXN_STATUS_COMPLETED,
@@ -373,14 +374,22 @@ async def _apply_completed(
     Per ledger-invariants.md §1, ledger money is immutable — only the status
     flips, via the parent transaction's entries.
     """
+    # The `status == PENDING` guards make a double-finalise a no-op at the DB
+    # level (defence-in-depth alongside the row-lock claim in the callers, S7 A1).
     await session.execute(
         update(LedgerEntry)
-        .where(LedgerEntry.transaction_id == recharge.transaction_id)
+        .where(
+            LedgerEntry.transaction_id == recharge.transaction_id,
+            LedgerEntry.status == ENTRY_STATUS_PENDING,
+        )
         .values(status=ENTRY_STATUS_COMPLETED)
     )
     await session.execute(
         update(Transaction)
-        .where(Transaction.id == recharge.transaction_id)
+        .where(
+            Transaction.id == recharge.transaction_id,
+            Transaction.status == TXN_STATUS_PENDING,
+        )
         .values(status=TXN_STATUS_COMPLETED)
     )
     recharge.status = AIRTIME_STATUS_COMPLETED
@@ -396,14 +405,21 @@ async def _apply_reversed(
     REVERSED entries are excluded from `derive_balance`, so the user's wallet —
     including any fee legs — is made whole immediately.
     """
+    # See _apply_completed: PENDING guards keep a double-finalise idempotent.
     await session.execute(
         update(LedgerEntry)
-        .where(LedgerEntry.transaction_id == recharge.transaction_id)
+        .where(
+            LedgerEntry.transaction_id == recharge.transaction_id,
+            LedgerEntry.status == ENTRY_STATUS_PENDING,
+        )
         .values(status=ENTRY_STATUS_REVERSED)
     )
     await session.execute(
         update(Transaction)
-        .where(Transaction.id == recharge.transaction_id)
+        .where(
+            Transaction.id == recharge.transaction_id,
+            Transaction.status == TXN_STATUS_PENDING,
+        )
         .values(status=TXN_STATUS_REVERSED)
     )
     recharge.status = AIRTIME_STATUS_REVERSED
@@ -462,23 +478,40 @@ async def attempt_provision(
         )
     )
 
+    if result.outcome == PROVIDER_OUTCOME_PENDING:
+        # Provider accepted but hasn't vended — leave the reservation PENDING;
+        # the callback / reconciliation resolves it. Client gets 202.
+        return recharge
+
+    # Terminal outcome — claim the recharge under a row lock and re-check it is
+    # still PENDING before finalising. A callback / operator-resolve may have
+    # settled it during the (lock-free) provider call. The lock is acquired
+    # AFTER the provider call, never across it (NFR-0130). (S7 A1.)
+    locked = (
+        await session.execute(
+            select(AirtimeRecharge)
+            .where(AirtimeRecharge.id == recharge.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    if locked.status != AIRTIME_STATUS_PENDING:
+        await session.commit()  # release the lock; another path already settled it
+        return locked
+
     if result.outcome == PROVIDER_OUTCOME_SUCCESS:
-        await _apply_completed(session, recharge, result.provider_reference)
+        await _apply_completed(session, locked, result.provider_reference)
         _audit_provider_transition(
-            session, recharge, merchant, "airtime.recharge.completed", result.provider_reference
+            session, locked, merchant, "airtime.recharge.completed", result.provider_reference
         )
-        await session.commit()
-        await session.refresh(recharge)
-    elif result.outcome == PROVIDER_OUTCOME_FAILED:
-        await _apply_reversed(session, recharge, result.failure_reason or "provider_failed")
+    else:  # PROVIDER_OUTCOME_FAILED
+        await _apply_reversed(session, locked, result.failure_reason or "provider_failed")
         _audit_provider_transition(
-            session, recharge, merchant, "airtime.recharge.reversed", result.failure_reason
+            session, locked, merchant, "airtime.recharge.reversed", result.failure_reason
         )
-        await session.commit()
-        await session.refresh(recharge)
-    # PENDING: leave the reservation in place; the callback / reconciliation
-    # resolves it. The bounded client response returns 202 in this case.
-    return recharge
+    await session.commit()
+    await session.refresh(locked)
+    return locked
 
 
 async def purchase_airtime(
@@ -510,13 +543,19 @@ async def purchase_airtime(
 
 
 async def get_recharge(
-    session: AsyncSession, recharge_id: UUID, tenant_id: UUID
+    session: AsyncSession, recharge_id: UUID, tenant_id: UUID, user_id: UUID
 ) -> AirtimeRecharge:
-    """Tenant-scoped recharge lookup (poll endpoint)."""
+    """Owner-scoped recharge lookup (poll endpoint).
+
+    Scoped by BOTH tenant and the requesting user — a recharge belongs to the
+    user who created it, so other users in the same tenant cannot read its
+    msisdn/amount (S7 A2, intra-tenant BOLA).
+    """
     result = await session.execute(
         select(AirtimeRecharge).where(
             AirtimeRecharge.id == recharge_id,
             AirtimeRecharge.tenant_id == tenant_id,
+            AirtimeRecharge.user_id == user_id,
         )
     )
     recharge = result.scalar_one_or_none()
@@ -528,6 +567,34 @@ async def get_recharge(
 # -----------------------------------------------------------------------------
 # Provider callback (S5) + operator resolve (reconciliation safety net)
 # -----------------------------------------------------------------------------
+
+
+async def _lock_pending_recharge(
+    session: AsyncSession, recharge_id: UUID, *, tenant_id: UUID | None = None
+) -> AirtimeRecharge:
+    """Row-lock the recharge and require it still PENDING before a transition.
+
+    Serialises the finalise paths (sync-attempt / callback / operator-resolve)
+    so only the first claimant transitions a recharge — preventing double
+    provider-vend and terminal-state overwrite (S7 A1). `populate_existing`
+    forces a fresh read of the locked row (not the identity-map cache). The lock
+    is held only for the short finalise transaction, never across a provider call.
+
+    Raises:
+        AirtimeRechargeNotFound: unknown id (or wrong tenant when scoped).
+        AirtimeRechargeAlreadySettled: already terminal (409).
+    """
+    stmt = select(AirtimeRecharge).where(AirtimeRecharge.id == recharge_id)
+    if tenant_id is not None:
+        stmt = stmt.where(AirtimeRecharge.tenant_id == tenant_id)
+    recharge = (
+        await session.execute(stmt.with_for_update().execution_options(populate_existing=True))
+    ).scalar_one_or_none()
+    if recharge is None:
+        raise AirtimeRechargeNotFound()
+    if recharge.status != AIRTIME_STATUS_PENDING:
+        raise AirtimeRechargeAlreadySettled(recharge.status)
+    return recharge
 
 
 async def process_provider_callback(
@@ -576,8 +643,8 @@ async def process_provider_callback(
     payload = json.loads(raw_body or b"{}")
     callback = AirtimeCallbackRequest.model_validate(payload)
 
-    if recharge.status != AIRTIME_STATUS_PENDING:
-        raise AirtimeRechargeAlreadySettled(recharge.status)
+    # Claim under a row lock — a racing sync-attempt / resolve can't double-settle.
+    recharge = await _lock_pending_recharge(session, recharge_id)
 
     if callback.outcome == "completed":
         await _apply_completed(session, recharge, callback.provider_reference)
@@ -618,18 +685,8 @@ async def resolve_recharge(
     Raises:
         AirtimeRechargeNotFound (404); AirtimeRechargeAlreadySettled (409).
     """
-    recharge = (
-        await session.execute(
-            select(AirtimeRecharge).where(
-                AirtimeRecharge.id == recharge_id,
-                AirtimeRecharge.tenant_id == request.tenant_id,
-            )
-        )
-    ).scalar_one_or_none()
-    if recharge is None:
-        raise AirtimeRechargeNotFound()
-    if recharge.status != AIRTIME_STATUS_PENDING:
-        raise AirtimeRechargeAlreadySettled(recharge.status)
+    # Claim under a row lock (tenant-scoped) so this can't race a callback.
+    recharge = await _lock_pending_recharge(session, recharge_id, tenant_id=request.tenant_id)
 
     before = {"status": recharge.status}
     if request.outcome == "COMPLETED":

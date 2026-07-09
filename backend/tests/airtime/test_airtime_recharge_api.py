@@ -392,3 +392,35 @@ async def test_get_unknown_recharge_returns_404(
     got = await async_client.get(f"/api/v1/airtime/{uuid4()}", headers=alice_auth_header)
     assert got.status_code == 404
     assert got.json()["error_code"] == "airtime_recharge_not_found"
+
+
+@pytest.mark.asyncio
+async def test_get_recharge_rejects_other_user_same_tenant(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    airtime_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """A different user in the SAME tenant cannot read alice's recharge (S7 A2)."""
+    from app.auth.sessions import create_session
+
+    created = await async_client.post(
+        "/api/v1/airtime/recharge",
+        content=json.dumps(_body()),
+        headers=_headers(alice_auth_header),
+    )
+    recharge_id = created.json()["id"]
+
+    other = User(tenant_id=test_tenant.id)
+    db_session.add(other)
+    await db_session.flush()
+    await db_session.commit()
+    token = await create_session(other.id, test_tenant.id, "mobile")
+
+    got = await async_client.get(
+        f"/api/v1/airtime/{recharge_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert got.status_code == 404

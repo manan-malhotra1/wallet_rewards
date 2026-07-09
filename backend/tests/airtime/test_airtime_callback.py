@@ -1,0 +1,317 @@
+"""Integration tests for the airtime provider callback + operator resolve (S5).
+
+POST /api/v1/airtime/{id}/callback is HMAC-verified against the merchant's
+decrypted callback secret and finalises a PENDING recharge (the async path for
+a provider that returned 'pending'). POST /api/v1/airtime/{id}/resolve is the
+admin operator override for a recharge the provider never called back on.
+"""
+
+from __future__ import annotations
+
+import json
+from decimal import Decimal
+from uuid import uuid4
+
+import pytest
+import pytest_asyncio
+from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.hmac import build_signature_header
+from app.auth.secret_box import encrypt_secret
+from app.modules.accounts.service import derive_balance
+from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
+from app.shared.models import (
+    ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
+    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ENTRY_CREDIT,
+    ENTRY_DEBIT,
+    MERCHANT_CATEGORY_AIRTIME,
+    MERCHANT_MODE_SIMULATOR,
+    TXN_STATUS_COMPLETED,
+    USER_TYPE_MERCHANT,
+    Account,
+    MerchantProfile,
+    Tenant,
+    User,
+)
+
+_CALLBACK_SECRET = "airtime-callback-shared-secret-1234567890"
+_SUCCESS_MSISDN = "+27825551234"
+_PENDING_MSISDN = "+27820000002"  # simulator: ...0002 -> pending
+
+
+@pytest_asyncio.fixture
+async def signed_merchant(db_session: AsyncSession, test_tenant: Tenant) -> MerchantProfile:
+    """An active airtime merchant with a known Fernet-encrypted callback secret."""
+    merchant = User(tenant_id=test_tenant.id, user_type=USER_TYPE_MERCHANT)
+    db_session.add(merchant)
+    await db_session.flush()
+    profile = MerchantProfile(
+        tenant_id=test_tenant.id,
+        user_id=merchant.id,
+        business_name="Default Airtime Merchant",
+        category=MERCHANT_CATEGORY_AIRTIME,
+        service_code="airtime_recharge",
+        mode=MERCHANT_MODE_SIMULATOR,
+        callback_secret_encrypted=encrypt_secret(_CALLBACK_SECRET),
+    )
+    db_session.add(profile)
+    await db_session.commit()
+    await db_session.refresh(profile)
+    return profile
+
+
+@pytest_asyncio.fixture
+async def funded_wallet(
+    db_session: AsyncSession, test_tenant: Tenant, user_wallet: Account
+) -> Account:
+    """test_user's ZAR wallet, funded with R500."""
+    inflow = Account(
+        tenant_id=test_tenant.id,
+        account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+        currency="ZAR",
+    )
+    db_session.add(inflow)
+    await db_session.flush()
+    await post_transaction(
+        db_session,
+        PostTransactionRequest(
+            tenant_id=test_tenant.id,
+            idempotency_key=f"fund-{user_wallet.id}",
+            transaction_type="top_up",
+            currency="ZAR",
+            status=TXN_STATUS_COMPLETED,
+            entries=[
+                LedgerEntryRequest(
+                    account_id=inflow.id, entry_type=ENTRY_DEBIT, amount=Decimal("500")
+                ),
+                LedgerEntryRequest(
+                    account_id=user_wallet.id, entry_type=ENTRY_CREDIT, amount=Decimal("500")
+                ),
+            ],
+        ),
+    )
+    return user_wallet
+
+
+def _body(msisdn: str = _SUCCESS_MSISDN, amount: str = "100") -> dict:
+    return {"msisdn": msisdn, "network": "MTN", "amount": amount, "currency": "ZAR"}
+
+
+def _recharge_headers(auth: dict[str, str], idem: str) -> dict[str, str]:
+    return {**auth, "Idempotency-Key": idem, "Content-Type": "application/json"}
+
+
+def _callback_headers(raw: bytes, secret: str = _CALLBACK_SECRET) -> dict[str, str]:
+    return {
+        "X-Sasai-Signature": build_signature_header(raw_body=raw, secret=secret),
+        "Content-Type": "application/json",
+    }
+
+
+async def _balance(session: AsyncSession, account_id) -> Decimal:
+    balance, _reserved = await derive_balance(session, account_id)
+    return balance
+
+
+async def _holding(session: AsyncSession, tenant: Tenant, merchant: MerchantProfile) -> Account:
+    return (
+        await session.execute(
+            select(Account).where(
+                Account.tenant_id == tenant.id,
+                Account.user_id == merchant.user_id,
+                Account.account_type == ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
+            )
+        )
+    ).scalar_one()
+
+
+async def _create_pending(client: AsyncClient, auth: dict[str, str], idem: str = "cb-1") -> str:
+    """Create a recharge that the simulator leaves PENDING, return its id."""
+    resp = await client.post(
+        "/api/v1/airtime/recharge",
+        content=json.dumps(_body(_PENDING_MSISDN)),
+        headers=_recharge_headers(auth, idem),
+    )
+    assert resp.status_code == 202, resp.text
+    return resp.json()["id"]
+
+
+# -----------------------------------------------------------------------------
+# Callback
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_callback_completes_pending_recharge(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    signed_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """A signed 'completed' callback flips a PENDING recharge to COMPLETED."""
+    recharge_id = await _create_pending(async_client, alice_auth_header)
+    raw = json.dumps({"outcome": "completed", "provider_reference": "MTN-XYZ"}).encode()
+
+    resp = await async_client.post(
+        f"/api/v1/airtime/{recharge_id}/callback",
+        content=raw,
+        headers=_callback_headers(raw),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"
+    assert resp.json()["provider_reference"] == "MTN-XYZ"
+
+    holding = await _holding(db_session, test_tenant, signed_merchant)
+    assert await _balance(db_session, funded_wallet.id) == Decimal("400")
+    assert await _balance(db_session, holding.id) == Decimal("100")
+
+
+@pytest.mark.asyncio
+async def test_callback_failed_reverses_and_refunds(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    signed_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """A signed 'failed' callback reverses the reservation and refunds the user."""
+    recharge_id = await _create_pending(async_client, alice_auth_header)
+    raw = json.dumps({"outcome": "failed", "reason": "mno_rejected"}).encode()
+
+    resp = await async_client.post(
+        f"/api/v1/airtime/{recharge_id}/callback",
+        content=raw,
+        headers=_callback_headers(raw),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "REVERSED"
+
+    holding = await _holding(db_session, test_tenant, signed_merchant)
+    assert await _balance(db_session, funded_wallet.id) == Decimal("500")
+    assert await _balance(db_session, holding.id) == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_callback_bad_signature_rejected(
+    async_client: AsyncClient,
+    signed_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """A signature computed with the wrong secret -> 401."""
+    recharge_id = await _create_pending(async_client, alice_auth_header)
+    raw = json.dumps({"outcome": "completed"}).encode()
+    resp = await async_client.post(
+        f"/api/v1/airtime/{recharge_id}/callback",
+        content=raw,
+        headers=_callback_headers(raw, secret="the-wrong-secret"),
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_callback_missing_signature_rejected(
+    async_client: AsyncClient,
+    signed_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """No X-Sasai-Signature header -> 422 (header is required)."""
+    recharge_id = await _create_pending(async_client, alice_auth_header)
+    raw = json.dumps({"outcome": "completed"}).encode()
+    resp = await async_client.post(
+        f"/api/v1/airtime/{recharge_id}/callback",
+        content=raw,
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_callback_on_terminal_recharge_rejected(
+    async_client: AsyncClient,
+    signed_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """A callback on an already-settled recharge -> 409 (idempotent guard)."""
+    # A success msisdn resolves synchronously to COMPLETED.
+    created = await async_client.post(
+        "/api/v1/airtime/recharge",
+        content=json.dumps(_body(_SUCCESS_MSISDN)),
+        headers=_recharge_headers(alice_auth_header, "cb-terminal"),
+    )
+    assert created.status_code == 200
+    recharge_id = created.json()["id"]
+
+    raw = json.dumps({"outcome": "failed", "reason": "late"}).encode()
+    resp = await async_client.post(
+        f"/api/v1/airtime/{recharge_id}/callback",
+        content=raw,
+        headers=_callback_headers(raw),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "airtime_recharge_already_settled"
+
+
+@pytest.mark.asyncio
+async def test_callback_unknown_recharge_returns_404(
+    async_client: AsyncClient, signed_merchant: MerchantProfile
+) -> None:
+    """A callback for an unknown recharge id -> 404."""
+    raw = json.dumps({"outcome": "completed"}).encode()
+    resp = await async_client.post(
+        f"/api/v1/airtime/{uuid4()}/callback",
+        content=raw,
+        headers=_callback_headers(raw),
+    )
+    assert resp.status_code == 404
+
+
+# -----------------------------------------------------------------------------
+# Operator resolve (reconciliation safety net)
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_admin_resolve_completes_pending_recharge(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    signed_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+    admin_auth_header: dict[str, str],
+) -> None:
+    """An operator can force a stuck PENDING recharge to COMPLETED."""
+    recharge_id = await _create_pending(async_client, alice_auth_header)
+    resp = await async_client.post(
+        f"/api/v1/airtime/{recharge_id}/resolve",
+        json={"tenant_id": str(test_tenant.id), "outcome": "COMPLETED"},
+        headers=admin_auth_header,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_resolve_requires_admin(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    signed_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """A non-admin (user session token) cannot resolve a recharge."""
+    recharge_id = await _create_pending(async_client, alice_auth_header)
+    resp = await async_client.post(
+        f"/api/v1/airtime/{recharge_id}/resolve",
+        json={"tenant_id": str(test_tenant.id), "outcome": "COMPLETED"},
+        headers=alice_auth_header,
+    )
+    assert resp.status_code in (401, 403)

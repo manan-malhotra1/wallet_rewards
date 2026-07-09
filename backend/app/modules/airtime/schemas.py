@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,3 +44,29 @@ class AirtimeRechargeOut(BaseModel):
     failure_reason: str | None
     completed_at: datetime | None
     created_at: datetime
+
+
+class AirtimeCallbackRequest(BaseModel):
+    """HMAC-verified provider callback payload (Epic 17 S5).
+
+    The provider POSTs this with an `X-Sasai-Signature` header; the signature is
+    verified against the merchant's decrypted callback secret BEFORE this schema
+    is parsed, so a malformed body can't leak existence ahead of the HMAC check.
+    """
+
+    outcome: Literal["completed", "failed"]
+    provider_reference: str | None = Field(default=None, max_length=255)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class AirtimeResolveRequest(BaseModel):
+    """Operator override to resolve a stuck PENDING recharge (Epic 17 S5).
+
+    `tenant_id` is in the body because platform-admins span tenants (matches the
+    reconciliation pattern). Used when the provider never called back.
+    """
+
+    tenant_id: UUID
+    outcome: Literal["COMPLETED", "REVERSED"]
+    provider_reference: str | None = Field(default=None, max_length=255)
+    reason: str | None = Field(default=None, max_length=500)

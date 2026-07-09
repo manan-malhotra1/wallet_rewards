@@ -18,11 +18,20 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import UserPrincipal
+from app.auth import AdminPrincipal, UserPrincipal
 from app.database import get_async_session
-from app.dependencies import get_current_user
-from app.modules.airtime.schemas import AirtimeRechargeOut, AirtimeRechargeRequest
-from app.modules.airtime.service import get_recharge, purchase_airtime
+from app.dependencies import get_current_user, require_admin_role
+from app.modules.airtime.schemas import (
+    AirtimeRechargeOut,
+    AirtimeRechargeRequest,
+    AirtimeResolveRequest,
+)
+from app.modules.airtime.service import (
+    get_recharge,
+    process_provider_callback,
+    purchase_airtime,
+    resolve_recharge,
+)
 from app.shared.models import AIRTIME_STATUS_PENDING
 
 router = APIRouter(prefix="/api/v1/airtime", tags=["airtime"])
@@ -87,4 +96,51 @@ async def get_recharge_route(
 ) -> AirtimeRechargeOut:
     """Auth-gated recharge lookup — tenant-scoped by the session token."""
     recharge = await get_recharge(session, recharge_id, user.tenant_id)
+    return AirtimeRechargeOut.model_validate(recharge)
+
+
+@router.post("/{recharge_id}/callback", response_model=AirtimeRechargeOut)
+async def post_callback(
+    recharge_id: UUID,
+    fastapi_request: Request,
+    signature: str = Header(..., alias="X-Sasai-Signature", min_length=1, max_length=2048),
+    session: AsyncSession = Depends(get_async_session),
+) -> AirtimeRechargeOut:
+    """HMAC-verified provider callback — finalises a PENDING recharge.
+
+    The provider POSTs an `AirtimeCallbackRequest` body signed with the
+    merchant's callback secret. Verification is against the RAW body, read here
+    before Pydantic parsing. No Authorization header — the HMAC is the auth.
+    """
+    raw_body = await fastapi_request.body()
+    recharge = await process_provider_callback(
+        session,
+        recharge_id=recharge_id,
+        raw_body=raw_body,
+        signature_header=signature,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
+    return AirtimeRechargeOut.model_validate(recharge)
+
+
+@router.post("/{recharge_id}/resolve", response_model=AirtimeRechargeOut)
+async def post_resolve(
+    recharge_id: UUID,
+    request: AirtimeResolveRequest,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> AirtimeRechargeOut:
+    """Admin operator override — resolve a stuck PENDING recharge (reconciliation).
+
+    For when the provider never called back: COMPLETED settles the reservation,
+    REVERSED refunds the user. Platform-admin only; audited.
+    """
+    recharge = await resolve_recharge(
+        session,
+        recharge_id,
+        request,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return AirtimeRechargeOut.model_validate(recharge)

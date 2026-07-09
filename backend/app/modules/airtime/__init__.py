@@ -7,8 +7,10 @@ PENDING -> REVERSED (failure -> refund); a slow provider leaves it PENDING for
 the callback or reconciliation.
 
 Endpoints (see router.py):
-  - POST /api/v1/airtime/recharge   user-initiated purchase (auth-gated)
-  - GET  /api/v1/airtime/{id}       tenant-scoped status lookup (poll)
+  - POST /api/v1/airtime/recharge         user-initiated purchase (auth-gated)
+  - POST /api/v1/airtime/{id}/callback    HMAC-signed provider callback
+  - POST /api/v1/airtime/{id}/resolve     operator override (admin)
+  - GET  /api/v1/airtime/{id}             tenant-scoped status lookup (poll)
 """
 
 from app.modules.airtime.router import router

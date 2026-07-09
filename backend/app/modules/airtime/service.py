@@ -17,14 +17,18 @@ an UPDATE to a ledger row's money (ledger-invariants.md §1).
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
+from cryptography.fernet import InvalidToken
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.principals import UserPrincipal
+from app.auth.hmac import verify_signature
+from app.auth.principals import AdminPrincipal, UserPrincipal
+from app.auth.secret_box import decrypt_secret
 from app.modules.accounts.service import derive_balance
 from app.modules.airtime.provider import (
     PROVIDER_OUTCOME_FAILED,
@@ -32,16 +36,26 @@ from app.modules.airtime.provider import (
     ProvisionRequest,
     get_provider,
 )
-from app.modules.airtime.schemas import AirtimeRechargeRequest
-from app.modules.audit.service import record_audit_for_system, record_audit_for_user
+from app.modules.airtime.schemas import (
+    AirtimeCallbackRequest,
+    AirtimeRechargeRequest,
+    AirtimeResolveRequest,
+)
+from app.modules.audit.service import (
+    record_audit_for_admin,
+    record_audit_for_system,
+    record_audit_for_user,
+)
 from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
 from app.modules.roles.service import require_permission
 from app.shared.exceptions import (
     AccountNotFound,
     AirtimeMerchantNotConfigured,
+    AirtimeRechargeAlreadySettled,
     AirtimeRechargeNotFound,
     InsufficientFunds,
     PricingConfigMissing,
+    SignatureNotConfigured,
     TenantNotFound,
 )
 from app.shared.models import (
@@ -508,4 +522,135 @@ async def get_recharge(
     recharge = result.scalar_one_or_none()
     if recharge is None:
         raise AirtimeRechargeNotFound()
+    return recharge
+
+
+# -----------------------------------------------------------------------------
+# Provider callback (S5) + operator resolve (reconciliation safety net)
+# -----------------------------------------------------------------------------
+
+
+async def process_provider_callback(
+    session: AsyncSession,
+    *,
+    recharge_id: UUID,
+    raw_body: bytes,
+    signature_header: str,
+    ip_address: str | None = None,
+) -> AirtimeRecharge:
+    """HMAC-verified provider callback — finalise a PENDING recharge.
+
+    Flow (mirrors redemption.process_provider_callback):
+      1. Look up the recharge by id (not tenant-scoped — the tenant is unknown
+         until the signature verifies).
+      2. Resolve the tenant's active airtime merchant -> its callback secret.
+      3. Verify the HMAC over the RAW body BEFORE parsing (a malformed body
+         can't leak existence ahead of the auth check).
+      4. Reject if the recharge is already terminal (replay-safe).
+      5. Apply the transition, audit, commit.
+
+    Raises:
+        AirtimeRechargeNotFound (404); AirtimeMerchantNotConfigured (422);
+        SignatureNotConfigured (401) when the merchant has no callback secret
+        or it cannot be decrypted; SignatureMalformed / SignatureTimestampSkew /
+        InvalidSignature (401); AirtimeRechargeAlreadySettled (409).
+    """
+    recharge = (
+        await session.execute(select(AirtimeRecharge).where(AirtimeRecharge.id == recharge_id))
+    ).scalar_one_or_none()
+    if recharge is None:
+        raise AirtimeRechargeNotFound()
+
+    merchant = await _find_active_airtime_merchant(session, recharge.tenant_id)
+    if not merchant.callback_secret_encrypted:
+        raise SignatureNotConfigured()
+    try:
+        secret = decrypt_secret(merchant.callback_secret_encrypted)
+    except InvalidToken as exc:
+        # Secret can't be decrypted (e.g. SECRET_KEY rotated) — unverifiable.
+        raise SignatureNotConfigured() from exc
+
+    verify_signature(header=signature_header, raw_body=raw_body, secret=secret)
+
+    # Parse only AFTER the signature passes.
+    payload = json.loads(raw_body or b"{}")
+    callback = AirtimeCallbackRequest.model_validate(payload)
+
+    if recharge.status != AIRTIME_STATUS_PENDING:
+        raise AirtimeRechargeAlreadySettled(recharge.status)
+
+    if callback.outcome == "completed":
+        await _apply_completed(session, recharge, callback.provider_reference)
+        _audit_provider_transition(
+            session,
+            recharge,
+            merchant,
+            "airtime.recharge.completed.by_provider",
+            callback.provider_reference,
+        )
+    else:
+        await _apply_reversed(session, recharge, callback.reason or "provider_failed")
+        _audit_provider_transition(
+            session, recharge, merchant, "airtime.recharge.reversed.by_provider", callback.reason
+        )
+
+    # Source IP is the load balancer for server-to-server callbacks — not
+    # stored on the system audit row (mirrors redemption).
+    _ = ip_address
+    await session.commit()
+    await session.refresh(recharge)
+    return recharge
+
+
+async def resolve_recharge(
+    session: AsyncSession,
+    recharge_id: UUID,
+    request: AirtimeResolveRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> AirtimeRecharge:
+    """Operator override — resolve a stuck PENDING recharge (reconciliation).
+
+    Used when the provider never called back. COMPLETED settles the reservation;
+    REVERSED refunds the user. Tenant-scoped by `request.tenant_id`.
+
+    Raises:
+        AirtimeRechargeNotFound (404); AirtimeRechargeAlreadySettled (409).
+    """
+    recharge = (
+        await session.execute(
+            select(AirtimeRecharge).where(
+                AirtimeRecharge.id == recharge_id,
+                AirtimeRecharge.tenant_id == request.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if recharge is None:
+        raise AirtimeRechargeNotFound()
+    if recharge.status != AIRTIME_STATUS_PENDING:
+        raise AirtimeRechargeAlreadySettled(recharge.status)
+
+    before = {"status": recharge.status}
+    if request.outcome == "COMPLETED":
+        await _apply_completed(session, recharge, request.provider_reference)
+        action = "airtime.recharge.resolved.completed"
+    else:
+        await _apply_reversed(session, recharge, request.reason or "operator_reversed")
+        action = "airtime.recharge.resolved.reversed"
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=recharge.tenant_id,
+        action=action,
+        entity_type="airtime_recharge",
+        entity_id=str(recharge.id),
+        before_state=before,
+        after_state={"status": recharge.status},
+        ip_address=ip_address,
+        note=request.reason,
+    )
+    await session.commit()
+    await session.refresh(recharge)
     return recharge

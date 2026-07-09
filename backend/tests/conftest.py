@@ -218,7 +218,7 @@ async def default_user_role(db_session: AsyncSession, test_tenant: Tenant) -> Ro
     )
     db_session.add(role)
     await db_session.flush()
-    for txn_type in ("p2p", "redemption", "top_up"):
+    for txn_type in ("p2p", "redemption", "top_up", "airtime_recharge"):
         db_session.add(
             RolePermission(
                 role_id=role.id,
@@ -241,7 +241,7 @@ async def default_user_role_other_tenant(db_session: AsyncSession, other_tenant:
     )
     db_session.add(role)
     await db_session.flush()
-    for txn_type in ("p2p", "redemption", "top_up"):
+    for txn_type in ("p2p", "redemption", "top_up", "airtime_recharge"):
         db_session.add(
             RolePermission(
                 role_id=role.id,

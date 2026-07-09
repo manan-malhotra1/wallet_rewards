@@ -922,6 +922,17 @@ class StepUpPolicyNotFound(AppHTTPException):
 # --- Airtime recharge ----------------------------------------------------
 
 
+class AirtimeMerchantNotConfigured(AppHTTPException):
+    """No active airtime merchant is configured for this tenant (Epic 17)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "airtime_merchant_not_configured",
+            "No active airtime merchant is configured for this tenant.",
+        )
+
+
 class AirtimeRechargeNotFound(AppHTTPException):
     """Unknown airtime_recharge_id, or one belonging to another tenant."""
 

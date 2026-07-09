@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.modules.accounts import router as accounts_router
+from app.modules.airtime import router as airtime_router
 from app.modules.api_keys import router as api_keys_router
 from app.modules.budgets import router as budgets_router
 from app.modules.catalog import router as catalog_router
@@ -104,6 +105,7 @@ app.include_router(rules_router)
 app.include_router(events_router)
 app.include_router(external_router)
 app.include_router(redemption_router)
+app.include_router(airtime_router)
 app.include_router(catalog_router)
 app.include_router(reconciliation_router)
 app.include_router(roles_router)

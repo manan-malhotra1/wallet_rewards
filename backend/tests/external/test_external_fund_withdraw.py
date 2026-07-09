@@ -405,3 +405,36 @@ async def test_external_withdraw_enforces_type_aware_limit(
         headers=_sign(api_key["key_id"], api_key["secret"], raw),
     )
     assert resp.status_code == 422  # AmountAboveMax
+
+
+@pytest.mark.asyncio
+async def test_external_reused_key_across_ops_conflicts(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    api_key: dict[str, str],
+) -> None:
+    """An Idempotency-Key used for fund cannot be reused for withdraw (S4 M-03)."""
+    await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
+    fund_raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
+    fund = await async_client.post(
+        "/api/v1/external/fund",
+        content=fund_raw,
+        headers=_sign(api_key["key_id"], api_key["secret"], fund_raw, idem="shared-key"),
+    )
+    assert fund.status_code == 201, fund.text
+
+    wd_body = {
+        "identifier_type": "phone",
+        "identifier_value": _user_phone(test_user),
+        "amount": "50",
+        "currency": "ZAR",
+    }
+    wd_raw = json.dumps(wd_body).encode()
+    wd = await async_client.post(
+        "/api/v1/external/withdraw",
+        content=wd_raw,
+        headers=_sign(api_key["key_id"], api_key["secret"], wd_raw, idem="shared-key"),
+    )
+    assert wd.status_code == 409

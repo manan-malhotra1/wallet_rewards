@@ -150,6 +150,11 @@ async def resolve_withdraw_amount(
         NothingToWithdraw: withdraw_all but available <= 0.
         InsufficientFunds: requested amount > available.
     """
+    # Lock the wallet row for the rest of the transaction so concurrent
+    # withdraws serialise. Without this, two overdraft checks can both read the
+    # pre-debit balance, both pass, and drive the wallet negative — a
+    # double-spend (Epic 18 S4 H-01). Mirrors payments/redemption/airtime.
+    await session.execute(select(Account.id).where(Account.id == wallet.id).with_for_update())
     balance, reserved = await derive_balance(session, wallet.id)
     available = balance - reserved
     if withdraw_all:

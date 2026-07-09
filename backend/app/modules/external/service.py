@@ -31,6 +31,7 @@ from app.modules.treasury.service import (
     resolve_user_financial_wallet,
     resolve_withdraw_amount,
 )
+from app.shared.exceptions import DuplicateIdempotencyKey
 from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET, Transaction
 
 
@@ -74,6 +75,10 @@ async def external_fund(
 
     existing = await _find_by_idempotency(session, tenant_id, idempotency_key)
     if existing is not None:
+        # Bind the key to the operation: a key reused for a different op (or a
+        # conflicting body) must not silently return a mismatched txn (S4 M-03).
+        if existing.transaction_type != "top_up":
+            raise DuplicateIdempotencyKey()
         balance, _ = await derive_balance(session, wallet.id)
         return FundUserResponse(
             transaction_id=existing.id,
@@ -152,6 +157,9 @@ async def external_withdraw(
 
     existing = await _find_by_idempotency(session, tenant_id, idempotency_key)
     if existing is not None:
+        # Bind the key to the operation (S4 M-03).
+        if existing.transaction_type != "withdraw":
+            raise DuplicateIdempotencyKey()
         balance, _ = await derive_balance(session, wallet.id)
         return WithdrawFromUserResponse(
             transaction_id=existing.id,

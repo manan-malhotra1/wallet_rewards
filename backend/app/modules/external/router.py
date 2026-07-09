@@ -8,6 +8,7 @@ instead of a 409, so partner retries are safe (Pay-PRD-0200).
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Response
@@ -17,9 +18,15 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.api_key import ApiKeyPrincipal, require_api_key
 from app.database import get_async_session
-from app.modules.external.schemas import ExternalCreateUserRequest
+from app.modules.external.schemas import (
+    ExternalCreateUserRequest,
+    ExternalFundRequest,
+    ExternalWithdrawRequest,
+)
+from app.modules.external.service import external_fund, external_withdraw
 from app.modules.identity.schemas import CreateUserRequest, IdentifierIn, UserOut
 from app.modules.identity.service import create_user, resolve_identifier
+from app.modules.treasury.schemas import FundUserResponse, WithdrawFromUserResponse
 from app.shared.exceptions import IdentifierAlreadyInUse, UserNotFound
 from app.shared.models import User
 
@@ -99,3 +106,60 @@ async def _existing_user(
         )
         return result.scalar_one()
     return None
+
+
+_MONEY_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"description": "Missing or invalid API key / signature."},
+    404: {"description": "The identifier does not resolve to a user/wallet in the key's tenant."},
+    409: {"description": "Insufficient funds, or nothing to withdraw (empty wallet)."},
+    422: {"description": "Validation error, or a configured limit was exceeded."},
+    429: {"description": "Per-key rate limit exceeded."},
+}
+
+
+@router.post(
+    "/fund",
+    response_model=FundUserResponse,
+    status_code=201,
+    summary="Fund a user's wallet",
+    responses=_MONEY_RESPONSES,
+)
+async def fund_external(
+    payload: ExternalFundRequest,
+    principal: ApiKeyPrincipal = Depends(require_api_key),
+    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=255),
+    session: AsyncSession = Depends(get_async_session),
+) -> FundUserResponse:
+    """Credit a user's wallet in the API key's tenant.
+
+    Tenant comes from the key, never the body. The `Idempotency-Key` header is
+    required and is used as the ledger key — a retry returns the original result
+    without double-crediting.
+    """
+    return await external_fund(
+        session, principal=principal, request=payload, idempotency_key=idempotency_key
+    )
+
+
+@router.post(
+    "/withdraw",
+    response_model=WithdrawFromUserResponse,
+    status_code=201,
+    summary="Withdraw from a user's wallet",
+    responses=_MONEY_RESPONSES,
+)
+async def withdraw_external(
+    payload: ExternalWithdrawRequest,
+    principal: ApiKeyPrincipal = Depends(require_api_key),
+    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=255),
+    session: AsyncSession = Depends(get_async_session),
+) -> WithdrawFromUserResponse:
+    """Debit a user's wallet in the API key's tenant.
+
+    Send `amount`, or `withdraw_all: true` (no amount) to pull the full
+    available balance. Tenant from the key; idempotent on the required
+    `Idempotency-Key`.
+    """
+    return await external_withdraw(
+        session, principal=principal, request=payload, idempotency_key=idempotency_key
+    )

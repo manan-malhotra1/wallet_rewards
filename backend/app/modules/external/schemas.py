@@ -10,9 +10,10 @@ limit/pricing tier or assert unverified contact details as verified.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.identity.schemas import IdentifierType, UserProfileIn
 
@@ -48,4 +49,48 @@ class ExternalCreateUserRequest(BaseModel):
         """A partner-created user must be contactable by email or phone (D2)."""
         if not any(i.identifier_type in _CONTACTABLE for i in self.identifiers):
             raise ValueError("At least one email or phone identifier is required.")
+        return self
+
+
+class ExternalFundRequest(BaseModel):
+    """Partner-facing fund payload — credits an existing user's wallet.
+
+    No `tenant_id` (derived from the API key). `extra='forbid'` rejects any
+    unexpected field outright (BOPLA hardening, mirrors Epic 17 S7). The target
+    is resolved by identifier and is always a user's financial_wallet.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    identifier_type: IdentifierType
+    identifier_value: str = Field(min_length=1, max_length=255)
+    amount: Decimal = Field(gt=Decimal("0"))
+    currency: str = Field(min_length=2, max_length=10)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ExternalWithdrawRequest(BaseModel):
+    """Partner-facing withdraw payload — debits a user's wallet.
+
+    Supply exactly one of `amount` or `withdraw_all`; `withdraw_all=true` (with
+    no amount) pulls the full available balance. No `tenant_id` (from the key).
+    Only ever targets the user's financial_wallet, never a system wallet.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    identifier_type: IdentifierType
+    identifier_value: str = Field(min_length=1, max_length=255)
+    amount: Decimal | None = Field(default=None, gt=Decimal("0"))
+    withdraw_all: bool = False
+    currency: str = Field(min_length=2, max_length=10)
+    reason: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def _amount_xor_withdraw_all(self) -> Self:
+        """Exactly one of amount / withdraw_all must be provided."""
+        if self.withdraw_all and self.amount is not None:
+            raise ValueError("Provide either amount or withdraw_all, not both.")
+        if not self.withdraw_all and self.amount is None:
+            raise ValueError("amount is required unless withdraw_all is true.")
         return self

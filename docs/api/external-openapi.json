@@ -96,6 +96,194 @@
           }
         }
       }
+    },
+    "/api/v1/external/fund": {
+      "post": {
+        "tags": [
+          "external"
+        ],
+        "summary": "Fund a user's wallet",
+        "description": "Credit a user's wallet in the API key's tenant.\n\nTenant comes from the key, never the body. The `Idempotency-Key` header is\nrequired and is used as the ledger key \u2014 a retry returns the original result\nwithout double-crediting.",
+        "operationId": "fund_external_api_v1_external_fund_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Sasai-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sasai-Api-Key"
+            }
+          },
+          {
+            "name": "X-Sasai-Signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2048
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sasai-Signature"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalFundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundUserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key / signature."
+          },
+          "404": {
+            "description": "The identifier does not resolve to a user/wallet in the key's tenant."
+          },
+          "409": {
+            "description": "Insufficient funds, or nothing to withdraw (empty wallet)."
+          },
+          "422": {
+            "description": "Validation error, or a configured limit was exceeded."
+          },
+          "429": {
+            "description": "Per-key rate limit exceeded."
+          }
+        }
+      }
+    },
+    "/api/v1/external/withdraw": {
+      "post": {
+        "tags": [
+          "external"
+        ],
+        "summary": "Withdraw from a user's wallet",
+        "description": "Debit a user's wallet in the API key's tenant.\n\nSend `amount`, or `withdraw_all: true` (no amount) to pull the full\navailable balance. Tenant from the key; idempotent on the required\n`Idempotency-Key`.",
+        "operationId": "withdraw_external_api_v1_external_withdraw_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Sasai-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sasai-Api-Key"
+            }
+          },
+          {
+            "name": "X-Sasai-Signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2048
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sasai-Signature"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalWithdrawRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawFromUserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key / signature."
+          },
+          "404": {
+            "description": "The identifier does not resolve to a user/wallet in the key's tenant."
+          },
+          "409": {
+            "description": "Insufficient funds, or nothing to withdraw (empty wallet)."
+          },
+          "422": {
+            "description": "Validation error, or a configured limit was exceeded."
+          },
+          "429": {
+            "description": "Per-key rate limit exceeded."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -291,6 +479,214 @@
         ],
         "title": "AdminPinResetResponse",
         "description": "Result of an admin-triggered PIN reset.\n\n`delivered_via` is `\"sms\"` in production (notifications module \u2014\nPhase 2). Today it's `\"inline\"`, meaning the new PIN is included\nin the response so the operator can read it back to the user\nover a verified channel. NEVER expose this endpoint to non-admins."
+      },
+      "AirtimeRechargeOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "msisdn": {
+            "type": "string",
+            "title": "Msisdn"
+          },
+          "network": {
+            "type": "string",
+            "title": "Network"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id"
+          },
+          "provider_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Reference"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "user_id",
+          "msisdn",
+          "network",
+          "amount",
+          "currency",
+          "status",
+          "transaction_id",
+          "provider_reference",
+          "failure_reason",
+          "completed_at",
+          "created_at"
+        ],
+        "title": "AirtimeRechargeOut",
+        "description": "Airtime recharge resource returned by the API."
+      },
+      "AirtimeRechargeRequest": {
+        "properties": {
+          "msisdn": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 6,
+            "title": "Msisdn"
+          },
+          "network": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Network"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 3,
+            "title": "Currency",
+            "default": "ZAR"
+          },
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 12,
+                "minLength": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "msisdn",
+          "network",
+          "amount"
+        ],
+        "title": "AirtimeRechargeRequest",
+        "description": "User-initiated airtime purchase (auth-gated).\n\n`tenant_id` and `user_id` come from the session token via\n`get_current_user`; the body carries only the target number, network,\namount, and an optional step-up PIN. Privilege-relevant fields (status,\nmerchant, provider reference) are never client-settable \u2014 and `extra=forbid`\nrejects any unexpected field outright rather than silently dropping it (S7 A7)."
+      },
+      "AirtimeResolveRequest": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "COMPLETED",
+              "REVERSED"
+            ],
+            "title": "Outcome"
+          },
+          "provider_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Reference"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "outcome"
+        ],
+        "title": "AirtimeResolveRequest",
+        "description": "Operator override to resolve a stuck PENDING recharge (Epic 17 S5).\n\n`tenant_id` is in the body because platform-admins span tenants (matches the\nreconciliation pattern). Used when the provider never called back."
       },
       "ApiKeyCreateRequest": {
         "properties": {
@@ -1268,6 +1664,67 @@
         "title": "ExternalCreateUserRequest",
         "description": "Partner-facing create-user payload.\n\nNo `tenant_id` (derived from the API key), and no `user_type` /\n`parent_user_id` \u2014 the endpoint forces `consumer` with no parent so a\npartner can't self-assign a limit/pricing tier or graft the tenant\nhierarchy (S7 H1)."
       },
+      "ExternalFundRequest": {
+        "properties": {
+          "identifier_type": {
+            "type": "string",
+            "enum": [
+              "phone",
+              "email",
+              "account_number",
+              "card_number"
+            ],
+            "title": "Identifier Type"
+          },
+          "identifier_value": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Identifier Value"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 2,
+            "title": "Currency"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identifier_type",
+          "identifier_value",
+          "amount",
+          "currency"
+        ],
+        "title": "ExternalFundRequest",
+        "description": "Partner-facing fund payload \u2014 credits an existing user's wallet.\n\nNo `tenant_id` (derived from the API key). `extra='forbid'` rejects any\nunexpected field outright (BOPLA hardening, mirrors Epic 17 S7). The target\nis resolved by identifier and is always a user's financial_wallet."
+      },
       "ExternalIdentifierIn": {
         "properties": {
           "identifier_type": {
@@ -1294,6 +1751,74 @@
         ],
         "title": "ExternalIdentifierIn",
         "description": "A partner-supplied identifier \u2014 no `verified` flag.\n\nPartners cannot assert that a phone/email is verified; the platform only\nmarks an identifier verified through its own OTP flow."
+      },
+      "ExternalWithdrawRequest": {
+        "properties": {
+          "identifier_type": {
+            "type": "string",
+            "enum": [
+              "phone",
+              "email",
+              "account_number",
+              "card_number"
+            ],
+            "title": "Identifier Type"
+          },
+          "identifier_value": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Identifier Value"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "withdraw_all": {
+            "type": "boolean",
+            "title": "Withdraw All",
+            "default": false
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 2,
+            "title": "Currency"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identifier_type",
+          "identifier_value",
+          "currency"
+        ],
+        "title": "ExternalWithdrawRequest",
+        "description": "Partner-facing withdraw payload \u2014 debits a user's wallet.\n\nSupply exactly one of `amount` or `withdraw_all`; `withdraw_all=true` (with\nno amount) pulls the full available balance. No `tenant_id` (from the key).\nOnly ever targets the user's financial_wallet, never a system wallet."
       },
       "FailRedemptionRequest": {
         "properties": {
@@ -5628,9 +6153,17 @@
               {
                 "type": "string",
                 "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Amount"
+          },
+          "withdraw_all": {
+            "type": "boolean",
+            "title": "Withdraw All",
+            "default": false
           },
           "currency": {
             "type": "string",
@@ -5650,12 +6183,11 @@
           "tenant_id",
           "identifier_type",
           "identifier_value",
-          "amount",
           "currency",
           "reason"
         ],
         "title": "WithdrawFromUserRequest",
-        "description": "Admin withdraw payload \u2014 debits a user wallet and credits operator_adjustment.\n\nIdentified the same way as fund \u2014 by registered identifier, not UUID.\nAdmin operations are PIN-less and fee-less; operator authentication\nis the Keycloak session."
+        "description": "Admin withdraw payload \u2014 debits a user wallet and credits operator_adjustment.\n\nIdentified the same way as fund \u2014 by registered identifier, not UUID.\nAdmin operations are PIN-less and fee-less; operator authentication\nis the Keycloak session.\n\nSupply exactly one of `amount` or `withdraw_all`. `withdraw_all=true` (with\nno amount) pulls the wallet's full available balance. Both only ever target\nthe user's financial_wallet \u2014 never a system wallet."
       },
       "WithdrawFromUserResponse": {
         "properties": {

@@ -17,6 +17,7 @@ Usage:
     cd backend && source .venv/bin/activate
     python ../scripts/seed.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -33,21 +34,28 @@ from decimal import Decimal  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
+from app.auth.secret_box import encrypt_secret  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.modules.payments.service import top_up  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
 from app.modules.redemption.service import register_provider  # noqa: E402
 from app.shared.models import (  # noqa: E402
+    ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
-    ACCOUNT_TYPE_PROVIDER_REDEMPTION,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+    MERCHANT_CATEGORY_AIRTIME,
+    MERCHANT_MODE_SIMULATOR,
+    USER_TYPE_MERCHANT,
     Account,
     ExternalEventSource,
     Instrument,
+    LimitConfig,
+    MerchantProfile,
+    PricingConfig,
     RedemptionProvider,
     Role,
     RolePermission,
@@ -108,7 +116,13 @@ async def _seed_instruments_catalog(session: AsyncSession, tenant: Tenant) -> No
     """
     baseline = [
         ("ZAR", "R", "South African Rand", "Fiat wallet currency.", "financial_wallet"),
-        ("PTS", "Rewards", "Rewards Points", "Loyalty points credited by the rules engine.", "points_account"),
+        (
+            "PTS",
+            "Rewards",
+            "Rewards Points",
+            "Loyalty points credited by the rules engine.",
+            "points_account",
+        ),
     ]
     for code, symbol, display_name, description, account_type in baseline:
         result = await session.execute(
@@ -204,9 +218,7 @@ async def _get_or_create_user(
     )
     identifier = result.scalar_one_or_none()
     if identifier is not None:
-        user_result = await session.execute(
-            select(User).where(User.id == identifier.user_id)
-        )
+        user_result = await session.execute(select(User).where(User.id == identifier.user_id))
         existing = user_result.scalar_one()
         # Backfill dev PIN on already-seeded users so the mobile-simulator
         # can log in against old DBs without a full reset.
@@ -322,9 +334,7 @@ async def _get_or_create_redemption_provider(
     return provider
 
 
-async def _get_or_create_standard_user_role(
-    session: AsyncSession, tenant: Tenant
-) -> Role:
+async def _get_or_create_standard_user_role(session: AsyncSession, tenant: Tenant) -> Role:
     """Idempotently create a 'standard_user' role granting p2p + top_up + redemption.
 
     Without this, the seeded users can't initiate any transaction — the
@@ -338,14 +348,16 @@ async def _get_or_create_standard_user_role(
         role = Role(
             tenant_id=tenant.id,
             name="standard_user",
-            description="Default end-user role — grants p2p, top_up, redemption.",
+            description=(
+                "Default end-user role — grants p2p, top_up, redemption, airtime_recharge."
+            ),
         )
         session.add(role)
         await session.commit()
         await session.refresh(role)
         print(f"  + Created role: standard_user -> {role.id}")
     # Permissions are idempotent via the unique (role_id, transaction_type) index.
-    for txn_type in ("p2p", "top_up", "redemption"):
+    for txn_type in ("p2p", "top_up", "redemption", "airtime_recharge"):
         exists = (
             await session.execute(
                 select(RolePermission).where(
@@ -400,9 +412,7 @@ async def _assign_role(session: AsyncSession, user: User, role: Role) -> None:
     """Idempotently link the user to the role."""
     existing = (
         await session.execute(
-            select(UserRole).where(
-                UserRole.user_id == user.id, UserRole.role_id == role.id
-            )
+            select(UserRole).where(UserRole.user_id == user.id, UserRole.role_id == role.id)
         )
     ).scalar_one_or_none()
     if existing is not None:
@@ -427,9 +437,7 @@ async def _get_or_create_event_source(
     into the simulator's `.env.local`.
     """
     result = await session.execute(
-        select(ExternalEventSource).where(
-            ExternalEventSource.source_key == source_key
-        )
+        select(ExternalEventSource).where(ExternalEventSource.source_key == source_key)
     )
     source = result.scalar_one_or_none()
     if source is not None:
@@ -439,9 +447,7 @@ async def _get_or_create_event_source(
             source.shared_secret = shared_secret
             await session.commit()
             await session.refresh(source)
-            print(
-                f"  ~ Rotated shared_secret on event source: {name} ({source_key})"
-            )
+            print(f"  ~ Rotated shared_secret on event source: {name} ({source_key})")
         return source
     source = ExternalEventSource(
         tenant_id=tenant.id,
@@ -498,6 +504,141 @@ async def _get_or_create_rule(
     return rule
 
 
+AIRTIME_MERCHANT_PHONE = "+27825559001"
+# Dev-only HMAC secret for signing airtime provider callbacks in local testing.
+# Never a real secret; the real one is minted per merchant in production.
+AIRTIME_CALLBACK_SECRET = "dev-airtime-callback-secret-do-not-use-in-prod"
+
+
+async def _get_or_create_airtime_merchant(session: AsyncSession, tenant: Tenant) -> User:
+    """Idempotently create the default airtime merchant (Epic 17).
+
+    Creates a `user_type='merchant'` user, its `merchant_profiles` row
+    (associated with the seeded `airtime_recharge` service via `service_code`,
+    simulator mode, dev callback secret), and its `airtime_merchant_holding`
+    collection account. A user buying airtime credits this merchant's account.
+    """
+    result = await session.execute(
+        select(UserIdentifier).where(
+            UserIdentifier.tenant_id == tenant.id,
+            UserIdentifier.identifier_type == "phone",
+            UserIdentifier.identifier_value == AIRTIME_MERCHANT_PHONE,
+        )
+    )
+    identifier = result.scalar_one_or_none()
+    if identifier is not None:
+        merchant = (
+            await session.execute(select(User).where(User.id == identifier.user_id))
+        ).scalar_one()
+    else:
+        merchant = User(tenant_id=tenant.id, user_type=USER_TYPE_MERCHANT)
+        session.add(merchant)
+        await session.flush()
+        session.add(
+            UserIdentifier(
+                user_id=merchant.id,
+                tenant_id=tenant.id,
+                identifier_type="phone",
+                identifier_value=AIRTIME_MERCHANT_PHONE,
+                verified=True,
+            )
+        )
+        session.add(
+            UserProfile(user_id=merchant.id, first_name="Default Airtime", last_name="Merchant")
+        )
+        await session.commit()
+        await session.refresh(merchant)
+        print(f"  + Created airtime merchant user -> {merchant.id}")
+
+    # Merchant profile (idempotent on user_id).
+    profile = (
+        await session.execute(select(MerchantProfile).where(MerchantProfile.user_id == merchant.id))
+    ).scalar_one_or_none()
+    if profile is None:
+        session.add(
+            MerchantProfile(
+                tenant_id=tenant.id,
+                user_id=merchant.id,
+                business_name="Default Airtime Merchant",
+                category=MERCHANT_CATEGORY_AIRTIME,
+                service_code="airtime_recharge",
+                mode=MERCHANT_MODE_SIMULATOR,
+                callback_secret_encrypted=encrypt_secret(AIRTIME_CALLBACK_SECRET),
+            )
+        )
+        await session.commit()
+        print("  + Created merchant profile: Default Airtime Merchant (airtime_recharge/simulator)")
+        print(
+            f"    callback_secret={AIRTIME_CALLBACK_SECRET}  # dev only — sign callbacks with this"
+        )
+
+    # The merchant's collection/holding account (one per tenant/currency).
+    await _get_or_create_account(
+        session,
+        tenant,
+        user=merchant,
+        account_type=ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
+        currency="ZAR",
+        label="Airtime merchant holding",
+    )
+    return merchant
+
+
+async def _get_or_create_airtime_pricing_and_limits(session: AsyncSession, tenant: Tenant) -> None:
+    """Demo airtime fee (R1 flat) + limits (R5-R1000), so the type-aware
+    pricing/limits path is exercisable end-to-end. `user_type=NULL` = the
+    default that applies to every user type unless a type-specific row overrides.
+    """
+    pricing = (
+        await session.execute(
+            select(PricingConfig).where(
+                PricingConfig.tenant_id == tenant.id,
+                PricingConfig.transaction_type == "airtime_recharge",
+                PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                PricingConfig.currency == "ZAR",
+                PricingConfig.user_type.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if pricing is None:
+        session.add(
+            PricingConfig(
+                tenant_id=tenant.id,
+                transaction_type="airtime_recharge",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                fixed_fee=Decimal("1"),
+            )
+        )
+        await session.commit()
+        print("  + Pricing: airtime_recharge R1 flat fee (default)")
+
+    limit = (
+        await session.execute(
+            select(LimitConfig).where(
+                LimitConfig.tenant_id == tenant.id,
+                LimitConfig.transaction_type == "airtime_recharge",
+                LimitConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                LimitConfig.currency == "ZAR",
+                LimitConfig.user_type.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if limit is None:
+        session.add(
+            LimitConfig(
+                tenant_id=tenant.id,
+                transaction_type="airtime_recharge",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                min_amount=Decimal("5"),
+                max_amount=Decimal("1000"),
+            )
+        )
+        await session.commit()
+        print("  + Limits: airtime_recharge R5-R1000 (default)")
+
+
 async def seed() -> None:
     """Populate the local dev database with the canonical test data."""
     print("Seeding local development database...")
@@ -542,8 +683,8 @@ async def seed() -> None:
         # later in this script auto-creates it as part of registering the
         # sample provider (Pay-PRD-0730). Pre-0009 those two paths silently
         # created two wallets; the uq_accounts_system_scoped index now enforces
-        # one. airtime_merchant_holding is intentionally omitted: the airtime
-        # module is deferred (Phase 2) and no code path issues it yet.
+        # one. The airtime_merchant_holding account is merchant-owned and is
+        # created by _get_or_create_airtime_merchant (Epic 17), not here.
         #
         # All financial system wallets use the tenant's base currency (ZAR);
         # the points pool uses PTS.
@@ -594,12 +735,14 @@ async def seed() -> None:
             # The top_up service lazily creates the system_cash_inflow account.
             opening = spec["opening_balance_zar"]
             key = f"seed-opening-{spec['phone']}"
-            existing = (await session.execute(
-                select(Transaction).where(
-                    Transaction.tenant_id == tenant.id,
-                    Transaction.idempotency_key == key,
+            existing = (
+                await session.execute(
+                    select(Transaction).where(
+                        Transaction.tenant_id == tenant.id,
+                        Transaction.idempotency_key == key,
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if existing is None:
                 await top_up(
                     session,
@@ -609,9 +752,7 @@ async def seed() -> None:
                     currency="ZAR",
                     idempotency_key=key,
                 )
-                print(
-                    f"  + Top-up: {spec['first_name']} <- R {opening} ZAR (opening balance)"
-                )
+                print(f"  + Top-up: {spec['first_name']} <- R {opening} ZAR (opening balance)")
 
         # Phase D — sample redemption provider (auto-creates its wallet).
         await _get_or_create_redemption_provider(
@@ -619,6 +760,12 @@ async def seed() -> None:
             tenant,
             name="Mukuru Voucher (sample)",
         )
+
+        # Epic 17 — default airtime merchant (user_type=merchant) + its holding
+        # account + demo airtime pricing/limits, so the airtime vertical works
+        # end-to-end straight after a seed.
+        await _get_or_create_airtime_merchant(session, tenant)
+        await _get_or_create_airtime_pricing_and_limits(session, tenant)
 
         # Phase C — sample external source + reward rules. The shared
         # secret is deterministic in dev so the mobile-simulator's env

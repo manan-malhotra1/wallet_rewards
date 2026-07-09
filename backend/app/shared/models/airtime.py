@@ -1,14 +1,14 @@
-"""AirtimeRecharge model — Phase H follow-up to the topup correction.
+"""AirtimeRecharge model — airtime merchant vertical (Epic 17).
 
-A user-initiated airtime purchase: the wallet is DEBITed, the
-`airtime_merchant_holding` account is CREDITed (PENDING) while the
-third-party provider call is in flight. On provider success the
-transaction moves PENDING -> COMPLETED; on failure a reversal pair
-flips it to REVERSED; on timeout it stays PENDING and the existing
-reconciliation sweep resolves it.
+A user-initiated airtime purchase: the user wallet is DEBITed and the airtime
+merchant's `airtime_merchant_holding` account is CREDITed (PENDING) while the
+third-party provider provisioning call is in flight. On provider success the
+transaction + entries flip PENDING -> COMPLETED; on failure they flip
+PENDING -> REVERSED (refunding the user); on timeout the recharge stays PENDING
+and the reconciliation path resolves it.
 
-Mirrors the Redemption pattern (PRD §6.10) — same lifecycle, different
-ledger accounts. Tests cover the full state machine.
+Mirrors the Redemption pattern (PRD §6.10) — same lifecycle (status-flip on the
+parent transaction, never an UPDATE to ledger rows), different ledger accounts.
 """
 
 from __future__ import annotations

@@ -17,6 +17,14 @@ from app.shared.models.accounts import (
     Account,
     AccountBalanceSnapshot,
 )
+from app.shared.models.airtime import (
+    AIRTIME_STATUS_COMPLETED,
+    AIRTIME_STATUS_FAILED,
+    AIRTIME_STATUS_PENDING,
+    AIRTIME_STATUS_REVERSED,
+    AIRTIME_TERMINAL_STATUSES,
+    AirtimeRecharge,
+)
 from app.shared.models.api_keys import (
     API_KEY_STATUS_ACTIVE,
     API_KEY_STATUS_REVOKED,
@@ -72,6 +80,16 @@ from app.shared.models.ledger import (
     Transaction,
 )
 from app.shared.models.limits import LimitConfig, WalletLimitConfig
+from app.shared.models.merchant_profiles import (
+    MERCHANT_CATEGORY_AIRTIME,
+    MERCHANT_MODE_LIVE,
+    MERCHANT_MODE_SIMULATOR,
+    MERCHANT_MODES,
+    MERCHANT_PROFILE_STATUS_ACTIVE,
+    MERCHANT_PROFILE_STATUS_INACTIVE,
+    MERCHANT_PROFILE_STATUSES,
+    MerchantProfile,
+)
 from app.shared.models.multipliers import BonusMultiplier
 from app.shared.models.pricing import PricingConfig
 from app.shared.models.redemption import (
@@ -152,6 +170,11 @@ __all__ = [
     "ACTOR_ADMIN",
     "ACTOR_SYSTEM",
     "ACTOR_USER",
+    "AIRTIME_STATUS_COMPLETED",
+    "AIRTIME_STATUS_FAILED",
+    "AIRTIME_STATUS_PENDING",
+    "AIRTIME_STATUS_REVERSED",
+    "AIRTIME_TERMINAL_STATUSES",
     "API_KEY_STATUSES",
     "API_KEY_STATUS_ACTIVE",
     "API_KEY_STATUS_REVOKED",
@@ -174,6 +197,13 @@ __all__ = [
     "INGESTION_STATUS_REJECTED",
     "INSTRUMENT_STATUS_ACTIVE",
     "INSTRUMENT_STATUS_DISABLED",
+    "MERCHANT_CATEGORY_AIRTIME",
+    "MERCHANT_MODES",
+    "MERCHANT_MODE_LIVE",
+    "MERCHANT_MODE_SIMULATOR",
+    "MERCHANT_PROFILE_STATUSES",
+    "MERCHANT_PROFILE_STATUS_ACTIVE",
+    "MERCHANT_PROFILE_STATUS_INACTIVE",
     "MERCHANT_USER_TYPES",
     "PARENT_TYPE_BY_CHILD",
     "PROGRESS_STATUS_ACTIVE",
@@ -213,6 +243,8 @@ __all__ = [
     # Accounts
     "Account",
     "AccountBalanceSnapshot",
+    # Airtime (Epic 17)
+    "AirtimeRecharge",
     # External API keys (Epic 14)
     "ApiKey",
     # Audit
@@ -228,6 +260,8 @@ __all__ = [
     "Instrument",
     "LedgerEntry",
     "LimitConfig",
+    # Merchant profiles (Epic 17)
+    "MerchantProfile",
     "OtpRequest",
     "PricingConfig",
     "Redemption",

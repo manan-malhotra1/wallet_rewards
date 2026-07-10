@@ -14,7 +14,8 @@
 > (closed only the warm path; on the cold path a lazy counter-account `commit()`
 > released the wallet lock mid-flow), COMPLETED 2026-07-10 (lock moved to the caller +
 > counter account pre-created). M-01 max-balance race CLOSED + `amount` bounded
-> 2026-07-10 — mandatory partner funding ceiling still an OPEN product decision. M-03
+> 2026-07-10 — mandatory partner funding ceiling RESOLVED 2026-07-10 (product decision:
+> fail-OPEN accepted, NOT implemented — see §8). M-03
 > FIXED 2026-07-09. M-02, M-04, L-01–L-03 remain pre-go-live / hardening items; N-01
 > (cold-path counter-create → 500) added 2026-07-10 (LOW, money-safe). See §8.
 
@@ -94,7 +95,7 @@ with the partner path, and the admin `POST /api/v1/treasury/withdraw` gained the
 | S-3 | Spoofing | Replay a captured signed request within the 300s window | Med | High | Idempotency-Key is inside the signed body → byte-identical replay hits the idempotency guard, no second move — **mitigated** (this is the "tie replay to a real Idempotency-Key" Epic 14 residual, now satisfied) |
 | T-1 | Tampering | Mutate body after signing | Low | High | HMAC covers raw body — **mitigated** |
 | T-2 | Tampering | **Overdraft a wallet by racing two withdraws (distinct keys) past the balance check** | **High** | **High** | **OPEN — H-01.** No `SELECT … FOR UPDATE`; every other money path locks |
-| T-3 | Tampering | Inflate a balance past `max_balance` by racing two funds | Med | Med | **OPEN — M-01.** Receive-cap read is check-then-credit, no lock |
+| T-3 | Tampering | Inflate a balance past `max_balance` by racing two funds | Med | Med | **CLOSED — M-01.** Guard holds the wallet `FOR UPDATE` lock across the max-balance read + credit commit (invariant #11). (Cap is opt-in — see §8 mandatory-ceiling decision) |
 | T-4 | Tampering | Reused Idempotency-Key across ops returns a mismatched txn / conflicting body not rejected | Med | Med | **OPEN — M-03.** Fast-path keyed only on `(tenant,key)` |
 | T-5 | Tampering | Direct UPDATE of ledger money | Low | High | Only append via `post_transaction`; status untouched here — **mitigated** |
 | R-1 | Repudiation | A money move leaves no audit trail | Med | Med | **OPEN — M-04.** Audit is a 2nd commit after the ledger commit (crash window); race duplicates it |
@@ -182,6 +183,14 @@ valid/stolen key:
 dedicated partner cap; fail-closed rather than pass-through for this untrusted
 surface), lock the wallet in the receive check, and bound `amount`
 (`max_digits`/`decimal_places`).
+
+*Decision (2026-07-10, product owner):* the race + `amount` axes are done (see §8);
+the **mandatory-ceiling** axis is resolved **fail-OPEN** — funding is NOT gated on a
+configured cap on either the partner (`external_fund`) or operator (`fund_user`)
+surface. Unconfigured tenants can therefore still be funded without a cumulative
+bound (accepted residual risk, NOT a mitigation); operators MUST set a `max_balance`
+before enabling a partner key as the compensating control (once set, invariant #11
+enforces it authoritatively under the wallet lock). See §8.
 
 **M-02 — No user_type scoping; `withdraw_all` one-shot drain.**
 `resolve_user_financial_wallet` (`treasury/service.py:100-134`) resolves **any** user
@@ -302,8 +311,10 @@ bound).
   exactly one debit (H-01). Include a `withdraw_all` × 2 variant.
 - `test_external_fund_concurrent_cannot_exceed_max_balance` — two concurrent funds
   (distinct keys) cannot push the wallet past a configured `max_balance` (M-01).
-- `test_external_fund_without_limits_is_capped` — once a mandatory partner ceiling
-  exists, a fund above it is rejected (no silent unbounded mint) (M-01).
+- ~~`test_external_fund_without_limits_is_capped`~~ — DROPPED 2026-07-10: the
+  mandatory-ceiling axis of M-01 was resolved fail-OPEN (§8), so there is no
+  "capped without a configured limit" behaviour to assert. Enforcement *when a cap
+  IS configured* is covered by `test_external_fund_concurrent_cannot_exceed_max_balance`.
 - `test_external_withdraw_rejects_non_consumer_user` (or asserts the allowed set) —
   a partner cannot withdraw/fund an agent/merchant/head_merchant if scoping is added
   (M-02).
@@ -360,14 +371,20 @@ bound).
   `amount` bounded to the ledger's `Numeric(20, 6)` (`max_digits`/`decimal_places`).
   Regression: `test_external_fund_concurrent_cannot_exceed_max_balance` (one 201 + one
   409 `max_balance_exceeded`, balance stays at the cap, ledger nets to zero).
-- [ ] **M-01 (mandatory funding ceiling) — OPEN product decision.** The `amount` bound
-  caps a single request's precision, NOT cumulative partner funding. `max_balance` /
-  `top_up` limits remain OPT-IN and the rolling `top_up` caps are structurally dead
-  (`initiated_by=NULL`), so a valid/stolen key on a tenant with no configured ceiling can
-  still mint unbounded balances. Residual posture (accepted pending product): operators
-  MUST configure a `max_balance` (or a dedicated partner cap) before enabling a partner
-  fund key; Epic 14 key rotation/leak response is the compensating control. Decide
-  fail-open vs fail-closed for this untrusted surface with the product owner.
+- [x] **M-01 (mandatory funding ceiling) — RESOLVED 2026-07-10: fail-OPEN accepted (NOT
+  implemented).** Product-owner decision: do NOT gate funding on a configured ceiling, on
+  either the partner (`external_fund`) or operator (`fund_user`) surface. The `amount` bound
+  caps a single request's precision, NOT cumulative partner funding; `max_balance` / `top_up`
+  limits stay OPT-IN and the rolling `top_up` caps are structurally dead (`initiated_by=NULL`).
+  **Consequence (accepted risk, NOT a mitigation):** a valid/stolen key — or an operator — on
+  a tenant with no configured ceiling can still mint unbounded balances. Rationale: the
+  operator path is Keycloak-admin + fully audited, and gating the partner path would block
+  legitimate funding (e.g. new-tenant onboarding) until a limit exists, pushing operators
+  toward bogus-high caps. Compensating controls (unchanged, see §6): operators MUST configure
+  a `max_balance` before enabling a partner fund key — once set, invariant #11 enforces it
+  authoritatively under the wallet lock (`test_external_fund_concurrent_cannot_exceed_max_balance`)
+  — with Epic 14 key rotation/leak response as the secondary control. Revisit if KYC/AML
+  transaction monitoring (Phase 2) lands.
 - [ ] M-02 (consumer-only scoping) — confirm whether a partner may fund/withdraw
   non-consumer (agent / merchant / head_merchant) wallets before go-live.
 - [ ] M-04 (audit-after-commit window) — repo-wide pattern; address platform-wide.
@@ -390,5 +407,6 @@ bound).
 - Reviewed by: security agent (adversarial) 2026-07-09 (H-01 + M-03 fixed by lead
   2026-07-09); re-verified adversarially 2026-07-10 — H-01 original fix found INCOMPLETE
   (cold-path lock-release via mid-flow commit) and now COMPLETED; M-01 max-balance race
-  CLOSED + `amount` bounded (mandatory ceiling still open); real concurrent-race
+  CLOSED + `amount` bounded (mandatory ceiling RESOLVED fail-OPEN 2026-07-10 by
+  product owner — see §8); real concurrent-race
   regressions added; new finding N-01 (LOW).

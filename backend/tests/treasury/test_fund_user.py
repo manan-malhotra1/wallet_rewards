@@ -15,6 +15,7 @@ from app.shared.models import (
     Account,
     Tenant,
     User,
+    WalletLimitConfig,
 )
 
 
@@ -139,3 +140,39 @@ async def test_fund_user_unknown_tenant_returns_404(
         },
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_fund_user_rejects_credit_over_max_balance(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """An operator fund that would breach the wallet's max_balance is rejected by
+    the balance guard (invariant #11): fund-user credits a financial_wallet, so it
+    is cap-checked under the wallet lock like every other credit. Nothing lands."""
+    wallet = await _seed_user_wallet(db_session, test_tenant, test_user)
+    db_session.add(
+        WalletLimitConfig(tenant_id=test_tenant.id, currency="ZAR", max_balance=Decimal("100"))
+    )
+    await db_session.commit()
+
+    response = await async_client.post(
+        "/api/v1/treasury/fund-user",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
+            "amount": "150",
+            "currency": "ZAR",
+            "reason": "over-cap fund attempt",
+        },
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error_code"] == "max_balance_exceeded"
+
+    bal, _ = await derive_balance(db_session, wallet.id)
+    assert bal == Decimal("0")

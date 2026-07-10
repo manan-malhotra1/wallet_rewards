@@ -99,16 +99,6 @@ async def _find_user_wallet(
     return account
 
 
-async def _lock_account_for_update(session: AsyncSession, account_id: UUID) -> None:
-    """Acquire a row-level write lock on the account.
-
-    Prevents the classic double-spend race: two concurrent P2P transfers from
-    the same wallet that each see the full balance and both write debits.
-    The lock holds until the surrounding DB transaction commits.
-    """
-    await session.execute(select(Account.id).where(Account.id == account_id).with_for_update())
-
-
 async def p2p_transfer(
     session: AsyncSession,
     *,
@@ -130,9 +120,13 @@ async def p2p_transfer(
       2. Resolve recipient identifier -> user_id (tenant-scoped).
       3. Reject self-transfer.
       4. Find sender + recipient wallets in the requested currency.
-      5. Lock sender wallet for the duration of the DB transaction.
-      6. Overdraft check (Pay-PRD-0220) — reject BEFORE any ledger write.
-      7. Post balanced transaction via the ledger service.
+      5. (Wallet locking is done by the balance guard inside post_transaction —
+         invariant #11 — which locks sender + recipient in canonical order.)
+      6. Advisory overdraft / limits checks (Pay-PRD-0220) for early, well-typed
+         errors; the AUTHORITATIVE overdraft + recipient max_balance check runs
+         under the wallet lock in the guard at step 7.
+      7. Post balanced transaction via the ledger service (runs the balance guard,
+         then commits).
       8. Resolve any reward points credited by the rules engine for this
          transaction (post-commit, so any rule-firings are durable).
 
@@ -207,8 +201,10 @@ async def p2p_transfer(
     if sender_wallet.currency != recipient_wallet.currency:
         raise CurrencyMismatch()
 
-    # 5. Lock sender wallet to serialise concurrent same-sender transfers.
-    await _lock_account_for_update(session, sender_wallet.id)
+    # 5. Wallet locking + overdraft are enforced authoritatively by the balance
+    # guard inside post_transaction (invariant #11): it locks BOTH the sender and
+    # recipient legs in canonical (id-sorted) order. No lock is taken here —
+    # taking one would invert that order and risk an A->B / B->A deadlock.
 
     # 6. Limits check (Phase G.2, Pay-PRD-0260 step 2). Throws on min/max
     # or rolling cap breach. No-op when no config exists. Two independent

@@ -448,6 +448,33 @@ async def check_wallet_send_limits(
         raise WalletSendLimitExceeded(label, axis, cap)
 
 
+async def resolve_max_balance(
+    session: AsyncSession, *, tenant_id: UUID, user_id: UUID, currency: str
+) -> Decimal | None:
+    """Return the wallet `max_balance` ceiling for a user, or None if uncapped.
+
+    Resolves the user's type, finds the matching wallet limit config, and returns
+    its `max_balance` (None when no config exists or the cap is unset). Shared by
+    the ledger balance guard — which enforces the ceiling authoritatively under a
+    row lock (invariant #11) — and the service-level advisory receive-cap check.
+
+    Args:
+        tenant_id: Tenant scope.
+        user_id: The wallet owner whose type selects the config row.
+        currency: The wallet currency the cap applies to.
+
+    Returns:
+        The ceiling as a Decimal, or None when the wallet is uncapped.
+    """
+    user_type = await resolve_user_type(session, tenant_id, user_id)
+    config = await _find_wallet_limit_config(
+        session, tenant_id=tenant_id, currency=currency, user_type=user_type
+    )
+    if config is None or config.max_balance is None:
+        return None
+    return Decimal(str(config.max_balance))
+
+
 async def check_wallet_receive_limits(
     session: AsyncSession,
     *,

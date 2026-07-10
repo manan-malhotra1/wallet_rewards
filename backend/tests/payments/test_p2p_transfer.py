@@ -24,6 +24,7 @@ from app.shared.models import (
     Tenant,
     User,
     UserIdentifier,
+    WalletLimitConfig,
 )
 from tests.conftest import create_session_token_for_user
 
@@ -502,3 +503,152 @@ async def test_p2p_concurrent_double_spend_blocked(
     assert statuses == [201, 409], f"expected one success + one overdraft, got {statuses}"
     fail = res_a if res_a.status_code == 409 else res_b
     assert fail.json()["error_code"] == "insufficient_funds"
+
+
+@pytest.mark.asyncio
+async def test_p2p_concurrent_transfers_cannot_exceed_recipient_max_balance(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+) -> None:
+    """WAL-236 / M-01 (p2p receive axis): two concurrent transfers from DISTINCT
+    senders into the SAME recipient — each individually under the recipient's
+    max_balance but jointly over it — must NOT both land. The recipient may never
+    exceed the ceiling.
+
+    Distinct senders share no wallet lock, so serialising the SENDER debits (the
+    existing guard) does nothing here. Only a FOR UPDATE lock on the RECIPIENT
+    wallet, held across the max_balance read + the credit commit, can serialise the
+    two receives. Without it both read the pre-credit balance and both pass.
+    """
+    sender_a, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
+    sender_b, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
+    _recipient, recipient_wallet = await _make_user_with_wallet(
+        db_session, test_tenant, phone="+27 82 555 3333"
+    )
+
+    # Fund both senders BEFORE the cap exists so the seeding top-ups don't trip it.
+    for idx, sender in enumerate((sender_a, sender_b)):
+        await top_up(
+            db_session,
+            tenant_id=test_tenant.id,
+            user_id=sender.id,
+            amount=Decimal("100"),
+            currency="ZAR",
+            idempotency_key=f"seed-recv-cap-{idx}",
+        )
+
+    # Recipient cap 150; each transfer is 100. Sequentially the first lands
+    # (0+100) and the second is rejected (100+100 > 150).
+    db_session.add(
+        WalletLimitConfig(tenant_id=test_tenant.id, currency="ZAR", max_balance=Decimal("150"))
+    )
+    await db_session.commit()
+
+    auth_a = await _auth_header_for(sender_a)
+    auth_b = await _auth_header_for(sender_b)
+
+    def transfer(auth: dict[str, str]) -> asyncio.Task[object]:
+        return asyncio.create_task(
+            async_client.post(
+                "/api/v1/payments/p2p",
+                headers={**auth, "Idempotency-Key": uuid4().hex},
+                json={
+                    "recipient": {
+                        "identifier_type": "phone",
+                        "identifier_value": "+27 82 555 3333",
+                    },
+                    "amount": "100",
+                    "currency": "ZAR",
+                },
+            )
+        )
+
+    res_a, res_b = await asyncio.gather(transfer(auth_a), transfer(auth_b))
+
+    statuses = sorted([res_a.status_code, res_b.status_code])
+    assert statuses == [201, 409], f"expected one transfer + one cap-breach, got {statuses}"
+    loser = res_a if res_a.status_code == 409 else res_b
+    assert loser.json()["error_code"] == "recipient_max_balance_exceeded"
+
+    recipient_bal, _ = await derive_balance(db_session, recipient_wallet.id)
+    assert recipient_bal == Decimal("100"), f"recipient max_balance breached: {recipient_bal}"
+
+
+@pytest.mark.asyncio
+async def test_p2p_bidirectional_concurrent_transfers_do_not_deadlock(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+) -> None:
+    """Canonical id-sorted lock order (invariant #11): two simultaneous transfers
+    A->B and B->A must BOTH complete — no deadlock, no 500, no hang.
+
+    The balance guard locks every wallet leg in account-id order BEFORE any
+    balance read, so A->B and B->A acquire the SAME two wallet rows in the SAME
+    order and can only ever wait on each other, never cycle. If the lock order
+    were request-derived (the sender-first lock this change removed from
+    p2p_transfer), A->B would lock A then B while B->A locks B then A — the
+    classic inverse-order deadlock Postgres aborts with SQLSTATE 40P01, which
+    surfaces here as an unhandled 500 on one leg.
+
+    Distinct amounts (100 vs 60) make the net balances prove BOTH transfers
+    actually executed, not just one.
+    """
+    alice, alice_wallet = await _make_user_with_wallet(
+        db_session, test_tenant, phone="+27 82 555 1111"
+    )
+    bob, bob_wallet = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
+
+    # Fund both wallets generously so neither debit can overdraft in ANY commit
+    # order — the test isolates lock ordering, not the overdraft check.
+    await top_up(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=alice.id,
+        amount=Decimal("1000"),
+        currency="ZAR",
+        idempotency_key="seed-deadlock-alice",
+    )
+    await top_up(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=bob.id,
+        amount=Decimal("1000"),
+        currency="ZAR",
+        idempotency_key="seed-deadlock-bob",
+    )
+
+    alice_auth = await _auth_header_for(alice)
+    bob_auth = await _auth_header_for(bob)
+
+    def transfer(auth: dict[str, str], recipient_phone: str, amount: str) -> asyncio.Task[object]:
+        return asyncio.create_task(
+            async_client.post(
+                "/api/v1/payments/p2p",
+                headers={**auth, "Idempotency-Key": uuid4().hex},
+                json={
+                    "recipient": {"identifier_type": "phone", "identifier_value": recipient_phone},
+                    "amount": amount,
+                    "currency": "ZAR",
+                },
+            )
+        )
+
+    a_to_b = transfer(alice_auth, "+27 82 555 2222", "100")
+    b_to_a = transfer(bob_auth, "+27 82 555 1111", "60")
+
+    # wait_for converts a genuine app-level hang into a clear failure rather than
+    # blocking the whole suite. Postgres deadlock detection would instead abort
+    # one leg (-> 500) well inside this window.
+    res_ab, res_ba = await asyncio.wait_for(asyncio.gather(a_to_b, b_to_a), timeout=30)
+
+    for res in (res_ab, res_ba):
+        assert res.status_code == 201, res.text
+        assert "deadlock" not in res.text.lower()
+
+    # Net: Alice 1000 - 100 (sent) + 60 (received) = 960; Bob the mirror = 1040.
+    alice_bal, _ = await derive_balance(db_session, alice_wallet.id)
+    bob_bal, _ = await derive_balance(db_session, bob_wallet.id)
+    assert alice_bal == Decimal("960"), f"alice net wrong: {alice_bal}"
+    assert bob_bal == Decimal("1040"), f"bob net wrong: {bob_bal}"

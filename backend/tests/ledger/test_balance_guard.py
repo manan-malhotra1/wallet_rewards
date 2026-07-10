@@ -1,0 +1,182 @@
+"""Balance-guard tests for `post_transaction` (invariant #11).
+
+The guard locks every user `financial_wallet` leg and enforces overdraft (net
+debit) + max_balance (net credit) UNDER that lock — the single authoritative
+place these limits hold, so every money path inherits them by posting here. The
+concurrency proofs live with the endpoints (p2p receive cap, external
+fund/withdraw races); these cover the guard's account classification and the
+reversal exemption directly against the ledger service.
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.accounts.service import derive_balance
+from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
+from app.shared.exceptions import InsufficientFunds, MaxBalanceExceeded
+from app.shared.models import (
+    ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
+    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ENTRY_CREDIT,
+    ENTRY_DEBIT,
+    Account,
+    Tenant,
+    User,
+    WalletLimitConfig,
+)
+
+
+async def _zar_inflow(session: AsyncSession, tenant: Tenant) -> Account:
+    """A ZAR system_cash_inflow counter account (non-wallet — the guard skips it)."""
+    account = Account(
+        tenant_id=tenant.id,
+        account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+        currency="ZAR",
+    )
+    session.add(account)
+    await session.commit()
+    await session.refresh(account)
+    return account
+
+
+async def _set_zar_cap(session: AsyncSession, tenant: Tenant, cap: str) -> None:
+    """Configure a tenant-wide ZAR max_balance ceiling (user_type NULL = all)."""
+    session.add(WalletLimitConfig(tenant_id=tenant.id, currency="ZAR", max_balance=Decimal(cap)))
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_guard_rejects_credit_over_max_balance(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+) -> None:
+    """A normal credit that would breach max_balance is rejected; nothing lands."""
+    inflow = await _zar_inflow(db_session, test_tenant)
+    await _set_zar_cap(db_session, test_tenant, "100")
+
+    with pytest.raises(MaxBalanceExceeded):
+        await post_transaction(
+            db_session,
+            PostTransactionRequest(
+                tenant_id=test_tenant.id,
+                idempotency_key="cap-reject-1",
+                transaction_type="top_up",
+                currency="ZAR",
+                initiated_by=test_user.id,
+                entries=[
+                    LedgerEntryRequest(
+                        account_id=inflow.id, entry_type=ENTRY_DEBIT, amount=Decimal("150")
+                    ),
+                    LedgerEntryRequest(
+                        account_id=user_wallet.id, entry_type=ENTRY_CREDIT, amount=Decimal("150")
+                    ),
+                ],
+            ),
+        )
+    balance, _ = await derive_balance(db_session, user_wallet.id)
+    assert balance == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_guard_allows_reversal_over_max_balance(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+) -> None:
+    """A reversal / refund is cap-exempt (invariant #11b): restoring funds may push
+    a wallet over max_balance and must never be blocked."""
+    inflow = await _zar_inflow(db_session, test_tenant)
+    await _set_zar_cap(db_session, test_tenant, "100")
+
+    txn = await post_transaction(
+        db_session,
+        PostTransactionRequest(
+            tenant_id=test_tenant.id,
+            idempotency_key="reversal-1",
+            transaction_type="reversal",
+            currency="ZAR",
+            initiated_by=test_user.id,
+            is_reversal=True,
+            entries=[
+                LedgerEntryRequest(
+                    account_id=inflow.id, entry_type=ENTRY_DEBIT, amount=Decimal("150")
+                ),
+                LedgerEntryRequest(
+                    account_id=user_wallet.id, entry_type=ENTRY_CREDIT, amount=Decimal("150")
+                ),
+            ],
+        ),
+    )
+    assert txn.status == "COMPLETED"
+    balance, _ = await derive_balance(db_session, user_wallet.id)
+    assert balance == Decimal("150")  # landed despite the 100 cap
+
+
+@pytest.mark.asyncio
+async def test_guard_skips_collection_account_credit(
+    db_session: AsyncSession, test_tenant: Tenant
+) -> None:
+    """A credit to a merchant collection account is never cap-checked, even with a
+    currency cap configured — pool accounts have no ceiling (invariant #11a)."""
+    inflow = await _zar_inflow(db_session, test_tenant)
+    await _set_zar_cap(db_session, test_tenant, "100")
+    holding = Account(
+        tenant_id=test_tenant.id,
+        account_type=ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
+        currency="ZAR",
+    )
+    db_session.add(holding)
+    await db_session.commit()
+    await db_session.refresh(holding)
+
+    txn = await post_transaction(
+        db_session,
+        PostTransactionRequest(
+            tenant_id=test_tenant.id,
+            idempotency_key="pool-credit-1",
+            transaction_type="airtime_recharge",
+            currency="ZAR",
+            entries=[
+                LedgerEntryRequest(
+                    account_id=inflow.id, entry_type=ENTRY_DEBIT, amount=Decimal("500")
+                ),
+                LedgerEntryRequest(
+                    account_id=holding.id, entry_type=ENTRY_CREDIT, amount=Decimal("500")
+                ),
+            ],
+        ),
+    )
+    assert txn.status == "COMPLETED"
+    balance, _ = await derive_balance(db_session, holding.id)
+    assert balance == Decimal("500")  # 500 > 100 cap, but pool accounts are exempt
+
+
+@pytest.mark.asyncio
+async def test_guard_rejects_debit_over_available_balance(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+) -> None:
+    """A debit that would overdraw the wallet is rejected; nothing lands."""
+    inflow = await _zar_inflow(db_session, test_tenant)
+    # user_wallet opens at 0 — debiting 50 must fail overdraft.
+    with pytest.raises(InsufficientFunds):
+        await post_transaction(
+            db_session,
+            PostTransactionRequest(
+                tenant_id=test_tenant.id,
+                idempotency_key="overdraft-1",
+                transaction_type="withdraw",
+                currency="ZAR",
+                initiated_by=test_user.id,
+                entries=[
+                    LedgerEntryRequest(
+                        account_id=user_wallet.id, entry_type=ENTRY_DEBIT, amount=Decimal("50")
+                    ),
+                    LedgerEntryRequest(
+                        account_id=inflow.id, entry_type=ENTRY_CREDIT, amount=Decimal("50")
+                    ),
+                ],
+            ),
+        )
+    balance, _ = await derive_balance(db_session, user_wallet.id)
+    assert balance == Decimal("0")

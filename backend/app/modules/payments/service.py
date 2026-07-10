@@ -23,6 +23,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import UserPrincipal
@@ -374,24 +375,28 @@ async def p2p_transfer(
     return txn, recipient_user_id, earned_points
 
 
-async def _get_or_create_system_cash_inflow(
+async def get_or_create_system_cash_inflow(
     session: AsyncSession, tenant_id: UUID, currency: str
 ) -> Account:
     """Idempotent fetch-or-create for the per-(tenant, currency) cash inflow account.
 
     Used by `top_up()` so the seed and future top-up endpoint don't need to
-    pre-create the account out-of-band.
+    pre-create the account out-of-band. `external_fund` also calls it to
+    pre-create the account BEFORE taking the wallet lock (Epic 18 S4 M-01).
+
+    Concurrency-safe: two concurrent first-ever funds for the same
+    (tenant, currency) can race the INSERT; the loser hits the
+    `uq_accounts_system_scoped` unique constraint, so we roll back and re-read
+    the winner's row rather than surfacing a raw IntegrityError.
     """
     currency = currency.upper()
-    result = await session.execute(
-        select(Account).where(
-            Account.tenant_id == tenant_id,
-            Account.account_type == ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-            Account.currency == currency,
-            Account.user_id.is_(None),
-        )
+    stmt = select(Account).where(
+        Account.tenant_id == tenant_id,
+        Account.account_type == ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+        Account.currency == currency,
+        Account.user_id.is_(None),
     )
-    account = result.scalar_one_or_none()
+    account = (await session.execute(stmt)).scalar_one_or_none()
     if account is not None:
         return account
     account = Account(
@@ -400,7 +405,13 @@ async def _get_or_create_system_cash_inflow(
         currency=currency,
     )
     session.add(account)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # A concurrent caller created it first — roll back our INSERT and
+        # return the committed row.
+        await session.rollback()
+        return (await session.execute(stmt)).scalar_one()
     await session.refresh(account)
     return account
 
@@ -453,7 +464,7 @@ async def top_up(
         amount=amount,
     )
 
-    inflow = await _get_or_create_system_cash_inflow(session, tenant_id, currency)
+    inflow = await get_or_create_system_cash_inflow(session, tenant_id, currency)
 
     return await post_transaction(
         session,

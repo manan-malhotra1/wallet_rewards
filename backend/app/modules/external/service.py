@@ -20,13 +20,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.api_key import ApiKeyPrincipal
-from app.modules.accounts.service import derive_balance
+from app.modules.accounts.service import derive_balance, lock_account_for_update
 from app.modules.audit.service import record_audit_for_system
 from app.modules.external.schemas import ExternalFundRequest, ExternalWithdrawRequest
 from app.modules.limits.service import check_limits, check_wallet_send_limits
-from app.modules.payments.service import top_up
+from app.modules.payments.service import get_or_create_system_cash_inflow, top_up
 from app.modules.treasury.schemas import FundUserResponse, WithdrawFromUserResponse
 from app.modules.treasury.service import (
+    get_or_create_operator_adjustment,
     post_user_withdraw,
     resolve_user_financial_wallet,
     resolve_withdraw_amount,
@@ -87,6 +88,14 @@ async def external_fund(
             currency=str(existing.currency),
             new_balance=balance,
         )
+
+    # M-01: hold the wallet lock across the receive-cap read (inside top_up) and
+    # the credit commit, so two concurrent funds can't both read the pre-credit
+    # balance and race past `max_balance`. Pre-create system_cash_inflow BEFORE
+    # locking — top_up creates it lazily and that commit would otherwise release
+    # the lock mid-flow (same shape as the H-01 withdraw fix).
+    await get_or_create_system_cash_inflow(session, tenant_id=tenant_id, currency=currency)
+    await lock_account_for_update(session, wallet.id)
 
     # Per-transaction cap. Rolling `top_up` caps don't aggregate (top_up is
     # system-initiated, initiated_by=NULL); top_up's own wallet-receive cap is
@@ -169,6 +178,15 @@ async def external_withdraw(
             new_balance=balance,
         )
 
+    # H-01: pre-create the counter account BEFORE locking (its lazy creation
+    # commits, which would release the wallet lock mid-flow), then hold the
+    # wallet lock continuously through post_user_withdraw's commit. Two
+    # concurrent distinct-key withdraws on this wallet now serialise instead of
+    # both passing the overdraft check and driving the balance negative.
+    operator_adjustment = await get_or_create_operator_adjustment(
+        session, tenant_id=tenant_id, currency=currency
+    )
+    await lock_account_for_update(session, wallet.id)
     final_amount = await resolve_withdraw_amount(
         session, wallet, amount=request.amount, withdraw_all=request.withdraw_all
     )
@@ -189,6 +207,7 @@ async def external_withdraw(
         tenant_id=tenant_id,
         user_id=user_id,
         wallet=wallet,
+        operator_adjustment=operator_adjustment,
         amount=final_amount,
         currency=currency,
         idempotency_key=idempotency_key,

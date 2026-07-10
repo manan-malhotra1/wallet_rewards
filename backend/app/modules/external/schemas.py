@@ -64,7 +64,11 @@ class ExternalFundRequest(BaseModel):
 
     identifier_type: IdentifierType
     identifier_value: str = Field(min_length=1, max_length=255)
-    amount: Decimal = Field(gt=Decimal("0"))
+    # Bounded to the ledger's Numeric(20, 6) storage precision — a larger/more
+    # precise value can't be stored faithfully anyway (M-01/L-03 defence-in-depth).
+    # NOTE: this bounds a single request's magnitude, not cumulative partner
+    # funding — a mandatory per-tenant funding ceiling is a separate policy call.
+    amount: Decimal = Field(gt=Decimal("0"), max_digits=20, decimal_places=6)
     currency: str = Field(min_length=2, max_length=10)
     reason: str | None = Field(default=None, max_length=500)
 
@@ -81,7 +85,8 @@ class ExternalWithdrawRequest(BaseModel):
 
     identifier_type: IdentifierType
     identifier_value: str = Field(min_length=1, max_length=255)
-    amount: Decimal | None = Field(default=None, gt=Decimal("0"))
+    # Bounded to the ledger's Numeric(20, 6) storage precision (M-01/L-03).
+    amount: Decimal | None = Field(default=None, gt=Decimal("0"), max_digits=20, decimal_places=6)
     withdraw_all: bool = False
     currency: str = Field(min_length=2, max_length=10)
     reason: str | None = Field(default=None, max_length=500)

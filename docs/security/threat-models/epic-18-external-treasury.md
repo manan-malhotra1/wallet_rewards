@@ -10,8 +10,13 @@
 > `app/modules/limits/service.py`, `app/modules/ledger/service.py`,
 > `app/auth/{api_key,hmac}.py`
 > **Scope commits:** 311308e → 3c9640a (on `main`)
-> **Status:** H-01 (ship blocker) + M-03 FIXED by the lead 2026-07-09; M-01, M-02,
-> M-04 and L-01–L-03 documented as pre-go-live / hardening items (see §8).
+> **Status:** H-01 (ship blocker) FIXED — the original 2026-07-09 fix was INCOMPLETE
+> (closed only the warm path; on the cold path a lazy counter-account `commit()`
+> released the wallet lock mid-flow), COMPLETED 2026-07-10 (lock moved to the caller +
+> counter account pre-created). M-01 max-balance race CLOSED + `amount` bounded
+> 2026-07-10 — mandatory partner funding ceiling still an OPEN product decision. M-03
+> FIXED 2026-07-09. M-02, M-04, L-01–L-03 remain pre-go-live / hardening items; N-01
+> (cold-path counter-create → 500) added 2026-07-10 (LOW, money-safe). See §8.
 
 ---
 
@@ -328,19 +333,62 @@ bound).
   HMAC replay, audit completeness, operator-vs-partner privilege
 - [x] Cross-tenant isolation, system-wallet unreachability, no-mass-assignment,
   same-key retry safety, and HMAC-replay neutralisation **verified correct**
-- [x] **H-01 (withdraw overdraft race) — FIXED 2026-07-09**: `resolve_withdraw_amount`
-  now `SELECT … FOR UPDATE`-locks the wallet row before the overdraft check, so
-  concurrent withdraws serialise. Fixes both the external and the (pre-existing) admin
-  withdraw path. Mirrors payments/redemption/airtime. Regression:
-  `test_external_reused_key_across_ops_conflicts` + existing withdraw suite; a true
-  concurrent-race test is deferred to `automation-testing` (§7).
+- [x] **H-01 (withdraw overdraft race) — original 2026-07-09 fix was INCOMPLETE;
+  COMPLETED 2026-07-10.** The 2026-07-09 fix locked the wallet INSIDE
+  `resolve_withdraw_amount`, which closed only the WARM path. On the COLD path (first
+  withdraw per (tenant, currency)) the lazy `_get_or_create_operator_adjustment`
+  `commit()` ran mid-flow — inside `post_user_withdraw`, AFTER the lock — and RELEASED
+  the `FOR UPDATE` lock before the debit was posted, so two concurrent distinct-key
+  withdraws still both passed the overdraft check and drove the balance negative
+  (reproduced from a clean DB: `[201, 201]`, final balance −100). Completed fix: the lock
+  moved to the callers (`external_withdraw:189`, `withdraw_from_user:451`) and the counter
+  account is pre-created via `get_or_create_operator_adjustment` BEFORE the lock, so the
+  lock now spans acquisition → `post_transaction`'s debit commit with NO intervening
+  commit (verified read-only under the lock: `resolve_withdraw_amount`, `check_limits`,
+  `check_wallet_send_limits`, `resolve_user_type`). Covers external + admin paths;
+  mirrors payments/redemption/airtime. Regression (REAL concurrent-race tests, stable
+  6/6 — each asserts one 201 + one 409, wallet never negative, exactly one debit, and
+  ledger nets to zero under the race): `test_external_withdraw_concurrent_distinct_keys_cannot_overdraft`,
+  `test_external_withdraw_all_concurrent_cannot_double_drain`.
 - [x] **M-03 — FIXED 2026-07-09**: the external idempotency fast-path rejects a key
   reused for a different operation (`transaction_type` mismatch → 409).
-- [ ] M-01 (fund minting ceiling + max-balance race) — before enabling partner **fund**:
-  operators must configure a `top_up` / `max_balance` limit for partner-enabled tenants
-  (limits are opt-in platform-wide). Confirm default posture with the product owner.
+- [x] **M-01 (max-balance race + amount bound) — FIXED 2026-07-10.** The fund path now
+  holds the wallet lock across `check_wallet_receive_limits`' balance read (inside
+  `top_up`) and the credit commit — `system_cash_inflow` is pre-created before the lock
+  so its lazy create can't release the lock mid-flow (same shape as H-01). Two concurrent
+  funds can no longer both read the pre-credit balance and race past `max_balance`.
+  `amount` bounded to the ledger's `Numeric(20, 6)` (`max_digits`/`decimal_places`).
+  Regression: `test_external_fund_concurrent_cannot_exceed_max_balance` (one 201 + one
+  409 `max_balance_exceeded`, balance stays at the cap, ledger nets to zero).
+- [ ] **M-01 (mandatory funding ceiling) — OPEN product decision.** The `amount` bound
+  caps a single request's precision, NOT cumulative partner funding. `max_balance` /
+  `top_up` limits remain OPT-IN and the rolling `top_up` caps are structurally dead
+  (`initiated_by=NULL`), so a valid/stolen key on a tenant with no configured ceiling can
+  still mint unbounded balances. Residual posture (accepted pending product): operators
+  MUST configure a `max_balance` (or a dedicated partner cap) before enabling a partner
+  fund key; Epic 14 key rotation/leak response is the compensating control. Decide
+  fail-open vs fail-closed for this untrusted surface with the product owner.
 - [ ] M-02 (consumer-only scoping) — confirm whether a partner may fund/withdraw
   non-consumer (agent / merchant / head_merchant) wallets before go-live.
 - [ ] M-04 (audit-after-commit window) — repo-wide pattern; address platform-wide.
 - [ ] L-01 / L-02 / L-03 — hardening follow-up.
-- Reviewed by: security agent (adversarial) on 2026-07-09; H-01 + M-03 fixed by lead 2026-07-09
+- [ ] **N-01 (cold-path counter-account create → HTTP 500) — hardening, LOW, money-safe.**
+  Surfaced by the completed H-01 fix moving counter-account creation ahead of the wallet
+  lock: two concurrent FIRST-EVER fund/withdraws for a new (tenant, currency) can both
+  find the counter account missing and both `INSERT`; the `uq_accounts_system_scoped`
+  partial unique index (`accounts.py:114-121`) makes the loser's `commit()` raise
+  `IntegrityError`, which neither `get_or_create_operator_adjustment`
+  (`treasury/service.py:89-97`) nor `get_or_create_system_cash_inflow`
+  (`payments/service.py:397-405`) catches, and `main.py` registers no `IntegrityError`
+  handler → HTTP 500. NO overdraft/double-spend — it occurs BEFORE the wallet lock and
+  any ledger write — and it is self-healing (warm path never recurs). Newly reachable for
+  withdraw (pre-fix the wallet lock serialised withdraws before the create); pre-existing
+  for fund (never had a lock). Not observed in the harness (its scheduler runs one task
+  far enough ahead that the loser goes warm → clean 409). Fix: catch `IntegrityError` and
+  re-SELECT the winner's row — mirror `post_transaction` (`ledger/service.py:161-169`) /
+  `create_account` (`accounts/service.py:78-88`).
+- Reviewed by: security agent (adversarial) 2026-07-09 (H-01 + M-03 fixed by lead
+  2026-07-09); re-verified adversarially 2026-07-10 — H-01 original fix found INCOMPLETE
+  (cold-path lock-release via mid-flow commit) and now COMPLETED; M-01 max-balance race
+  CLOSED + `amount` bounded (mandatory ceiling still open); real concurrent-race
+  regressions added; new finding N-01 (LOW).

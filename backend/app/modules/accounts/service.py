@@ -172,3 +172,27 @@ async def derive_balance(session: AsyncSession, account_id: UUID) -> tuple[Decim
     # subtraction in the SQL handles credits-pending edge cases consistently.
 
     return balance, reserved
+
+
+async def lock_account_for_update(session: AsyncSession, account_id: UUID) -> None:
+    """Acquire a row-level write lock (SELECT ... FOR UPDATE) on an account.
+
+    The shared double-spend guard for every balance-bearing money move
+    (Pay-PRD-0220). Two concurrent debits that each read the pre-move balance
+    and both write would drive the balance negative; the lock forces the second
+    caller to wait until the first commits, so it sees the post-move balance and
+    its overdraft / limit check correctly fails.
+
+    Args:
+        session: Async DB session.
+        account_id: The balance-bearing account to lock.
+
+    Side effects / caller contract:
+        The lock is held until the surrounding transaction commits or rolls
+        back. Acquire it BEFORE reading the balance, and ensure NO intervening
+        ``commit()`` runs between the lock and the money-leg write — a mid-flow
+        commit (e.g. lazy system-account creation) releases the lock and reopens
+        the race (Epic 18 S4 H-01). Pre-create any lazily-built counter accounts
+        before calling this.
+    """
+    await session.execute(select(Account.id).where(Account.id == account_id).with_for_update())

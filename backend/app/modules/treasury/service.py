@@ -18,10 +18,11 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
-from app.modules.accounts.service import derive_balance
+from app.modules.accounts.service import derive_balance, lock_account_for_update
 from app.modules.audit.service import record_audit_for_admin
 from app.modules.identity.schemas import IdentifierType
 from app.modules.identity.service import resolve_identifier
@@ -66,24 +67,28 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
         raise TenantNotFound()
 
 
-async def _get_or_create_operator_adjustment(
+async def get_or_create_operator_adjustment(
     session: AsyncSession, *, tenant_id: UUID, currency: str
 ) -> Account:
     """Fetch-or-create the per-(tenant, currency) operator_adjustment account.
 
     Lazy so the operator doesn't have to pre-seed anything in a new tenant.
+
+    Concurrency-safe: callers pre-create this BEFORE taking the wallet lock
+    (Epic 18 S4 H-01), so two concurrent first-ever withdraws for the same
+    (tenant, currency) can race the INSERT. The loser hits the
+    `uq_accounts_system_scoped` unique constraint; we roll back and re-read the
+    winner's row rather than surfacing a raw IntegrityError (mirrors
+    `create_account` and `post_transaction`).
     """
     currency = currency.upper()
-    existing = (
-        await session.execute(
-            select(Account).where(
-                Account.tenant_id == tenant_id,
-                Account.account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
-                Account.currency == currency,
-                Account.user_id.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
+    stmt = select(Account).where(
+        Account.tenant_id == tenant_id,
+        Account.account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+        Account.currency == currency,
+        Account.user_id.is_(None),
+    )
+    existing = (await session.execute(stmt)).scalar_one_or_none()
     if existing is not None:
         return existing
     account = Account(
@@ -92,7 +97,13 @@ async def _get_or_create_operator_adjustment(
         currency=currency,
     )
     session.add(account)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # A concurrent caller created it first — roll back our INSERT and
+        # return the committed row.
+        await session.rollback()
+        return (await session.execute(stmt)).scalar_one()
     await session.refresh(account)
     return account
 
@@ -146,15 +157,20 @@ async def resolve_withdraw_amount(
     `withdraw_all` resolves to the wallet's full available balance
     (balance - reserved); otherwise the requested `amount`.
 
+    Caller contract (Epic 18 S4 H-01):
+        The wallet row MUST already be locked via `lock_account_for_update`, and
+        that lock MUST be held continuously through the debit commit. This
+        function only reads the balance and decides the amount; the row lock is
+        what serialises concurrent withdraws. A lock is NOT taken here because
+        it must also cover the counter-account creation ordering — see
+        `post_user_withdraw` and the calling services. Taking the lock here (as
+        the original fix did) is insufficient: the lazy `operator_adjustment`
+        creation commits mid-flow and releases it before the debit is posted.
+
     Raises:
         NothingToWithdraw: withdraw_all but available <= 0.
         InsufficientFunds: requested amount > available.
     """
-    # Lock the wallet row for the rest of the transaction so concurrent
-    # withdraws serialise. Without this, two overdraft checks can both read the
-    # pre-debit balance, both pass, and drive the wallet negative — a
-    # double-spend (Epic 18 S4 H-01). Mirrors payments/redemption/airtime.
-    await session.execute(select(Account.id).where(Account.id == wallet.id).with_for_update())
     balance, reserved = await derive_balance(session, wallet.id)
     available = balance - reserved
     if withdraw_all:
@@ -174,6 +190,7 @@ async def post_user_withdraw(
     tenant_id: UUID,
     user_id: UUID,
     wallet: Account,
+    operator_adjustment: Account,
     amount: Decimal,
     currency: str,
     idempotency_key: str,
@@ -181,12 +198,18 @@ async def post_user_withdraw(
     """Post the balanced withdraw legs: DEBIT the user wallet, CREDIT the
     operator_adjustment system account (transaction_type='withdraw').
 
+    Args:
+        operator_adjustment: The counter-leg system account, resolved by the
+            caller via `get_or_create_operator_adjustment` BEFORE the wallet was
+            locked. Passing it in — rather than lazily creating it here — is what
+            keeps the wallet lock unbroken: that creation may `commit()`, which
+            would release the FOR UPDATE lock mid-flow and reopen the H-01 race.
+
     The caller owns the audit row + the surrounding commit; this only appends
     the ledger transaction (which commits internally via `post_transaction`).
+    That internal commit is what finally releases the wallet lock — after the
+    debit is durably written.
     """
-    operator_adjustment = await _get_or_create_operator_adjustment(
-        session, tenant_id=tenant_id, currency=currency
-    )
     return await post_transaction(
         session,
         PostTransactionRequest(
@@ -428,6 +451,15 @@ async def withdraw_from_user(
     user_id, user_wallet = await resolve_user_financial_wallet(
         session, tenant_id, identifier_type, identifier_value, currency
     )
+    # H-01: pre-create the counter account BEFORE locking (its lazy creation
+    # commits, which would release the wallet lock mid-flow), then hold the wallet
+    # lock continuously through post_user_withdraw's commit so concurrent
+    # withdraws on this wallet serialise instead of both passing the overdraft
+    # check and driving the balance negative.
+    operator_adjustment = await get_or_create_operator_adjustment(
+        session, tenant_id=tenant_id, currency=currency
+    )
+    await lock_account_for_update(session, user_wallet.id)
     final_amount = await resolve_withdraw_amount(
         session, user_wallet, amount=amount, withdraw_all=withdraw_all
     )
@@ -436,6 +468,7 @@ async def withdraw_from_user(
         tenant_id=tenant_id,
         user_id=user_id,
         wallet=user_wallet,
+        operator_adjustment=operator_adjustment,
         amount=final_amount,
         currency=currency,
         idempotency_key=f"admin-withdraw-{uuid4().hex}",
@@ -524,7 +557,7 @@ async def adjust_system_wallet(
             "be the target of an adjustment.",
         )
 
-    counter = await _get_or_create_operator_adjustment(
+    counter = await get_or_create_operator_adjustment(
         session, tenant_id=tenant_id, currency=target.currency
     )
 

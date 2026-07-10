@@ -6,6 +6,7 @@ the ledger transaction key (safe retries), type-aware limits enforced.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -17,6 +18,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.secret_box import encrypt_secret
@@ -29,11 +31,16 @@ from app.modules.ledger.service import (
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ENTRY_CREDIT,
+    ENTRY_DEBIT,
+    ENTRY_STATUS_COMPLETED,
     Account,
     ApiKey,
+    LedgerEntry,
     LimitConfig,
     Tenant,
     User,
+    WalletLimitConfig,
 )
 
 _SECRET = "ext-treasury-secret-do-not-log"
@@ -438,3 +445,187 @@ async def test_external_reused_key_across_ops_conflicts(
         headers=_sign(api_key["key_id"], api_key["secret"], wd_raw, idem="shared-key"),
     )
     assert wd.status_code == 409
+
+
+# -----------------------------------------------------------------------------
+# Concurrency regressions (Epic 18 S4 — H-01 withdraw race, M-01 fund race)
+#
+# These exercise a REAL row-lock race: each concurrent request runs on its own
+# session + asyncpg connection (async_client dep override + NullPool), so two
+# in-flight money moves on the same wallet genuinely contend in Postgres.
+# Mirrors the p2p (test_p2p_transfer.py) and redemption race tests.
+# -----------------------------------------------------------------------------
+
+
+async def _ledger_net_completed(session: AsyncSession) -> Decimal:
+    """System-wide SUM(CREDIT) - SUM(DEBIT) over COMPLETED entries.
+
+    The double-entry invariant (NFR-0100) requires this to be exactly zero;
+    a double-spend that drives a balance negative still nets to zero at the
+    ledger level, so this is a belt-and-braces check that the race never
+    writes an *unbalanced* transaction, complementing the balance assertions.
+    """
+    result = await session.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    case(
+                        (LedgerEntry.entry_type == ENTRY_CREDIT, LedgerEntry.amount),
+                        else_=-LedgerEntry.amount,
+                    )
+                ),
+                0,
+            )
+        ).where(LedgerEntry.status == ENTRY_STATUS_COMPLETED)
+    )
+    return Decimal(result.scalar_one() or 0)
+
+
+async def _count_debits(session: AsyncSession, account_id) -> int:
+    """Count COMPLETED DEBIT entries against an account (posted withdraws)."""
+    result = await session.execute(
+        select(func.count())
+        .select_from(LedgerEntry)
+        .where(
+            LedgerEntry.account_id == account_id,
+            LedgerEntry.entry_type == ENTRY_DEBIT,
+            LedgerEntry.status == ENTRY_STATUS_COMPLETED,
+        )
+    )
+    return int(result.scalar_one())
+
+
+@pytest.mark.asyncio
+async def test_external_withdraw_concurrent_distinct_keys_cannot_overdraft(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    api_key: dict[str, str],
+) -> None:
+    """H-01: two concurrent withdraws (DISTINCT keys) for the full balance must
+    NOT both commit — exactly one succeeds, the wallet never goes negative, and
+    exactly one debit is posted.
+
+    Distinct keys defeat the idempotency guard by design, so the ONLY thing that
+    can prevent the double-spend is the wallet FOR UPDATE lock held continuously
+    through the debit commit.
+    """
+    wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("100"))
+    body = {
+        "identifier_type": "phone",
+        "identifier_value": _user_phone(test_user),
+        "amount": "100",  # each request pulls the FULL balance
+        "currency": "ZAR",
+    }
+    raw = json.dumps(body).encode()
+
+    def _withdraw(idem: str) -> asyncio.Task[object]:
+        return asyncio.create_task(
+            async_client.post(
+                "/api/v1/external/withdraw",
+                content=raw,
+                headers=_sign(api_key["key_id"], api_key["secret"], raw, idem=idem),
+            )
+        )
+
+    res_a, res_b = await asyncio.gather(_withdraw(uuid4().hex), _withdraw(uuid4().hex))
+
+    statuses = sorted([res_a.status_code, res_b.status_code])
+    assert statuses == [201, 409], f"expected one success + one overdraft, got {statuses}"
+    loser = res_a if res_a.status_code == 409 else res_b
+    assert loser.json()["error_code"] == "insufficient_funds"
+
+    balance, _ = await derive_balance(db_session, wallet.id)
+    assert balance == Decimal("0"), f"wallet drove negative/double-spent: {balance}"
+    assert await _count_debits(db_session, wallet.id) == 1, "more than one debit posted"
+    assert await _ledger_net_completed(db_session) == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_external_withdraw_all_concurrent_cannot_double_drain(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    api_key: dict[str, str],
+) -> None:
+    """H-01 (withdraw_all variant): two concurrent `withdraw_all` calls cannot
+    each pull the full balance. withdraw_all needs no balance knowledge, so the
+    race is easier to trigger — exactly one drains it, the other gets 409."""
+    wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("100"))
+    body = {
+        "identifier_type": "phone",
+        "identifier_value": _user_phone(test_user),
+        "withdraw_all": True,
+        "currency": "ZAR",
+    }
+    raw = json.dumps(body).encode()
+
+    def _withdraw_all(idem: str) -> asyncio.Task[object]:
+        return asyncio.create_task(
+            async_client.post(
+                "/api/v1/external/withdraw",
+                content=raw,
+                headers=_sign(api_key["key_id"], api_key["secret"], raw, idem=idem),
+            )
+        )
+
+    res_a, res_b = await asyncio.gather(_withdraw_all(uuid4().hex), _withdraw_all(uuid4().hex))
+
+    statuses = sorted([res_a.status_code, res_b.status_code])
+    assert statuses == [201, 409], f"expected one drain + one 409, got {statuses}"
+    winner = res_a if res_a.status_code == 201 else res_b
+    assert Decimal(winner.json()["amount"]) == Decimal("100")
+
+    balance, _ = await derive_balance(db_session, wallet.id)
+    assert balance == Decimal("0"), f"wallet drove negative/double-drained: {balance}"
+    assert await _count_debits(db_session, wallet.id) == 1, "more than one debit posted"
+    assert await _ledger_net_completed(db_session) == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_external_fund_concurrent_cannot_exceed_max_balance(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    api_key: dict[str, str],
+) -> None:
+    """M-01: with a max_balance ceiling configured, two concurrent funds that are
+    each individually under the cap but jointly over it must NOT both land — the
+    wallet may never exceed max_balance.
+
+    Cap 150, wallet starts at 0, each fund is 100: sequentially the first lands
+    (100) and the second is rejected (100+100 > 150). Without a wallet lock, both
+    read balance 0 and both pass the check → balance 200, breaching the cap.
+    """
+    wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
+    # user_type IS NULL → applies to every user_type (incl. the consumer default).
+    db_session.add(
+        WalletLimitConfig(tenant_id=test_tenant.id, currency="ZAR", max_balance=Decimal("150"))
+    )
+    await db_session.commit()
+
+    body = _fund_body(_user_phone(test_user), amount="100")
+    raw = json.dumps(body).encode()
+
+    def _fund(idem: str) -> asyncio.Task[object]:
+        return asyncio.create_task(
+            async_client.post(
+                "/api/v1/external/fund",
+                content=raw,
+                headers=_sign(api_key["key_id"], api_key["secret"], raw, idem=idem),
+            )
+        )
+
+    res_a, res_b = await asyncio.gather(_fund(uuid4().hex), _fund(uuid4().hex))
+
+    statuses = sorted([res_a.status_code, res_b.status_code])
+    assert statuses == [201, 409], f"expected one fund + one cap-breach, got {statuses}"
+    loser = res_a if res_a.status_code == 409 else res_b
+    assert loser.json()["error_code"] == "max_balance_exceeded"
+
+    balance, _ = await derive_balance(db_session, wallet.id)
+    assert balance == Decimal("100"), f"max_balance ceiling breached: {balance}"
+    assert await _ledger_net_completed(db_session) == Decimal("0")

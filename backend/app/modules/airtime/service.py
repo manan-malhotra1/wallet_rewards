@@ -166,11 +166,6 @@ async def _get_or_create_merchant_holding(
     return account
 
 
-async def _lock_account_for_update(session: AsyncSession, account_id: UUID) -> None:
-    """Row-lock an account until commit — serialises concurrent spends."""
-    await session.execute(select(Account.id).where(Account.id == account_id).with_for_update())
-
-
 # -----------------------------------------------------------------------------
 # Initiate (reserve + commit)
 # -----------------------------------------------------------------------------
@@ -226,8 +221,6 @@ async def initiate_recharge(
     wallet = await _find_user_wallet(session, tenant_id, user_id, currency)
     holding = await _get_or_create_merchant_holding(session, tenant_id, merchant.user_id, currency)
 
-    await _lock_account_for_update(session, wallet.id)
-
     # Type-aware limits (resolve user_type internally), then step-up, then fee.
     from app.modules.limits.service import check_limits, check_wallet_send_limits
 
@@ -259,7 +252,10 @@ async def initiate_recharge(
 
     fee = await _resolve_fee(session, tenant_id, user_id, currency, request.amount)
 
-    # Overdraft check (Pay-PRD-0220) — must include the fee, before any write.
+    # Advisory overdraft early-error (Pay-PRD-0220) — includes the fee. The
+    # authoritative check is `post_transaction`'s balance guard (invariant #11),
+    # which locks the wallet FOR UPDATE and re-checks the debit legs under it;
+    # this unlocked read just rejects the common case before any write.
     balance, reserved = await derive_balance(session, wallet.id)
     if balance - reserved < request.amount + fee:
         raise InsufficientFunds()

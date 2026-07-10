@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
-from app.modules.accounts.service import derive_balance, lock_account_for_update
+from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_admin
 from app.modules.identity.schemas import IdentifierType
 from app.modules.identity.service import resolve_identifier
@@ -157,15 +157,13 @@ async def resolve_withdraw_amount(
     `withdraw_all` resolves to the wallet's full available balance
     (balance - reserved); otherwise the requested `amount`.
 
-    Caller contract (Epic 18 S4 H-01):
-        The wallet row MUST already be locked via `lock_account_for_update`, and
-        that lock MUST be held continuously through the debit commit. This
-        function only reads the balance and decides the amount; the row lock is
-        what serialises concurrent withdraws. A lock is NOT taken here because
-        it must also cover the counter-account creation ordering — see
-        `post_user_withdraw` and the calling services. Taking the lock here (as
-        the original fix did) is insufficient: the lazy `operator_adjustment`
-        creation commits mid-flow and releases it before the debit is posted.
+    Advisory only (invariant #11):
+        This is a best-effort early error — it reads the balance WITHOUT a lock
+        and may race a concurrent withdraw. The authoritative overdraft check is
+        `post_transaction`'s balance guard, which locks the wallet FOR UPDATE and
+        re-checks under that lock, held through the debit commit. A race that
+        slips past this read is still caught there; this function just turns the
+        common case into a clean early rejection.
 
     Raises:
         NothingToWithdraw: withdraw_all but available <= 0.
@@ -200,15 +198,15 @@ async def post_user_withdraw(
 
     Args:
         operator_adjustment: The counter-leg system account, resolved by the
-            caller via `get_or_create_operator_adjustment` BEFORE the wallet was
-            locked. Passing it in — rather than lazily creating it here — is what
-            keeps the wallet lock unbroken: that creation may `commit()`, which
-            would release the FOR UPDATE lock mid-flow and reopen the H-01 race.
+            caller via `get_or_create_operator_adjustment`. It must already exist
+            because `post_transaction` loads every entry's account up front (and
+            then locks the wallet under its balance guard) — creating it lazily
+            here would be a mid-flow `commit()` inside that guarded window.
 
-    The caller owns the audit row + the surrounding commit; this only appends
-    the ledger transaction (which commits internally via `post_transaction`).
-    That internal commit is what finally releases the wallet lock — after the
-    debit is durably written.
+    The caller owns the audit row + the surrounding commit; this only appends the
+    ledger transaction, which commits internally via `post_transaction`. That
+    guarded commit is where the wallet FOR UPDATE lock is taken and released —
+    after the debit is durably written.
     """
     return await post_transaction(
         session,
@@ -451,15 +449,14 @@ async def withdraw_from_user(
     user_id, user_wallet = await resolve_user_financial_wallet(
         session, tenant_id, identifier_type, identifier_value, currency
     )
-    # H-01: pre-create the counter account BEFORE locking (its lazy creation
-    # commits, which would release the wallet lock mid-flow), then hold the wallet
-    # lock continuously through post_user_withdraw's commit so concurrent
-    # withdraws on this wallet serialise instead of both passing the overdraft
-    # check and driving the balance negative.
+    # Resolve the counter account up front so it exists before `post_user_withdraw`
+    # posts the legs. No explicit wallet lock here: `post_transaction`'s balance
+    # guard (invariant #11) locks the wallet FOR UPDATE and runs the overdraft
+    # check under it, held through the debit commit — so concurrent withdraws on
+    # this wallet serialise there and neither can drive the balance negative.
     operator_adjustment = await get_or_create_operator_adjustment(
         session, tenant_id=tenant_id, currency=currency
     )
-    await lock_account_for_update(session, user_wallet.id)
     final_amount = await resolve_withdraw_amount(
         session, user_wallet, amount=amount, withdraw_all=withdraw_all
     )

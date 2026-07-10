@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.hmac import verify_signature
 from app.auth.principals import AdminPrincipal, UserPrincipal
-from app.modules.accounts.service import derive_balance
+from app.modules.accounts.service import derive_balance, lock_account_for_update
 from app.modules.audit.service import (
     record_audit_for_admin,
     record_audit_for_system,
@@ -103,16 +103,6 @@ async def _find_user_points_account(
     if account is None:
         raise UserPointsAccountMissing()
     return account
-
-
-async def _lock_account_for_update(session: AsyncSession, account_id: UUID) -> None:
-    """Acquire a row-level write lock on the account until commit.
-
-    Same pattern as `payments/service._lock_account_for_update`. Prevents
-    concurrent redemptions from the same user wallet from both seeing the
-    pre-debit balance.
-    """
-    await session.execute(select(Account.id).where(Account.id == account_id).with_for_update())
 
 
 # -----------------------------------------------------------------------------
@@ -295,8 +285,10 @@ async def initiate_redemption(
     if existing is not None:
         return existing
 
-    # Lock the user's points_account so concurrent redemptions serialise.
-    await _lock_account_for_update(session, user_points.id)
+    # Lock the user's points_account so concurrent redemptions serialise. The
+    # ledger balance guard is financial_wallet-only, so it does NOT cover this
+    # points debit — redemption owns this lock for points-overdraft serialisation.
+    await lock_account_for_update(session, user_points.id)
 
     # Derive balance UNDER LOCK — never from the snapshot table.
     balance, reserved = await derive_balance(session, user_points.id)

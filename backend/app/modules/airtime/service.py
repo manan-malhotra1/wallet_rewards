@@ -218,6 +218,23 @@ async def initiate_recharge(
         return existing, merchant
 
     currency = request.currency.upper()
+
+    # Fail-closed service gate (Epic 23) — when the tenant requires config,
+    # BOTH a pricing and a limit config must resolve for the user's type or the
+    # recharge is rejected before any write (and before the wallet / merchant
+    # holding lookups). The returned flag decides whether a later missing-pricing
+    # error may be swallowed (legacy) or must surface.
+    from app.modules.pricing.service import require_pricing_and_limits
+
+    fail_closed = await require_pricing_and_limits(
+        session,
+        tenant_id=tenant_id,
+        service=AIRTIME_SERVICE_CODE,
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency=currency,
+        user_id=user_id,
+    )
+
     wallet = await _find_user_wallet(session, tenant_id, user_id, currency)
     holding = await _get_or_create_merchant_holding(session, tenant_id, merchant.user_id, currency)
 
@@ -250,7 +267,9 @@ async def initiate_recharge(
             ip_address=ip_address,
         )
 
-    fee = await _resolve_fee(session, tenant_id, user_id, currency, request.amount)
+    fee = await _resolve_fee(
+        session, tenant_id, user_id, currency, request.amount, fail_closed=fail_closed
+    )
 
     # Advisory overdraft early-error (Pay-PRD-0220) — includes the fee. The
     # authoritative check is `post_transaction`'s balance guard (invariant #11),
@@ -338,9 +357,19 @@ async def initiate_recharge(
 
 
 async def _resolve_fee(
-    session: AsyncSession, tenant_id: UUID, user_id: UUID, currency: str, amount: Decimal
+    session: AsyncSession,
+    tenant_id: UUID,
+    user_id: UUID,
+    currency: str,
+    amount: Decimal,
+    *,
+    fail_closed: bool = False,
 ) -> Decimal:
-    """Type-aware fee for the recharge; no pricing config => no fee (legacy)."""
+    """Type-aware fee for the recharge.
+
+    When `fail_closed` (the tenant requires config, Epic 23), a missing pricing
+    config surfaces as an error. Otherwise no pricing config => no fee (legacy).
+    """
     from app.modules.pricing.service import calculate_fee
 
     try:
@@ -354,6 +383,8 @@ async def _resolve_fee(
             amount=amount,
         )
     except PricingConfigMissing:
+        if fail_closed:
+            raise
         return Decimal("0")
 
 

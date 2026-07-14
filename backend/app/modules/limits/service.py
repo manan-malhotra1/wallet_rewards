@@ -101,6 +101,32 @@ async def _find_limit_config(
     return result.scalar_one_or_none()
 
 
+async def limit_config_exists(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    transaction_type: str,
+    account_type: str,
+    currency: str,
+    user_type: str,
+) -> bool:
+    """Return True if a limit config resolves for this slot (Epic 23 gate).
+
+    Amount-agnostic existence check used by the fail-closed service gate: a
+    typed row for `user_type` OR the NULL-type default satisfies it. Mirrors
+    `_find_limit_config`'s scoping without needing an amount.
+    """
+    config = await _find_limit_config(
+        session,
+        tenant_id=tenant_id,
+        transaction_type=transaction_type,
+        account_type=account_type,
+        currency=currency,
+        user_type=user_type,
+    )
+    return config is not None
+
+
 # Rolling windows checked by `check_limits`, widest last. Each tuple is
 # (config count-cap attr, config value-cap attr, window length, count
 # exception, value exception). All windows are rolling from DB-time NOW(),

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     TIMESTAMP,
+    Boolean,
     CheckConstraint,
     ForeignKey,
     String,
@@ -48,6 +49,13 @@ class Tenant(Base):
     keycloak_realm: Mapped[str | None] = mapped_column(String(100), nullable=True)
     base_currency: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
+    # Fail-closed gating (Epic 23): when true, a money path may run only if BOTH
+    # a pricing config AND a limit config resolve for the acting user's type;
+    # otherwise the service is rejected. Default false preserves the legacy
+    # fail-open behaviour for tenants (and tests) that haven't configured yet.
+    require_config_to_transact: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)

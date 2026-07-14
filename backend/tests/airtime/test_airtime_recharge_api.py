@@ -424,3 +424,80 @@ async def test_get_recharge_rejects_other_user_same_tenant(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert got.status_code == 404
+
+
+# -----------------------------------------------------------------------------
+# Fail-closed service gating (Epic 23, Story 23.2)
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_recharge_fails_closed_when_flag_on_and_config_missing(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    airtime_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Flag on + no pricing/limit config for airtime → 422 service_not_configured."""
+    test_tenant.require_config_to_transact = True
+    await db_session.commit()
+
+    resp = await async_client.post(
+        "/api/v1/airtime/recharge",
+        content=json.dumps(_body()),
+        headers=_headers(alice_auth_header),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "service_not_configured"
+    # No money moved.
+    assert await _balance(db_session, funded_wallet.id) == Decimal("500")
+
+
+@pytest.mark.asyncio
+async def test_recharge_succeeds_when_flag_on_and_configs_present(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    airtime_merchant: MerchantProfile,
+    funded_wallet: Account,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Flag on + pricing + limit config for airtime → recharge proceeds."""
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+    from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET
+
+    test_tenant.require_config_to_transact = True
+    await create_pricing_config(
+        db_session,
+        PricingConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="airtime_recharge",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("0"),
+        ),
+    )
+    await create_limit_config(
+        db_session,
+        LimitConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="airtime_recharge",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
+    await db_session.commit()
+
+    resp = await async_client.post(
+        "/api/v1/airtime/recharge",
+        content=json.dumps(_body()),
+        headers=_headers(alice_auth_header),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"

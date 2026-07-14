@@ -652,3 +652,175 @@ async def test_p2p_bidirectional_concurrent_transfers_do_not_deadlock(
     bob_bal, _ = await derive_balance(db_session, bob_wallet.id)
     assert alice_bal == Decimal("960"), f"alice net wrong: {alice_bal}"
     assert bob_bal == Decimal("1040"), f"bob net wrong: {bob_bal}"
+
+
+# -----------------------------------------------------------------------------
+# Fail-closed service gating (Epic 23, Story 23.2)
+# -----------------------------------------------------------------------------
+
+
+async def _seed_p2p_pricing_and_limit(session: AsyncSession, tenant_id) -> None:
+    """Seed a default (all-user-types) p2p pricing + limit config."""
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+
+    await create_pricing_config(
+        session,
+        PricingConfigCreateRequest(
+            tenant_id=tenant_id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("5"),
+        ),
+    )
+    await create_limit_config(
+        session,
+        LimitConfigCreateRequest(
+            tenant_id=tenant_id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_p2p_fails_closed_when_flag_on_and_config_missing(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    idempotency_header: dict[str, str],
+) -> None:
+    """Flag on + no pricing/limit config → 422 service_not_configured (no transfer)."""
+    test_tenant.require_config_to_transact = True
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7001")
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7002")
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=alice.id,
+        amount=Decimal("1000"),
+        currency="ZAR",
+        idempotency_key="seed-gate-a",
+    )
+    await db_session.commit()
+
+    alice_auth = await _auth_header_for(alice)
+    response = await async_client.post(
+        "/api/v1/payments/p2p",
+        headers={**alice_auth, **idempotency_header},
+        json={
+            "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 7002"},
+            "amount": "250",
+            "currency": "ZAR",
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "service_not_configured"
+
+
+@pytest.mark.asyncio
+async def test_p2p_succeeds_when_flag_on_and_configs_present(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    idempotency_header: dict[str, str],
+) -> None:
+    """Flag on + both configs present → transfer completes."""
+    test_tenant.require_config_to_transact = True
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7011")
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7012")
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=alice.id,
+        amount=Decimal("1000"),
+        currency="ZAR",
+        idempotency_key="seed-gate-b",
+    )
+    await db_session.commit()
+
+    alice_auth = await _auth_header_for(alice)
+    response = await async_client.post(
+        "/api/v1/payments/p2p",
+        headers={**alice_auth, **idempotency_header},
+        json={
+            "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 7012"},
+            "amount": "250",
+            "currency": "ZAR",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["status"] == "COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_p2p_fails_closed_when_amount_outside_configured_band(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    idempotency_header: dict[str, str],
+) -> None:
+    """Flag on + a pricing band exists but the amount falls outside it → 422.
+
+    The gate's existence check is amount-agnostic (a band row exists), so it
+    passes; the per-amount fee resolution then finds no band and, because the
+    tenant is fail-closed, the missing-pricing error is NOT swallowed.
+    """
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+
+    test_tenant.require_config_to_transact = True
+    await create_pricing_config(
+        db_session,
+        PricingConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            amount_from=Decimal("0"),
+            amount_to=Decimal("100"),
+            fixed_fee=Decimal("2"),
+        ),
+    )
+    await create_limit_config(
+        db_session,
+        LimitConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
+    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7021")
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7022")
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=alice.id,
+        amount=Decimal("1000"),
+        currency="ZAR",
+        idempotency_key="seed-gate-c",
+    )
+    await db_session.commit()
+
+    alice_auth = await _auth_header_for(alice)
+    response = await async_client.post(
+        "/api/v1/payments/p2p",
+        headers={**alice_auth, **idempotency_header},
+        json={
+            "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 7022"},
+            "amount": "250",
+            "currency": "ZAR",
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "pricing_config_missing"

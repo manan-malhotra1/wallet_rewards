@@ -235,3 +235,74 @@ async def test_cash_in_tenant_isolation(
         headers=cash_in_headers(agent_auth_header),
     )
     assert resp.status_code == 404
+
+
+# -----------------------------------------------------------------------------
+# Fail-closed service gating (Epic 23, Story 23.2)
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cash_in_fails_closed_when_flag_on_and_limit_config_missing(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    agent_float: Account,
+    customer_wallet: Account,
+    worked_example_configs: None,
+    agent_auth_header: dict[str, str],
+) -> None:
+    """Flag on + pricing present but NO cash_in limit config → 422, no money moves.
+
+    Closes the M-01 gap: cash_in must honour the same "pricing AND limits"
+    contract as p2p / airtime when the tenant is fail-closed.
+    """
+    test_tenant.require_config_to_transact = True
+    await db_session.commit()
+
+    before = await derive_balance(db_session, agent_float.id)
+
+    resp = await async_client.post(
+        "/api/v1/cashin",
+        content=json.dumps(cash_in_body(amount="100")),
+        headers=cash_in_headers(agent_auth_header),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "service_not_configured"
+    assert await derive_balance(db_session, agent_float.id) == before
+
+
+@pytest.mark.asyncio
+async def test_cash_in_succeeds_when_flag_on_and_both_configs_present(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    agent_float: Account,
+    customer_wallet: Account,
+    worked_example_configs: None,
+    agent_auth_header: dict[str, str],
+) -> None:
+    """Flag on + pricing AND a cash_in limit config present → cash-in proceeds."""
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET
+
+    test_tenant.require_config_to_transact = True
+    await create_limit_config(
+        db_session,
+        LimitConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="cash_in",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
+    await db_session.commit()
+
+    resp = await async_client.post(
+        "/api/v1/cashin",
+        content=json.dumps(cash_in_body(amount="100")),
+        headers=cash_in_headers(agent_auth_header),
+    )
+    assert resp.status_code == 201, resp.text

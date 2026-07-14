@@ -869,6 +869,24 @@ class PricingConfigMissing(AppHTTPException):
         )
 
 
+class ServiceNotConfigured(AppHTTPException):
+    """A fail-closed tenant tried a service lacking pricing OR limit config (Epic 23).
+
+    When a tenant sets `require_config_to_transact`, a money path may run only
+    if BOTH a pricing config and a limit config resolve for the acting user's
+    type. This is raised (before any ledger work) when either is missing,
+    naming the service and the resolved user_type.
+    """
+
+    def __init__(self, service: str, user_type: str) -> None:
+        super().__init__(
+            422,
+            "service_not_configured",
+            f"Service '{service}' is not fully configured for user type "
+            f"'{user_type}' in this tenant (pricing and limits are both required).",
+        )
+
+
 class BudgetNotFound(AppHTTPException):
     """The referenced budget row doesn't exist or belongs to a different tenant."""
 

@@ -168,6 +168,22 @@ async def p2p_transfer(
     # further work — no lock acquired, no ledger touched.
     await require_permission(session, sender_user_id, "p2p")
 
+    # 1b. Fail-closed service gate (Epic 23). When the tenant requires config,
+    # BOTH a pricing and a limit config must resolve for the sender's user_type
+    # or the service is rejected here — before any ledger work. Returns whether
+    # the tenant is fail-closed, which decides if a later missing-pricing error
+    # may be swallowed (legacy fail-open) or must surface.
+    from app.modules.pricing.service import require_pricing_and_limits
+
+    fail_closed = await require_pricing_and_limits(
+        session,
+        tenant_id=tenant_id,
+        service="p2p",
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency=currency,
+        user_id=sender_user_id,
+    )
+
     # 2. Resolve recipient identifier (tenant-scoped — Pay-PRD-0060).
     recipient_id_row = await resolve_identifier(
         session,
@@ -259,11 +275,11 @@ async def p2p_transfer(
             ip_address=ip_address,
         )
 
-    # 7. Pricing fee calculation (Phase G.3, Pay-PRD-0260 step 3). Optional
-    # — if no pricing config exists we treat this as no-fee (legacy callers
-    # / tests). Production tenants MUST configure a zero-fee row or the
-    # pricing call raises PricingConfigMissing. To stay backward-compatible
-    # with the existing test suite we swallow that specific case here.
+    # 7. Pricing fee calculation (Phase G.3, Pay-PRD-0260 step 3). When the
+    # tenant is fail-closed (Epic 23) the gate above already proved a pricing
+    # config exists, so a missing-band error here is a real gap and must
+    # surface. For legacy (fail-open) tenants we swallow PricingConfigMissing
+    # and treat it as no-fee to stay backward-compatible.
     from app.modules.pricing.service import (
         calculate_fee,
         get_or_create_system_fee_account,
@@ -282,9 +298,8 @@ async def p2p_transfer(
             amount=amount,
         )
     except PricingConfigMissing:
-        # Legacy pass-through: tenants without pricing configured pay no
-        # fee. Production deployments should explicitly insert zero-fee
-        # rows; the admin UI surfaces this gap.
+        if fail_closed:
+            raise
         fee = Decimal("0")
 
     # 8. Overdraft prevention (Pay-PRD-0220) — must happen BEFORE the

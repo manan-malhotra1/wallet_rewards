@@ -151,6 +151,25 @@ async def cash_in(
         raise SelfTransferNotAllowed()
 
     currency = request.currency.upper()
+
+    # Fail-closed service gate (Epic 23) — when the tenant requires config, BOTH
+    # a pricing and a limit config must resolve for the acting agent's user_type
+    # or the cash-in is rejected here (before any ledger work). No-op when the
+    # flag is off. Runs after the idempotency fast-path so replays still return
+    # the original transaction. cash_in already fails closed on missing pricing
+    # via resolve_fee; the gate additionally closes the missing-limit gap and
+    # yields a consistent ServiceNotConfigured error.
+    from app.modules.pricing.service import require_pricing_and_limits
+
+    await require_pricing_and_limits(
+        session,
+        tenant_id=tenant_id,
+        service=CASH_IN_SERVICE_CODE,
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency=currency,
+        user_id=agent_user_id,
+    )
+
     agent_wallet = await _find_user_wallet(
         session, tenant_id=tenant_id, user_id=agent_user_id, currency=currency
     )

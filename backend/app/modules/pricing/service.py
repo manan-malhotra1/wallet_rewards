@@ -27,6 +27,7 @@ from app.shared.exceptions import (
     AppHTTPException,
     PricingConfigMissing,
     PricingConfigNotFound,
+    ServiceNotConfigured,
     TenantNotFound,
 )
 from app.shared.models import (
@@ -95,6 +96,114 @@ async def _find_pricing_config(
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+# -----------------------------------------------------------------------------
+# Fail-closed service gate (Epic 23)
+# -----------------------------------------------------------------------------
+
+
+async def pricing_config_exists(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    transaction_type: str,
+    account_type: str,
+    currency: str,
+    user_type: str,
+) -> bool:
+    """Return True if any pricing config resolves for this slot (Epic 23 gate).
+
+    Amount-agnostic existence check: a typed row for `user_type` OR the
+    NULL-type default satisfies it. Mirrors `_find_pricing_config`'s scoping
+    minus the amount band — the gate asks "is this service priced for this
+    user type at all", not "does a fee resolve for one specific amount".
+    """
+    result = await session.execute(
+        select(PricingConfig.id)
+        .where(
+            PricingConfig.tenant_id == tenant_id,
+            PricingConfig.transaction_type == transaction_type,
+            PricingConfig.account_type == account_type,
+            PricingConfig.currency == currency.upper(),
+            or_(
+                PricingConfig.user_type == user_type,
+                PricingConfig.user_type.is_(None),
+            ),
+        )
+        .limit(1)
+    )
+    return result.first() is not None
+
+
+async def _tenant_requires_config(session: AsyncSession, tenant_id: UUID) -> bool:
+    """Return the tenant's `require_config_to_transact` flag (default False)."""
+    result = await session.execute(
+        select(Tenant.require_config_to_transact).where(Tenant.id == tenant_id)
+    )
+    return bool(result.scalar_one_or_none())
+
+
+async def require_pricing_and_limits(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    service: str,
+    account_type: str,
+    currency: str,
+    user_id: UUID,
+) -> bool:
+    """Enforce fail-closed service gating for a money path (Epic 23, Story 23.1).
+
+    When the tenant's `require_config_to_transact` flag is set, a service may
+    run only if BOTH a pricing config and a limit config resolve for the acting
+    user's type. When the flag is off this is a no-op (legacy fail-open).
+
+    Args:
+        session: Async DB session.
+        tenant_id: Tenant scope.
+        service: The service / transaction_type being gated (e.g. "p2p").
+        account_type: The account type the config is scoped to.
+        currency: 3-letter ISO 4217 (case-insensitive).
+        user_id: The acting user, whose `user_type` selects the config scope.
+
+    Returns:
+        True if the tenant is fail-closed (config was required and verified),
+        False if the flag is off (gate skipped). Callers use the flag to decide
+        whether downstream config lookups may still fail open.
+
+    Raises:
+        ServiceNotConfigured (422): flag on and pricing OR limit config is
+            missing for the resolved user_type.
+    """
+    if not await _tenant_requires_config(session, tenant_id):
+        return False
+
+    user_type = await resolve_user_type(session, tenant_id, user_id)
+
+    if not await pricing_config_exists(
+        session,
+        tenant_id=tenant_id,
+        transaction_type=service,
+        account_type=account_type,
+        currency=currency,
+        user_type=user_type,
+    ):
+        raise ServiceNotConfigured(service, user_type)
+
+    from app.modules.limits.service import limit_config_exists
+
+    if not await limit_config_exists(
+        session,
+        tenant_id=tenant_id,
+        transaction_type=service,
+        account_type=account_type,
+        currency=currency,
+        user_type=user_type,
+    ):
+        raise ServiceNotConfigured(service, user_type)
+
+    return True
 
 
 # -----------------------------------------------------------------------------

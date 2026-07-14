@@ -16,13 +16,21 @@ class AdminPrincipal:
     """The authenticated administrator behind an admin endpoint call.
 
     `id` is the Keycloak `sub` claim (a UUID-format string). `username` is
-    `preferred_username`. `roles` is the set of realm roles claimed by the
-    token (verified at signature check time).
+    `preferred_username`. `name` is the full-name `name` claim (may be empty).
+    `email` is the `email` claim (may be None). `roles` is the set of realm
+    roles claimed by the token (verified at signature check time).
     """
 
     id: str
     username: str
     roles: frozenset[str]
+    name: str = ""
+    email: str | None = None
+
+    @property
+    def display_name(self) -> str:
+        """Human label for the admin — full name if present, else username."""
+        return self.name or self.username
 
     def has_role(self, role: str) -> bool:
         """True if the principal holds the given realm role."""

@@ -44,6 +44,8 @@ class ConfigReviewOut(BaseModel):
 
     id: UUID
     actor_admin_id: str
+    # Resolved display name for actor_admin_id (None if not yet recorded).
+    actor_admin_name: str | None = None
     actor_role: str
     action: str
     comment: str | None
@@ -63,7 +65,10 @@ class ConfigChangeRequestOut(BaseModel):
     target_config_id: UUID | None
     status: str
     maker_admin_id: str
+    # Resolved display names (None if the admin hasn't been recorded yet).
+    maker_admin_name: str | None = None
     checker_admin_id: str | None
+    checker_admin_name: str | None = None
     revision: int
     created_at: datetime
     updated_at: datetime

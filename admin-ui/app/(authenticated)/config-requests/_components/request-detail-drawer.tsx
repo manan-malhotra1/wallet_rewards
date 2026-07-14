@@ -92,7 +92,7 @@ function ReviewThread({ request }: { request: ConfigChangeRequest }) {
             <span className="text-muted-foreground">{review.actor_role}</span>
             <span className="text-muted-foreground">·</span>
             <span className="font-mono text-muted-foreground">
-              {shortId(review.actor_admin_id)}
+              {review.actor_admin_name ?? shortId(review.actor_admin_id)}
             </span>
             <span className="ml-auto text-muted-foreground">
               {formatTimestamp(review.created_at)}
@@ -234,7 +234,7 @@ export function RequestDetailDrawer({
           </DrawerTitle>
           <div className="text-xs text-muted-foreground">
             Revision {request.revision} · maker{" "}
-            <span className="font-mono">{shortId(request.maker_admin_id)}</span>{" "}
+            <span className="font-mono">{request.maker_admin_name ?? shortId(request.maker_admin_id)}</span>{" "}
             · {formatTimestamp(request.created_at)}
           </div>
         </DrawerHeader>

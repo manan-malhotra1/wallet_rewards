@@ -54,10 +54,13 @@ async def get_current_admin(
     claims = await verify_jwt(token)
 
     roles = frozenset(claims.get("realm_access", {}).get("roles", []))
+    email_claim = claims.get("email")
     return AdminPrincipal(
         id=str(claims.get("sub", "")),
         username=str(claims.get("preferred_username", "")),
         roles=roles,
+        name=str(claims.get("name", "")),
+        email=str(email_claim) if email_claim else None,
     )
 
 

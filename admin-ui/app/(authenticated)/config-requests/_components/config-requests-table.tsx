@@ -88,7 +88,7 @@ export function ConfigRequestsTable({
                   {req.revision}
                 </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {shortId(req.maker_admin_id)}
+                  {req.maker_admin_name ?? shortId(req.maker_admin_id)}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {formatTimestamp(req.created_at)}

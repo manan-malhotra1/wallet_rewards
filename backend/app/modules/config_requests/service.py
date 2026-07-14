@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
+from app.modules.admin_profiles import record_admin
 from app.modules.audit.service import record_audit_for_admin
 from app.modules.config_requests.apply import apply_config_request, build_create_schema
 from app.modules.config_requests.schemas import ConfigChangeProposeRequest
@@ -183,6 +184,7 @@ async def propose_config_change(
         action=REVIEW_ACTION_SUBMITTED,
     )
     _audit(session, admin, request, "config_request.proposed", ip_address)
+    await record_admin(session, admin)
     await session.commit()
     await session.refresh(request)
     return request
@@ -223,6 +225,7 @@ async def approve_config_request(
         action=REVIEW_ACTION_APPROVED,
     )
     _audit(session, admin, request, "config_request.approved", ip_address)
+    await record_admin(session, admin)
     await apply_config_request(session, request, admin=admin, ip_address=ip_address)
     await session.refresh(request)
     return request
@@ -261,6 +264,7 @@ async def request_config_changes(
         comment=comment,
     )
     _audit(session, admin, request, "config_request.changes_requested", ip_address)
+    await record_admin(session, admin)
     await session.commit()
     await session.refresh(request)
     return request
@@ -305,6 +309,7 @@ async def revise_config_request(
         action=REVIEW_ACTION_REVISED,
     )
     _audit(session, admin, request, "config_request.revised", ip_address)
+    await record_admin(session, admin)
     await session.commit()
     await session.refresh(request)
     return request
@@ -340,6 +345,7 @@ async def resubmit_config_request(
         action=REVIEW_ACTION_RESUBMITTED,
     )
     _audit(session, admin, request, "config_request.resubmitted", ip_address)
+    await record_admin(session, admin)
     await session.commit()
     await session.refresh(request)
     return request
@@ -375,6 +381,7 @@ async def withdraw_config_request(
         action=REVIEW_ACTION_WITHDRAWN,
     )
     _audit(session, admin, request, "config_request.withdrawn", ip_address)
+    await record_admin(session, admin)
     await session.commit()
     await session.refresh(request)
     return request

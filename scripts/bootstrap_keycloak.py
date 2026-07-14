@@ -34,10 +34,28 @@ BACKEND_SERVICE_SECRET = "dev-backend-service-secret-local-only"
 # DIFFERENT admin than the maker who proposed the change.
 REALM_ROLES = ["platform-admin", "finance-reviewer", "support-agent", "config-approver"]
 
-# Local-dev test admin user — rotate / remove for any non-local environment.
-TEST_ADMIN_USERNAME = "admin-test"
-TEST_ADMIN_PASSWORD = "admin-test-pass"  # noqa: S105 — local-dev only
-TEST_ADMIN_ROLES = ["platform-admin"]
+# Local-dev admin users — rotate / remove for any non-local environment.
+# All share one dev password. `admin-approver` holds `config-approver` (the
+# four-eyes checker) IN ADDITION to `platform-admin`, so it can view the
+# config-request queue (platform-admin) AND approve requests raised by a
+# DIFFERENT admin (config-approver). A single admin still cannot approve their
+# own request (SelfApprovalForbidden), so two accounts are needed to exercise
+# the maker-checker flow end to end.
+DEV_ADMIN_PASSWORD = "admin-test-pass"  # noqa: S105 — local-dev only
+DEV_ADMINS = [
+    {
+        "username": "admin-test",
+        "first_name": "Admin",
+        "last_name": "Test",
+        "roles": ["platform-admin"],
+    },
+    {
+        "username": "admin-approver",
+        "first_name": "Approver",
+        "last_name": "Admin",
+        "roles": ["platform-admin", "config-approver"],
+    },
+]
 
 
 def http(
@@ -182,19 +200,24 @@ def _find_user_id(token: str, username: str) -> str | None:
     return None
 
 
-def ensure_test_admin_user(token: str) -> str:
-    """Idempotently create the local-dev test admin user.
+def ensure_admin_user(token: str, spec: dict) -> str:
+    """Idempotently create one local-dev admin user in the wallet-platform realm.
 
-    The user is created in the wallet-platform realm with a known password
-    and assigned the platform-admin realm role. Used by the Phase F.1 demo
-    + any future smoke tests that need a real Keycloak-issued JWT.
+    Creates the user with a known dev password + email, always (re-)sets the
+    password so the demo stays deterministic, and assigns the realm roles in
+    `spec["roles"]` (Keycloak ignores duplicate assignments).
+
+    Args:
+        token: A master-realm admin token.
+        spec: {username, first_name, last_name, roles}.
 
     Returns:
         The Keycloak UUID of the user.
     """
-    existing = _find_user_id(token, TEST_ADMIN_USERNAME)
+    username = spec["username"]
+    existing = _find_user_id(token, username)
     if existing is not None:
-        print(f"  - User '{TEST_ADMIN_USERNAME}' already exists ({existing})")
+        print(f"  - User '{username}' already exists ({existing})")
         user_id = existing
     else:
         code, body = http(
@@ -202,27 +225,27 @@ def ensure_test_admin_user(token: str) -> str:
             f"{KEYCLOAK_URL}/admin/realms/{REALM}/users",
             token=token,
             json_body={
-                "username": TEST_ADMIN_USERNAME,
+                "username": username,
                 "enabled": True,
-                "email": f"{TEST_ADMIN_USERNAME}@example.test",
+                "email": f"{username}@example.test",
                 "emailVerified": True,
-                "firstName": "Admin",
-                "lastName": "Test",
+                "firstName": spec["first_name"],
+                "lastName": spec["last_name"],
                 "credentials": [
                     {
                         "type": "password",
-                        "value": TEST_ADMIN_PASSWORD,
+                        "value": DEV_ADMIN_PASSWORD,
                         "temporary": False,
                     }
                 ],
             },
         )
         if code not in (201, 204):
-            sys.exit(f"Failed to create test admin user: {code} {body}")
-        user_id = _find_user_id(token, TEST_ADMIN_USERNAME)
+            sys.exit(f"Failed to create admin user {username}: {code} {body}")
+        user_id = _find_user_id(token, username)
         if user_id is None:
-            sys.exit("Failed to look up newly-created test admin user")
-        print(f"  + User '{TEST_ADMIN_USERNAME}' created ({user_id})")
+            sys.exit(f"Failed to look up newly-created admin user {username}")
+        print(f"  + User '{username}' created ({user_id})")
 
     # Always (re-)set the password — keeps the demo deterministic.
     code, body = http(
@@ -231,16 +254,16 @@ def ensure_test_admin_user(token: str) -> str:
         token=token,
         json_body={
             "type": "password",
-            "value": TEST_ADMIN_PASSWORD,
+            "value": DEV_ADMIN_PASSWORD,
             "temporary": False,
         },
     )
     # 204 No Content on success.
     if code not in (200, 204):
-        sys.exit(f"Failed to reset test admin password: {code} {body}")
+        sys.exit(f"Failed to reset password for {username}: {code} {body}")
 
     # Assign realm roles. Keycloak ignores duplicates so this is idempotent.
-    for role_name in TEST_ADMIN_ROLES:
+    for role_name in spec["roles"]:
         role_code, role_body = http(
             "GET",
             f"{KEYCLOAK_URL}/admin/realms/{REALM}/roles/{role_name}",
@@ -256,12 +279,10 @@ def ensure_test_admin_user(token: str) -> str:
         )
         if assign_code not in (200, 204):
             sys.exit(
-                f"Failed to assign role '{role_name}' to user: "
+                f"Failed to assign role '{role_name}' to {username}: "
                 f"{assign_code} {assign_body}"
             )
-    print(
-        f"  + User '{TEST_ADMIN_USERNAME}' has roles: {', '.join(TEST_ADMIN_ROLES)}"
-    )
+    print(f"  + User '{username}' has roles: {', '.join(spec['roles'])}")
     return user_id
 
 
@@ -335,8 +356,9 @@ def main() -> None:
         ensure_role(token, role)
     print()
 
-    print("Test admin user (local-dev only):")
-    ensure_test_admin_user(token)
+    print("Admin users (local-dev only):")
+    for admin_spec in DEV_ADMINS:
+        ensure_admin_user(token, admin_spec)
     print()
 
     # Fetch effective secrets (in case Keycloak regenerated)
@@ -362,6 +384,11 @@ def main() -> None:
     print(f"   KEYCLOAK_CLIENT_ID=admin-ui")
     print(f"   KEYCLOAK_CLIENT_SECRET={admin_ui_effective}")
     print()
+    admin_list = ", ".join(a["username"] for a in DEV_ADMINS)
+    print(f" Admin logins (all password '{DEV_ADMIN_PASSWORD}'): {admin_list}")
+    print("   - admin-test      : platform-admin (maker)")
+    print("   - admin-approver  : platform-admin + config-approver (checker)")
+    print()
     print(" Get a test admin JWT (local-dev only):")
     print()
     print("   TOKEN=$(curl -s -X POST \\")
@@ -369,8 +396,8 @@ def main() -> None:
     print("     -d grant_type=password \\")
     print("     -d client_id=admin-ui \\")
     print(f"     -d client_secret={admin_ui_effective} \\")
-    print(f"     -d username={TEST_ADMIN_USERNAME} \\")
-    print(f"     -d password={TEST_ADMIN_PASSWORD} \\")
+    print(f"     -d username={DEV_ADMINS[0]['username']} \\")
+    print(f"     -d password={DEV_ADMIN_PASSWORD} \\")
     print("     | python3 -c 'import sys,json;print(json.load(sys.stdin)[\"access_token\"])')")
     print()
     print("   curl -H \"Authorization: Bearer $TOKEN\" http://localhost:8000/api/v1/reconciliation/pending?tenant_id=...")

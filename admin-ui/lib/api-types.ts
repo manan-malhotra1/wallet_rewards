@@ -486,6 +486,8 @@ export type ConfigReviewAction =
 export interface ConfigReview {
   id: string;
   actor_admin_id: string;
+  /** Resolved display name for the actor (null if not yet recorded). */
+  actor_admin_name: string | null;
   actor_role: string;
   action: ConfigReviewAction | string;
   comment: string | null;
@@ -506,7 +508,11 @@ export interface ConfigChangeRequest {
   target_config_id: string | null;
   status: ConfigRequestStatus;
   maker_admin_id: string;
+  /** Resolved display name for the maker (null if not yet recorded). */
+  maker_admin_name: string | null;
   checker_admin_id: string | null;
+  /** Resolved display name for the checker (null until approved/reviewed). */
+  checker_admin_name: string | null;
   revision: number;
   created_at: string;
   updated_at: string;

@@ -118,11 +118,13 @@ export function UserDetailCard({
                 <UserCircle className="h-6 w-6" />
               </div>
               <div>
-                <CardTitle className="font-mono text-base">
-                  {shortId(detail.id, "usr")}
+                {/* Show a human name (or the resolved identifier) — the
+                    internal user id is not surfaced to admins. */}
+                <CardTitle className="text-base">
+                  {name ?? resolvedIdentifierValue ?? "Unnamed user"}
                 </CardTitle>
                 <CardDescription>
-                  {name ?? "No profile name on file"}
+                  {name ? resolvedIdentifierValue ?? "—" : "No profile name on file"}
                 </CardDescription>
               </div>
             </div>

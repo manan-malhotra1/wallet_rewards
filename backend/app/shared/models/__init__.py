@@ -19,6 +19,7 @@ from app.shared.models.accounts import (
     Account,
     AccountBalanceSnapshot,
 )
+from app.shared.models.admin_profiles import AdminProfile
 from app.shared.models.airtime import (
     AIRTIME_STATUS_COMPLETED,
     AIRTIME_STATUS_FAILED,
@@ -299,6 +300,7 @@ __all__ = [
     # Accounts
     "Account",
     "AccountBalanceSnapshot",
+    "AdminProfile",
     # Airtime (Epic 17)
     "AirtimeRecharge",
     # External API keys (Epic 14)

@@ -58,7 +58,12 @@ function PayloadView({ request }: { request: ConfigChangeRequest }) {
       </div>
     );
   }
-  const entries = Object.entries(request.payload ?? {});
+  // Hide internal identifiers — tenant_id is constant/implicit and adds no
+  // value to an admin reviewing the change.
+  const HIDDEN_PAYLOAD_KEYS = new Set(["tenant_id"]);
+  const entries = Object.entries(request.payload ?? {}).filter(
+    ([key]) => !HIDDEN_PAYLOAD_KEYS.has(key),
+  );
   if (entries.length === 0) {
     return <p className="text-sm text-muted-foreground">No payload.</p>;
   }

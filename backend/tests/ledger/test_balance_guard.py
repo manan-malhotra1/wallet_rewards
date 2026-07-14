@@ -63,7 +63,7 @@ async def test_guard_rejects_credit_over_max_balance(
             PostTransactionRequest(
                 tenant_id=test_tenant.id,
                 idempotency_key="cap-reject-1",
-                transaction_type="top_up",
+                transaction_type="fund",
                 currency="ZAR",
                 initiated_by=test_user.id,
                 entries=[

@@ -3,7 +3,7 @@
 Five routes:
   - GET  /system-wallets                     list system accounts + balances
   - GET  /system-wallets/{id}/transactions    drill-down (paginated)
-  - POST /fund-user                          admin top-up wrapper
+  - POST /fund-user                          admin fund wrapper
   - POST /withdraw                           admin pull-back wrapper
   - POST /adjust-system-wallet               fund/withdraw via operator_adjustment
 """
@@ -80,7 +80,7 @@ async def post_fund_user(
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> FundUserResponse:
-    """Admin top-up — debits system_cash_inflow, credits the user's wallet.
+    """Admin fund — debits system_cash_inflow, credits the user's wallet.
 
     User is identified by a registered identifier (phone, email, account
     or card) — operators never type a UUID.

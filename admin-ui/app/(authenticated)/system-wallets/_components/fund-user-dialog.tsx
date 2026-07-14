@@ -1,10 +1,10 @@
 /**
- * <FundUserDialog> — admin top-up form for the System Wallets page header.
+ * <FundUserDialog> — admin fund form for the System Wallets page header.
  *
  * The target user is picked by registered identifier (phone, email,
  * account_number, card_number) — operators never type a UUID. The
  * backend resolves identifier → user_id via identity.resolve_identifier.
- * Submits via fundUserAction which wraps top_up() (DEBIT
+ * Submits via fundUserAction which wraps fund() (DEBIT
  * system_cash_inflow, CREDIT user_wallet).
  */
 "use client";
@@ -192,7 +192,7 @@ export function FundUserDialog({
               rows={2}
               value={form.reason}
               onChange={(e) => update("reason", e.target.value)}
-              placeholder="Refund — failed top-up #1234"
+              placeholder="Refund — failed fund #1234"
               className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>

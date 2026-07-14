@@ -63,15 +63,15 @@ async def _seed_source_with_secret(
 async def _seed_first_time_rule(
     async_client: AsyncClient, tenant: Tenant, admin_auth_header: dict[str, str]
 ) -> None:
-    """Create a first_time top_up rule so the event has something to fire on."""
+    """Create a first_time fund rule so the event has something to fire on."""
     resp = await async_client.post(
         "/api/v1/rules",
         headers=admin_auth_header,
         json={
             "tenant_id": str(tenant.id),
-            "name": "sim-top-up-bonus",
+            "name": "sim-fund-bonus",
             "rule_type": "first_time",
-            "transaction_type": "top_up",
+            "transaction_type": "fund",
             "reward_type": "points",
             "reward_value": "100",
         },
@@ -87,7 +87,7 @@ def _event_body(tenant: Tenant, user: User, source_key: str) -> bytes:
             "tenant_id": str(tenant.id),
             "user_id": str(user.id),
             "source_key": source_key,
-            "transaction_type": "top_up",
+            "transaction_type": "fund",
             "amount": "500",
             "currency": "ZAR",
             "timestamp": datetime.now(UTC).isoformat(),
@@ -206,7 +206,7 @@ async def test_sim_kafka_produce_404_when_flag_off(
     monkeypatch.setattr(settings, "SIMULATOR_DEV_MODE", False)
     response = await async_client.post(
         "/api/v1/events/sim-kafka-produce",
-        json={"user_id": str(uuid4()), "transaction_type": "top_up"},
+        json={"user_id": str(uuid4()), "transaction_type": "fund"},
     )
     assert response.status_code == 404
 
@@ -219,7 +219,7 @@ async def test_sim_kafka_produce_422_when_user_id_missing(
     monkeypatch.setattr(settings, "SIMULATOR_DEV_MODE", True)
     response = await async_client.post(
         "/api/v1/events/sim-kafka-produce",
-        json={"transaction_type": "top_up", "amount": "500"},
+        json={"transaction_type": "fund", "amount": "500"},
     )
     assert response.status_code == 422
     assert response.json()["error_code"] == "missing_user_id"

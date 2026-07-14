@@ -36,6 +36,12 @@ export const config = {
     key: process.env.EVENT_SOURCE_KEY ?? "sasai-bank",
     secret: process.env.EVENT_SOURCE_SECRET ?? "",
   },
+  // Dev-only: the seeded airtime merchant's callback secret. Lets the UI sign a
+  // simulated provider callback to finalise a PENDING recharge (the bundled
+  // SimulatorProvider never calls back on its own). Matches scripts/seed.py.
+  airtimeCallbackSecret:
+    process.env.AIRTIME_CALLBACK_SECRET ??
+    "dev-airtime-callback-secret-do-not-use-in-prod",
 } as const;
 
 export type UserKey = "alice" | "bob";

@@ -35,7 +35,7 @@ _SIM_SUFFIX_PENDING = "0002"
 
 @dataclass(frozen=True)
 class ProvisionRequest:
-    """Everything a provider needs to attempt an airtime top-up.
+    """Everything a provider needs to attempt an airtime recharge.
 
     `amount` is a stringified Decimal — provider APIs take money as strings to
     avoid float drift, and it keeps this seam serialisation-friendly.

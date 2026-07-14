@@ -48,7 +48,7 @@ class SystemWalletTransactionOut(BaseModel):
 
 
 class FundUserRequest(BaseModel):
-    """Admin top-up payload — credits a user wallet from `system_cash_inflow`.
+    """Admin fund payload — credits a user wallet from `system_cash_inflow`.
 
     The user is identified by a registered identifier (phone, email,
     account or card) rather than a raw UUID — operators don't have
@@ -64,7 +64,7 @@ class FundUserRequest(BaseModel):
 
 
 class FundUserResponse(BaseModel):
-    """Result of an admin top-up."""
+    """Result of an admin fund."""
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -9,7 +9,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.payments.service import top_up
+from app.modules.payments.service import fund
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
@@ -92,7 +92,7 @@ async def test_system_wallet_transactions_drill_down(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """After a top-up, system_cash_inflow should have a DEBIT row visible."""
+    """After a fund, system_cash_inflow should have a DEBIT row visible."""
     db_session.add(
         Account(
             tenant_id=test_tenant.id,
@@ -103,7 +103,7 @@ async def test_system_wallet_transactions_drill_down(
     )
     await db_session.commit()
 
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=test_user.id,

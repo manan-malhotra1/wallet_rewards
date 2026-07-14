@@ -29,9 +29,9 @@ def _make_first_time_rule(tenant: Tenant) -> Rule:
     """Helper — instantiate (but don't persist) a first_time rule."""
     return Rule(
         tenant_id=tenant.id,
-        name="first top-up",
+        name="first fund",
         rule_type="first_time",
-        transaction_type="top_up",
+        transaction_type="fund",
         reward_type="points",
         reward_value=Decimal("100"),
     )

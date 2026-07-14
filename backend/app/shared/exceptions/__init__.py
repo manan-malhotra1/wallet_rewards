@@ -797,7 +797,7 @@ class WalletSendLimitExceeded(AppHTTPException):
 class WalletReceiveLimitExceeded(AppHTTPException):
     """A cumulative wallet RECEIVE cap would be breached (WAL-236).
 
-    Owner-facing (e.g. a top-up to your own wallet). `window` is
+    Owner-facing (e.g. a fund to your own wallet). `window` is
     daily/weekly/monthly and `axis` is count/value, yielding codes like
     `wallet_receive_monthly_count_exceeded`.
     """

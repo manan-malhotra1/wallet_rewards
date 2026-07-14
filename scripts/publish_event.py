@@ -9,10 +9,10 @@ Usage:
         --tenant-name Sasai-ZA \\
         --user-phone "+27 82 555 0001" \\
         --source-key sasai-bank \\
-        --transaction-type top_up \\
+        --transaction-type fund \\
         --amount 500
 
-Defaults exercise the seed-loaded first-time top-up rule (100 points reward).
+Defaults exercise the seed-loaded first-time fund rule (100 points reward).
 """
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def main() -> None:
     parser.add_argument("--tenant-name", default="Sasai-ZA")
     parser.add_argument("--user-phone", default="+27 82 555 0001")
     parser.add_argument("--source-key", default="sasai-bank")
-    parser.add_argument("--transaction-type", default="top_up")
+    parser.add_argument("--transaction-type", default="fund")
     parser.add_argument("--amount", default="500")
     parser.add_argument("--currency", default="ZAR")
     parser.add_argument(

@@ -9,14 +9,16 @@
 "use client";
 
 import { Zap } from "lucide-react";
+import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useFormStatus } from "react-dom";
 
 import { fireEventAction } from "@/app/_actions";
 import type { UserKey } from "@/lib/config";
+import { usePersistedState } from "@/lib/use-persisted-state";
 
 const EVENT_TYPES = [
-  { value: "top_up", label: "Top-up" },
+  { value: "fund", label: "Fund" },
   { value: "p2p", label: "P2P (synthetic)" },
   { value: "redeem", label: "Redeem" },
   { value: "merchant_pay", label: "Merchant pay" },
@@ -37,10 +39,19 @@ function SubmitButton() {
 }
 
 export function EventTrigger() {
-  const [user, setUser] = React.useState<UserKey>("alice");
-  const [eventType, setEventType] = React.useState("top_up");
-  const [amount, setAmount] = React.useState("500");
-  const [mode, setMode] = React.useState<"http" | "kafka">("http");
+  const router = useRouter();
+  // Selections persist across reloads so the last-used user / event /
+  // amount / mode are remembered between visits.
+  const [user, setUser] = usePersistedState<UserKey>("sim.event.user", "alice");
+  const [eventType, setEventType] = usePersistedState(
+    "sim.event.type",
+    "fund",
+  );
+  const [amount, setAmount] = usePersistedState("sim.event.amount", "500");
+  const [mode, setMode] = usePersistedState<"http" | "kafka">(
+    "sim.event.mode",
+    "http",
+  );
   const [status, setStatus] = React.useState<{
     ok: boolean;
     msg: string;
@@ -49,6 +60,9 @@ export function EventTrigger() {
   async function action() {
     const result = await fireEventAction(user, eventType, amount, mode);
     setStatus({ ok: result.ok, msg: result.message });
+    // Refresh the wallet panes so the just-fired event's transaction
+    // appears in the recent-activity feed without a manual reload.
+    router.refresh();
   }
 
   return (

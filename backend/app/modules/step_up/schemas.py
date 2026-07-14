@@ -10,7 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 # Only the user-initiated transaction types make sense as step-up
-# scopes. Top-up is a system-initiated flow (already auth'd via the
+# scopes. Fund is a system-initiated flow (already auth'd via the
 # external source) so it's deliberately excluded.
 TransactionType = Literal["p2p", "redemption"]
 

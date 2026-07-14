@@ -17,7 +17,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.accounts.service import derive_balance
-from app.modules.payments.service import top_up
+from app.modules.payments.service import fund
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     Account,
@@ -55,7 +55,7 @@ async def _ensure_default_role(session: AsyncSession, tenant: Tenant):
     role = Role(tenant_id=tenant.id, name="standard_user")
     session.add(role)
     await session.flush()
-    for txn_type in ("p2p", "redemption", "top_up"):
+    for txn_type in ("p2p", "redemption", "fund"):
         session.add(RolePermission(role_id=role.id, transaction_type=txn_type, permitted=True))
     await session.commit()
     return role
@@ -129,8 +129,8 @@ async def test_p2p_happy_path_moves_balance(
     )
     bob, bob_wallet = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
 
-    # Give Alice opening balance via the internal top_up service.
-    await top_up(
+    # Give Alice opening balance via the internal fund service.
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -181,7 +181,7 @@ async def test_p2p_rejects_overdraft(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
     _bob, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -216,7 +216,7 @@ async def test_p2p_rejects_self_transfer(
 ) -> None:
     """Sender == recipient → 422 self_transfer_not_allowed."""
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -248,7 +248,7 @@ async def test_p2p_rejects_unknown_recipient(
 ) -> None:
     """Unknown recipient phone → 404 user_not_found."""
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -313,7 +313,7 @@ async def test_p2p_cross_tenant_recipient_returns_404(
     address a tenant-B recipient even if they share the phone.
     """
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -417,7 +417,7 @@ async def test_p2p_idempotent_replay(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
     _, bob_wallet = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -469,7 +469,7 @@ async def test_p2p_concurrent_double_spend_blocked(
     """
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
     await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -527,9 +527,9 @@ async def test_p2p_concurrent_transfers_cannot_exceed_recipient_max_balance(
         db_session, test_tenant, phone="+27 82 555 3333"
     )
 
-    # Fund both senders BEFORE the cap exists so the seeding top-ups don't trip it.
+    # Fund both senders BEFORE the cap exists so the seeding funds don't trip it.
     for idx, sender in enumerate((sender_a, sender_b)):
-        await top_up(
+        await fund(
             db_session,
             tenant_id=test_tenant.id,
             user_id=sender.id,
@@ -602,7 +602,7 @@ async def test_p2p_bidirectional_concurrent_transfers_do_not_deadlock(
 
     # Fund both wallets generously so neither debit can overdraft in ANY commit
     # order — the test isolates lock ordering, not the overdraft check.
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -610,7 +610,7 @@ async def test_p2p_bidirectional_concurrent_transfers_do_not_deadlock(
         currency="ZAR",
         idempotency_key="seed-deadlock-alice",
     )
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=bob.id,

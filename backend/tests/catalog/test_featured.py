@@ -25,7 +25,7 @@ async def _seed_campaign(
     tenant: Tenant,
     *,
     name: str = "Spring Bonus",
-    description: str | None = "Earn extra points on every top-up",
+    description: str | None = "Earn extra points on every fund",
     status: str = "active",
     reward_value: Decimal = Decimal("100"),
     start: date | None = None,
@@ -42,7 +42,7 @@ async def _seed_campaign(
         name=name,
         description=description,
         rule_type="campaign",
-        transaction_type="top_up",
+        transaction_type="fund",
         reward_type="points",
         reward_value=reward_value,
         campaign_start_date=start if start is not None else today - timedelta(days=1),
@@ -80,7 +80,7 @@ async def test_featured_returns_active_campaign(
     assert body["campaign"] is not None
     assert body["campaign"]["id"] == str(rule.id)
     assert body["campaign"]["name"] == "Spring Bonus"
-    assert body["campaign"]["description"] == "Earn extra points on every top-up"
+    assert body["campaign"]["description"] == "Earn extra points on every fund"
     assert body["campaign"]["reward_type"] == "points"
     assert Decimal(body["campaign"]["reward_value"]) == Decimal("100")
 

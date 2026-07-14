@@ -93,7 +93,7 @@ async def _fund(session: AsyncSession, tenant: Tenant, wallet: Account, amount: 
         PostTransactionRequest(
             tenant_id=tenant.id,
             idempotency_key=f"fund-{wallet.id}",
-            transaction_type="top_up",
+            transaction_type="fund",
             currency=wallet.currency,
             status=TXN_STATUS_COMPLETED,
             entries=[

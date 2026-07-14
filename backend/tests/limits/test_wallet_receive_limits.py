@@ -76,7 +76,7 @@ async def _seed_receive(
     txn = Transaction(
         tenant_id=tenant_id,
         idempotency_key=f"recv-{uuid4().hex}",
-        transaction_type="top_up",
+        transaction_type="fund",
         status=TXN_STATUS_COMPLETED,
         amount=principal_d,
         currency="ZAR",

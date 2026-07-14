@@ -10,25 +10,9 @@ import { Phone, Wallet as WalletIcon } from "lucide-react";
 
 import type { Wallet } from "@/lib/backend";
 import type { UserKey } from "@/lib/config";
+import { formatAmount } from "@/lib/format";
 
-function formatAmount(value: string, currency: string): string {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return value;
-  const fractionDigits = currency === "PTS" ? 0 : 2;
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  });
-}
-
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  const seconds = Math.round((Date.now() - then) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
-  return `${Math.round(seconds / 86400)}d ago`;
-}
+import { TransactionList } from "./transaction-list";
 
 export function WalletPane({
   user,
@@ -87,32 +71,7 @@ export function WalletPane({
         <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-muted)]">
           Recent activity
         </div>
-        {wallet?.recent_transactions.length ? (
-          <ul className="flex flex-col gap-1.5">
-            {wallet.recent_transactions.map((txn) => (
-              <li
-                key={txn.id}
-                className="flex items-center justify-between rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-              >
-                <div>
-                  <div className="font-medium capitalize text-[var(--color-fg)]">
-                    {txn.transaction_type.replaceAll("_", " ")}
-                  </div>
-                  <div className="text-[11px] text-[var(--color-fg-muted)]">
-                    {relativeTime(txn.created_at)} · {txn.status}
-                  </div>
-                </div>
-                <div className="font-mono tabular-nums text-[var(--color-fg)]">
-                  {formatAmount(txn.amount, txn.currency)} {txn.currency}
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="rounded-lg border border-dashed border-[var(--color-border)] px-4 py-3 text-xs text-[var(--color-fg-muted)]">
-            No transactions yet.
-          </div>
-        )}
+        <TransactionList transactions={wallet?.recent_transactions ?? []} />
       </section>
 
       {children ? <div className="pt-1">{children}</div> : null}

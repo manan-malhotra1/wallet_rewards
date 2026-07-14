@@ -28,7 +28,7 @@ async def _create_rule(client: AsyncClient, tenant: Tenant, name: str) -> str:
             "tenant_id": str(tenant.id),
             "name": name,
             "rule_type": "first_time",
-            "transaction_type": "top_up",
+            "transaction_type": "fund",
             "reward_type": "points",
             "reward_value": "100",
         },

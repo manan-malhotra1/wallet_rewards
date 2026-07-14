@@ -1,5 +1,5 @@
-"""Payments service — P2P orchestration, internal top-up, and the
-mobile-facing demo top-up endpoint (Pay-PRD-0320).
+"""Payments service — P2P orchestration, internal wallet funding, and the
+mobile-facing demo fund endpoint (Pay-PRD-0320).
 
 The full PRD orchestration sequence (Pay-PRD-0260) is:
     1. Role check
@@ -11,8 +11,8 @@ Phase B implements step 4 only. Steps 1-3 are explicitly TODO with the relevant
 PRD references. The architecture supports plugging them in without changing the
 caller — they belong inside this service, before the `post_transaction` call.
 
-The user-facing `topup()` function (Pay-PRD-0320) wraps the internal
-`top_up()` ledger primitive with the user-action concerns: step-up PIN
+A future user-facing fund endpoint (Pay-PRD-0320) will wrap the internal
+`fund()` ledger primitive with the user-action concerns: step-up PIN
 enforcement, audit attribution to the user, and surfacing any earned
 points back to the caller.
 """
@@ -365,7 +365,7 @@ async def p2p_transfer(
     # Step 8 — earned-points lookup happens AFTER every commit above so any
     # rule-firing (today: none, since P2P doesn't synchronously go through
     # Kafka; tomorrow: whatever the rules engine writes against this
-    # transaction id) is already durable. Mirrors the topup() pattern.
+    # transaction id) is already durable. Mirrors the fund() pattern.
     earned_points = await _resolve_earned_points_for_txn(session, txn.id)
 
     return txn, recipient_user_id, earned_points
@@ -376,7 +376,7 @@ async def get_or_create_system_cash_inflow(
 ) -> Account:
     """Idempotent fetch-or-create for the per-(tenant, currency) cash inflow account.
 
-    Used by `top_up()` so the seed and future top-up endpoint don't need to
+    Used by `fund()` so the seed and future fund endpoint don't need to
     pre-create the account out-of-band. `external_fund` also calls it to
     pre-create the account BEFORE taking the wallet lock (Epic 18 S4 M-01).
 
@@ -412,7 +412,7 @@ async def get_or_create_system_cash_inflow(
     return account
 
 
-async def top_up(
+async def fund(
     session: AsyncSession,
     *,
     tenant_id: UUID,
@@ -421,7 +421,7 @@ async def top_up(
     currency: str,
     idempotency_key: str,
 ) -> Transaction:
-    """Internal top-up — credit a user's wallet from outside the system.
+    """Internal fund — credit a user's wallet from outside the system.
 
     Posts a balanced transaction:
       DEBIT  system_cash_inflow (created lazily if missing)
@@ -467,7 +467,7 @@ async def top_up(
         PostTransactionRequest(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
-            transaction_type="top_up",
+            transaction_type="fund",
             currency=currency.upper(),
             entries=[
                 LedgerEntryRequest(
@@ -499,7 +499,7 @@ async def _resolve_earned_points_for_txn(session: AsyncSession, txn_id: UUID) ->
     `triggering_event_id` — a STRING that holds either an external Kafka
     `event_id` or, for synchronous internal flows, the string form of the
     internal transaction id. We match on `str(txn_id)` so internal
-    rule-firings (when they exist) are picked up; today the top-up path
+    rule-firings (when they exist) are picked up; today the fund path
     does not emit Kafka events so this returns `None` in practice.
 
     The CHECK constraint on `ledger_entries.amount > 0` plus the

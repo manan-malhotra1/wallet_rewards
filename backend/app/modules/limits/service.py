@@ -192,7 +192,7 @@ async def check_limits(
         session: Async DB session.
         tenant_id: Tenant scope.
         user_id: The user initiating — also the subject of the rolling caps.
-        transaction_type: 'p2p', 'top_up', 'redemption', etc.
+        transaction_type: 'p2p', 'fund', 'redemption', etc.
         account_type: 'financial_wallet' or 'points_account'.
         currency: ISO 4217 (or 'PTS').
         amount: Amount about to be moved.
@@ -496,7 +496,7 @@ async def check_wallet_receive_limits(
     `recipient_facing` controls error surface: for a P2P credit to someone
     else's wallet (True) a breach fails the SENDER with a detail-free
     `recipient_*` error and the recipient is never notified; for a credit to the
-    actor's own wallet (e.g. top-up, False) the owner gets the specific cap.
+    actor's own wallet (e.g. fund, False) the owner gets the specific cap.
 
     Args:
         tenant_id: Tenant scope.

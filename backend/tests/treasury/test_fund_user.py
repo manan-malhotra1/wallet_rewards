@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/treasury/fund-user (admin top-up)."""
+"""Tests for POST /api/v1/treasury/fund-user (admin fund)."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ async def test_fund_user_happy_path(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Funding R 500 lands a top-up txn + bumps the user's wallet balance."""
+    """Funding R 500 lands a fund txn + bumps the user's wallet balance."""
     wallet = await _seed_user_wallet(db_session, test_tenant, test_user)
 
     response = await async_client.post(

@@ -80,7 +80,7 @@ async def funded_wallet(
         PostTransactionRequest(
             tenant_id=test_tenant.id,
             idempotency_key=f"fund-{user_wallet.id}",
-            transaction_type="top_up",
+            transaction_type="fund",
             currency="ZAR",
             status=TXN_STATUS_COMPLETED,
             entries=[

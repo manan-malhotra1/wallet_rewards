@@ -152,7 +152,7 @@ class WalletTransactionOut(BaseModel):
     `direction` is derived from the ledger entry on one of the caller's
     own accounts: CREDIT → "in" (money/points arrived), DEBIT → "out".
     `counterparty_name` is populated for P2P transfers — the other
-    user's profile first_name — and null otherwise (top-ups, reward
+    user's profile first_name — and null otherwise (funds, reward
     issuance, redemptions where the other side is a system/provider
     account with no owning user).
     """

@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
 from app.auth.secret_box import encrypt_secret  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
-from app.modules.payments.service import top_up  # noqa: E402
+from app.modules.payments.service import fund  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
 from app.modules.redemption.service import register_provider  # noqa: E402
 from app.shared.models import (  # noqa: E402
@@ -159,7 +159,7 @@ async def _seed_services_catalog(session: AsyncSession, tenant: Tenant) -> None:
         (
             "airtime_recharge",
             "Airtime Recharge",
-            "Top up a mobile number via a registered airtime merchant.",
+            "Recharge a mobile number via a registered airtime merchant.",
         ),
         (
             "redemption",
@@ -340,7 +340,7 @@ async def _get_or_create_redemption_provider(
 
 
 async def _get_or_create_standard_user_role(session: AsyncSession, tenant: Tenant) -> Role:
-    """Idempotently create a 'standard_user' role granting p2p + top_up + redemption.
+    """Idempotently create a 'standard_user' role granting p2p + fund + redemption.
 
     Without this, the seeded users can't initiate any transaction — the
     payments orchestrator's role check (Pay-PRD-0260 step 1) rejects.
@@ -354,7 +354,7 @@ async def _get_or_create_standard_user_role(session: AsyncSession, tenant: Tenan
             tenant_id=tenant.id,
             name="standard_user",
             description=(
-                "Default end-user role — grants p2p, top_up, redemption, airtime_recharge."
+                "Default end-user role — grants p2p, fund, redemption, airtime_recharge."
             ),
         )
         session.add(role)
@@ -364,7 +364,7 @@ async def _get_or_create_standard_user_role(session: AsyncSession, tenant: Tenan
     # Permissions are idempotent via the unique (role_id, transaction_type) index.
     # `cash_in` is granted here so seeded agents can fund customers; in
     # production a dedicated agent role would carry it (Pricing v2 Epic 21).
-    for txn_type in ("p2p", "top_up", "redemption", "airtime_recharge", "cash_in"):
+    for txn_type in ("p2p", "fund", "redemption", "airtime_recharge", "cash_in"):
         exists = (
             await session.execute(
                 select(RolePermission).where(
@@ -739,7 +739,7 @@ async def seed() -> None:
             )
 
             # Opening balance — idempotent via per-user idempotency_key.
-            # The top_up service lazily creates the system_cash_inflow account.
+            # The fund service lazily creates the system_cash_inflow account.
             opening = spec["opening_balance_zar"]
             key = f"seed-opening-{spec['phone']}"
             existing = (
@@ -751,7 +751,7 @@ async def seed() -> None:
                 )
             ).scalar_one_or_none()
             if existing is None:
-                await top_up(
+                await fund(
                     session,
                     tenant_id=tenant.id,
                     user_id=user.id,
@@ -759,7 +759,7 @@ async def seed() -> None:
                     currency="ZAR",
                     idempotency_key=key,
                 )
-                print(f"  + Top-up: {spec['first_name']} <- R {opening} ZAR (opening balance)")
+                print(f"  + Fund: {spec['first_name']} <- R {opening} ZAR (opening balance)")
 
         # Phase D — sample redemption provider (auto-creates its wallet).
         await _get_or_create_redemption_provider(
@@ -787,9 +787,9 @@ async def seed() -> None:
         await _get_or_create_rule(
             session,
             tenant,
-            name="First top-up bonus",
+            name="First fund bonus",
             rule_type="first_time",
-            transaction_type="top_up",
+            transaction_type="fund",
             reward_value=Decimal("100"),
         )
         await _get_or_create_rule(

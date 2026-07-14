@@ -48,17 +48,15 @@ const TRANSACTION_TYPE_LABEL: Record<string, string> = {
   redemption: "Redemption",
   airtime_recharge: "Airtime Recharge",
   reward_issuance: "Reward",
-  top_up: "Top up",
   treasury_adjust: "Treasury adjust",
 };
 
 const SYSTEM_COUNTERPARTY_LABEL: Record<string, string> = {
-  fund: "Operator float",
   withdraw: "Operator float",
   airtime_recharge: "Airtime merchant",
   redemption: "Redemption provider",
   reward_issuance: "Rewards engine",
-  top_up: "System cash inflow",
+  fund: "System cash inflow",
   treasury_adjust: "Operator adjustment",
 };
 

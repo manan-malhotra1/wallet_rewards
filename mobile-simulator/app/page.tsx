@@ -10,6 +10,7 @@
 import { config } from "@/lib/config";
 import { getMyWallet, type Wallet } from "@/lib/backend";
 
+import { AirtimeForm } from "./_components/airtime-form";
 import { EventTrigger } from "./_components/event-trigger";
 import { P2PForm } from "./_components/p2p-form";
 import { SasaiLogo } from "./_components/sasai-logo";
@@ -71,9 +72,11 @@ export default async function HomePage() {
       <div className="grid gap-5 md:grid-cols-2">
         <WalletPane user="alice" phone={config.users.alice.phone} wallet={alice.wallet}>
           <P2PForm sender="alice" recipient="bob" />
+          <AirtimeForm buyer="alice" />
         </WalletPane>
         <WalletPane user="bob" phone={config.users.bob.phone} wallet={bob.wallet}>
           <P2PForm sender="bob" recipient="alice" />
+          <AirtimeForm buyer="bob" />
         </WalletPane>
       </div>
 

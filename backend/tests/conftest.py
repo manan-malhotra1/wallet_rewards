@@ -182,7 +182,7 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
 async def test_user(db_session: AsyncSession, test_tenant: Tenant, default_user_role: Role) -> User:
     """A simple active user with one phone identifier + default role.
 
-    The default role grants p2p + redemption + top_up — exercises Phase F.3
+    The default role grants p2p + redemption + fund — exercises Phase F.3
     role check without each test having to wire it manually.
     """
     user = User(tenant_id=test_tenant.id)
@@ -214,11 +214,11 @@ async def default_user_role(db_session: AsyncSession, test_tenant: Tenant) -> Ro
     role = Role(
         tenant_id=test_tenant.id,
         name="standard_user",
-        description="Default test role — grants p2p, redemption, top_up.",
+        description="Default test role — grants p2p, redemption, fund.",
     )
     db_session.add(role)
     await db_session.flush()
-    for txn_type in ("p2p", "redemption", "top_up", "airtime_recharge"):
+    for txn_type in ("p2p", "redemption", "fund", "airtime_recharge"):
         db_session.add(
             RolePermission(
                 role_id=role.id,
@@ -241,7 +241,7 @@ async def default_user_role_other_tenant(db_session: AsyncSession, other_tenant:
     )
     db_session.add(role)
     await db_session.flush()
-    for txn_type in ("p2p", "redemption", "top_up", "airtime_recharge"):
+    for txn_type in ("p2p", "redemption", "fund", "airtime_recharge"):
         db_session.add(
             RolePermission(
                 role_id=role.id,

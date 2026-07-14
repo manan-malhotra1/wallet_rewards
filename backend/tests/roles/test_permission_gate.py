@@ -17,7 +17,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.payments.service import top_up
+from app.modules.payments.service import fund
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     Account,
@@ -87,13 +87,13 @@ async def test_p2p_rejects_user_with_no_role(
         assign_role=default_user_role,
     )
 
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
         amount=Decimal("100"),
         currency="ZAR",
-        idempotency_key="topup-no-role-test",
+        idempotency_key="fund-no-role-test",
     )
 
     response = await async_client.post(
@@ -146,13 +146,13 @@ async def test_p2p_rejects_user_whose_role_lacks_p2p_permission(
     await _make_user_with_phone(
         db_session, test_tenant, phone="+27 82 999 2002", assign_role=redemption_only
     )
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
         amount=Decimal("100"),
         currency="ZAR",
-        idempotency_key="topup-redeem-only",
+        idempotency_key="fund-redeem-only",
     )
 
     response = await async_client.post(
@@ -194,13 +194,13 @@ async def test_p2p_rejects_when_role_is_inactive(
         phone="+27 82 999 3002",
         assign_role=default_user_role,
     )
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
         amount=Decimal("100"),
         currency="ZAR",
-        idempotency_key="topup-inactive",
+        idempotency_key="fund-inactive",
     )
 
     response = await async_client.post(
@@ -247,13 +247,13 @@ async def test_p2p_allowed_when_any_role_grants_permission(
         phone="+27 82 999 4002",
         assign_role=default_user_role,
     )
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
         amount=Decimal("100"),
         currency="ZAR",
-        idempotency_key="topup-multi-role",
+        idempotency_key="fund-multi-role",
     )
 
     response = await async_client.post(

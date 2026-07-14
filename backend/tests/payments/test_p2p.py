@@ -1,6 +1,6 @@
 """Tests for the `earned_points` field on POST /api/v1/payments/p2p.
 
-Mirrors the topup pattern (`tests/payments/test_topup.py` where applicable):
+Mirrors the fund pattern (`tests/payments/test_fund.py` where applicable):
 the rules engine writes `reward_events` rows keyed by `triggering_event_id`
 (the internal transaction id, stringified, for synchronous internal flows).
 The P2P response surfaces the integer total of those rows so the mobile
@@ -20,7 +20,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.payments.service import top_up
+from app.modules.payments.service import fund
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     Account,
@@ -56,7 +56,7 @@ async def _ensure_default_role(session: AsyncSession, tenant: Tenant):
     role = Role(tenant_id=tenant.id, name="standard_user")
     session.add(role)
     await session.flush()
-    for txn_type in ("p2p", "redemption", "top_up"):
+    for txn_type in ("p2p", "redemption", "fund"):
         session.add(RolePermission(role_id=role.id, transaction_type=txn_type, permitted=True))
     await session.commit()
     return role
@@ -147,7 +147,7 @@ async def test_p2p_response_includes_earned_points_field(
     """
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7771")
     bob, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7772")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -204,7 +204,7 @@ async def test_p2p_earned_points_reflects_rule_issuance(
     """
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 8881")
     await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 8882")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,

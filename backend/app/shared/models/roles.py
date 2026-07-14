@@ -33,7 +33,7 @@ ROLE_STATUS_INACTIVE = "inactive"
 class Role(Base):
     """A named permission group within a tenant.
 
-    Examples: "standard_user" (grants p2p + top_up + redemption),
+    Examples: "standard_user" (grants p2p + fund + redemption),
     "merchant" (grants merchant payments only), "frozen" (grants nothing).
 
     A role's permissions are defined in `role_permissions`. Users are

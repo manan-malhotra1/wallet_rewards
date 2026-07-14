@@ -511,8 +511,9 @@ async def get_my_wallet(session: AsyncSession, *, user_id: UUID, tenant_id: UUID
         )
 
     # Recent transactions: DISTINCT through the user's accounts' ledger
-    # entries so both sent + received movements appear. Limit 10 — mobile
-    # surfaces a short feed; a full statement is a separate endpoint.
+    # entries so both sent + received movements appear. Limit 20 — mobile
+    # surfaces a short feed (shown 4-at-a-time with a "more" toggle); a
+    # full statement is a separate endpoint.
     txns_payload: list[dict[str, Any]] = await _build_recent_txns_payload(
         session, tenant_id=tenant_id, account_ids=account_ids
     )
@@ -531,15 +532,15 @@ async def _build_recent_txns_payload(
     *,
     tenant_id: UUID,
     account_ids: list[UUID],
-    limit: int = 10,
+    limit: int = 20,
 ) -> list[dict[str, Any]]:
     """Build the recent-transactions list for /me/wallet.
 
-    Loads up to 10 recent transactions touching the caller's accounts,
+    Loads up to 20 recent transactions touching the caller's accounts,
     then for each one derives:
       - `direction`: CREDIT on the user's account → "in"; DEBIT → "out".
       - `counterparty_name`: for `transaction_type='p2p'`, the OTHER
-        side's user profile first_name. For top-ups / reward issuance /
+        side's user profile first_name. For funds / reward issuance /
         redemption the other side is a system or provider account with
         no owning user, so the value is None and the mobile UI falls
         back to a category label.

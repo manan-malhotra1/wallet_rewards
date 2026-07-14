@@ -5,7 +5,7 @@ The model:
   - `operator_adjustment` (one per tenant + currency) is the counter-leg
     for admin fund/withdraw on the system float. Its balance tracks net
     external cash that has flowed in/out via bank wires.
-  - `fund_user()` reuses the existing `top_up()` service (DEBIT
+  - `fund_user()` reuses the existing `fund()` service (DEBIT
     system_cash_inflow, CREDIT user_wallet).
 
 Every action below writes an `audit_log` row with the admin's reason.
@@ -31,7 +31,7 @@ from app.modules.ledger.service import (
     PostTransactionRequest,
     post_transaction,
 )
-from app.modules.payments.service import top_up
+from app.modules.payments.service import fund
 from app.modules.treasury.schemas import (
     AdjustSystemWalletResponse,
     FundUserResponse,
@@ -327,7 +327,7 @@ async def fund_user(
     admin: AdminPrincipal,
     ip_address: str | None = None,
 ) -> FundUserResponse:
-    """Admin tops up a user's wallet — wraps the existing `top_up()`.
+    """Admin tops up a user's wallet — wraps the existing `fund()`.
 
     The user is resolved from their registered identifier (phone, email,
     account_number, card_number) — operators don't have UUIDs at the
@@ -336,7 +336,7 @@ async def fund_user(
     `treasury.fund_user` audit row with the admin's reason.
 
     Idempotency-Key here is internally generated — admin actions are
-    not naturally idempotent (every "fund again" is a real new top-up).
+    not naturally idempotent (every "fund again" is a real new fund).
 
     Raises:
         TenantNotFound: tenant_id is unknown.
@@ -349,7 +349,7 @@ async def fund_user(
     user_id = identifier_row.user_id
 
     idempotency_key = f"admin-fund-{uuid4().hex}"
-    txn = await top_up(
+    txn = await fund(
         session,
         tenant_id=tenant_id,
         user_id=user_id,

@@ -181,6 +181,79 @@ export async function sendP2P(
   return { ok: res.ok, status: res.status, body: await res.text() };
 }
 
+export interface AirtimeResult {
+  ok: boolean;
+  status: number;
+  body: string;
+}
+
+export async function buyAirtime(
+  buyer: UserKey,
+  msisdn: string,
+  amount: string,
+): Promise<AirtimeResult> {
+  // Fresh Idempotency-Key per attempt (backend dedups by (tenant, key)).
+  const newKey = () =>
+    `sim-airtime-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const body = JSON.stringify({
+    msisdn,
+    network: "MTN",
+    amount,
+    currency: "ZAR",
+  });
+
+  async function once(): Promise<Response> {
+    const token = await loginUser(buyer);
+    return fetch(`${config.backendUrl}/api/v1/airtime/recharge`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": newKey(),
+      },
+      body,
+      cache: "no-store",
+    });
+  }
+
+  let res = await once();
+  if (res.status === 401) {
+    // Expired session — drop the cached token and retry once.
+    sessionCache.delete(config.users[buyer].phone);
+    res = await once();
+  }
+  return { ok: res.ok, status: res.status, body: await res.text() };
+}
+
+export async function simulateAirtimeCallback(
+  rechargeId: string,
+  outcome: "completed" | "failed",
+): Promise<AirtimeResult> {
+  // The bundled SimulatorProvider never fires a callback itself, so the UI can
+  // send one to finalise a PENDING recharge. Signed with the seeded merchant's
+  // dev callback secret (HMAC over `{ts}.{body}`); the HMAC IS the auth — no
+  // Authorization header.
+  const body = JSON.stringify(
+    outcome === "completed"
+      ? { outcome, provider_reference: `SIM-CB-${Date.now()}` }
+      : { outcome, reason: "simulated_provider_failure" },
+  );
+  const signature = signEventBody(body, config.airtimeCallbackSecret);
+  const res = await fetch(
+    `${config.backendUrl}/api/v1/airtime/${rechargeId}/callback`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Sasai-Signature": signature,
+      },
+      body,
+      cache: "no-store",
+    },
+  );
+  return { ok: res.ok, status: res.status, body: await res.text() };
+}
+
 interface EventInput {
   user: UserKey;
   transactionType: string;

@@ -1,7 +1,7 @@
 """Pydantic v2 schemas for the payments module.
 
 Hosts request/response models for the P2P transfer endpoint and the
-mobile-facing demo top-up endpoint (Pay-PRD-0320). All `tenant_id` /
+mobile-facing demo fund endpoint (Pay-PRD-0320). All `tenant_id` /
 `user_id` resolution comes from the session token — never the request
 body.
 """

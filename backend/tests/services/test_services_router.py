@@ -50,7 +50,7 @@ async def test_list_services_returns_active_and_disabled(
 ) -> None:
     """No status filter → both active and disabled rows."""
     await _seed_service(db_session, str(test_tenant.id), "p2p")
-    await _seed_service(db_session, str(test_tenant.id), "legacy_topup", status="disabled")
+    await _seed_service(db_session, str(test_tenant.id), "legacy_fund", status="disabled")
 
     resp = await async_client.get(
         "/api/v1/services",
@@ -59,7 +59,7 @@ async def test_list_services_returns_active_and_disabled(
     )
     assert resp.status_code == 200, resp.text
     codes = {s["code"] for s in resp.json()}
-    assert codes == {"p2p", "legacy_topup"}
+    assert codes == {"p2p", "legacy_fund"}
 
 
 @pytest.mark.asyncio

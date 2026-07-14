@@ -10,7 +10,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.hashing import hash_pin
-from app.modules.payments.service import top_up
+from app.modules.payments.service import fund
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     Account,
@@ -49,7 +49,7 @@ async def _make_tenant_user_with_pin(
         role = Role(tenant_id=tenant.id, name="standard_user")
         session.add(role)
         await session.flush()
-        for txn_type in ("p2p", "redemption", "top_up"):
+        for txn_type in ("p2p", "redemption", "fund"):
             session.add(RolePermission(role_id=role.id, transaction_type=txn_type))
         await session.commit()
 
@@ -109,7 +109,7 @@ async def test_p2p_below_threshold_no_pin_needed(
     """Threshold R 200; sending R 100 should succeed without a PIN."""
     alice, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 1111")
     bob, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 2222")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -142,7 +142,7 @@ async def test_p2p_above_threshold_without_pin_returns_step_up_required(
     """R 500 over a R 200 threshold without a PIN → 401 step_up_required."""
     alice, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 3333")
     _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 4444")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -177,7 +177,7 @@ async def test_p2p_above_threshold_with_wrong_pin_returns_invalid_step_up_pin(
         db_session, test_tenant, phone="+27 82 555 5555", pin="1234"
     )
     _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 6666")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -213,7 +213,7 @@ async def test_p2p_above_threshold_with_correct_pin_succeeds(
         db_session, test_tenant, phone="+27 82 555 7777", pin="1234"
     )
     bob, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 8888")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,
@@ -249,7 +249,7 @@ async def test_p2p_no_policy_means_no_step_up(
     """With no policy row, even a huge amount goes through without a PIN."""
     alice, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 9999")
     _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 0000")
-    await top_up(
+    await fund(
         db_session,
         tenant_id=test_tenant.id,
         user_id=alice.id,

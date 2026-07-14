@@ -45,7 +45,7 @@ async def _seed_first_time_rule(
     async_client: AsyncClient,
     tenant: Tenant,
     *,
-    transaction_type: str = "top_up",
+    transaction_type: str = "fund",
     reward_value: str = "100",
 ) -> str:
     """Create a first_time rule via the API. Returns the rule_id."""
@@ -94,7 +94,7 @@ def _make_event(
     source_key: str,
     tenant: Tenant,
     user: User,
-    transaction_type: str = "top_up",
+    transaction_type: str = "fund",
     amount: str = "500",
     event_id: str | None = None,
 ) -> dict:
@@ -190,13 +190,13 @@ async def test_ingest_dedupes_replayed_event(
     """Same (source_key, event_id) replay → outcome 'duplicate', no new reward."""
     await _ensure_system_points_issuance(db_session, test_tenant)
     await _seed_source(async_client, test_tenant, "dedup-src")
-    await _seed_first_time_rule(async_client, test_tenant, transaction_type="top_up")
+    await _seed_first_time_rule(async_client, test_tenant, transaction_type="fund")
 
     event = _make_event(
         source_key="dedup-src",
         tenant=test_tenant,
         user=test_user,
-        transaction_type="top_up",
+        transaction_type="fund",
     )
 
     first = await async_client.post("/api/v1/events/external", json=event)
@@ -227,19 +227,19 @@ async def test_first_time_rule_fires_exactly_once(
     """First-time rule fires on event 1; second qualifying event yields no reward."""
     await _ensure_system_points_issuance(db_session, test_tenant)
     await _seed_source(async_client, test_tenant, "first-src")
-    await _seed_first_time_rule(async_client, test_tenant, transaction_type="top_up")
+    await _seed_first_time_rule(async_client, test_tenant, transaction_type="fund")
 
     e1 = _make_event(
         source_key="first-src",
         tenant=test_tenant,
         user=test_user,
-        transaction_type="top_up",
+        transaction_type="fund",
     )
     e2 = _make_event(
         source_key="first-src",
         tenant=test_tenant,
         user=test_user,
-        transaction_type="top_up",
+        transaction_type="fund",
     )
 
     r1 = (await async_client.post("/api/v1/events/external", json=e1)).json()
@@ -291,10 +291,10 @@ async def test_rule_only_matches_correct_transaction_type(
     test_user: User,
     user_points: Account,
 ) -> None:
-    """Rule bound to 'top_up' does not fire on 'p2p' events."""
+    """Rule bound to 'fund' does not fire on 'p2p' events."""
     await _ensure_system_points_issuance(db_session, test_tenant)
     await _seed_source(async_client, test_tenant, "type-src")
-    await _seed_first_time_rule(async_client, test_tenant, transaction_type="top_up")
+    await _seed_first_time_rule(async_client, test_tenant, transaction_type="fund")
 
     p2p_event = _make_event(
         source_key="type-src",

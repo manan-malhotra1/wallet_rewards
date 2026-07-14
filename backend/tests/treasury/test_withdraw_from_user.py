@@ -65,7 +65,7 @@ async def _seed_user_wallet_with_balance(
     await session.refresh(inflow)
 
     # Bootstrap the balance via a manually-posted balanced transaction —
-    # avoids the higher-level top_up code path so the test stays focused.
+    # avoids the higher-level fund code path so the test stays focused.
     await post_transaction(
         session,
         PostTransactionRequest(

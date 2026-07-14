@@ -24,7 +24,7 @@ from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_system
 from app.modules.external.schemas import ExternalFundRequest, ExternalWithdrawRequest
 from app.modules.limits.service import check_limits, check_wallet_send_limits
-from app.modules.payments.service import top_up
+from app.modules.payments.service import fund
 from app.modules.treasury.schemas import FundUserResponse, WithdrawFromUserResponse
 from app.modules.treasury.service import (
     get_or_create_operator_adjustment,
@@ -62,7 +62,7 @@ async def external_fund(
     request: ExternalFundRequest,
     idempotency_key: str,
 ) -> FundUserResponse:
-    """Credit a user's wallet on behalf of a partner (reuses `top_up`).
+    """Credit a user's wallet on behalf of a partner (reuses `fund`).
 
     Raises:
         UserNotFound (404): identifier doesn't resolve in the key's tenant.
@@ -78,7 +78,7 @@ async def external_fund(
     if existing is not None:
         # Bind the key to the operation: a key reused for a different op (or a
         # conflicting body) must not silently return a mismatched txn (S4 M-03).
-        if existing.transaction_type != "top_up":
+        if existing.transaction_type != "fund":
             raise DuplicateIdempotencyKey()
         balance, _ = await derive_balance(session, wallet.id)
         return FundUserResponse(
@@ -89,24 +89,24 @@ async def external_fund(
             new_balance=balance,
         )
 
-    # No explicit wallet lock here: `top_up` funnels through `post_transaction`,
+    # No explicit wallet lock here: `fund` funnels through `post_transaction`,
     # whose balance guard (invariant #11) locks the wallet FOR UPDATE and enforces
     # `max_balance` under that lock — the single authoritative check. Two
     # concurrent funds serialise there, so neither can race past the cap.
 
-    # Per-transaction cap. Rolling `top_up` caps don't aggregate (top_up is
-    # system-initiated, initiated_by=NULL); top_up's own wallet-receive cap is
+    # Per-transaction cap. Rolling `fund` caps don't aggregate (fund is
+    # system-initiated, initiated_by=NULL); fund's own wallet-receive cap is
     # the effective cumulative inflow guard.
     await check_limits(
         session,
         tenant_id=tenant_id,
         user_id=user_id,
-        transaction_type="top_up",
+        transaction_type="fund",
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=request.amount,
     )
-    txn = await top_up(
+    txn = await fund(
         session,
         tenant_id=tenant_id,
         user_id=user_id,

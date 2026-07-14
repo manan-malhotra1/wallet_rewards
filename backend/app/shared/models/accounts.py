@@ -31,7 +31,7 @@ ACCOUNT_TYPE_POINTS = "points_account"
 ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE = "system_points_issuance"
 ACCOUNT_TYPE_PROVIDER_REDEMPTION = "provider_redemption_wallet"
 # system_cash_inflow is the debit-side master for any money entering the system
-# from outside (top-ups, mobile money receipts). One per (tenant, currency).
+# from outside (funds, mobile money receipts). One per (tenant, currency).
 # See docs/06-data-architecture.md §4 addendum (Phase B).
 ACCOUNT_TYPE_SYSTEM_CASH_INFLOW = "system_cash_inflow"
 # Phase G — Pricing engine credit side. One per (tenant, currency).

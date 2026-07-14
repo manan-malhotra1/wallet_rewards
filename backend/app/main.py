@@ -15,6 +15,7 @@ from app.modules.api_keys import router as api_keys_router
 from app.modules.budgets import router as budgets_router
 from app.modules.cashin import router as cashin_router
 from app.modules.catalog import router as catalog_router
+from app.modules.commissions import router as commissions_router
 from app.modules.config_requests import router as config_requests_router
 from app.modules.events import router as events_router
 from app.modules.external import router as external_router
@@ -31,6 +32,7 @@ from app.modules.rules import router as rules_router
 from app.modules.segments import router as segments_router
 from app.modules.services import router as services_router
 from app.modules.step_up import router as step_up_router
+from app.modules.taxes import router as taxes_router
 from app.modules.tenants import router as tenants_router
 from app.modules.treasury import router as treasury_router
 from app.shared.exceptions import AppHTTPException
@@ -119,6 +121,8 @@ app.include_router(api_keys_router)
 app.include_router(budgets_router)
 app.include_router(limits_router)
 app.include_router(pricing_router)
+app.include_router(commissions_router)
+app.include_router(taxes_router)
 app.include_router(step_up_router)
 app.include_router(treasury_router)
 app.include_router(segments_router)

@@ -6,6 +6,7 @@ flags travel with the result so the charge assembler (Epic 20) can decide which
 leg bears each tax.
 """
 
+from app.modules.taxes.router import router
 from app.modules.taxes.service import (
     TaxComputation,
     calculate_tax,
@@ -20,4 +21,5 @@ __all__ = [
     "create_tax_config",
     "delete_tax_config",
     "list_tax_configs",
+    "router",
 ]

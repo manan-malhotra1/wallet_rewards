@@ -11,7 +11,7 @@ import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { listTenants } from "@/lib/api-endpoints";
+import { listConfigRequests, listTenants } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,18 @@ export default async function AuthenticatedLayout({
   const activeTenantId =
     (await getActiveTenantId()) ?? tenants[0]?.id ?? null;
 
+  // Sidebar badge: number of config change requests awaiting review. Best
+  // effort — a backend hiccup just drops the badge, never the shell.
+  let configPendingCount = 0;
+  if (activeTenantId) {
+    try {
+      const pending = await listConfigRequests(activeTenantId, "PENDING");
+      configPendingCount = pending.length;
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+    }
+  }
+
   return (
     <TooltipProvider delayDuration={200}>
       <AppShell
@@ -48,6 +60,7 @@ export default async function AuthenticatedLayout({
           baseCurrency: t.base_currency ?? "—",
         }))}
         activeTenantId={activeTenantId}
+        configPendingCount={configPendingCount}
         user={{
           username: session.user.username ?? session.user.email ?? session.user.id,
           email: session.user.email ?? undefined,

@@ -1,18 +1,15 @@
 /**
- * Create-pricing dialog (Epic 24 / Story 24.1).
- *
- * Collects a pricing config incl. an optional slab band (amount_from /
- * amount_to) and a fee-inclusive flag, then PROPOSES a create through the
+ * Create-commission dialog (Epic 24 / Story 24.2). Collects a commission
+ * config incl. an optional slab band, then PROPOSES a create through the
  * maker-checker pipeline. Nothing goes live until a second admin approves.
  */
 "use client";
 
 import * as React from "react";
 
-import { proposePricingChangeAction } from "@/app/(authenticated)/pricing/_actions";
+import { proposeCommissionChangeAction } from "@/app/(authenticated)/commissions/_actions";
 import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -37,36 +34,32 @@ import type { Instrument, Service, UserType } from "@/lib/api-types";
 
 interface FormState {
   transaction_type: string;
-  account_type: string;
   currency: string;
   user_type: string;
-  fixed_fee: string;
-  variable_fee_pct: string;
-  fee_cap: string;
   amount_from: string;
   amount_to: string;
-  fee_inclusive: boolean;
+  fixed_commission: string;
+  variable_commission_pct: string;
+  commission_cap: string;
 }
 
 function initialForm(services: Service[], instruments: Instrument[]): FormState {
   return {
     transaction_type: services[0]?.code ?? "",
-    account_type: "financial_wallet",
     currency:
       instruments.find((i) => i.account_type === "financial_wallet")?.code ??
       instruments[0]?.code ??
       "",
     user_type: "all",
-    fixed_fee: "0",
-    variable_fee_pct: "0",
-    fee_cap: "",
     amount_from: "",
     amount_to: "",
-    fee_inclusive: false,
+    fixed_commission: "0",
+    variable_commission_pct: "0",
+    commission_cap: "",
   };
 }
 
-export function CreatePricingDialog({
+export function CreateCommissionDialog({
   tenantId,
   services,
   instruments,
@@ -97,7 +90,6 @@ export function CreatePricingDialog({
 
   const onSubmit = async () => {
     setErrorBanner(null);
-    // Client-side guard: a bounded band must be ascending.
     if (
       form.amount_from &&
       form.amount_to &&
@@ -107,18 +99,16 @@ export function CreatePricingDialog({
       return;
     }
     setSubmitting(true);
-    const result = await proposePricingChangeAction({
+    const result = await proposeCommissionChangeAction({
       tenant_id: tenantId,
       transaction_type: form.transaction_type,
-      account_type: form.account_type,
       currency: form.currency.toUpperCase(),
       user_type: form.user_type === "all" ? null : (form.user_type as UserType),
-      fixed_fee: form.fixed_fee || "0",
-      variable_fee_pct: form.variable_fee_pct || "0",
-      fee_cap: form.fee_cap || undefined,
       amount_from: form.amount_from || undefined,
       amount_to: form.amount_to || undefined,
-      fee_inclusive: form.fee_inclusive,
+      fixed_commission: form.fixed_commission || "0",
+      variable_commission_pct: form.variable_commission_pct || "0",
+      commission_cap: form.commission_cap || undefined,
     });
     setSubmitting(false);
     if (!result.ok) {
@@ -132,8 +122,7 @@ export function CreatePricingDialog({
     setOpen(false);
   };
 
-  // Live fee preview. Samples inside the band (midpoint when bounded, else a
-  // nominal 1000) so operators can sanity-check before proposing.
+  // Live payout preview — samples inside the band (midpoint when bounded).
   const { sampleAmount, preview } = React.useMemo(() => {
     const from = form.amount_from ? parseFloat(form.amount_from) : null;
     const to = form.amount_to ? parseFloat(form.amount_to) : null;
@@ -141,15 +130,15 @@ export function CreatePricingDialog({
     if (from !== null && to !== null) amount = (from + to) / 2;
     else if (from !== null) amount = from;
     else if (to !== null) amount = to;
-    const fixed = parseFloat(form.fixed_fee) || 0;
-    const pct = parseFloat(form.variable_fee_pct) || 0;
-    const cap = form.fee_cap ? parseFloat(form.fee_cap) : Infinity;
+    const fixed = parseFloat(form.fixed_commission) || 0;
+    const pct = parseFloat(form.variable_commission_pct) || 0;
+    const cap = form.commission_cap ? parseFloat(form.commission_cap) : Infinity;
     const variable = Math.min(pct * amount, cap);
     return { sampleAmount: amount, preview: (fixed + variable).toFixed(2) };
   }, [
-    form.fixed_fee,
-    form.variable_fee_pct,
-    form.fee_cap,
+    form.fixed_commission,
+    form.variable_commission_pct,
+    form.commission_cap,
     form.amount_from,
     form.amount_to,
   ]);
@@ -159,22 +148,22 @@ export function CreatePricingDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New pricing config</DialogTitle>
+          <DialogTitle>New commission config</DialogTitle>
           <DialogDescription>
-            Total fee = fixed + min(variable% × amount, fee cap). Changes are
+            Commission = fixed + min(variable% × amount, cap). Changes are
             proposed and go live after a second admin approves.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label htmlFor="txn">Service</Label>
+              <Label htmlFor="c-txn">Service</Label>
               <Select
                 value={form.transaction_type}
                 onValueChange={(v) => update("transaction_type", v)}
                 disabled={services.length === 0}
               >
-                <SelectTrigger id="txn">
+                <SelectTrigger id="c-txn">
                   <SelectValue placeholder="Choose a service…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -186,34 +175,19 @@ export function CreatePricingDialog({
                 </SelectContent>
               </Select>
               {services.length === 0 && (
-                <p className="mt-1 text-[11px] text-[--color-text-3]">
+                <p className="mt-1 text-[11px] text-muted-foreground">
                   No active services — create one in /services first.
                 </p>
               )}
             </div>
             <div>
-              <Label htmlFor="acct">Account type</Label>
-              <Select
-                value={form.account_type}
-                onValueChange={(v) => update("account_type", v)}
-              >
-                <SelectTrigger id="acct">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="financial_wallet">Wallet</SelectItem>
-                  <SelectItem value="points_account">Points</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="ccy">Currency</Label>
+              <Label htmlFor="c-ccy">Currency</Label>
               <Select
                 value={form.currency}
                 onValueChange={(v) => update("currency", v)}
                 disabled={instruments.length === 0}
               >
-                <SelectTrigger id="ccy">
+                <SelectTrigger id="c-ccy">
                   <SelectValue placeholder="Choose…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -225,15 +199,13 @@ export function CreatePricingDialog({
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label htmlFor="utype">User type</Label>
+              <Label htmlFor="c-utype">User type</Label>
               <Select
                 value={form.user_type}
                 onValueChange={(v) => update("user_type", v)}
               >
-                <SelectTrigger id="utype">
+                <SelectTrigger id="c-utype">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -246,19 +218,21 @@ export function CreatePricingDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="afrom">Band from (optional)</Label>
+              <Label htmlFor="c-afrom">Band from (optional)</Label>
               <Input
-                id="afrom"
+                id="c-afrom"
                 value={form.amount_from}
                 onChange={(e) => update("amount_from", e.target.value)}
                 placeholder="0"
               />
             </div>
             <div>
-              <Label htmlFor="ato">Band to (optional)</Label>
+              <Label htmlFor="c-ato">Band to (optional)</Label>
               <Input
-                id="ato"
+                id="c-ato"
                 value={form.amount_to}
                 onChange={(e) => update("amount_to", e.target.value)}
                 placeholder="100"
@@ -266,57 +240,49 @@ export function CreatePricingDialog({
             </div>
           </div>
           <p className="-mt-2 text-[10px] text-muted-foreground">
-            Leave the band empty to apply this pricing to all amounts.
+            Leave the band empty to apply this commission to all amounts.
           </p>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label htmlFor="fixed">Fixed fee</Label>
+              <Label htmlFor="c-fixed">Fixed commission</Label>
               <Input
-                id="fixed"
-                value={form.fixed_fee}
-                onChange={(e) => update("fixed_fee", e.target.value)}
-                placeholder="5"
+                id="c-fixed"
+                value={form.fixed_commission}
+                onChange={(e) => update("fixed_commission", e.target.value)}
+                placeholder="2"
               />
             </div>
             <div>
-              <Label htmlFor="varpct">Variable %</Label>
+              <Label htmlFor="c-varpct">Variable %</Label>
               <Input
-                id="varpct"
-                value={form.variable_fee_pct}
-                onChange={(e) => update("variable_fee_pct", e.target.value)}
-                placeholder="0.025"
+                id="c-varpct"
+                value={form.variable_commission_pct}
+                onChange={(e) =>
+                  update("variable_commission_pct", e.target.value)
+                }
+                placeholder="0.01"
               />
               <p className="mt-1 text-[10px] text-muted-foreground">
-                As a decimal: 0.025 = 2.5%
+                As a decimal: 0.01 = 1%
               </p>
             </div>
             <div>
-              <Label htmlFor="cap">Fee cap (optional)</Label>
+              <Label htmlFor="c-cap">Commission cap (optional)</Label>
               <Input
-                id="cap"
-                value={form.fee_cap}
-                onChange={(e) => update("fee_cap", e.target.value)}
-                placeholder="50"
+                id="c-cap"
+                value={form.commission_cap}
+                onChange={(e) => update("commission_cap", e.target.value)}
+                placeholder="25"
               />
             </div>
           </div>
-          <Checkbox
-            checked={form.fee_inclusive}
-            onChange={(e) => update("fee_inclusive", e.target.checked)}
-            label="Fee inclusive (fee is carved out of the amount, not added on top)"
-          />
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
             On a sample{" "}
             <span className="font-mono text-foreground">
               {sampleAmount.toFixed(2)}
             </span>{" "}
-            transaction, the fee would be{" "}
+            transaction, the commission would be{" "}
             <span className="font-mono text-foreground">{preview}</span>.
-            {form.fee_inclusive && (
-              <span className="ml-1 italic">
-                Exclusive estimate — does not reflect the fee-inclusive carve-out.
-              </span>
-            )}
           </div>
           {errorBanner && (
             <ErrorBanner title="Couldn't propose" description={errorBanner} />

@@ -10,10 +10,12 @@ import {
   Coins,
   CreditCard,
   Gauge,
+  GitPullRequest,
   KeyRound,
   Layers,
   ListChecks,
   Megaphone,
+  Percent,
   PiggyBank,
   Receipt,
   ScanLine,
@@ -52,6 +54,9 @@ const CONFIG: NavItem[] = [
   { label: "Limits", href: "/limits", icon: ListChecks },
   { label: "Step-up PIN", href: "/step-up", icon: ShieldAlert },
   { label: "Pricing", href: "/pricing", icon: Coins },
+  { label: "Commissions", href: "/commissions", icon: Percent },
+  { label: "Taxes", href: "/taxes", icon: Receipt },
+  { label: "Config requests", href: "/config-requests", icon: GitPullRequest },
   { label: "Redemption", href: "/redemption", icon: CreditCard },
   { label: "Services", href: "/services", icon: Tag },
   { label: "Instruments", href: "/instruments", icon: Ticket },
@@ -115,10 +120,22 @@ function NavGroup({ title, items }: { title: string; items: NavItem[] }) {
   );
 }
 
-export function Sidebar({ pendingCount }: { pendingCount?: number }) {
+export function Sidebar({
+  pendingCount,
+  configPendingCount,
+}: {
+  pendingCount?: number;
+  configPendingCount?: number;
+}) {
   const operations = OPERATIONS.map((item) =>
     item.href === "/reconciliation" && pendingCount
       ? { ...item, badge: pendingCount }
+      : item,
+  );
+  // Surface the count of PENDING config change requests awaiting review.
+  const config = CONFIG.map((item) =>
+    item.href === "/config-requests" && configPendingCount
+      ? { ...item, badge: configPendingCount }
       : item,
   );
   return (
@@ -133,7 +150,7 @@ export function Sidebar({ pendingCount }: { pendingCount?: number }) {
       </div>
       <nav className="flex-1 overflow-y-auto py-2">
         <NavGroup title="Operations" items={operations} />
-        <NavGroup title="Configuration" items={CONFIG} />
+        <NavGroup title="Configuration" items={config} />
         <NavGroup title="Audit" items={AUDIT} />
       </nav>
       <div className="flex items-center justify-between border-t border-sidebar-border px-4 py-3">

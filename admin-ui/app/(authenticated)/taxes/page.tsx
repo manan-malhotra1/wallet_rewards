@@ -1,25 +1,26 @@
 /**
- * Pricing page — fixed + variable fee configs per (tenant, txn-type,
- * account-type, currency). Phase G.3 / WAL-52.
+ * Taxes page (Epic 24 / Story 24.2). One tax config per (tenant, currency),
+ * applying fee + commission tax rates independently. Writes flow through
+ * maker-checker.
  */
-import { Coins, Plus } from "lucide-react";
+import { Plus, Receipt } from "lucide-react";
 
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
-import { listInstruments, listPricingConfigs, listServices } from "@/lib/api-endpoints";
+import { listInstruments, listTaxConfigs } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import type { Instrument, Service } from "@/lib/api-types";
+import type { Instrument, TaxConfig } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
-import { CreatePricingDialog } from "./_components/create-pricing-dialog";
-import { PricingTable } from "./_components/pricing-table";
+import { CreateTaxDialog } from "./_components/create-tax-dialog";
+import { TaxTable } from "./_components/tax-table";
 
 export const dynamic = "force-dynamic";
 
-export default async function PricingPage() {
+export default async function TaxesPage() {
   const session = await auth();
   // Only platform-admins may propose config changes; the backend also 403s,
   // this just hides affordances that would fail for other admins.
@@ -30,22 +31,20 @@ export default async function PricingPage() {
     return (
       <div className="p-6">
         <EmptyState
-          icon={Coins}
+          icon={Receipt}
           title="No active tenant"
-          description="Switch to a tenant to manage its pricing."
+          description="Switch to a tenant to manage its taxes."
         />
       </div>
     );
   }
 
-  let configs: Awaited<ReturnType<typeof listPricingConfigs>> = [];
-  let services: Service[] = [];
+  let configs: TaxConfig[] = [];
   let instruments: Instrument[] = [];
   let error: ApiError | null = null;
   try {
-    [configs, services, instruments] = await Promise.all([
-      listPricingConfigs(activeTenantId),
-      listServices(activeTenantId, "active"),
+    [configs, instruments] = await Promise.all([
+      listTaxConfigs(activeTenantId),
       listInstruments(activeTenantId, "active"),
     ]);
   } catch (err) {
@@ -56,13 +55,12 @@ export default async function PricingPage() {
   return (
     <div>
       <PageHeader
-        title="Pricing"
-        subtitle="Fixed + variable fees per transaction type. Step 3 of payment orchestration."
+        title="Taxes"
+        subtitle="Fee + commission tax per currency. Proposed changes require a second admin's approval."
         actions={
           canPropose ? (
-            <CreatePricingDialog
+            <CreateTaxDialog
               tenantId={activeTenantId}
-              services={services}
               instruments={instruments}
               trigger={
                 <button
@@ -70,7 +68,7 @@ export default async function PricingPage() {
                   className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  New pricing
+                  New tax
                 </button>
               }
             />
@@ -80,18 +78,18 @@ export default async function PricingPage() {
       <div className="p-6">
         {error && (
           <ErrorBanner
-            title="Couldn't load pricing"
+            title="Couldn't load taxes"
             description={`${error.errorCode}: ${error.message}`}
           />
         )}
         {!error && configs.length === 0 ? (
           <EmptyState
-            icon={Coins}
-            title="No pricing configured"
-            description="Per Pay-PRD-0420 every transaction MUST go through pricing. Add a config row (zero-fee is fine) per transaction type."
+            icon={Receipt}
+            title="No taxes configured"
+            description="Add a tax config per currency to apply fee and commission tax rates."
           />
         ) : (
-          <PricingTable configs={configs} tenantId={activeTenantId} />
+          <TaxTable configs={configs} tenantId={activeTenantId} />
         )}
       </div>
     </div>

@@ -21,6 +21,11 @@ import type {
   AuditEntry,
   BonusMultiplier,
   BudgetConsumption,
+  CommissionConfig,
+  ConfigChangeRequest,
+  ConfigOperation,
+  ConfigRequestStatus,
+  ConfigType,
   ExternalEventSource,
   FundUserResponse,
   Instrument,
@@ -38,6 +43,7 @@ import type {
   SweepOutcome,
   SystemWallet,
   SystemWalletTransaction,
+  TaxConfig,
   Tenant,
   User,
   UserDetail,
@@ -427,27 +433,107 @@ export const deleteWalletLimitConfig = (config_id: string, tenant_id: string) =>
     query: { tenant_id },
   });
 
-export interface CreatePricingConfigPayload {
-  tenant_id: string;
-  transaction_type: string;
-  account_type: string;
-  currency: string;
-  user_type?: UserType | null;
-  fixed_fee?: string;
-  variable_fee_pct?: string;
-  fee_cap?: string;
-}
-
+// Since Epic 22 all pricing writes flow through the maker-checker pipeline
+// (see `proposeConfigChange` below). The old direct create/delete pricing
+// endpoints were removed on the backend — reads stay direct.
 export const listPricingConfigs = (tenant_id: string) =>
   apiGet<PricingConfig[]>("/api/v1/pricing/configs", { query: { tenant_id } });
 
-export const createPricingConfig = (payload: CreatePricingConfigPayload) =>
-  apiPost<PricingConfig>("/api/v1/pricing/configs", payload);
+// ---- Epic 24 — Commission + Tax configs (read-only; writes via propose) --
 
-export const deletePricingConfig = (config_id: string, tenant_id: string) =>
-  apiDelete<void>(`/api/v1/pricing/configs/${config_id}`, {
+export const listCommissionConfigs = (tenant_id: string) =>
+  apiGet<CommissionConfig[]>("/api/v1/commissions/configs", {
     query: { tenant_id },
   });
+
+export const listTaxConfigs = (tenant_id: string) =>
+  apiGet<TaxConfig[]>("/api/v1/taxes/configs", { query: { tenant_id } });
+
+// ---- Epic 24 — Config change requests (maker-checker) --------------------
+
+/**
+ * Body for proposing a config change. `payload` carries the matching create
+ * schema (including tenant_id) for create ops; `target_config_id` names the
+ * row to remove for delete ops.
+ */
+export interface ProposeConfigChangePayload {
+  config_type: ConfigType;
+  operation: ConfigOperation;
+  payload?: Record<string, unknown>;
+  target_config_id?: string;
+}
+
+/** Propose a create/delete against a config domain. Returns the PENDING request. */
+export const proposeConfigChange = (
+  tenant_id: string,
+  payload: ProposeConfigChangePayload,
+) =>
+  apiPost<ConfigChangeRequest>("/api/v1/config-requests", payload, {
+    query: { tenant_id },
+  });
+
+/** List change requests, optionally filtered by lifecycle status. */
+export const listConfigRequests = (
+  tenant_id: string,
+  status_filter?: ConfigRequestStatus,
+) =>
+  apiGet<ConfigChangeRequest[]>("/api/v1/config-requests", {
+    query: { tenant_id, status_filter },
+  });
+
+/** Fetch a single change request with its review thread. */
+export const getConfigRequest = (tenant_id: string, id: string) =>
+  apiGet<ConfigChangeRequest>(`/api/v1/config-requests/${id}`, {
+    query: { tenant_id },
+  });
+
+/** Approve a request (config-approver; must differ from the maker). */
+export const approveConfigRequest = (tenant_id: string, id: string) =>
+  apiPost<ConfigChangeRequest>(
+    `/api/v1/config-requests/${id}/approve`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
+/** Ask the maker to revise (config-approver). Comment is mandatory. */
+export const requestConfigChanges = (
+  tenant_id: string,
+  id: string,
+  comment: string,
+) =>
+  apiPost<ConfigChangeRequest>(
+    `/api/v1/config-requests/${id}/request-changes`,
+    { comment },
+    { query: { tenant_id } },
+  );
+
+/** Edit the proposed payload (maker; only while CHANGES_REQUESTED). */
+export const reviseConfigRequest = (
+  tenant_id: string,
+  id: string,
+  payload: Record<string, unknown>,
+) =>
+  apiPatch<ConfigChangeRequest>(
+    `/api/v1/config-requests/${id}`,
+    { payload },
+    { query: { tenant_id } },
+  );
+
+/** Re-submit a revised request for approval (maker). */
+export const resubmitConfigRequest = (tenant_id: string, id: string) =>
+  apiPost<ConfigChangeRequest>(
+    `/api/v1/config-requests/${id}/resubmit`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
+/** Withdraw a non-terminal request (maker). */
+export const withdrawConfigRequest = (tenant_id: string, id: string) =>
+  apiPost<ConfigChangeRequest>(
+    `/api/v1/config-requests/${id}/withdraw`,
+    undefined,
+    { query: { tenant_id } },
+  );
 
 export interface CreateBudgetPayload {
   tenant_id: string;

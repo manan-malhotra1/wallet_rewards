@@ -69,6 +69,25 @@ const STATUS_MAP: Record<
     bg: "bg-muted",
     text: "text-muted-foreground",
   },
+  // Epic 24 — config change-request lifecycle statuses.
+  CHANGES_REQUESTED: {
+    label: "Changes requested",
+    dot: "bg-amber-500",
+    bg: "bg-amber-500/10 dark:bg-amber-500/15",
+    text: "text-amber-700 dark:text-amber-300",
+  },
+  APPLIED: {
+    label: "Applied",
+    dot: "bg-emerald-500",
+    bg: "bg-emerald-500/10 dark:bg-emerald-500/15",
+    text: "text-emerald-700 dark:text-emerald-300",
+  },
+  WITHDRAWN: {
+    label: "Withdrawn",
+    dot: "bg-slate-400",
+    bg: "bg-muted",
+    text: "text-muted-foreground",
+  },
   UNKNOWN: {
     label: "Unknown",
     dot: "bg-slate-400",

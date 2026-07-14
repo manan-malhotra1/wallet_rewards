@@ -1,25 +1,30 @@
 /**
- * Pricing page — fixed + variable fee configs per (tenant, txn-type,
- * account-type, currency). Phase G.3 / WAL-52.
+ * Commissions page (Epic 24 / Story 24.2). Fixed + variable commission
+ * (platform payout) per (tenant, txn-type, currency, user-type) with an
+ * optional slab band. Writes flow through maker-checker.
  */
-import { Coins, Plus } from "lucide-react";
+import { Percent, Plus } from "lucide-react";
 
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
-import { listInstruments, listPricingConfigs, listServices } from "@/lib/api-endpoints";
+import {
+  listCommissionConfigs,
+  listInstruments,
+  listServices,
+} from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import type { Instrument, Service } from "@/lib/api-types";
+import type { CommissionConfig, Instrument, Service } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
-import { CreatePricingDialog } from "./_components/create-pricing-dialog";
-import { PricingTable } from "./_components/pricing-table";
+import { CommissionTable } from "./_components/commission-table";
+import { CreateCommissionDialog } from "./_components/create-commission-dialog";
 
 export const dynamic = "force-dynamic";
 
-export default async function PricingPage() {
+export default async function CommissionsPage() {
   const session = await auth();
   // Only platform-admins may propose config changes; the backend also 403s,
   // this just hides affordances that would fail for other admins.
@@ -30,21 +35,21 @@ export default async function PricingPage() {
     return (
       <div className="p-6">
         <EmptyState
-          icon={Coins}
+          icon={Percent}
           title="No active tenant"
-          description="Switch to a tenant to manage its pricing."
+          description="Switch to a tenant to manage its commissions."
         />
       </div>
     );
   }
 
-  let configs: Awaited<ReturnType<typeof listPricingConfigs>> = [];
+  let configs: CommissionConfig[] = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
   let error: ApiError | null = null;
   try {
     [configs, services, instruments] = await Promise.all([
-      listPricingConfigs(activeTenantId),
+      listCommissionConfigs(activeTenantId),
       listServices(activeTenantId, "active"),
       listInstruments(activeTenantId, "active"),
     ]);
@@ -56,11 +61,11 @@ export default async function PricingPage() {
   return (
     <div>
       <PageHeader
-        title="Pricing"
-        subtitle="Fixed + variable fees per transaction type. Step 3 of payment orchestration."
+        title="Commissions"
+        subtitle="Agent/merchant payouts per transaction. Proposed changes require a second admin's approval."
         actions={
           canPropose ? (
-            <CreatePricingDialog
+            <CreateCommissionDialog
               tenantId={activeTenantId}
               services={services}
               instruments={instruments}
@@ -70,7 +75,7 @@ export default async function PricingPage() {
                   className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  New pricing
+                  New commission
                 </button>
               }
             />
@@ -80,18 +85,18 @@ export default async function PricingPage() {
       <div className="p-6">
         {error && (
           <ErrorBanner
-            title="Couldn't load pricing"
+            title="Couldn't load commissions"
             description={`${error.errorCode}: ${error.message}`}
           />
         )}
         {!error && configs.length === 0 ? (
           <EmptyState
-            icon={Coins}
-            title="No pricing configured"
-            description="Per Pay-PRD-0420 every transaction MUST go through pricing. Add a config row (zero-fee is fine) per transaction type."
+            icon={Percent}
+            title="No commissions configured"
+            description="Add a commission config to define agent/merchant payouts per transaction type."
           />
         ) : (
-          <PricingTable configs={configs} tenantId={activeTenantId} />
+          <CommissionTable configs={configs} tenantId={activeTenantId} />
         )}
       </div>
     </div>

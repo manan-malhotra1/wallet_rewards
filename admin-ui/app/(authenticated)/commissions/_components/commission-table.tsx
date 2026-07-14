@@ -1,15 +1,14 @@
 /**
- * Pricing table (Epic 24 / Story 24.1). Renders pricing configs incl. the
- * slab band and a fee-inclusive indicator. Deleting proposes a DELETE via
- * the maker-checker pipeline — nothing is removed until a second admin
- * approves.
+ * Commission table (Epic 24 / Story 24.2). Renders commission configs incl.
+ * the slab band. Deleting proposes a DELETE via the maker-checker pipeline —
+ * nothing is removed until a second admin approves.
  */
 "use client";
 
 import { Trash2 } from "lucide-react";
 import * as React from "react";
 
-import { proposePricingDeleteAction } from "@/app/(authenticated)/pricing/_actions";
+import { proposeCommissionDeleteAction } from "@/app/(authenticated)/commissions/_actions";
 import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,13 +21,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import type { PricingConfig } from "@/lib/api-types";
+import type { CommissionConfig } from "@/lib/api-types";
 import { formatAmount } from "@/lib/utils";
-
-const ACCOUNT_TYPE_LABEL: Record<string, string> = {
-  financial_wallet: "Wallet",
-  points_account: "Points",
-};
 
 /** Render the slab band as "from–to", "≥from", "≤to", or "all". */
 function bandLabel(from: string | null, to: string | null): string {
@@ -38,11 +32,11 @@ function bandLabel(from: string | null, to: string | null): string {
   return "all";
 }
 
-export function PricingTable({
+export function CommissionTable({
   configs,
   tenantId,
 }: {
-  configs: PricingConfig[];
+  configs: CommissionConfig[];
   tenantId: string;
 }) {
   const { toast } = useToast();
@@ -50,7 +44,7 @@ export function PricingTable({
 
   const onDelete = async (id: string) => {
     setPending(id);
-    const result = await proposePricingDeleteAction(id, tenantId);
+    const result = await proposeCommissionDeleteAction(id, tenantId);
     setPending(null);
     if (result.ok) {
       toast({ title: "Delete proposed — pending approval" });
@@ -69,14 +63,12 @@ export function PricingTable({
         <TableHead>
           <TableRow>
             <TableHeaderCell>Txn type</TableHeaderCell>
-            <TableHeaderCell>Account</TableHeaderCell>
             <TableHeaderCell>Currency</TableHeaderCell>
             <TableHeaderCell>User type</TableHeaderCell>
             <TableHeaderCell>Band</TableHeaderCell>
             <TableHeaderCell className="text-right">Fixed</TableHeaderCell>
             <TableHeaderCell className="text-right">Variable %</TableHeaderCell>
-            <TableHeaderCell className="text-right">Fee cap</TableHeaderCell>
-            <TableHeaderCell>Fee incl.</TableHeaderCell>
+            <TableHeaderCell className="text-right">Cap</TableHeaderCell>
             <TableHeaderCell className="w-[40px]"> </TableHeaderCell>
           </TableRow>
         </TableHead>
@@ -85,9 +77,6 @@ export function PricingTable({
             <TableRow key={cfg.id}>
               <TableCell className="font-medium">
                 <Badge variant="info">{cfg.transaction_type}</Badge>
-              </TableCell>
-              <TableCell>
-                {ACCOUNT_TYPE_LABEL[cfg.account_type] ?? cfg.account_type}
               </TableCell>
               <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
               <TableCell>
@@ -101,26 +90,19 @@ export function PricingTable({
                 {bandLabel(cfg.amount_from, cfg.amount_to)}
               </TableCell>
               <TableCell className="text-right font-mono">
-                {formatAmount(cfg.fixed_fee, { fractionDigits: 2 })}
+                {formatAmount(cfg.fixed_commission, { fractionDigits: 2 })}
               </TableCell>
               <TableCell className="text-right font-mono">
-                {(parseFloat(cfg.variable_fee_pct) * 100).toFixed(2)}%
+                {(parseFloat(cfg.variable_commission_pct) * 100).toFixed(2)}%
               </TableCell>
               <TableCell className="text-right font-mono">
-                {cfg.fee_cap ?? "—"}
-              </TableCell>
-              <TableCell>
-                {cfg.fee_inclusive ? (
-                  <Badge variant="secondary">Incl.</Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
-                )}
+                {cfg.commission_cap ?? "—"}
               </TableCell>
               <TableCell>
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Propose delete of pricing config"
+                  aria-label="Propose delete of commission config"
                   disabled={pending === cfg.id}
                   onClick={() => onDelete(cfg.id)}
                 >

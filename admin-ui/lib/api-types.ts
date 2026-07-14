@@ -399,8 +399,118 @@ export interface PricingConfig {
   fixed_fee: string;
   variable_fee_pct: string;
   fee_cap: string | null;
+  // Pricing v2 (Epic 24) — optional slab band + fee-inclusive flag.
+  // Null band ends mean "applies to all amounts" on that side.
+  amount_from: string | null;
+  amount_to: string | null;
+  fee_inclusive: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Per-(tenant, transaction_type, currency, user_type) commission config
+ * (Epic 24 / Story 24.2). Commission is what the platform pays out (agent
+ * incentive) rather than what it charges. All money fields are decimal
+ * strings on the wire; `amount_from`/`amount_to` define an optional slab
+ * band (null = unbounded on that side).
+ */
+export interface CommissionConfig {
+  id: string;
+  tenant_id: string;
+  transaction_type: string;
+  currency: string;
+  user_type: UserType | null;
+  amount_from: string | null;
+  amount_to: string | null;
+  fixed_commission: string;
+  variable_commission_pct: string;
+  commission_cap: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Per-(tenant, currency) tax config (Epic 24 / Story 24.2). Applies a tax
+ * rate to fees and commissions independently, each with its own
+ * inclusive/exclusive flag. Keyed only by currency — no service/user_type.
+ */
+export interface TaxConfig {
+  id: string;
+  tenant_id: string;
+  currency: string;
+  fee_tax_pct: string;
+  commission_tax_pct: string;
+  fee_tax_inclusive: boolean;
+  commission_tax_inclusive: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---- Epic 24 — maker-checker config changes -----------------------------
+
+/** The config domains that flow through the maker-checker pipeline. */
+export type ConfigType =
+  | "pricing"
+  | "limit"
+  | "wallet_limit"
+  | "commission"
+  | "tax";
+
+/** The mutation a change request proposes. Updates are model as delete+create. */
+export type ConfigOperation = "create" | "delete";
+
+/** Lifecycle status of a config change request. */
+export type ConfigRequestStatus =
+  | "PENDING"
+  | "CHANGES_REQUESTED"
+  | "APPLIED"
+  | "WITHDRAWN";
+
+/**
+ * Action recorded on a single review entry. Values mirror the backend
+ * review verbs. Kept as a union for display switching; render defensively
+ * since the backend owns the canonical set.
+ * TODO(Epic 24): confirm exact casing/values against the backend enum.
+ */
+// Backend review-action values (lowercase; see config_requests model).
+export type ConfigReviewAction =
+  | "submitted"
+  | "changes_requested"
+  | "revised"
+  | "resubmitted"
+  | "approved"
+  | "withdrawn";
+
+/** One entry in a change request's review thread. */
+export interface ConfigReview {
+  id: string;
+  actor_admin_id: string;
+  actor_role: string;
+  action: ConfigReviewAction | string;
+  comment: string | null;
+  created_at: string;
+}
+
+/**
+ * A proposed configuration change awaiting a second admin's approval
+ * (maker-checker). `payload` carries the create schema for create ops;
+ * `target_config_id` names the row to remove for delete ops.
+ */
+export interface ConfigChangeRequest {
+  id: string;
+  tenant_id: string;
+  config_type: ConfigType;
+  operation: ConfigOperation;
+  payload: Record<string, unknown> | null;
+  target_config_id: string | null;
+  status: ConfigRequestStatus;
+  maker_admin_id: string;
+  checker_admin_id: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  reviews: ConfigReview[];
 }
 
 export interface RewardBudget {

@@ -1,10 +1,9 @@
 /**
- * Server actions for the Pricing screen (Epic 24 / Story 24.1).
+ * Server actions for the Commissions screen (Epic 24 / Story 24.2).
  *
- * Since Epic 22 all pricing writes go through the maker-checker pipeline:
- * these actions PROPOSE a create/delete via `POST /config-requests` (status
- * PENDING). The change only goes live once a second admin approves it in the
- * config-requests review UI (Story 24.3).
+ * All commission writes go through the maker-checker pipeline: these
+ * actions PROPOSE a create/delete via `POST /config-requests` (status
+ * PENDING). Approval by a second admin (Story 24.3) applies the change.
  */
 "use server";
 
@@ -14,37 +13,34 @@ import { ApiError } from "@/lib/api";
 import { proposeConfigChange } from "@/lib/api-endpoints";
 import type { UserType } from "@/lib/api-types";
 
-export type PricingActionResult =
+export type CommissionActionResult =
   | { ok: true }
   | { ok: false; errorCode: string; message: string };
 
-/** Fields the pricing create dialog collects (money values are strings). */
-export interface ProposePricingInput {
+/** Fields the commission create dialog collects (money values are strings). */
+export interface ProposeCommissionInput {
   tenant_id: string;
   transaction_type: string;
-  account_type: string;
   currency: string;
   user_type: UserType | null;
-  fixed_fee: string;
-  variable_fee_pct: string;
-  fee_cap?: string;
   amount_from?: string;
   amount_to?: string;
-  fee_inclusive: boolean;
+  fixed_commission: string;
+  variable_commission_pct: string;
+  commission_cap?: string;
 }
 
-/** Propose creating a pricing config. Returns the standard {ok} result. */
-export async function proposePricingChangeAction(
-  input: ProposePricingInput,
-): Promise<PricingActionResult> {
+/** Propose creating a commission config. */
+export async function proposeCommissionChangeAction(
+  input: ProposeCommissionInput,
+): Promise<CommissionActionResult> {
   try {
     await proposeConfigChange(input.tenant_id, {
-      config_type: "pricing",
+      config_type: "commission",
       operation: "create",
-      // The create schema (incl. tenant_id) travels as the request payload.
       payload: { ...input },
     });
-    revalidatePath("/pricing");
+    revalidatePath("/commissions");
     revalidatePath("/config-requests");
     return { ok: true };
   } catch (err) {
@@ -52,18 +48,18 @@ export async function proposePricingChangeAction(
   }
 }
 
-/** Propose deleting a pricing config by id. Returns the standard {ok} result. */
-export async function proposePricingDeleteAction(
+/** Propose deleting a commission config by id. */
+export async function proposeCommissionDeleteAction(
   configId: string,
   tenantId: string,
-): Promise<PricingActionResult> {
+): Promise<CommissionActionResult> {
   try {
     await proposeConfigChange(tenantId, {
-      config_type: "pricing",
+      config_type: "commission",
       operation: "delete",
       target_config_id: configId,
     });
-    revalidatePath("/pricing");
+    revalidatePath("/commissions");
     revalidatePath("/config-requests");
     return { ok: true };
   } catch (err) {
@@ -72,7 +68,7 @@ export async function proposePricingDeleteAction(
 }
 
 /** Normalise a thrown error into the {ok:false} result shape. */
-function toResult(err: unknown): PricingActionResult {
+function toResult(err: unknown): CommissionActionResult {
   if (err instanceof ApiError) {
     return { ok: false, errorCode: err.errorCode, message: err.message };
   }

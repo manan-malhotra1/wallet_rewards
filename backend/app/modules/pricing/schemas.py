@@ -25,14 +25,30 @@ class PricingConfigCreateRequest(BaseModel):
     currency: str = Field(min_length=3, max_length=3)
     # Type-aware scope (Epic 16): None = default fee for all user types.
     user_type: UserType | None = None
+    # Amount-slab scope (Epic 19): the band [amount_from, amount_to) this row
+    # applies to. Both None = applies to all amounts (back-compat).
+    amount_from: Decimal | None = Field(default=None, ge=Decimal("0"))
+    amount_to: Decimal | None = Field(default=None, gt=Decimal("0"))
     fixed_fee: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     variable_fee_pct: Decimal = Field(default=Decimal("0"), ge=Decimal("0"), lt=Decimal("1"))
     fee_cap: Decimal | None = Field(default=None, gt=Decimal("0"))
+    # Axis 1 of the inclusive/exclusive matrix (Epic 19). Default exclusive.
+    fee_inclusive: bool = False
 
     @model_validator(mode="after")
     def _fee_cap_only_with_variable(self) -> PricingConfigCreateRequest:
         if self.fee_cap is not None and self.variable_fee_pct == 0:
             raise ValueError("fee_cap only makes sense when variable_fee_pct > 0.")
+        return self
+
+    @model_validator(mode="after")
+    def _amount_band_ordered(self) -> PricingConfigCreateRequest:
+        if (
+            self.amount_from is not None
+            and self.amount_to is not None
+            and self.amount_to <= self.amount_from
+        ):
+            raise ValueError("amount_to must be greater than amount_from.")
         return self
 
 
@@ -47,9 +63,12 @@ class PricingConfigOut(BaseModel):
     account_type: str
     currency: str
     user_type: str | None
+    amount_from: Decimal | None
+    amount_to: Decimal | None
     fixed_fee: Decimal
     variable_fee_pct: Decimal
     fee_cap: Decimal | None
+    fee_inclusive: bool
     created_at: datetime
     updated_at: datetime
 

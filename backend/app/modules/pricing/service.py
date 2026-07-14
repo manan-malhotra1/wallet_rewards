@@ -12,6 +12,7 @@ Three surfaces:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
@@ -29,9 +30,11 @@ from app.shared.exceptions import (
     TenantNotFound,
 )
 from app.shared.models import (
+    ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
+    ACCOUNT_TYPE_TAXES,
     Account,
     PricingConfig,
     Tenant,
@@ -54,12 +57,16 @@ async def _find_pricing_config(
     account_type: str,
     currency: str,
     user_type: str,
+    amount: Decimal,
 ) -> PricingConfig | None:
-    """Resolve the fee config for a slot, type-aware (Epic 16).
+    """Resolve the fee config for a slot, type- and amount-aware (Epics 16, 19).
 
-    Matches the exact-dimensions row for the caller's `user_type` OR the
-    `user_type IS NULL` default, preferring the typed row (ORDER BY user_type
-    NULLS LAST). Returns None when neither exists.
+    Matches the row whose `user_type` is the caller's OR the NULL default, AND
+    whose amount band `[amount_from, amount_to)` contains `amount` (a NULL bound
+    is open on that side; both NULL = applies to all amounts). Precedence:
+    a typed row beats the NULL-type default, and a specific band beats the
+    NULL-band default (`ORDER BY user_type NULLS LAST, amount_from NULLS LAST`).
+    Returns None when nothing matches.
     """
     result = await session.execute(
         select(PricingConfig)
@@ -72,8 +79,19 @@ async def _find_pricing_config(
                 PricingConfig.user_type == user_type,
                 PricingConfig.user_type.is_(None),
             ),
+            or_(
+                PricingConfig.amount_from.is_(None),
+                PricingConfig.amount_from <= amount,
+            ),
+            or_(
+                PricingConfig.amount_to.is_(None),
+                PricingConfig.amount_to > amount,
+            ),
         )
-        .order_by(PricingConfig.user_type.nulls_last())
+        .order_by(
+            PricingConfig.user_type.nulls_last(),
+            PricingConfig.amount_from.nulls_last(),
+        )
         .limit(1)
     )
     return result.scalar_one_or_none()
@@ -84,7 +102,22 @@ async def _find_pricing_config(
 # -----------------------------------------------------------------------------
 
 
-async def calculate_fee(
+@dataclass(frozen=True)
+class FeeQuote:
+    """A resolved fee plus the config's `fee_inclusive` flag (axis 1).
+
+    Attributes:
+        fee: The total fee, 6 dp.
+        fee_inclusive: Whether the fee is carved out of the principal
+            (inclusive) or added on top (exclusive). The charge assembler
+            (Epic 20) consumes this.
+    """
+
+    fee: Decimal
+    fee_inclusive: bool
+
+
+async def resolve_fee(
     session: AsyncSession,
     *,
     tenant_id: UUID,
@@ -93,28 +126,28 @@ async def calculate_fee(
     account_type: str,
     currency: str,
     amount: Decimal,
-) -> Decimal:
-    """Compute the fee for one transaction.
+) -> FeeQuote:
+    """Compute the fee AND surface the config's `fee_inclusive` flag.
 
-    Formula: `fixed_fee + min(variable_fee_pct * amount, fee_cap or +Inf)`.
-    Rounded to 6 decimal places (HALF_UP) to match the ledger's
-    NUMERIC(20, 6) storage.
+    Formula: `fixed_fee + min(variable_fee_pct * amount, fee_cap or +Inf)`,
+    rounded to 6 dp (HALF_UP). The type- and amount-aware config row is
+    resolved for the acting user; its `fee_inclusive` flag rides back so the
+    charge assembler can place the fee on the right leg.
 
-    Per Pay-PRD-0420, EVERY transaction must run pricing — there is no
-    silent zero-fee fallback. When no config exists for the tuple we
-    raise `PricingConfigMissing`. Operators have to explicitly insert a
-    zero-fee row if that's the intent.
+    Per Pay-PRD-0420, EVERY transaction must run pricing — no silent zero-fee
+    fallback. Missing config → `PricingConfigMissing`.
 
     Args:
         session: Async DB session.
         tenant_id: Tenant scope.
-        transaction_type: 'p2p', 'top_up', 'redemption', etc.
+        user_id: The acting user (drives type-aware resolution).
+        transaction_type: 'p2p', 'cash_in', 'redemption', etc.
         account_type: 'financial_wallet' or 'points_account'.
         currency: ISO 4217 (or 'PTS').
         amount: Amount the user is moving (the base for the variable part).
 
     Returns:
-        The total fee as a Decimal, rounded to 6 dp.
+        A `FeeQuote` with the fee and the inclusive flag.
 
     Raises:
         PricingConfigMissing: 422 — no config for this tuple.
@@ -127,6 +160,7 @@ async def calculate_fee(
         account_type=account_type,
         currency=currency,
         user_type=user_type,
+        amount=amount,
     )
     if config is None:
         raise PricingConfigMissing(transaction_type)
@@ -140,7 +174,37 @@ async def calculate_fee(
         variable = cap
 
     fee = (fixed + variable).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
-    return fee
+    return FeeQuote(fee=fee, fee_inclusive=config.fee_inclusive)
+
+
+async def calculate_fee(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    transaction_type: str,
+    account_type: str,
+    currency: str,
+    amount: Decimal,
+) -> Decimal:
+    """Compute the fee for one transaction (see `resolve_fee` for the details).
+
+    Thin wrapper returning just the fee amount, for the many callers that don't
+    need the `fee_inclusive` flag.
+
+    Raises:
+        PricingConfigMissing: 422 — no config for this tuple.
+    """
+    quote = await resolve_fee(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        transaction_type=transaction_type,
+        account_type=account_type,
+        currency=currency,
+        amount=amount,
+    )
+    return quote.fee
 
 
 def account_type_for_currency(currency: str) -> str:
@@ -204,25 +268,27 @@ async def quote_fee(
 # -----------------------------------------------------------------------------
 
 
-async def get_or_create_system_fee_account(
-    session: AsyncSession, *, tenant_id: UUID, currency: str
+async def _get_or_create_system_account(
+    session: AsyncSession, *, tenant_id: UUID, currency: str, account_type: str
 ) -> Account:
-    """Return the per-(tenant, currency) `system_fee_collected` account.
+    """Return the per-(tenant, currency) system account of `account_type`.
 
     Auto-creates the account on first use. Idempotent: re-callers see the
-    existing row. Unique-index drift (Phase F.5.1 partial-unique on
-    accounts) makes the create atomic.
+    existing row. The `uq_accounts_system_scoped` partial-unique index makes
+    the create atomic — if a concurrent caller wins the race we roll back and
+    refetch theirs.
 
     Args:
         session: Async DB session.
         tenant_id: Tenant scope.
         currency: ISO 4217 (or 'PTS'). Case-insensitive — we uppercase.
+        account_type: A system account type (fee, commission, taxes, …).
     """
     currency_canon = currency.upper()
     existing = await session.execute(
         select(Account).where(
             Account.tenant_id == tenant_id,
-            Account.account_type == ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
+            Account.account_type == account_type,
             Account.currency == currency_canon,
             Account.user_id.is_(None),
         )
@@ -234,7 +300,7 @@ async def get_or_create_system_fee_account(
     account = Account(
         tenant_id=tenant_id,
         user_id=None,
-        account_type=ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
+        account_type=account_type,
         currency=currency_canon,
     )
     session.add(account)
@@ -246,13 +312,76 @@ async def get_or_create_system_fee_account(
         result = await session.execute(
             select(Account).where(
                 Account.tenant_id == tenant_id,
-                Account.account_type == ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
+                Account.account_type == account_type,
                 Account.currency == currency_canon,
                 Account.user_id.is_(None),
             )
         )
         return result.scalar_one()
     return account
+
+
+async def get_or_create_system_fee_account(
+    session: AsyncSession, *, tenant_id: UUID, currency: str
+) -> Account:
+    """Return the per-(tenant, currency) `system_fee_collected` account.
+
+    Every fee leg CREDITs this account. Auto-created + idempotent.
+
+    Args:
+        session: Async DB session.
+        tenant_id: Tenant scope.
+        currency: ISO 4217 (or 'PTS'). Case-insensitive.
+    """
+    return await _get_or_create_system_account(
+        session,
+        tenant_id=tenant_id,
+        currency=currency,
+        account_type=ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
+    )
+
+
+async def get_or_create_system_commission(
+    session: AsyncSession, *, tenant_id: UUID, currency: str
+) -> Account:
+    """Return the per-(tenant, currency) `commission` pool account (Epic 19).
+
+    A commission paid to an agent is DEBITed here → CREDITed to the agent. The
+    operator tops the pool up; the balance guard skips it so it may run
+    "negative". Auto-created + idempotent.
+
+    Args:
+        session: Async DB session.
+        tenant_id: Tenant scope.
+        currency: ISO 4217. Case-insensitive.
+    """
+    return await _get_or_create_system_account(
+        session,
+        tenant_id=tenant_id,
+        currency=currency,
+        account_type=ACCOUNT_TYPE_COMMISSION,
+    )
+
+
+async def get_or_create_system_taxes(
+    session: AsyncSession, *, tenant_id: UUID, currency: str
+) -> Account:
+    """Return the per-(tenant, currency) `taxes` collector account (Epic 19).
+
+    Every tax leg (on a fee or a commission) CREDITs this account.
+    Auto-created + idempotent.
+
+    Args:
+        session: Async DB session.
+        tenant_id: Tenant scope.
+        currency: ISO 4217. Case-insensitive.
+    """
+    return await _get_or_create_system_account(
+        session,
+        tenant_id=tenant_id,
+        currency=currency,
+        account_type=ACCOUNT_TYPE_TAXES,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -275,9 +404,12 @@ async def create_pricing_config(
         account_type=request.account_type,
         currency=request.currency.upper(),
         user_type=request.user_type,
+        amount_from=request.amount_from,
+        amount_to=request.amount_to,
         fixed_fee=request.fixed_fee,
         variable_fee_pct=request.variable_fee_pct,
         fee_cap=request.fee_cap,
+        fee_inclusive=request.fee_inclusive,
     )
     session.add(config)
     try:
@@ -302,9 +434,13 @@ async def create_pricing_config(
                 "transaction_type": config.transaction_type,
                 "account_type": config.account_type,
                 "currency": config.currency,
+                "user_type": config.user_type,
+                "amount_from": str(config.amount_from) if config.amount_from is not None else None,
+                "amount_to": str(config.amount_to) if config.amount_to is not None else None,
                 "fixed_fee": str(config.fixed_fee),
                 "variable_fee_pct": str(config.variable_fee_pct),
                 "fee_cap": str(config.fee_cap) if config.fee_cap is not None else None,
+                "fee_inclusive": config.fee_inclusive,
             },
             ip_address=ip_address,
         )

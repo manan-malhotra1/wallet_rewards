@@ -5,7 +5,7 @@ Idempotent — safe to re-run. Creates:
   - Realm: wallet-platform
   - Client: admin-ui          (confidential, auth-code flow, for Next.js)
   - Client: backend-service   (service-account, client-credentials, for backend)
-  - Realm roles: platform-admin, finance-reviewer, support-agent
+  - Realm roles: platform-admin, finance-reviewer, support-agent, config-approver
 
 Outputs the client secrets so they can be pasted into .env files.
 
@@ -29,7 +29,10 @@ REALM = "wallet-platform"
 ADMIN_UI_SECRET = "dev-admin-ui-secret-local-only"
 BACKEND_SERVICE_SECRET = "dev-backend-service-secret-local-only"
 
-REALM_ROLES = ["platform-admin", "finance-reviewer", "support-agent"]
+# `config-approver` (Pricing v2 Epic 22) is the four-eyes checker role: it
+# approves / requests-changes on config-change requests, and must be held by a
+# DIFFERENT admin than the maker who proposed the change.
+REALM_ROLES = ["platform-admin", "finance-reviewer", "support-agent", "config-approver"]
 
 # Local-dev test admin user — rotate / remove for any non-local environment.
 TEST_ADMIN_USERNAME = "admin-test"

@@ -47,6 +47,14 @@ ACCOUNT_TYPE_OPERATOR_ADJUSTMENT = "operator_adjustment"
 # provider provisioning call is in flight. Stays CREDITed after COMPLETED
 # until ops settles externally with the MNO. One per (tenant, currency).
 ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING = "airtime_merchant_holding"
+# Pricing v2 (Epic 19) — platform-funded commission pool. A commission paid
+# to an agent for a service is DEBITed here and CREDITed to the agent wallet;
+# the operator tops the pool up. Unguarded (may run "negative"). One per
+# (tenant, currency).
+ACCOUNT_TYPE_COMMISSION = "commission"
+# Pricing v2 (Epic 19) — tax collector. Every tax leg (on a fee or a
+# commission) CREDITs this account. One per (tenant, currency).
+ACCOUNT_TYPE_TAXES = "taxes"
 
 ACCOUNT_TYPES = (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -57,6 +65,8 @@ ACCOUNT_TYPES = (
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
+    ACCOUNT_TYPE_COMMISSION,
+    ACCOUNT_TYPE_TAXES,
 )
 
 
@@ -82,7 +92,9 @@ class Account(Base):
             "'system_cash_inflow', "
             "'system_fee_collected', "
             "'operator_adjustment', "
-            "'airtime_merchant_holding'"
+            "'airtime_merchant_holding', "
+            "'commission', "
+            "'taxes'"
             ")",
             name="ck_accounts_type",
         ),

@@ -6,6 +6,7 @@ and so callers can `from app.shared.models import Tenant, User, ...`.
 
 from app.shared.models.accounts import (
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
+    ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
@@ -13,6 +14,7 @@ from app.shared.models.accounts import (
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+    ACCOUNT_TYPE_TAXES,
     ACCOUNT_TYPES,
     Account,
     AccountBalanceSnapshot,
@@ -52,6 +54,34 @@ from app.shared.models.budgets import (
     BUDGET_WINDOW_ROLLING_7D,
     BUDGET_WINDOW_ROLLING_24H,
     RewardBudget,
+)
+from app.shared.models.commissions import CommissionConfig
+from app.shared.models.config_requests import (
+    CONFIG_OP_CREATE,
+    CONFIG_OP_DELETE,
+    CONFIG_OPERATIONS,
+    CONFIG_STATUS_APPLIED,
+    CONFIG_STATUS_CHANGES_REQUESTED,
+    CONFIG_STATUS_PENDING,
+    CONFIG_STATUS_WITHDRAWN,
+    CONFIG_STATUSES,
+    CONFIG_TERMINAL_STATUSES,
+    CONFIG_TYPE_COMMISSION,
+    CONFIG_TYPE_LIMIT,
+    CONFIG_TYPE_PRICING,
+    CONFIG_TYPE_TAX,
+    CONFIG_TYPE_WALLET_LIMIT,
+    CONFIG_TYPES,
+    REVIEW_ACTION_APPROVED,
+    REVIEW_ACTION_CHANGES_REQUESTED,
+    REVIEW_ACTION_RESUBMITTED,
+    REVIEW_ACTION_REVISED,
+    REVIEW_ACTION_SUBMITTED,
+    REVIEW_ACTION_WITHDRAWN,
+    REVIEW_ROLE_CHECKER,
+    REVIEW_ROLE_MAKER,
+    ConfigChangeRequest,
+    ConfigChangeReview,
 )
 from app.shared.models.events import (
     INGESTION_STATUS_DUPLICATE,
@@ -136,6 +166,7 @@ from app.shared.models.services import (
     Service,
 )
 from app.shared.models.step_up import StepUpPolicy
+from app.shared.models.taxes import TaxConfig
 from app.shared.models.tenants import Tenant, TenantConfig
 from app.shared.models.users import (
     MERCHANT_USER_TYPES,
@@ -156,6 +187,7 @@ from app.shared.models.users import (
 __all__ = [
     "ACCOUNT_TYPES",
     "ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING",
+    "ACCOUNT_TYPE_COMMISSION",
     "ACCOUNT_TYPE_FINANCIAL_WALLET",
     "ACCOUNT_TYPE_OPERATOR_ADJUSTMENT",
     "ACCOUNT_TYPE_POINTS",
@@ -163,6 +195,7 @@ __all__ = [
     "ACCOUNT_TYPE_SYSTEM_CASH_INFLOW",
     "ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED",
     "ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE",
+    "ACCOUNT_TYPE_TAXES",
     "ACTION_RECON_ESCALATED",
     "ACTION_RECON_RESOLVED_COMPLETED",
     "ACTION_RECON_RESOLVED_REVERSED",
@@ -186,6 +219,21 @@ __all__ = [
     "BUDGET_WINDOW_LIFETIME",
     "BUDGET_WINDOW_ROLLING_7D",
     "BUDGET_WINDOW_ROLLING_24H",
+    "CONFIG_OPERATIONS",
+    "CONFIG_OP_CREATE",
+    "CONFIG_OP_DELETE",
+    "CONFIG_STATUSES",
+    "CONFIG_STATUS_APPLIED",
+    "CONFIG_STATUS_CHANGES_REQUESTED",
+    "CONFIG_STATUS_PENDING",
+    "CONFIG_STATUS_WITHDRAWN",
+    "CONFIG_TERMINAL_STATUSES",
+    "CONFIG_TYPES",
+    "CONFIG_TYPE_COMMISSION",
+    "CONFIG_TYPE_LIMIT",
+    "CONFIG_TYPE_PRICING",
+    "CONFIG_TYPE_TAX",
+    "CONFIG_TYPE_WALLET_LIMIT",
     "ENTRY_CREDIT",
     "ENTRY_DEBIT",
     "ENTRY_STATUS_COMPLETED",
@@ -216,6 +264,14 @@ __all__ = [
     "REDEMPTION_STATUS_PROCESSING",
     "REDEMPTION_STATUS_REVERSED",
     "REDEMPTION_TERMINAL_STATUSES",
+    "REVIEW_ACTION_APPROVED",
+    "REVIEW_ACTION_CHANGES_REQUESTED",
+    "REVIEW_ACTION_RESUBMITTED",
+    "REVIEW_ACTION_REVISED",
+    "REVIEW_ACTION_SUBMITTED",
+    "REVIEW_ACTION_WITHDRAWN",
+    "REVIEW_ROLE_CHECKER",
+    "REVIEW_ROLE_MAKER",
     "REWARD_TYPE_CASHBACK",
     "REWARD_TYPE_POINTS",
     "ROLE_STATUS_ACTIVE",
@@ -253,6 +309,11 @@ __all__ = [
     # Base
     "Base",
     "BonusMultiplier",
+    # Commission configs (Pricing v2 Epic 19)
+    "CommissionConfig",
+    # Config governance — maker-checker (Pricing v2 Epic 22)
+    "ConfigChangeRequest",
+    "ConfigChangeReview",
     "EventIngestionLog",
     # Events
     "ExternalEventSource",
@@ -281,6 +342,8 @@ __all__ = [
     # Services catalog (Phase 2)
     "Service",
     "StepUpPolicy",
+    # Tax configs (Pricing v2 Epic 19)
+    "TaxConfig",
     # Tenants
     "Tenant",
     "TenantConfig",

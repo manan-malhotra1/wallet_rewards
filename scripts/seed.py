@@ -176,6 +176,11 @@ async def _seed_services_catalog(session: AsyncSession, tenant: Tenant) -> None:
             "Withdraw",
             "Admin debits a user's wallet and returns funds to the operator cash pool.",
         ),
+        (
+            "cash_in",
+            "Cash In",
+            "An agent funds a customer's wallet from the agent's e-float and earns a commission.",
+        ),
     ]
     for code, display_name, description in baseline:
         result = await session.execute(
@@ -357,7 +362,9 @@ async def _get_or_create_standard_user_role(session: AsyncSession, tenant: Tenan
         await session.refresh(role)
         print(f"  + Created role: standard_user -> {role.id}")
     # Permissions are idempotent via the unique (role_id, transaction_type) index.
-    for txn_type in ("p2p", "top_up", "redemption", "airtime_recharge"):
+    # `cash_in` is granted here so seeded agents can fund customers; in
+    # production a dedicated agent role would carry it (Pricing v2 Epic 21).
+    for txn_type in ("p2p", "top_up", "redemption", "airtime_recharge", "cash_in"):
         exists = (
             await session.execute(
                 select(RolePermission).where(

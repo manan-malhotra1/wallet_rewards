@@ -897,6 +897,78 @@ class PricingConfigNotFound(AppHTTPException):
         super().__init__(404, "pricing_config_not_found", "Pricing config not found.")
 
 
+class CommissionConfigNotFound(AppHTTPException):
+    """The referenced commission config row doesn't exist or belongs to another tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "commission_config_not_found", "Commission config not found.")
+
+
+class TaxConfigNotFound(AppHTTPException):
+    """The referenced tax config row doesn't exist or belongs to another tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "tax_config_not_found", "Tax config not found.")
+
+
+# --- Config governance: maker-checker (Pricing v2 Epic 22) ------------------
+
+
+class SelfApprovalForbidden(AppHTTPException):
+    """A maker tried to approve or review their own config-change request.
+
+    Four-eyes (separation of duties): the checker MUST be a different admin than
+    the maker who proposed the change.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "self_approval_forbidden",
+            "The checker must be a different admin than the maker.",
+        )
+
+
+class ConfigRequestNotFound(AppHTTPException):
+    """No config-change request with that id in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "config_request_not_found", "Config change request not found.")
+
+
+class ConfigRequestInvalidState(AppHTTPException):
+    """The request isn't in a state that permits this action.
+
+    E.g. approving a non-PENDING request, or revising one that isn't in
+    CHANGES_REQUESTED. The message names the current status.
+    """
+
+    def __init__(self, current_status: str) -> None:
+        super().__init__(
+            409,
+            "config_request_invalid_state",
+            f"Request is in status {current_status}; this action is not permitted.",
+        )
+
+
+class ConfigRequestForbidden(AppHTTPException):
+    """The admin isn't allowed to act on this request (e.g. not the maker)."""
+
+    def __init__(self, detail: str = "You are not permitted to act on this request.") -> None:
+        super().__init__(403, "config_request_forbidden", detail)
+
+
+class ConfigRequestCommentRequired(AppHTTPException):
+    """A request-changes action arrived without the mandatory comment."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "config_request_comment_required",
+            "A comment is required when requesting changes.",
+        )
+
+
 # --- Step-up PIN ----------------------------------------------------------
 
 

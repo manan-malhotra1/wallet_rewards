@@ -77,11 +77,21 @@ class PostTransactionRequest:
             represented in `entries` as a sender→system_fee_collected leg.
             Persisted on the transaction row so the fee is displayable
             without re-deriving it from the ledger (Pay-PRD-0260).
+        commission_amount: Commission paid to the acting agent (Pricing v2),
+            already represented in `entries` as a commission_pool→agent leg.
+            Display-only on the transaction row.
+        tax_amount: Total tax collected (on fee + commission), already
+            represented in `entries` as taxes-wallet credit legs. Display-only.
         status: Initial status. Defaults to COMPLETED for synchronous flows;
             payments orchestrator passes PENDING for flows that need external calls.
         is_reversal: When True the balance guard skips the max_balance ceiling on
             credit legs — a reversal / refund restores funds and must never be
             blocked by a cap (invariant #11). Overdraft on debit legs still applies.
+        skip_receive_cap: When True the balance guard skips the max_balance
+            ceiling on credit legs (like `is_reversal`) but the transaction is
+            NOT a reversal — used for earned payouts such as an agent commission
+            credit, which must not be blocked by the agent's own cap (Story 20.3).
+            Overdraft on debit legs still applies.
     """
 
     tenant_id: UUID
@@ -92,8 +102,11 @@ class PostTransactionRequest:
     initiated_by: UUID | None = None
     amount: Decimal | None = None
     fee_amount: Decimal = Decimal("0")
+    commission_amount: Decimal = Decimal("0")
+    tax_amount: Decimal = Decimal("0")
     status: str = TXN_STATUS_COMPLETED
     is_reversal: bool = False
+    skip_receive_cap: bool = False
 
 
 async def post_transaction(session: AsyncSession, request: PostTransactionRequest) -> Transaction:
@@ -155,6 +168,8 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
         initiated_by=request.initiated_by,
         amount=headline_amount,
         fee_amount=request.fee_amount,
+        commission_amount=request.commission_amount,
+        tax_amount=request.tax_amount,
         currency=request.currency.upper(),
     )
     session.add(txn)
@@ -246,7 +261,9 @@ async def _enforce_balance_guard(
 
       * net debit  -> reject (InsufficientFunds) if it would overdraw available.
       * net credit -> reject (MaxBalanceExceeded) if it would breach max_balance,
-        UNLESS ``is_reversal`` — a refund restores funds and may never be blocked.
+        UNLESS ``is_reversal`` (a refund restores funds and may never be blocked)
+        or ``skip_receive_cap`` (an earned payout such as an agent commission
+        credit must land regardless of the agent's own cap — Story 20.3).
 
     Only ``financial_wallet`` accounts carry these semantics; system, merchant
     *collection* (e.g. ``airtime_merchant_holding``) and points accounts have no
@@ -295,7 +312,11 @@ async def _enforce_balance_guard(
             # Overdraft: available (balance - reserved) must absorb the net debit.
             if balance - reserved + delta < 0:
                 raise InsufficientFunds()
-        elif not request.is_reversal and account.user_id is not None:
+        elif (
+            not request.is_reversal
+            and not request.skip_receive_cap
+            and account.user_id is not None
+        ):
             # A financial_wallet always has an owner; resolve their type to find
             # the cap. The explicit None check also narrows the type for mypy.
             cap = await resolve_max_balance(

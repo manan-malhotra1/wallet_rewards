@@ -96,6 +96,14 @@ class Transaction(Base):
     # NUMERIC(20, 6) for money + points without precision loss.
     amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
     fee_amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False, server_default="0")
+    # Display-only siblings to fee_amount (Pricing v2 Epic 20). The economics
+    # already live in the balanced ledger legs; these surface the commission
+    # paid to the acting agent and the total tax collected without re-deriving
+    # them from the entries. Default 0 for every pre-v2 transaction.
+    commission_amount: Mapped[float] = mapped_column(
+        Numeric(20, 6), nullable=False, server_default="0"
+    )
+    tax_amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False, server_default="0")
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     external_status: Mapped[str | None] = mapped_column(String(50), nullable=True)

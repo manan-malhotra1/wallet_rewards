@@ -160,6 +160,64 @@ async def test_fail_restores_balance(
 
 
 @pytest.mark.asyncio
+async def test_confirm_response_carries_user_name(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_points: Account,
+    system_points_account: Account,
+) -> None:
+    """The admin confirm override resolves user_name (phone fallback here).
+
+    `test_user` has a phone identifier but no profile, so the resolved name is
+    the normalised phone value rather than a bare id.
+    """
+    redemption_id = await _credit_and_initiate(
+        async_client,
+        db_session,
+        test_tenant,
+        test_user,
+        credit_amount=Decimal("100"),
+        redeem_amount=Decimal("30"),
+        seed_key="uname-confirm",
+    )
+    response = await async_client.post(
+        f"/api/v1/redemption/{redemption_id}/confirm",
+        json={"tenant_id": str(test_tenant.id)},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["user_name"] == test_user.identifiers[0].identifier_value
+
+
+@pytest.mark.asyncio
+async def test_fail_response_carries_user_name(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_points: Account,
+    system_points_account: Account,
+) -> None:
+    """The admin fail override also resolves and returns user_name."""
+    redemption_id = await _credit_and_initiate(
+        async_client,
+        db_session,
+        test_tenant,
+        test_user,
+        credit_amount=Decimal("100"),
+        redeem_amount=Decimal("30"),
+        seed_key="uname-fail",
+    )
+    response = await async_client.post(
+        f"/api/v1/redemption/{redemption_id}/fail",
+        json={"tenant_id": str(test_tenant.id), "reason": "provider rejected"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["user_name"] == test_user.identifiers[0].identifier_value
+
+
+@pytest.mark.asyncio
 async def test_confirm_then_confirm_rejects(
     async_client: AsyncClient,
     db_session: AsyncSession,

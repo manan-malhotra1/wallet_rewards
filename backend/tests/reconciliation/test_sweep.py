@@ -355,6 +355,79 @@ async def test_pending_list_tenant_scoped(
 
 
 @pytest.mark.asyncio
+async def test_pending_list_carries_user_name(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_points: Account,
+    system_points_account: Account,
+) -> None:
+    """The pending list resolves user_name (falls back to the phone identifier).
+
+    `test_user` has a phone identifier but no profile, so `user_name` is the
+    normalised phone value — never null for this user, and the raw id is still
+    present for the UI fallback.
+    """
+    await _make_pending_redemption(
+        async_client,
+        db_session,
+        test_tenant,
+        test_user,
+        amount=Decimal("20"),
+        age_minutes=10,
+        seed_key="uname-pending",
+    )
+
+    response = await async_client.get(
+        "/api/v1/reconciliation/pending",
+        params={"tenant_id": str(test_tenant.id), "threshold_minutes": 5},
+    )
+    assert response.status_code == 200, response.text
+    row = response.json()[0]
+    identifier_value = test_user.identifiers[0].identifier_value
+    assert row["user_name"] == identifier_value
+    assert row["user_id"] == str(test_user.id)
+
+
+@pytest.mark.asyncio
+async def test_manual_review_list_carries_user_name(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_points: Account,
+    system_points_account: Account,
+) -> None:
+    """The manual-review queue also surfaces the resolved user_name."""
+    redemption = await _make_pending_redemption(
+        async_client,
+        db_session,
+        test_tenant,
+        test_user,
+        amount=Decimal("15"),
+        age_minutes=10,
+        max_retries=1,
+        seed_key="uname-mr",
+    )
+    # One sweep hits max_retries=1 → escalates to MANUAL_REVIEW.
+    await async_client.post(
+        "/api/v1/reconciliation/sweep",
+        json={"tenant_id": str(test_tenant.id), "threshold_minutes": 5},
+    )
+    await db_session.refresh(redemption)
+    assert redemption.status == REDEMPTION_STATUS_MANUAL_REVIEW
+
+    response = await async_client.get(
+        "/api/v1/reconciliation/manual-review",
+        params={"tenant_id": str(test_tenant.id)},
+    )
+    assert response.status_code == 200, response.text
+    row = response.json()[0]
+    assert row["user_name"] == test_user.identifiers[0].identifier_value
+
+
+@pytest.mark.asyncio
 async def test_sweep_rejects_unknown_tenant(async_client: AsyncClient) -> None:
     """Sweep against an unknown tenant_id returns 404."""
     response = await async_client.post(

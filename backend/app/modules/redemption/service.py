@@ -394,6 +394,22 @@ async def _find_redemption_for_transition(
     return redemption
 
 
+async def _attach_user_name(session: AsyncSession, redemption: Redemption) -> None:
+    """Attach the redeeming user's display name to a redemption for admin output.
+
+    Sets a transient (non-mapped) `user_name` attribute on the ORM instance so
+    `RedemptionOut` renders a name instead of a bare user id on the admin
+    operator-override responses. Leaves it None when the user has no resolvable
+    name — the UI then falls back to a short id. Tenant-scoped.
+    """
+    from app.modules.identity.service import resolve_user_names
+
+    names = await resolve_user_names(
+        session, tenant_id=redemption.tenant_id, user_ids=[redemption.user_id]
+    )
+    redemption.user_name = names.get(redemption.user_id)  # type: ignore[attr-defined]
+
+
 def _redemption_audit_snapshot(redemption: Redemption) -> dict[str, Any]:
     """Compact JSON-safe snapshot of the audit-relevant redemption fields."""
     return {
@@ -496,6 +512,7 @@ async def confirm_redemption(
     )
     await session.commit()
     await session.refresh(redemption)
+    await _attach_user_name(session, redemption)
     return redemption
 
 
@@ -540,6 +557,7 @@ async def fail_redemption(
     )
     await session.commit()
     await session.refresh(redemption)
+    await _attach_user_name(session, redemption)
     return redemption
 
 

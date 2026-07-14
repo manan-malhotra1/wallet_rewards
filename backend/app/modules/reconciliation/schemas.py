@@ -30,6 +30,9 @@ class PendingItem(BaseModel):
     redemption_id: UUID
     transaction_id: UUID
     user_id: UUID
+    # Resolved display name of the redeeming user; None when the user has no
+    # profile name or identifier, so the UI falls back to a short user id.
+    user_name: str | None = None
     provider_id: UUID
     points_amount: Decimal
     retry_count: int
@@ -45,6 +48,9 @@ class ManualReviewItem(BaseModel):
     redemption_id: UUID
     transaction_id: UUID
     user_id: UUID
+    # Resolved display name of the redeeming user; None when the user has no
+    # profile name or identifier, so the UI falls back to a short user id.
+    user_name: str | None = None
     provider_id: UUID
     points_amount: Decimal
     retry_count: int

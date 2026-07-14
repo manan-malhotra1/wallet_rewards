@@ -285,3 +285,99 @@ async def test_user_detail_exposes_type_and_parent(
     body = response.json()
     assert body["user_type"] == "agent"
     assert body["parent_user_id"] == parent["id"]
+
+
+@pytest.mark.asyncio
+async def test_user_detail_parent_name_uses_profile(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """`parent_name` is the parent's profile full name when a profile exists."""
+    parent_resp = await async_client.post(
+        "/api/v1/identity/users",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifiers": [{"identifier_type": "phone", "identifier_value": "+27 82 555 1020"}],
+            "user_type": "super_agent",
+            "profile": {"first_name": "Thandi", "last_name": "Ncube"},
+        },
+    )
+    assert parent_resp.status_code == 201, parent_resp.text
+    parent_id = parent_resp.json()["id"]
+
+    _, child = await _create_user(
+        async_client,
+        admin_auth_header,
+        test_tenant,
+        phone="+27 82 555 1021",
+        user_type="agent",
+        parent_user_id=parent_id,
+    )
+
+    response = await async_client.get(
+        f"/api/v1/identity/users/{child['id']}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["parent_name"] == "Thandi Ncube"
+
+
+@pytest.mark.asyncio
+async def test_user_detail_parent_name_falls_back_to_identifier(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """With no parent profile, `parent_name` is the parent's phone identifier."""
+    _, parent = await _create_user(
+        async_client,
+        admin_auth_header,
+        test_tenant,
+        phone="+27 82 555 1022",
+        user_type="super_agent",
+    )
+    _, child = await _create_user(
+        async_client,
+        admin_auth_header,
+        test_tenant,
+        phone="+27 82 555 1023",
+        user_type="agent",
+        parent_user_id=parent["id"],
+    )
+
+    response = await async_client.get(
+        f"/api/v1/identity/users/{child['id']}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+    )
+    assert response.status_code == 200, response.text
+    # Phone is normalised (spaces stripped) on persistence.
+    assert response.json()["parent_name"] == "+27825551022"
+
+
+@pytest.mark.asyncio
+async def test_user_detail_parent_name_null_without_parent(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """A top-level user (no parent) has `parent_name` null."""
+    _, user = await _create_user(
+        async_client,
+        admin_auth_header,
+        test_tenant,
+        phone="+27 82 555 1024",
+        user_type="super_agent",
+    )
+    response = await async_client.get(
+        f"/api/v1/identity/users/{user['id']}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["parent_user_id"] is None
+    assert body["parent_name"] is None

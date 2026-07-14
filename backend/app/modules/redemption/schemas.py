@@ -109,6 +109,11 @@ class RedemptionOut(BaseModel):
     id: UUID
     tenant_id: UUID
     user_id: UUID
+    # Resolved display name of the redeeming user, populated on the admin
+    # operator-override responses (confirm / fail) so operators see a name
+    # rather than a bare id. None on user-facing responses and when the user
+    # has no resolvable name — the UI then falls back to a short id.
+    user_name: str | None = None
     provider_id: UUID
     transaction_id: UUID
     points_amount: Decimal

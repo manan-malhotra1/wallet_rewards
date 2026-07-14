@@ -101,6 +101,8 @@ export interface UserDetail {
   status: string;
   user_type: UserType;
   parent_user_id: string | null;
+  /** Resolved parent display name; null when no parent or unresolvable — fall back to a short id. */
+  parent_name: string | null;
   created_at: string;
   identifiers: UserIdentifier[];
   profile: UserProfile | null;
@@ -320,6 +322,8 @@ export interface ManualReviewItem {
   redemption_id: string;
   tenant_id: string;
   user_id: string;
+  /** Resolved user display name; null when unresolvable — fall back to a short id. */
+  user_name: string | null;
   amount: string;
   retry_count: number;
   failure_reason: string | null;

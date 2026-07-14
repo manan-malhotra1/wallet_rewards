@@ -139,6 +139,10 @@ class UserDetailOut(BaseModel):
     status: str
     user_type: str
     parent_user_id: UUID | None
+    # Resolved display name of the parent user (agent/merchant hierarchy) so the
+    # UI never shows a bare parent id. None when there is no parent or it has no
+    # resolvable name — the UI then falls back to a short id.
+    parent_name: str | None = None
     created_at: datetime
     identifiers: list[IdentifierOut]
     profile: UserProfileOut | None

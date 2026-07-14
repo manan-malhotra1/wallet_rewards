@@ -35,7 +35,7 @@ export function ManualReviewTable({ items }: { items: ManualReviewItem[] }) {
                 {shortId(item.redemption_id, "red")}
               </TableCell>
               <TableCell className="font-mono text-[12px]">
-                {shortId(item.user_id, "usr")}
+                {item.user_name ?? shortId(item.user_id, "usr")}
               </TableCell>
               <TableCell className="font-mono">
                 {formatAmount(item.amount, { fractionDigits: 0 })} pts

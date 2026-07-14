@@ -7,6 +7,7 @@ file.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -286,6 +287,84 @@ async def _reload_user(session: AsyncSession, user_id: UUID) -> User:
     return user
 
 
+# Identifier fallback preference: an operator recognises a phone before an
+# email before a raw account / card token. Lower number = preferred.
+_IDENTIFIER_PRIORITY = {"phone": 0, "email": 1, "account_number": 2, "card_number": 3}
+
+
+async def resolve_user_names(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_ids: Iterable[UUID],
+) -> dict[UUID, str]:
+    """Batch-resolve user ids to human display names, tenant-scoped.
+
+    The display name for each user is, in order of preference:
+      1. The profile full name (`first_name` + `last_name`, joined and
+         stripped) when the profile exists and yields a non-empty string.
+      2. Otherwise the user's primary identifier value (phone preferred, then
+         email, then account / card) — the value an operator would search on.
+      3. Otherwise the user is omitted from the map, so the caller falls back
+         to a short id.
+
+    Mirrors `admin_profiles.resolve_admin_names`: unknown or nameless users are
+    simply absent from the returned map. Runs at most two queries regardless of
+    how many ids are requested.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope — users in other tenants never resolve
+            (NFR-0220), even when their id is passed in.
+        user_ids: The user ids to resolve; duplicates and falsy ids are ignored.
+
+    Returns:
+        A `{user_id: display_name}` map for every id that resolved to a name.
+    """
+    wanted = {uid for uid in user_ids if uid}
+    if not wanted:
+        return {}
+
+    names: dict[UUID, str] = {}
+
+    # 1. Profile full names — tenant-scoped via the User join so a profile
+    #    row can never surface a name for a user in another tenant.
+    profile_rows = await session.execute(
+        select(User.id, UserProfile.first_name, UserProfile.last_name)
+        .join(UserProfile, UserProfile.user_id == User.id)
+        .where(User.tenant_id == tenant_id, User.id.in_(wanted))
+    )
+    for user_id, first_name, last_name in profile_rows.all():
+        full_name = " ".join(part for part in (first_name, last_name) if part).strip()
+        if full_name:
+            names[user_id] = full_name
+
+    # 2. Fall back to a primary identifier for users still without a name.
+    remaining = wanted - names.keys()
+    if remaining:
+        ident_rows = await session.execute(
+            select(
+                UserIdentifier.user_id,
+                UserIdentifier.identifier_type,
+                UserIdentifier.identifier_value,
+            ).where(
+                UserIdentifier.tenant_id == tenant_id,
+                UserIdentifier.user_id.in_(remaining),
+            )
+        )
+        # Keep the highest-priority identifier value seen per user.
+        best: dict[UUID, tuple[int, str]] = {}
+        for user_id, id_type, id_value in ident_rows.all():
+            priority = _IDENTIFIER_PRIORITY.get(id_type, 99)
+            current = best.get(user_id)
+            if current is None or priority < current[0]:
+                best[user_id] = (priority, id_value)
+        for user_id, (_priority, id_value) in best.items():
+            names[user_id] = id_value
+
+    return names
+
+
 async def change_user_type(
     session: AsyncSession,
     *,
@@ -441,12 +520,22 @@ async def get_user_detail(
             }
         )
 
+    # Resolve the parent's display name so the UI shows "Reports to: <name>"
+    # instead of a bare id. None when there is no parent or it has no name.
+    parent_name: str | None = None
+    if user.parent_user_id is not None:
+        parent_names = await resolve_user_names(
+            session, tenant_id=tenant_id, user_ids=[user.parent_user_id]
+        )
+        parent_name = parent_names.get(user.parent_user_id)
+
     return {
         "id": user.id,
         "tenant_id": user.tenant_id,
         "status": user.status,
         "user_type": user.user_type,
         "parent_user_id": user.parent_user_id,
+        "parent_name": parent_name,
         "created_at": user.created_at,
         "identifiers": user.identifiers,
         "profile": profile,

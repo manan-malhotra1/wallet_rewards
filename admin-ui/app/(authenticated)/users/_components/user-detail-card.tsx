@@ -164,7 +164,7 @@ export function UserDetailCard({
             <p className="mt-2 text-[11px] text-muted-foreground">
               Reports to{" "}
               <span className="font-mono">
-                {shortId(detail.parent_user_id, "usr")}
+                {detail.parent_name ?? shortId(detail.parent_user_id, "usr")}
               </span>
             </p>
           )}

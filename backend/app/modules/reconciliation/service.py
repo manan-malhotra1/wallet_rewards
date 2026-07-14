@@ -19,6 +19,7 @@ from uuid import UUID
 from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.identity.service import resolve_user_names
 from app.modules.reconciliation.schemas import (
     AuditEntry,
     ManualReviewItem,
@@ -202,11 +203,15 @@ async def list_pending(
         .all()
     )
 
+    names = await resolve_user_names(
+        session, tenant_id=tenant_id, user_ids=[r.user_id for r in rows]
+    )
     return [
         PendingItem(
             redemption_id=r.id,
             transaction_id=r.transaction_id,
             user_id=r.user_id,
+            user_name=names.get(r.user_id),
             provider_id=r.provider_id,
             points_amount=Decimal(str(r.points_amount)),
             retry_count=r.retry_count,
@@ -236,11 +241,15 @@ async def list_manual_review(session: AsyncSession, *, tenant_id: UUID) -> list[
         .all()
     )
 
+    names = await resolve_user_names(
+        session, tenant_id=tenant_id, user_ids=[r.user_id for r in rows]
+    )
     return [
         ManualReviewItem(
             redemption_id=r.id,
             transaction_id=r.transaction_id,
             user_id=r.user_id,
+            user_name=names.get(r.user_id),
             provider_id=r.provider_id,
             points_amount=Decimal(str(r.points_amount)),
             retry_count=r.retry_count,

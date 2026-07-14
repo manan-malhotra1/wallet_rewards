@@ -313,9 +313,7 @@ async def _enforce_balance_guard(
             if balance - reserved + delta < 0:
                 raise InsufficientFunds()
         elif (
-            not request.is_reversal
-            and not request.skip_receive_cap
-            and account.user_id is not None
+            not request.is_reversal and not request.skip_receive_cap and account.user_id is not None
         ):
             # A financial_wallet always has an owner; resolve their type to find
             # the cap. The explicit None check also narrows the type for mypy.

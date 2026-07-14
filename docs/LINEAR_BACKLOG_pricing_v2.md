@@ -4,19 +4,19 @@
 > **Design spec:** `docs/superpowers/specs/2026-07-12-pricing-v2-design.md`
 > **Source PRDs:** Product Module 6 (Pricing) + Module 5 (Limits); Pay-PRD-0260, 0420–0460. Extends the deferred commission/roll-up epic from `docs/superpowers/specs/2026-07-03-user-types-design.md` (Decision D4).
 >
-> **Status legend:** `Done` · `In Progress` · `Backlog` · `Deferred`. Everything below is **Backlog**.
+> **Status legend:** `Done` · `In Progress` · `Backlog` · `Deferred`. **All epics below are `Done` — the initiative shipped 2026-07-14** (the phase-2 roll-up at the end stays `Deferred`).
 >
 > **Locked decisions:** commission = platform-funded pool, always additive (`DEBIT commission → CREDIT agent`); tax on BOTH fees and commissions, inclusive/exclusive configurable on three axes; commission v1 = acting agent only (hierarchy roll-up deferred); all pricing/limits/commission/tax config changes are maker-checker governed; services are fail-closed on config behind a per-tenant switch.
 >
-> **Epics build in order — 19 → 24.** Each story is one TDD'd, code-review + automation-testing-gated commit.
+> **Epics build in order — 19 → 24.** Each story is one TDD'd, code-review + automation-testing-gated commit. **✅ All 6 epics / 19 stories delivered (2026-07-14).**
 
 ---
 
-## Epic 19 — Charge Engine Foundation (Wallets · Slabs · Commission/Tax Configs) · **Backlog**
+## Epic 19 — Charge Engine Foundation (Wallets · Slabs · Commission/Tax Configs) · **Done**
 
 The config + ledger substrate for pricing v2: two new system wallets, amount-slab fees, and the commission/tax config models. Additive and back-compatible — no behaviour change to existing flows until the assembler (Epic 20) wires them in.
 
-### Story 19.1 — `commission` + `taxes` system account types · Backlog
+### Story 19.1 — `commission` + `taxes` system account types · Done
 
 **Description:** Add two system account types (a platform-funded commission pool and a tax collector) plus their lazy get-or-create helpers, following the `airtime_merchant_holding` recipe.
 
@@ -28,7 +28,7 @@ The config + ledger substrate for pricing v2: two new system wallets, amount-sla
 
 **Refs:** accounts.py; migration `0025` · **Labels:** pricing-v2; data; ledger · **Est:** 2
 
-### Story 19.2 — Slab fees on `pricing_configs` (amount bands + resolution) · Backlog
+### Story 19.2 — Slab fees on `pricing_configs` (amount bands + resolution) · Done
 
 **Description:** Add amount-band columns so fees can vary by transaction amount; make fee-config resolution amount-aware. Mirrors the limits module's `min_amount`/`max_amount`.
 
@@ -40,7 +40,7 @@ The config + ledger substrate for pricing v2: two new system wallets, amount-sla
 
 **Refs:** pricing.py; pricing/service.py:49-143 · **Labels:** pricing-v2; data; pricing · **Est:** 3
 
-### Story 19.3 — `commission_configs` model + `calculate_commission` · Backlog
+### Story 19.3 — `commission_configs` model + `calculate_commission` · Done
 
 **Description:** Commission schedule (structural twin of pricing) + its computation. Resolves the acting agent's `user_type`.
 
@@ -51,7 +51,7 @@ The config + ledger substrate for pricing v2: two new system wallets, amount-sla
 
 **Refs:** pricing/service.py (template) · **Labels:** pricing-v2; data; pricing · **Est:** 3
 
-### Story 19.4 — `tax_configs` model + `calculate_tax` · Backlog
+### Story 19.4 — `tax_configs` model + `calculate_tax` · Done
 
 **Description:** Jurisdiction-wide tax rates + inclusive flags, and the tax computation on fee and commission.
 
@@ -64,11 +64,11 @@ The config + ledger substrate for pricing v2: two new system wallets, amount-sla
 
 ---
 
-## Epic 20 — Charge Assembler & Ledger Integration · **Backlog**
+## Epic 20 — Charge Assembler & Ledger Integration · **Done**
 
 The economic core: one shared function turns a principal + computed fee/commission/tax + the three inclusive/exclusive flags into a balanced ledger `entries` list, reused by every money path.
 
-### Story 20.1 — `assemble_charges` (inclusive/exclusive matrix → balanced legs) · Backlog
+### Story 20.1 — `assemble_charges` (inclusive/exclusive matrix → balanced legs) · Done
 
 **Description:** New `pricing/assembler.py`. Given base principal legs + `F/C/Tf/Tc` + `fee_inclusive` / `fee_tax_inclusive` / `commission_tax_inclusive`, append the fee/commission/tax legs and return the balanced `entries` + `(fee_amount, commission_amount, tax_amount)`.
 
@@ -80,7 +80,7 @@ The economic core: one shared function turns a principal + computed fee/commissi
 
 **Refs:** payments/service.py:298-343 (pattern); design spec §money-model · **Labels:** pricing-v2; pricing; ledger · **Est:** 5
 
-### Story 20.2 — `Transaction.commission_amount` / `tax_amount` columns · Backlog
+### Story 20.2 — `Transaction.commission_amount` / `tax_amount` columns · Done
 
 **Description:** Display-only sibling columns to `fee_amount`, threaded through `PostTransactionRequest`.
 
@@ -91,7 +91,7 @@ The economic core: one shared function turns a principal + computed fee/commissi
 
 **Labels:** pricing-v2; data; ledger · **Est:** 2
 
-### Story 20.3 — Commission cap-exemption on the balance guard · Backlog
+### Story 20.3 — Commission cap-exemption on the balance guard · Done
 
 **Description:** A commission CREDIT to an agent's `financial_wallet` is an earned payout and must not be blocked by `max_balance`. Generalise the `is_reversal` escape hatch into a `skip_receive_cap` flag.
 
@@ -104,11 +104,11 @@ The economic core: one shared function turns a principal + computed fee/commissi
 
 ---
 
-## Epic 21 — Agent Cash-In Vertical · **Backlog**
+## Epic 21 — Agent Cash-In Vertical · **Done**
 
 First real consumer of the charge engine: an agent's e-float funds a customer's wallet; the agent earns a commission; fee + tax are collected.
 
-### Story 21.1 — `cash_in` service catalog + agent role permission · Backlog
+### Story 21.1 — `cash_in` service catalog + agent role permission · Done
 
 **Description:** Register the new service code and grant it to agents.
 
@@ -118,7 +118,7 @@ First real consumer of the charge engine: an agent's e-float funds a customer's 
 
 **Refs:** scripts/seed.py:157-179, :360 · **Labels:** pricing-v2; backend; data · **Est:** 2
 
-### Story 21.2 — `cashin` module: agent-initiated deposit → customer wallet · Backlog
+### Story 21.2 — `cashin` module: agent-initiated deposit → customer wallet · Done
 
 **Description:** New `modules/cashin/` (router + service). Order: role → limits → pricing(slab) → commission → tax → `assemble_charges` → overdraft on agent float → `post_transaction`. `initiated_by = agent`; credited `financial_wallet.user_id = customer`.
 
@@ -129,7 +129,7 @@ First real consumer of the charge engine: an agent's e-float funds a customer's 
 
 **Refs:** ledger/service.py:298-312 · **Labels:** pricing-v2; backend; ledger · **Est:** 5
 
-### Story 21.3 — Cash-in E2E + ledger-invariant tests + load profile · Backlog
+### Story 21.3 — Cash-in E2E + ledger-invariant tests + load profile · Done
 
 **Description:** End-to-end proof + invariant coverage + a load profile.
 
@@ -142,11 +142,11 @@ First real consumer of the charge engine: an agent's e-float funds a customer's 
 
 ---
 
-## Epic 22 — Config Governance: Maker-Checker (Four-Eyes) · **Backlog**
+## Epic 22 — Config Governance: Maker-Checker (Four-Eyes) · **Done**
 
 Dual-control for all config changes (pricing, limits, wallet-limits, commission, tax): a change proposed by one admin only takes effect once a different admin approves; the checker can reject with comments and the maker revises and resubmits the same request.
 
-### Story 22.1 — `config-approver` role + `SelfApprovalForbidden` · Backlog
+### Story 22.1 — `config-approver` role + `SelfApprovalForbidden` · Done
 
 **Description:** New Keycloak realm role and separation-of-duties exception.
 
@@ -156,7 +156,7 @@ Dual-control for all config changes (pricing, limits, wallet-limits, commission,
 
 **Refs:** dependencies.py:64; bootstrap_keycloak.py:32 · **Labels:** pricing-v2; platform; auth · **Est:** 1
 
-### Story 22.2 — `config_change_requests` + `config_change_reviews` models · Backlog
+### Story 22.2 — `config_change_requests` + `config_change_reviews` models · Done
 
 **Description:** A generic proposal table (all config types) + an append-only review/comment thread.
 
@@ -167,7 +167,7 @@ Dual-control for all config changes (pricing, limits, wallet-limits, commission,
 
 **Labels:** pricing-v2; data · **Est:** 3
 
-### Story 22.3 — Maker-checker endpoints + revise/resubmit loop · Backlog
+### Story 22.3 — Maker-checker endpoints + revise/resubmit loop · Done
 
 **Description:** Propose → review → approve, with a reject-with-comments / revise-and-resubmit loop that preserves the request and its thread.
 
@@ -180,7 +180,7 @@ Dual-control for all config changes (pricing, limits, wallet-limits, commission,
 
 **Labels:** pricing-v2; backend · **Est:** 5
 
-### Story 22.4 — Route config creation through approval; retire direct create/delete · Backlog
+### Story 22.4 — Route config creation through approval; retire direct create/delete · Done
 
 **Description:** Make four-eyes non-bypassable across pricing, limits, wallet-limits, commission, tax.
 
@@ -193,11 +193,11 @@ Dual-control for all config changes (pricing, limits, wallet-limits, commission,
 
 ---
 
-## Epic 23 — Fail-Closed Service Gating · **Backlog**
+## Epic 23 — Fail-Closed Service Gating · **Done**
 
 A service may run only if BOTH pricing and limits resolve for the acting user's type; otherwise it fails. Rolled out behind a per-tenant switch so unconfigured tenants and tests aren't broken.
 
-### Story 23.1 — Per-tenant flag + `require_pricing_and_limits` guard · Backlog
+### Story 23.1 — Per-tenant flag + `require_pricing_and_limits` guard · Done
 
 **Description:** The switch and the shared gate.
 
@@ -207,7 +207,7 @@ A service may run only if BOTH pricing and limits resolve for the acting user's 
 
 **Labels:** pricing-v2; backend; data · **Est:** 2
 
-### Story 23.2 — Remove fail-open swallows; wire the gate into money paths · Backlog
+### Story 23.2 — Remove fail-open swallows; wire the gate into money paths · Done
 
 **Description:** Flip the fail-open behaviour and enforce the gate.
 
@@ -220,23 +220,23 @@ A service may run only if BOTH pricing and limits resolve for the acting user's 
 
 ---
 
-## Epic 24 — Pricing v2 Admin UI · **Backlog**
+## Epic 24 — Pricing v2 Admin UI · **Done**
 
 Admin surfaces for the new config, and the maker-checker review experience. (Frontend automation tests remain deferred per repo policy — manual smoke is the bar.)
 
-### Story 24.1 — Pricing dialog: slab bands + `fee_inclusive` + per-band preview · Backlog
+### Story 24.1 — Pricing dialog: slab bands + `fee_inclusive` + per-band preview · Done
 
 **Acceptance criteria:** create dialog gains `amount_from`/`amount_to` + `fee_inclusive`; the fee preview samples per band; validation for overlapping/adjacent bands.
 
 **Refs:** admin-ui/app/(authenticated)/pricing/_components/create-pricing-dialog.tsx · **Labels:** pricing-v2; admin-ui · **Est:** 3
 
-### Story 24.2 — Commission-config + tax-config admin screens · Backlog
+### Story 24.2 — Commission-config + tax-config admin screens · Done
 
 **Acceptance criteria:** new pages/tables/actions cloning the pricing page pattern; create/list/delete (propose via the maker-checker flow).
 
 **Labels:** pricing-v2; admin-ui · **Est:** 3
 
-### Story 24.3 — Config-request review UI (maker submit + checker thread) · Backlog
+### Story 24.3 — Config-request review UI (maker submit + checker thread) · Done
 
 **Acceptance criteria:** a config-requests queue; maker submit; checker approve / request-changes with comment; the revision thread rendered; role-gated actions (`config-approver` sees approve/request-changes).
 
@@ -246,14 +246,16 @@ Admin surfaces for the new config, and the maker-checker review experience. (Fro
 
 ## Summary
 
-| Epic | Title | Stories | Est |
-|---|---|---|---|
-| 19 | Charge Engine Foundation | 4 | 10 |
-| 20 | Charge Assembler & Ledger Integration | 3 | 9 |
-| 21 | Agent Cash-In Vertical | 3 | 10 |
-| 22 | Config Governance (Maker-Checker) | 4 | 12 |
-| 23 | Fail-Closed Service Gating | 2 | 5 |
-| 24 | Pricing v2 Admin UI | 3 | 11 |
-| **Total** | | **19** | **57** |
+| Epic | Title | Stories | Est | Status |
+|---|---|---|---|---|
+| 19 | Charge Engine Foundation | 4 | 10 | ✅ Done |
+| 20 | Charge Assembler & Ledger Integration | 3 | 9 | ✅ Done |
+| 21 | Agent Cash-In Vertical | 3 | 10 | ✅ Done |
+| 22 | Config Governance (Maker-Checker) | 4 | 12 | ✅ Done |
+| 23 | Fail-Closed Service Gating | 2 | 5 | ✅ Done |
+| 24 | Pricing v2 Admin UI | 3 | 11 | ✅ Done |
+| **Total** | | **19** | **57** | **Shipped 2026-07-14** |
+
+> **Note:** admin-ui frontend automated tests are deferred per repo policy — Epic 24 was verified via typecheck + build + code-review; manual browser smoke of the propose→approve flows is the remaining manual step.
 
 **Deferred (phase 2):** commission hierarchy roll-up across the `parent_user_id` chain (agent → super_agent). Schema already supports it.

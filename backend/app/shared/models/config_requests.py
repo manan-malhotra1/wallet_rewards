@@ -47,8 +47,9 @@ CONFIG_TYPES = (
 
 # Operations a request can carry.
 CONFIG_OP_CREATE = "create"
+CONFIG_OP_UPDATE = "update"
 CONFIG_OP_DELETE = "delete"
-CONFIG_OPERATIONS = (CONFIG_OP_CREATE, CONFIG_OP_DELETE)
+CONFIG_OPERATIONS = (CONFIG_OP_CREATE, CONFIG_OP_UPDATE, CONFIG_OP_DELETE)
 
 # Request lifecycle.
 CONFIG_STATUS_PENDING = "PENDING"
@@ -76,7 +77,7 @@ REVIEW_ACTION_WITHDRAWN = "withdrawn"
 
 
 class ConfigChangeRequest(Base):
-    """A proposed create/delete of one config row, pending four-eyes approval."""
+    """A proposed create/update/delete of one config scope, pending four-eyes approval."""
 
     __tablename__ = "config_change_requests"
     __table_args__ = (
@@ -85,7 +86,7 @@ class ConfigChangeRequest(Base):
             name="ck_config_change_requests_config_type",
         ),
         CheckConstraint(
-            "operation IN ('create', 'delete')",
+            "operation IN ('create', 'update', 'delete')",
             name="ck_config_change_requests_operation",
         ),
         CheckConstraint(
@@ -101,10 +102,12 @@ class ConfigChangeRequest(Base):
     )
     config_type: Mapped[str] = mapped_column(String(20), nullable=False)
     operation: Mapped[str] = mapped_column(String(10), nullable=False)
-    # The proposed config row (create) — editable in place by the maker across
-    # revisions. NULL-able for a pure delete, which uses `target_config_id`.
+    # The proposed config (create/update) — the FULL new config, editable in
+    # place by the maker across revisions. NULL for a pure delete, which uses
+    # `target_config_id`.
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    # The existing config row to delete (delete op), else NULL.
+    # The existing config row being deleted (delete) or edited (update): the
+    # live row for traceability + the propose-time existence check. NULL on create.
     target_config_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=CONFIG_STATUS_PENDING

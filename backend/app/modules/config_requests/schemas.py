@@ -9,14 +9,17 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 ConfigType = Literal["pricing", "limit", "wallet_limit", "commission", "tax"]
-ConfigOperation = Literal["create", "delete"]
+ConfigOperation = Literal["create", "update", "delete"]
 
 
 class ConfigChangeProposeRequest(BaseModel):
-    """Maker's proposal of a single config create/delete.
+    """Maker's proposal of a single config create/update/delete.
 
     For `create`, supply `payload` (the proposed config row, matching that
-    config type's create schema). For `delete`, supply `target_config_id`.
+    config type's create schema). For `update`, supply BOTH `payload` (the FULL
+    new config, same shape as create — its scope must match the live row) and
+    `target_config_id` (the live row being edited). For `delete`, supply
+    `target_config_id` only.
     """
 
     config_type: ConfigType

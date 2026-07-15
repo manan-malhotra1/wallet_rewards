@@ -51,12 +51,15 @@ export function OpenRequestCard({
   tenantId,
   currentAdminId,
   editAction,
+  serviceNames,
 }: {
   request: ConfigChangeRequest;
   tenantId: string;
   currentAdminId: string;
   /** The maker's edit affordance (revise dialog trigger); maker + CHANGES_REQUESTED only. */
   editAction?: React.ReactNode;
+  /** `{ code: display_name }` so a service code renders as its friendly name. */
+  serviceNames?: Record<string, string>;
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = React.useState(false);
@@ -165,7 +168,11 @@ export function OpenRequestCard({
           </span>
         </div>
       ) : (
-        <ConfigDetail configType={request.config_type} data={request.payload} />
+        <ConfigDetail
+          configType={request.config_type}
+          data={request.payload}
+          serviceNames={serviceNames}
+        />
       )}
       {detail && (
         <RequestDetailDrawer
@@ -177,6 +184,7 @@ export function OpenRequestCard({
           open={drawerOpen}
           onOpenChange={setDrawerOpen}
           onUpdated={(updated) => setDetail(updated)}
+          serviceNames={serviceNames}
         />
       )}
     </div>

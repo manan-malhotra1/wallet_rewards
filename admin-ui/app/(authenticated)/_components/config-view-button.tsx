@@ -24,10 +24,13 @@ export function ConfigViewButton({
   configType,
   data,
   title,
+  serviceNames,
 }: {
   configType: ConfigType;
   data: Record<string, unknown>;
   title: string;
+  /** `{ code: display_name }` so the Service field shows the name, not the code. */
+  serviceNames?: Record<string, string>;
 }) {
   const [open, setOpen] = React.useState(false);
   return (
@@ -48,7 +51,11 @@ export function ConfigViewButton({
             <DrawerTitle>{title}</DrawerTitle>
           </DrawerHeader>
           <DrawerBody>
-            <ConfigDetail configType={configType} data={data} />
+            <ConfigDetail
+              configType={configType}
+              data={data}
+              serviceNames={serviceNames}
+            />
           </DrawerBody>
         </DrawerContent>
       </Drawer>

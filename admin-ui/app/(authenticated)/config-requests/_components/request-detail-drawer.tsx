@@ -43,8 +43,14 @@ function isNonTerminal(status: ConfigChangeRequest["status"]): boolean {
   return status === "PENDING" || status === "CHANGES_REQUESTED";
 }
 
-/** The proposed change — a delete names its target; a create renders via ConfigDetail. */
-function ProposedChange({ request }: { request: ConfigChangeRequest }) {
+/** The proposed change — a delete names its target; create/update render via ConfigDetail. */
+function ProposedChange({
+  request,
+  serviceNames,
+}: {
+  request: ConfigChangeRequest;
+  serviceNames?: Record<string, string>;
+}) {
   if (request.operation === "delete") {
     return (
       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -55,7 +61,13 @@ function ProposedChange({ request }: { request: ConfigChangeRequest }) {
       </div>
     );
   }
-  return <ConfigDetail configType={request.config_type} data={request.payload} />;
+  return (
+    <ConfigDetail
+      configType={request.config_type}
+      data={request.payload}
+      serviceNames={serviceNames}
+    />
+  );
 }
 
 function ReviewThread({ request }: { request: ConfigChangeRequest }) {
@@ -95,7 +107,13 @@ function ReviewThread({ request }: { request: ConfigChangeRequest }) {
  * meaningful for create ops (delete ops carry no payload); renders nothing when
  * the detail endpoint returned no revisions.
  */
-function VersionHistory({ request }: { request: ConfigChangeRequest }) {
+function VersionHistory({
+  request,
+  serviceNames,
+}: {
+  request: ConfigChangeRequest;
+  serviceNames?: Record<string, string>;
+}) {
   const revisions = request.revisions ?? [];
   // Ascending by revision so the last entry is the latest.
   const ordered = React.useMemo(
@@ -139,7 +157,11 @@ function VersionHistory({ request }: { request: ConfigChangeRequest }) {
       <div className="mb-2 text-xs text-muted-foreground">
         Revision {current.revision} · {formatTimestamp(current.created_at)}
       </div>
-      <ConfigDetail configType={request.config_type} data={current.payload} />
+      <ConfigDetail
+        configType={request.config_type}
+        data={current.payload}
+        serviceNames={serviceNames}
+      />
     </section>
   );
 }
@@ -152,6 +174,7 @@ export function RequestDetailDrawer({
   open,
   onOpenChange,
   onUpdated,
+  serviceNames,
 }: {
   request: ConfigChangeRequest;
   tenantId: string;
@@ -160,6 +183,8 @@ export function RequestDetailDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdated: (request: ConfigChangeRequest) => void;
+  /** `{ code: display_name }` so a service code renders as its friendly name. */
+  serviceNames?: Record<string, string>;
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = React.useState(false);
@@ -242,9 +267,9 @@ export function RequestDetailDrawer({
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Proposed change
             </h3>
-            <ProposedChange request={request} />
+            <ProposedChange request={request} serviceNames={serviceNames} />
           </section>
-          <VersionHistory request={request} />
+          <VersionHistory request={request} serviceNames={serviceNames} />
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Review thread

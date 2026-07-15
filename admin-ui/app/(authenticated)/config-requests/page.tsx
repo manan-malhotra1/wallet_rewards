@@ -10,9 +10,13 @@ import { GitPullRequest } from "lucide-react";
 
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
-import { listConfigRequests } from "@/lib/api-endpoints";
+import { listConfigRequests, listServices } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import type { ConfigChangeRequest, ConfigRequestStatus } from "@/lib/api-types";
+import type {
+  ConfigChangeRequest,
+  ConfigRequestStatus,
+  Service,
+} from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -63,15 +67,25 @@ export default async function ConfigRequestsPage({
   }
 
   let requests: ConfigChangeRequest[] = [];
+  let services: Service[] = [];
   let error: ApiError | null = null;
   try {
     // Fetch all, then filter in-memory: the "Open" default spans two statuses,
     // which the single-status backend filter can't express in one call.
-    requests = await listConfigRequests(activeTenantId);
+    // Services power friendly service-name labels in the detail drawer.
+    [requests, services] = await Promise.all([
+      listConfigRequests(activeTenantId),
+      listServices(activeTenantId, "active"),
+    ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
   }
+
+  // Map service code → display name so the drawer shows "Cash In", not "cash_in".
+  const serviceNames = Object.fromEntries(
+    services.map((s) => [s.code, s.display_name]),
+  );
 
   const visible = activeFilter.statuses
     ? requests.filter((r) => activeFilter.statuses!.includes(r.status))
@@ -123,6 +137,7 @@ export default async function ConfigRequestsPage({
               tenantId={activeTenantId}
               canApprove={canApprove}
               currentAdminId={currentAdminId}
+              serviceNames={serviceNames}
             />
           )
         )}

@@ -115,7 +115,16 @@ export default async function PricingPage() {
             description="Per Pay-PRD-0420 every transaction MUST go through pricing. Add a config row (zero-fee is fine) per transaction type."
           />
         ) : (
-          <PricingTable configs={configs} tenantId={activeTenantId} />
+          <PricingTable
+            configs={configs}
+            tenantId={activeTenantId}
+            services={services}
+            instruments={instruments}
+            canPropose={canPropose}
+            serviceNames={Object.fromEntries(
+              services.map((s) => [s.code, s.display_name]),
+            )}
+          />
         )}
       </div>
     </div>

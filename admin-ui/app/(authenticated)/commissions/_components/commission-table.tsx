@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
@@ -21,9 +21,12 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import type { CommissionConfig } from "@/lib/api-types";
+import type { CommissionConfig, Instrument, Service } from "@/lib/api-types";
 import { formatAmount } from "@/lib/utils";
+
+import { CreateCommissionDialog } from "./create-commission-dialog";
 
 /** Render the slab band as "from–to", "≥from", "≤to", or "all". */
 function bandLabel(from: string | null, to: string | null): string {
@@ -33,12 +36,62 @@ function bandLabel(from: string | null, to: string | null): string {
   return "all";
 }
 
+/**
+ * Per-row Edit affordance — opens the create dialog in edit mode (proposes an
+ * `update`). Self-contained so it composes with a tooltip.
+ */
+function EditCommissionButton({
+  cfg,
+  tenantId,
+  services,
+  instruments,
+}: {
+  cfg: CommissionConfig;
+  tenantId: string;
+  services: Service[];
+  instruments: Instrument[];
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <Tooltip content="Edit">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Edit commission config"
+          onClick={() => setOpen(true)}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      </Tooltip>
+      <CreateCommissionDialog
+        tenantId={tenantId}
+        services={services}
+        instruments={instruments}
+        editConfig={cfg}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  );
+}
+
 export function CommissionTable({
   configs,
   tenantId,
+  services,
+  instruments,
+  canPropose,
+  serviceNames,
 }: {
   configs: CommissionConfig[];
   tenantId: string;
+  services: Service[];
+  instruments: Instrument[];
+  /** platform-admin gate — hides the Edit affordance for other admins. */
+  canPropose: boolean;
+  /** `{ code: display_name }` forwarded to the View drawer. */
+  serviceNames?: Record<string, string>;
 }) {
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -105,7 +158,16 @@ export function CommissionTable({
                     configType="commission"
                     data={cfg as unknown as Record<string, unknown>}
                     title={`Commission · ${cfg.transaction_type} · ${cfg.currency}`}
+                    serviceNames={serviceNames}
                   />
+                  {canPropose && (
+                    <EditCommissionButton
+                      cfg={cfg}
+                      tenantId={tenantId}
+                      services={services}
+                      instruments={instruments}
+                    />
+                  )}
                   <Button
                     variant="ghost"
                     size="icon-sm"

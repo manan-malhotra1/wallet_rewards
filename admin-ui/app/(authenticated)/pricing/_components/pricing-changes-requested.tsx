@@ -27,22 +27,29 @@ export function PricingChangesRequested({
   instruments: Instrument[];
 }) {
   if (requests.length === 0) return null;
+  // code → display_name so the card's Service field reads friendly, not raw.
+  const serviceNames = Object.fromEntries(
+    services.map((s) => [s.code, s.display_name]),
+  );
   return (
     <section className="mb-6 space-y-3">
       <h2 className="text-sm font-semibold text-muted-foreground">
         Open requests
       </h2>
       {requests.map((req) => {
+        // Both create and update proposals can be revised & resubmitted when a
+        // checker sends them back; only deletes carry no editable payload.
         const canEdit =
           req.maker_admin_id === currentAdminId &&
           req.status === "CHANGES_REQUESTED" &&
-          req.operation === "create";
+          req.operation !== "delete";
         return (
           <OpenRequestCard
             key={req.id}
             request={req}
             tenantId={tenantId}
             currentAdminId={currentAdminId}
+            serviceNames={serviceNames}
             editAction={
               canEdit ? (
                 <CreatePricingDialog

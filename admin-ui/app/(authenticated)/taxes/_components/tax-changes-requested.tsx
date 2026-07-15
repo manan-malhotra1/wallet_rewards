@@ -31,10 +31,12 @@ export function TaxChangesRequested({
         Open requests
       </h2>
       {requests.map((req) => {
+        // Both create and update proposals can be revised & resubmitted when a
+        // checker sends them back; only deletes carry no editable payload.
         const canEdit =
           req.maker_admin_id === currentAdminId &&
           req.status === "CHANGES_REQUESTED" &&
-          req.operation === "create";
+          req.operation !== "delete";
         return (
           <OpenRequestCard
             key={req.id}

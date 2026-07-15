@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
@@ -21,8 +21,11 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import type { WalletLimitConfig } from "@/lib/api-types";
+import type { Instrument, WalletLimitConfig } from "@/lib/api-types";
+
+import { CreateWalletLimitDialog } from "./create-wallet-limit-dialog";
 
 const WINDOWS = [
   ["D", "daily"],
@@ -43,12 +46,55 @@ function capsSummary(cfg: WalletLimitConfig, dir: "send" | "receive"): string {
   return parts.length ? parts.join("  ·  ") : "—";
 }
 
+/**
+ * Per-row Edit affordance — opens the create dialog in edit mode (proposes an
+ * `update`). Self-contained so it composes with a tooltip.
+ */
+function EditWalletLimitButton({
+  cfg,
+  tenantId,
+  instruments,
+}: {
+  cfg: WalletLimitConfig;
+  tenantId: string;
+  instruments: Instrument[];
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <Tooltip content="Edit">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Edit wallet limit"
+          onClick={() => setOpen(true)}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      </Tooltip>
+      <CreateWalletLimitDialog
+        tenantId={tenantId}
+        instruments={instruments}
+        editConfig={cfg}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  );
+}
+
 export function WalletLimitsTable({
   configs,
   tenantId,
+  instruments,
+  canPropose,
 }: {
   configs: WalletLimitConfig[];
   tenantId: string;
+  /** Financial-wallet instruments offered when editing (currency is locked). */
+  instruments: Instrument[];
+  /** platform-admin gate — hides the Edit affordance for other admins. */
+  canPropose: boolean;
 }) {
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -108,6 +154,13 @@ export function WalletLimitsTable({
                     data={cfg as unknown as Record<string, unknown>}
                     title={`Wallet limit · ${cfg.currency}`}
                   />
+                  {canPropose && (
+                    <EditWalletLimitButton
+                      cfg={cfg}
+                      tenantId={tenantId}
+                      instruments={instruments}
+                    />
+                  )}
                   <Button
                     variant="ghost"
                     size="icon-sm"

@@ -8,13 +8,20 @@
  * With a `reviseRequest`, it opens in revise mode: pre-filled from the proposal,
  * the submit button reads "Resubmit", and it revises + resubmits the request
  * instead of proposing a new one.
+ *
+ * With an `editConfig` (a live wallet-limit row), it opens in EDIT mode
+ * (Task 1): pre-filled with the currency + user-type scope locked and
+ * submitting PROPOSES an `update` against the row's id.
  */
 "use client";
 
 import * as React from "react";
 
 import { reviseAndResubmitConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
-import { proposeWalletLimitCreateAction } from "@/app/(authenticated)/limits/_actions";
+import {
+  proposeWalletLimitCreateAction,
+  proposeWalletLimitUpdateAction,
+} from "@/app/(authenticated)/limits/_actions";
 import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,7 +45,12 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import type { CreateWalletLimitConfigPayload } from "@/lib/api-endpoints";
-import type { ConfigChangeRequest, Instrument, UserType } from "@/lib/api-types";
+import type {
+  ConfigChangeRequest,
+  Instrument,
+  UserType,
+  WalletLimitConfig,
+} from "@/lib/api-types";
 
 // [payload key, label, isCount] — drives both the inputs and the payload build.
 type CapKey = keyof Omit<
@@ -66,12 +78,16 @@ function str(value: unknown, fallback = ""): string {
   return value === null || value === undefined ? fallback : String(value);
 }
 
-/** Derive the initial form from a revise proposal, or fresh defaults. */
+/** Derive the initial form from a revise proposal, an edited live row, or fresh defaults. */
 function initialForm(
   instruments: Instrument[],
   reviseRequest?: ConfigChangeRequest,
+  editConfig?: WalletLimitConfig,
 ): FormState {
-  const p = reviseRequest?.payload ?? null;
+  // Revise takes precedence over edit.
+  const p = reviseRequest
+    ? reviseRequest.payload
+    : ((editConfig as Record<string, unknown> | undefined) ?? null);
   const base = {
     currency: p ? str(p.currency) : (instruments[0]?.code ?? ""),
     max_balance: str(p?.max_balance),
@@ -86,15 +102,31 @@ export function CreateWalletLimitDialog({
   instruments,
   trigger,
   reviseRequest,
+  editConfig,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   tenantId: string;
   instruments: Instrument[];
-  trigger: React.ReactNode;
+  /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
+  trigger?: React.ReactNode;
   reviseRequest?: ConfigChangeRequest;
+  /** A live wallet-limit row to edit in place (proposes an `update`). */
+  editConfig?: WalletLimitConfig;
+  /** Controlled open state (edit affordance drives this); uncontrolled otherwise. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  const editMode = Boolean(editConfig);
+  // Scope (currency + user type) locks when editing a live config OR revising a
+  // sent-back UPDATE — both target an existing config's values, not its
+  // identity. A create revise keeps scope editable.
+  const scopeLocked = editMode || reviseRequest?.operation === "update";
   const [form, setForm] = React.useState<FormState>(() =>
-    initialForm(instruments, reviseRequest),
+    initialForm(instruments, reviseRequest, editConfig),
   );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
@@ -102,10 +134,10 @@ export function CreateWalletLimitDialog({
 
   React.useEffect(() => {
     if (!open) {
-      setForm(initialForm(instruments, reviseRequest));
+      setForm(initialForm(instruments, reviseRequest, editConfig));
       setErrorBanner(null);
     }
-  }, [open, instruments, reviseRequest]);
+  }, [open, instruments, reviseRequest, editConfig]);
 
   const update = (key: keyof FormState, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -137,7 +169,9 @@ export function CreateWalletLimitDialog({
           reviseRequest.id,
           { ...payload },
         )
-      : await proposeWalletLimitCreateAction(tenantId, payload);
+      : editConfig
+        ? await proposeWalletLimitUpdateAction(tenantId, editConfig.id, payload)
+        : await proposeWalletLimitCreateAction(tenantId, payload);
     setSubmitting(false);
     if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
@@ -154,11 +188,15 @@ export function CreateWalletLimitDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {reviseRequest ? "Revise wallet limit" : "New wallet limit"}
+            {reviseRequest
+              ? "Revise wallet limit"
+              : editMode
+                ? "Edit wallet limit"
+                : "New wallet limit"}
           </DialogTitle>
           <DialogDescription>
             Per-(tenant, currency) ceiling on a user&apos;s financial wallet. Set a
@@ -172,7 +210,7 @@ export function CreateWalletLimitDialog({
               <Select
                 value={form.currency}
                 onValueChange={(v) => update("currency", v)}
-                disabled={instruments.length === 0}
+                disabled={scopeLocked || instruments.length === 0}
               >
                 <SelectTrigger id="wlc-ccy">
                   <SelectValue placeholder="Choose…" />
@@ -202,6 +240,7 @@ export function CreateWalletLimitDialog({
               <Select
                 value={form.user_type}
                 onValueChange={(v) => update("user_type", v)}
+                disabled={scopeLocked}
               >
                 <SelectTrigger id="wlc-utype">
                   <SelectValue />

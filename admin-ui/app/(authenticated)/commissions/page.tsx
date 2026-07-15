@@ -121,7 +121,16 @@ export default async function CommissionsPage() {
             description="Add a commission config to define agent/merchant payouts per transaction type."
           />
         ) : (
-          <CommissionTable configs={configs} tenantId={activeTenantId} />
+          <CommissionTable
+            configs={configs}
+            tenantId={activeTenantId}
+            services={services}
+            instruments={instruments}
+            canPropose={canPropose}
+            serviceNames={Object.fromEntries(
+              services.map((s) => [s.code, s.display_name]),
+            )}
+          />
         )}
       </div>
     </div>

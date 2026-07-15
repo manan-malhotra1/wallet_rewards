@@ -8,13 +8,20 @@
  * With a `reviseRequest`, it opens in revise mode: pre-filled from the
  * proposal, the submit button reads "Resubmit", and it revises + resubmits the
  * request instead of proposing a new one.
+ *
+ * With an `editConfig` (a live commission row), it opens in EDIT mode (Task 1):
+ * pre-filled from that row with the scope fields locked, and submitting
+ * PROPOSES an `update` against the row's id. Bands may still be added/removed.
  */
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 
-import { proposeCommissionBandsAction } from "@/app/(authenticated)/commissions/_actions";
+import {
+  proposeCommissionBandsAction,
+  proposeCommissionUpdateAction,
+} from "@/app/(authenticated)/commissions/_actions";
 import { reviseAndResubmitConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
 import {
   emptyBand,
@@ -45,6 +52,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import type {
+  CommissionConfig,
   ConfigChangeRequest,
   Instrument,
   Service,
@@ -72,14 +80,19 @@ function str(value: unknown, fallback = ""): string {
   return value === null || value === undefined ? fallback : String(value);
 }
 
-/** Derive the initial scope + bands, from a revise proposal or fresh defaults. */
+/** Derive the initial scope + bands, from a revise proposal, an edited live row, or fresh defaults. */
 function deriveInitial(
   reviseRequest: ConfigChangeRequest | undefined,
+  editConfig: CommissionConfig | undefined,
   services: Service[],
   instruments: Instrument[],
 ): { scope: Scope; bands: BandRow[] } {
-  if (reviseRequest) {
-    const rows = bandsFromPayload(reviseRequest.payload);
+  // Revise takes precedence over edit; a live row is a single-band source.
+  const source = reviseRequest
+    ? reviseRequest.payload
+    : ((editConfig as Record<string, unknown> | undefined) ?? null);
+  if (source) {
+    const rows = bandsFromPayload(source);
     const first = rows[0] ?? {};
     return {
       scope: {
@@ -130,17 +143,33 @@ export function CreateCommissionDialog({
   instruments,
   trigger,
   reviseRequest,
+  editConfig,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   tenantId: string;
   services: Service[];
   instruments: Instrument[];
-  trigger: React.ReactNode;
+  /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
+  trigger?: React.ReactNode;
   reviseRequest?: ConfigChangeRequest;
+  /** A live commission row to edit in place (proposes an `update`). */
+  editConfig?: CommissionConfig;
+  /** Controlled open state (edit affordance drives this); uncontrolled otherwise. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  const editMode = Boolean(editConfig);
+  // Scope (identity) fields lock when editing a live config OR revising a
+  // sent-back UPDATE — both target an existing config's values, not its
+  // identity. A create revise keeps scope editable.
+  const scopeLocked = editMode || reviseRequest?.operation === "update";
   const initial = React.useMemo(
-    () => deriveInitial(reviseRequest, services, instruments),
-    [reviseRequest, services, instruments],
+    () => deriveInitial(reviseRequest, editConfig, services, instruments),
+    [reviseRequest, editConfig, services, instruments],
   );
   const [scope, setScope] = React.useState<Scope>(initial.scope);
   const [bands, setBands] = React.useState<BandRow[]>(initial.bands);
@@ -193,7 +222,11 @@ export function CreateCommissionDialog({
       ? await reviseAndResubmitConfigRequestAction(tenantId, reviseRequest.id, {
           bands: rows,
         })
-      : await proposeCommissionBandsAction(tenantId, { bands: rows });
+      : editConfig
+        ? await proposeCommissionUpdateAction(tenantId, editConfig.id, {
+            bands: rows,
+          })
+        : await proposeCommissionBandsAction(tenantId, { bands: rows });
     setSubmitting(false);
     if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
@@ -210,13 +243,15 @@ export function CreateCommissionDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {reviseRequest
               ? "Revise commission schedule"
-              : "New commission schedule"}
+              : editMode
+                ? "Edit commission"
+                : "New commission schedule"}
           </DialogTitle>
           <DialogDescription>
             Per band, commission = fixed + min(variable% × amount, cap). Changes
@@ -230,7 +265,7 @@ export function CreateCommissionDialog({
               <Select
                 value={scope.transaction_type}
                 onValueChange={(v) => updateScope("transaction_type", v)}
-                disabled={services.length === 0}
+                disabled={scopeLocked || services.length === 0}
               >
                 <SelectTrigger id="c-txn">
                   <SelectValue placeholder="Choose a service…" />
@@ -254,7 +289,7 @@ export function CreateCommissionDialog({
               <Select
                 value={scope.currency}
                 onValueChange={(v) => updateScope("currency", v)}
-                disabled={instruments.length === 0}
+                disabled={scopeLocked || instruments.length === 0}
               >
                 <SelectTrigger id="c-ccy">
                   <SelectValue placeholder="Choose…" />
@@ -273,6 +308,7 @@ export function CreateCommissionDialog({
               <Select
                 value={scope.user_type}
                 onValueChange={(v) => updateScope("user_type", v)}
+                disabled={scopeLocked}
               >
                 <SelectTrigger id="c-utype">
                   <SelectValue />

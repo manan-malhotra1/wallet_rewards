@@ -508,16 +508,14 @@ async def get_or_create_system_tax_commission(
 # -----------------------------------------------------------------------------
 
 
-async def create_pricing_config(
-    session: AsyncSession,
-    request: PricingConfigCreateRequest,
-    *,
-    admin: AdminPrincipal | None = None,
-    ip_address: str | None = None,
-) -> PricingConfig:
-    """Persist a new pricing config. 409 on unique-index collision."""
-    await _assert_tenant_exists(session, request.tenant_id)
-    config = PricingConfig(
+def _new_pricing_config(request: PricingConfigCreateRequest) -> PricingConfig:
+    """Build a PricingConfig ORM row from a validated create request (no DB I/O).
+
+    Shared by `create_pricing_config` (single row) and
+    `replace_pricing_config_for_scope` (a whole band set) so the field mapping
+    lives in one place.
+    """
+    return PricingConfig(
         tenant_id=request.tenant_id,
         transaction_type=request.transaction_type,
         account_type=request.account_type,
@@ -530,6 +528,34 @@ async def create_pricing_config(
         fee_cap=request.fee_cap,
         fee_inclusive=request.fee_inclusive,
     )
+
+
+def _pricing_config_state(config: PricingConfig) -> dict[str, object]:
+    """Serialise a pricing config for an audit snapshot (Decimals to str)."""
+    return {
+        "transaction_type": config.transaction_type,
+        "account_type": config.account_type,
+        "currency": config.currency,
+        "user_type": config.user_type,
+        "amount_from": str(config.amount_from) if config.amount_from is not None else None,
+        "amount_to": str(config.amount_to) if config.amount_to is not None else None,
+        "fixed_fee": str(config.fixed_fee),
+        "variable_fee_pct": str(config.variable_fee_pct),
+        "fee_cap": str(config.fee_cap) if config.fee_cap is not None else None,
+        "fee_inclusive": config.fee_inclusive,
+    }
+
+
+async def create_pricing_config(
+    session: AsyncSession,
+    request: PricingConfigCreateRequest,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> PricingConfig:
+    """Persist a new pricing config. 409 on unique-index collision."""
+    await _assert_tenant_exists(session, request.tenant_id)
+    config = _new_pricing_config(request)
     session.add(config)
     try:
         await session.flush()
@@ -549,24 +575,75 @@ async def create_pricing_config(
             action="pricing_config.created",
             entity_type="pricing_config",
             entity_id=str(config.id),
-            after_state={
-                "transaction_type": config.transaction_type,
-                "account_type": config.account_type,
-                "currency": config.currency,
-                "user_type": config.user_type,
-                "amount_from": str(config.amount_from) if config.amount_from is not None else None,
-                "amount_to": str(config.amount_to) if config.amount_to is not None else None,
-                "fixed_fee": str(config.fixed_fee),
-                "variable_fee_pct": str(config.variable_fee_pct),
-                "fee_cap": str(config.fee_cap) if config.fee_cap is not None else None,
-                "fee_inclusive": config.fee_inclusive,
-            },
+            after_state=_pricing_config_state(config),
             ip_address=ip_address,
         )
 
     await session.commit()
     await session.refresh(config)
     return config
+
+
+async def replace_pricing_config_for_scope(
+    session: AsyncSession,
+    requests: list[PricingConfigCreateRequest],
+    *,
+    target_config_id: UUID | None = None,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Atomically replace ALL pricing bands for a scope with a new band set.
+
+    The scope is the shared (tenant, transaction_type, account_type, currency,
+    user_type) of the incoming bands (the edit UI locks these to the live
+    config's scope). Every existing row for that scope is deleted and the new
+    band(s) inserted in ONE transaction — the DELETEs are flushed before the
+    INSERTs so re-inserting the same scope never trips the unique index —
+    committed once at the end. A mid-apply failure rolls the whole replace back
+    and never leaves the scope partially wiped (money-adjacent config).
+
+    Args:
+        requests: The validated new band set (one element for a single-band
+            schedule). All share the scope keys.
+        target_config_id: The live row the maker edited (audit traceability).
+
+    Side effects:
+        Deletes + inserts pricing_configs rows; appends one
+        `pricing_config.updated` audit row. Commits once.
+    """
+    first = requests[0]
+    scope = [
+        PricingConfig.tenant_id == first.tenant_id,
+        PricingConfig.transaction_type == first.transaction_type,
+        PricingConfig.account_type == first.account_type,
+        PricingConfig.currency == first.currency.upper(),
+        PricingConfig.user_type.is_(None)
+        if first.user_type is None
+        else PricingConfig.user_type == first.user_type,
+    ]
+    existing = list((await session.execute(select(PricingConfig).where(*scope))).scalars().all())
+    before = [_pricing_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
+    await session.flush()  # DELETEs must precede the INSERTs (unique index).
+
+    new_configs = [_new_pricing_config(r) for r in requests]
+    session.add_all(new_configs)
+    await session.flush()
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=first.tenant_id,
+            action="pricing_config.updated",
+            entity_type="pricing_config",
+            entity_id=str(target_config_id or new_configs[0].id),
+            before_state={"replaced": before},
+            after_state={"bands": [_pricing_config_state(c) for c in new_configs]},
+            ip_address=ip_address,
+        )
+    await session.commit()
 
 
 async def list_pricing_configs(session: AsyncSession, tenant_id: UUID) -> list[PricingConfig]:

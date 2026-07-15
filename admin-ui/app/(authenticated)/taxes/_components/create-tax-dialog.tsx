@@ -2,13 +2,20 @@
  * Create-tax dialog (Epic 24 / Story 24.2). Tax is keyed per (tenant,
  * currency) with independent fee/commission rates + inclusive flags. PROPOSES
  * a create through the maker-checker pipeline.
+ *
+ * With a `reviseRequest`, it opens in revise mode. With an `editConfig` (a live
+ * tax row), it opens in EDIT mode (Task 1): pre-filled with the currency locked
+ * and submitting PROPOSES an `update` against the row's id.
  */
 "use client";
 
 import * as React from "react";
 
 import { reviseAndResubmitConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
-import { proposeTaxChangeAction } from "@/app/(authenticated)/taxes/_actions";
+import {
+  proposeTaxChangeAction,
+  proposeTaxUpdateAction,
+} from "@/app/(authenticated)/taxes/_actions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -31,7 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { ConfigChangeRequest, Instrument } from "@/lib/api-types";
+import type { ConfigChangeRequest, Instrument, TaxConfig } from "@/lib/api-types";
 
 interface FormState {
   currency: string;
@@ -45,13 +52,18 @@ function str(value: unknown, fallback = ""): string {
   return value === null || value === undefined ? fallback : String(value);
 }
 
-/** Derive the initial form from a revise proposal, or fresh defaults. */
+/** Derive the initial form from a revise proposal, an edited live row, or fresh defaults. */
 function initialForm(
   instruments: Instrument[],
   reviseRequest?: ConfigChangeRequest,
+  editConfig?: TaxConfig,
 ): FormState {
-  if (reviseRequest) {
-    const p = reviseRequest.payload ?? {};
+  // Revise takes precedence over edit.
+  const source = reviseRequest
+    ? reviseRequest.payload
+    : ((editConfig as Record<string, unknown> | undefined) ?? null);
+  if (source) {
+    const p = source;
     return {
       currency: str(p.currency),
       fee_tax_pct: str(p.fee_tax_pct, "0"),
@@ -77,15 +89,31 @@ export function CreateTaxDialog({
   instruments,
   trigger,
   reviseRequest,
+  editConfig,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   tenantId: string;
   instruments: Instrument[];
-  trigger: React.ReactNode;
+  /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
+  trigger?: React.ReactNode;
   reviseRequest?: ConfigChangeRequest;
+  /** A live tax row to edit in place (proposes an `update`). */
+  editConfig?: TaxConfig;
+  /** Controlled open state (edit affordance drives this); uncontrolled otherwise. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  const editMode = Boolean(editConfig);
+  // Scope (currency) locks when editing a live config OR revising a sent-back
+  // UPDATE — both target an existing config's values, not its identity. A
+  // create revise keeps scope editable.
+  const scopeLocked = editMode || reviseRequest?.operation === "update";
   const [form, setForm] = React.useState<FormState>(() =>
-    initialForm(instruments, reviseRequest),
+    initialForm(instruments, reviseRequest, editConfig),
   );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
@@ -93,10 +121,10 @@ export function CreateTaxDialog({
 
   React.useEffect(() => {
     if (!open) {
-      setForm(initialForm(instruments, reviseRequest));
+      setForm(initialForm(instruments, reviseRequest, editConfig));
       setErrorBanner(null);
     }
-  }, [open, instruments, reviseRequest]);
+  }, [open, instruments, reviseRequest, editConfig]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -118,7 +146,9 @@ export function CreateTaxDialog({
           reviseRequest.id,
           payload,
         )
-      : await proposeTaxChangeAction(payload);
+      : editConfig
+        ? await proposeTaxUpdateAction(tenantId, editConfig.id, payload)
+        : await proposeTaxChangeAction(payload);
     setSubmitting(false);
     if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
@@ -135,11 +165,15 @@ export function CreateTaxDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {reviseRequest ? "Revise tax config" : "New tax config"}
+            {reviseRequest
+              ? "Revise tax config"
+              : editMode
+                ? "Edit tax"
+                : "New tax config"}
           </DialogTitle>
           <DialogDescription>
             One tax config per currency — applied to fees and commissions
@@ -152,7 +186,7 @@ export function CreateTaxDialog({
             <Select
               value={form.currency}
               onValueChange={(v) => update("currency", v)}
-              disabled={instruments.length === 0}
+              disabled={scopeLocked || instruments.length === 0}
             >
               <SelectTrigger id="t-ccy">
                 <SelectValue placeholder="Choose…" />

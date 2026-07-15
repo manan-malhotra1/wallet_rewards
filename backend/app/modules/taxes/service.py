@@ -109,6 +109,32 @@ async def calculate_tax(
 # -----------------------------------------------------------------------------
 
 
+def _new_tax_config(request: TaxConfigCreateRequest) -> TaxConfig:
+    """Build a TaxConfig ORM row from a validated create request (no DB I/O).
+
+    Shared by `create_tax_config` and `replace_tax_config_for_scope`.
+    """
+    return TaxConfig(
+        tenant_id=request.tenant_id,
+        currency=request.currency.upper(),
+        fee_tax_pct=request.fee_tax_pct,
+        commission_tax_pct=request.commission_tax_pct,
+        fee_tax_inclusive=request.fee_tax_inclusive,
+        commission_tax_inclusive=request.commission_tax_inclusive,
+    )
+
+
+def _tax_config_state(config: TaxConfig) -> dict[str, object]:
+    """Serialise a tax config for an audit snapshot."""
+    return {
+        "currency": config.currency,
+        "fee_tax_pct": str(config.fee_tax_pct),
+        "commission_tax_pct": str(config.commission_tax_pct),
+        "fee_tax_inclusive": config.fee_tax_inclusive,
+        "commission_tax_inclusive": config.commission_tax_inclusive,
+    }
+
+
 async def create_tax_config(
     session: AsyncSession,
     request: TaxConfigCreateRequest,
@@ -118,14 +144,7 @@ async def create_tax_config(
 ) -> TaxConfig:
     """Persist a new tax config. 409 on unique (tenant, currency) collision."""
     await _assert_tenant_exists(session, request.tenant_id)
-    config = TaxConfig(
-        tenant_id=request.tenant_id,
-        currency=request.currency.upper(),
-        fee_tax_pct=request.fee_tax_pct,
-        commission_tax_pct=request.commission_tax_pct,
-        fee_tax_inclusive=request.fee_tax_inclusive,
-        commission_tax_inclusive=request.commission_tax_inclusive,
-    )
+    config = _new_tax_config(request)
     session.add(config)
     try:
         await session.flush()
@@ -145,19 +164,66 @@ async def create_tax_config(
             action="tax_config.created",
             entity_type="tax_config",
             entity_id=str(config.id),
-            after_state={
-                "currency": config.currency,
-                "fee_tax_pct": str(config.fee_tax_pct),
-                "commission_tax_pct": str(config.commission_tax_pct),
-                "fee_tax_inclusive": config.fee_tax_inclusive,
-                "commission_tax_inclusive": config.commission_tax_inclusive,
-            },
+            after_state=_tax_config_state(config),
             ip_address=ip_address,
         )
 
     await session.commit()
     await session.refresh(config)
     return config
+
+
+async def replace_tax_config_for_scope(
+    session: AsyncSession,
+    requests: list[TaxConfigCreateRequest],
+    *,
+    target_config_id: UUID | None = None,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Atomically replace the tax config for a scope with a new one.
+
+    Scope = (tenant, currency) — a single row. The existing row is deleted and
+    the new one inserted in ONE transaction — DELETE flushed before INSERT so
+    the unique index never trips — committed once. A mid-apply failure rolls the
+    whole replace back.
+
+    Args:
+        requests: A one-element list holding the validated new config.
+        target_config_id: The live row the maker edited (audit traceability).
+
+    Side effects:
+        Deletes + inserts a tax_configs row; appends one `tax_config.updated`
+        audit row. Commits once.
+    """
+    first = requests[0]
+    scope = [
+        TaxConfig.tenant_id == first.tenant_id,
+        TaxConfig.currency == first.currency.upper(),
+    ]
+    existing = list((await session.execute(select(TaxConfig).where(*scope))).scalars().all())
+    before = [_tax_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
+    await session.flush()  # DELETE must precede the INSERT (unique index).
+
+    new_config = _new_tax_config(first)
+    session.add(new_config)
+    await session.flush()
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=first.tenant_id,
+            action="tax_config.updated",
+            entity_type="tax_config",
+            entity_id=str(target_config_id or new_config.id),
+            before_state={"replaced": before},
+            after_state=_tax_config_state(new_config),
+            ip_address=ip_address,
+        )
+    await session.commit()
 
 
 async def list_tax_configs(session: AsyncSession, tenant_id: UUID) -> list[TaxConfig]:

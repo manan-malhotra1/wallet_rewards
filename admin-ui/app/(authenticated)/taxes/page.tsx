@@ -111,7 +111,12 @@ export default async function TaxesPage() {
             description="Add a tax config per currency to apply fee and commission tax rates."
           />
         ) : (
-          <TaxTable configs={configs} tenantId={activeTenantId} />
+          <TaxTable
+            configs={configs}
+            tenantId={activeTenantId}
+            instruments={instruments}
+            canPropose={canPropose}
+          />
         )}
       </div>
     </div>

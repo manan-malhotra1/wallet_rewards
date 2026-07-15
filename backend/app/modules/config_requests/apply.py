@@ -5,14 +5,21 @@ create/delete service (which stages the row, writes its own audit, and commits).
 Because the caller stages the request's status change BEFORE calling `apply`,
 the config write and the request→APPLIED transition land in the SAME commit —
 so a collision (409) rolls both back and the request stays actionable.
+
+An `update` is an ATOMIC REPLACE: a per-type `replace_*_config_for_scope` helper
+deletes every existing row for the payload's scope and inserts the new row(s)
+within ONE transaction (one commit at the end). Composing create+delete would
+commit the delete first and break atomicity, so update never does that.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
@@ -20,6 +27,7 @@ from app.modules.commissions.schemas import CommissionConfigCreateRequest
 from app.modules.commissions.service import (
     create_commission_config,
     delete_commission_config,
+    replace_commission_config_for_scope,
 )
 from app.modules.limits.schemas import (
     LimitConfigCreateRequest,
@@ -30,26 +38,45 @@ from app.modules.limits.service import (
     create_wallet_limit_config,
     delete_limit_config,
     delete_wallet_limit_config,
+    replace_limit_config_for_scope,
+    replace_wallet_limit_config_for_scope,
 )
 from app.modules.pricing.schemas import PricingConfigCreateRequest
-from app.modules.pricing.service import create_pricing_config, delete_pricing_config
+from app.modules.pricing.service import (
+    create_pricing_config,
+    delete_pricing_config,
+    replace_pricing_config_for_scope,
+)
 from app.modules.taxes.schemas import TaxConfigCreateRequest
-from app.modules.taxes.service import create_tax_config, delete_tax_config
+from app.modules.taxes.service import (
+    create_tax_config,
+    delete_tax_config,
+    replace_tax_config_for_scope,
+)
 from app.shared.exceptions import AppHTTPException
 from app.shared.models import (
     CONFIG_OP_CREATE,
+    CONFIG_OP_UPDATE,
     CONFIG_TYPE_COMMISSION,
     CONFIG_TYPE_LIMIT,
     CONFIG_TYPE_PRICING,
     CONFIG_TYPE_TAX,
     CONFIG_TYPE_WALLET_LIMIT,
+    CommissionConfig,
     ConfigChangeRequest,
+    LimitConfig,
+    PricingConfig,
+    TaxConfig,
+    WalletLimitConfig,
 )
 
 # A create needs the schema to parse the payload + the create fn; a delete needs
 # the delete fn. `_CreateFn` and `_DeleteFn` mirror every config service's shape.
 _CreateFn = Callable[..., Awaitable[object]]
 _DeleteFn = Callable[..., Awaitable[None]]
+# A replace takes the validated band set + target id, deletes the scope and
+# inserts the new row(s) in one commit (see the module docstring).
+_ReplaceFn = Callable[..., Awaitable[None]]
 
 # config_type -> (create-request schema, create fn, delete fn).
 _DISPATCH: dict[str, tuple[type[BaseModel], _CreateFn, _DeleteFn]] = {
@@ -71,6 +98,70 @@ _DISPATCH: dict[str, tuple[type[BaseModel], _CreateFn, _DeleteFn]] = {
     ),
     CONFIG_TYPE_TAX: (TaxConfigCreateRequest, create_tax_config, delete_tax_config),
 }
+
+# config_type -> the atomic-replace helper an `update` dispatches to.
+_REPLACE_DISPATCH: dict[str, _ReplaceFn] = {
+    CONFIG_TYPE_PRICING: replace_pricing_config_for_scope,
+    CONFIG_TYPE_LIMIT: replace_limit_config_for_scope,
+    CONFIG_TYPE_WALLET_LIMIT: replace_wallet_limit_config_for_scope,
+    CONFIG_TYPE_COMMISSION: replace_commission_config_for_scope,
+    CONFIG_TYPE_TAX: replace_tax_config_for_scope,
+}
+
+# config_type -> its real config-table model (for the update/delete target
+# existence + scope check at propose time).
+_MODEL_BY_TYPE: dict[str, type[Any]] = {
+    CONFIG_TYPE_PRICING: PricingConfig,
+    CONFIG_TYPE_LIMIT: LimitConfig,
+    CONFIG_TYPE_WALLET_LIMIT: WalletLimitConfig,
+    CONFIG_TYPE_COMMISSION: CommissionConfig,
+    CONFIG_TYPE_TAX: TaxConfig,
+}
+
+# config_type -> the attributes that identify a config's SCOPE. An update must
+# not move the scope: the payload's derived scope has to equal the target row's.
+# Read off both an ORM config row and a create-schema band model (same attr
+# names), so one helper compares them. commission has no account_type; wallet_
+# limit is keyed by (currency, user_type); tax by currency alone.
+_SCOPE_KEYS: dict[str, tuple[str, ...]] = {
+    CONFIG_TYPE_PRICING: ("transaction_type", "account_type", "currency", "user_type"),
+    CONFIG_TYPE_LIMIT: ("transaction_type", "account_type", "currency", "user_type"),
+    CONFIG_TYPE_COMMISSION: ("transaction_type", "currency", "user_type"),
+    CONFIG_TYPE_WALLET_LIMIT: ("currency", "user_type"),
+    CONFIG_TYPE_TAX: ("currency",),
+}
+
+
+def config_scope(config_type: str, obj: object) -> tuple[object, ...]:
+    """Extract a config's scope tuple from an ORM row OR a create-schema band.
+
+    `currency` is upper-cased on both sides so the comparison is case-insensitive
+    (the ORM stores it upper-cased; a raw payload may not). Other keys compare
+    verbatim.
+    """
+    values: list[object] = []
+    for key in _SCOPE_KEYS[config_type]:
+        value = getattr(obj, key)
+        if key == "currency" and value is not None:
+            value = str(value).upper()
+        values.append(value)
+    return tuple(values)
+
+
+async def load_config_target(
+    session: AsyncSession, config_type: str, target_config_id: UUID, tenant_id: UUID
+) -> Any | None:
+    """Load the live config row named by `target_config_id` in this tenant, or None.
+
+    Used at propose time to reject an update/delete whose `target_config_id`
+    points at a config that isn't there (404 `config_request_target_not_found`)
+    and — for update — to compare the target's scope against the payload's.
+    """
+    model = _MODEL_BY_TYPE[config_type]
+    result = await session.execute(
+        select(model).where(model.id == target_config_id, model.tenant_id == tenant_id)
+    )
+    return result.scalar_one_or_none()
 
 
 # Config types whose create payload may carry MULTIPLE amount bands (Epic 25).
@@ -182,12 +273,17 @@ async def apply_config_request(
     admin: AdminPrincipal,
     ip_address: str | None = None,
 ) -> None:
-    """Write the approved create/delete to the real config table.
+    """Write the approved create/update/delete to the real config table.
 
-    Delegates to the config type's own create/delete service, which commits —
-    persisting the request mutations the caller staged beforehand in the SAME
-    transaction. The underlying service also writes its own `*_config.created` /
-    `.deleted` audit row.
+    Delegates to the config type's own create/replace/delete service, which
+    commits — persisting the request mutations the caller staged beforehand in
+    the SAME transaction. The underlying service also writes its own
+    `*_config.created` / `.updated` / `.deleted` audit row.
+
+    An update is an atomic replace of the payload's scope: `replace_fn` deletes
+    every existing row for the scope and inserts the new band(s) in one commit,
+    so a mid-apply failure rolls the whole replace back (the scope is never left
+    partially wiped).
 
     Raises:
         AppHTTPException (409/404/422): propagated from the underlying service
@@ -200,6 +296,18 @@ async def apply_config_request(
         # plus the request→APPLIED transition the caller staged).
         for schema in validate_band_payload(request.config_type, request.payload or {}):
             await create_fn(session, schema, admin=admin, ip_address=ip_address)
+    elif request.operation == CONFIG_OP_UPDATE:
+        # Atomic replace: hand the whole validated band set to the type's replace
+        # helper, which deletes the scope + inserts the new row(s) in one commit.
+        schemas = validate_band_payload(request.config_type, request.payload or {})
+        replace_fn = _REPLACE_DISPATCH[request.config_type]
+        await replace_fn(
+            session,
+            schemas,
+            target_config_id=request.target_config_id,
+            admin=admin,
+            ip_address=ip_address,
+        )
     else:
         # delete — target_config_id is guaranteed set by the propose validation.
         assert request.target_config_id is not None

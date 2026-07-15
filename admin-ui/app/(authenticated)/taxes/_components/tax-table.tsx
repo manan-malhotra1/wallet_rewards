@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
@@ -20,20 +20,65 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import type { TaxConfig } from "@/lib/api-types";
+import type { Instrument, TaxConfig } from "@/lib/api-types";
+
+import { CreateTaxDialog } from "./create-tax-dialog";
 
 /** Format a decimal-string rate (e.g. "0.15") as a percentage. */
 function pct(value: string): string {
   return `${(parseFloat(value) * 100).toFixed(2)}%`;
 }
 
+/**
+ * Per-row Edit affordance — opens the create dialog in edit mode (proposes an
+ * `update`). Self-contained so it composes with a tooltip.
+ */
+function EditTaxButton({
+  cfg,
+  tenantId,
+  instruments,
+}: {
+  cfg: TaxConfig;
+  tenantId: string;
+  instruments: Instrument[];
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <Tooltip content="Edit">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Edit tax config"
+          onClick={() => setOpen(true)}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      </Tooltip>
+      <CreateTaxDialog
+        tenantId={tenantId}
+        instruments={instruments}
+        editConfig={cfg}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  );
+}
+
 export function TaxTable({
   configs,
   tenantId,
+  instruments,
+  canPropose,
 }: {
   configs: TaxConfig[];
   tenantId: string;
+  instruments: Instrument[];
+  /** platform-admin gate — hides the Edit affordance for other admins. */
+  canPropose: boolean;
 }) {
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -97,6 +142,13 @@ export function TaxTable({
                     data={cfg as unknown as Record<string, unknown>}
                     title={`Tax · ${cfg.currency}`}
                   />
+                  {canPropose && (
+                    <EditTaxButton
+                      cfg={cfg}
+                      tenantId={tenantId}
+                      instruments={instruments}
+                    />
+                  )}
                   <Button
                     variant="ghost"
                     size="icon-sm"

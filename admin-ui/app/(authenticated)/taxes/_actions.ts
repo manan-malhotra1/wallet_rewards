@@ -44,6 +44,32 @@ export async function proposeTaxChangeAction(
   }
 }
 
+/**
+ * Propose UPDATING a live tax config (Task 1). Re-proposes the config's values
+ * in place: the create-shaped payload plus the `target_config_id` of the row
+ * being edited (currency scope unchanged). Approval by a second admin applies
+ * the change.
+ */
+export async function proposeTaxUpdateAction(
+  tenantId: string,
+  targetConfigId: string,
+  payload: ProposeTaxInput,
+): Promise<TaxActionResult> {
+  try {
+    await proposeConfigChange(tenantId, {
+      config_type: "tax",
+      operation: "update",
+      payload: { ...payload },
+      target_config_id: targetConfigId,
+    });
+    revalidatePath("/taxes");
+    revalidatePath("/config-requests");
+    return { ok: true };
+  } catch (err) {
+    return toResult(err);
+  }
+}
+
 /** Propose deleting a tax config by id. */
 export async function proposeTaxDeleteAction(
   configId: string,

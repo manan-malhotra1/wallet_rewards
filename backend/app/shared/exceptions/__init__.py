@@ -1003,6 +1003,21 @@ class ConfigRequestCommentRequired(AppHTTPException):
         )
 
 
+class ConfigRequestTargetNotFound(AppHTTPException):
+    """The `target_config_id` on an update/delete proposal does not exist here.
+
+    Raised at propose time when the live config row the maker wants to edit is
+    absent in this tenant for the given config type.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            404,
+            "config_request_target_not_found",
+            "The target config to edit was not found in this tenant.",
+        )
+
+
 # --- Step-up PIN ----------------------------------------------------------
 
 

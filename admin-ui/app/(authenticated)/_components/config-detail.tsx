@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ConfigType, UserType } from "@/lib/api-types";
+import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatAmount } from "@/lib/utils";
 
 type Row = Record<string, unknown>;
@@ -83,6 +84,18 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   points_account: "Points",
 };
 
+/**
+ * Friendly display name for a transaction-type code. Prefers the tenant's
+ * service `display_name` map when supplied, else falls back to the shared
+ * `transactionTypeLabel` (which title-cases unknown codes).
+ */
+function serviceLabel(
+  code: string,
+  serviceNames: Record<string, string> | undefined,
+): string {
+  return serviceNames?.[code] ?? transactionTypeLabel(code);
+}
+
 /** Title-case a snake_case key when no explicit label exists. */
 function humanize(key: string): string {
   const words = key.replace(/_/g, " ");
@@ -130,15 +143,21 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function ScopeFields({
   configType,
   scope,
+  serviceNames,
 }: {
   configType: ConfigType;
   scope: Row;
+  serviceNames?: Record<string, string>;
 }) {
   const userType = scope.user_type as UserType | null | undefined;
+  const code =
+    scope.transaction_type == null ? null : String(scope.transaction_type);
   return (
     <dl className="grid grid-cols-[minmax(0,9rem)_1fr] gap-x-3 gap-y-1.5">
       <Field label="Service">
-        <Badge variant="info">{String(scope.transaction_type ?? "—")}</Badge>
+        <Badge variant="info">
+          {code ? serviceLabel(code, serviceNames) : "—"}
+        </Badge>
       </Field>
       {scope.account_type !== undefined && (
         <Field label="Account type">
@@ -204,7 +223,13 @@ function BandsTable({ configType, bands }: { configType: ConfigType; bands: Row[
 }
 
 /** Render the flat fields of a tax/limit/wallet_limit config. */
-function FlatFields({ data }: { data: Row }) {
+function FlatFields({
+  data,
+  serviceNames,
+}: {
+  data: Row;
+  serviceNames?: Record<string, string>;
+}) {
   const entries = Object.entries(data).filter(([key]) => !HIDDEN_KEYS.has(key));
   if (entries.length === 0) {
     return <p className="text-sm text-muted-foreground">No fields.</p>;
@@ -214,7 +239,9 @@ function FlatFields({ data }: { data: Row }) {
       {entries.map(([key, value]) => (
         <Field key={key} label={FIELD_LABELS[key] ?? humanize(key)}>
           {key === "transaction_type" ? (
-            <Badge variant="info">{String(value)}</Badge>
+            <Badge variant="info">
+              {serviceLabel(String(value), serviceNames)}
+            </Badge>
           ) : key === "user_type" ? (
             value ? (
               <UserTypeBadge type={value as UserType} />
@@ -238,13 +265,18 @@ function FlatFields({ data }: { data: Row }) {
  * @param configType Which config domain the data belongs to.
  * @param data A live config row, or a proposed-change payload. For
  *   pricing/commission this may be a single row or a `{ bands: [...] }` object.
+ * @param serviceNames Optional `{ code: display_name }` map so a
+ *   `transaction_type` renders as its friendly service name rather than the
+ *   raw code. Falls back to `transactionTypeLabel` when absent or unmapped.
  */
 export function ConfigDetail({
   configType,
   data,
+  serviceNames,
 }: {
   configType: ConfigType;
   data: Row | null;
+  serviceNames?: Record<string, string>;
 }) {
   if (!data) {
     return <p className="text-sm text-muted-foreground">No payload.</p>;
@@ -258,11 +290,15 @@ export function ConfigDetail({
     }
     return (
       <div className="space-y-4">
-        <ScopeFields configType={configType} scope={bands[0]} />
+        <ScopeFields
+          configType={configType}
+          scope={bands[0]}
+          serviceNames={serviceNames}
+        />
         <BandsTable configType={configType} bands={bands} />
       </div>
     );
   }
 
-  return <FlatFields data={data} />;
+  return <FlatFields data={data} serviceNames={serviceNames} />;
 }

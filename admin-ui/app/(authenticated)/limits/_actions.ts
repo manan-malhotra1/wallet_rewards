@@ -40,6 +40,32 @@ export async function proposeLimitCreateAction(
   }
 }
 
+/**
+ * Propose UPDATING a live service limit (Task 1). Re-proposes the config's
+ * values in place: the create-shaped payload plus the `target_config_id` of the
+ * row being edited (scope unchanged). Nothing goes live until a second admin
+ * approves.
+ */
+export async function proposeLimitUpdateAction(
+  tenantId: string,
+  targetConfigId: string,
+  payload: CreateLimitConfigPayload,
+): Promise<LimitActionResult> {
+  try {
+    await proposeConfigChange(tenantId, {
+      config_type: "limit",
+      operation: "update",
+      payload: { ...payload },
+      target_config_id: targetConfigId,
+    });
+    revalidatePath("/limits");
+    revalidatePath("/config-requests");
+    return { ok: true };
+  } catch (err) {
+    return toResult(err);
+  }
+}
+
 /** Propose deleting a service limit by id. */
 export async function proposeLimitDeleteAction(
   configId: string,
@@ -69,6 +95,32 @@ export async function proposeWalletLimitCreateAction(
       config_type: "wallet_limit",
       operation: "create",
       payload: { ...payload },
+    });
+    revalidatePath("/limits");
+    revalidatePath("/config-requests");
+    return { ok: true };
+  } catch (err) {
+    return toResult(err);
+  }
+}
+
+/**
+ * Propose UPDATING a live wallet-level limit (Task 1). Re-proposes the config's
+ * values in place: the create-shaped payload plus the `target_config_id` of the
+ * row being edited (currency/user-type scope unchanged). Approval by a second
+ * admin applies the change.
+ */
+export async function proposeWalletLimitUpdateAction(
+  tenantId: string,
+  targetConfigId: string,
+  payload: CreateWalletLimitConfigPayload,
+): Promise<LimitActionResult> {
+  try {
+    await proposeConfigChange(tenantId, {
+      config_type: "wallet_limit",
+      operation: "update",
+      payload: { ...payload },
+      target_config_id: targetConfigId,
     });
     revalidatePath("/limits");
     revalidatePath("/config-requests");

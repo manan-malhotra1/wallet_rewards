@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
@@ -21,20 +21,73 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import type { LimitConfig } from "@/lib/api-types";
+import type { Instrument, LimitConfig, Service } from "@/lib/api-types";
+
+import { CreateLimitDialog } from "./create-limit-dialog";
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   financial_wallet: "Wallet",
   points_account: "Points",
 };
 
+/**
+ * Per-row Edit affordance — opens the create dialog in edit mode (proposes an
+ * `update`). Self-contained so it composes with a tooltip.
+ */
+function EditLimitButton({
+  cfg,
+  tenantId,
+  services,
+  instruments,
+}: {
+  cfg: LimitConfig;
+  tenantId: string;
+  services: Service[];
+  instruments: Instrument[];
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <Tooltip content="Edit">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Edit limit"
+          onClick={() => setOpen(true)}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      </Tooltip>
+      <CreateLimitDialog
+        tenantId={tenantId}
+        services={services}
+        instruments={instruments}
+        editConfig={cfg}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  );
+}
+
 export function LimitsTable({
   configs,
   tenantId,
+  services,
+  instruments,
+  canPropose,
+  serviceNames,
 }: {
   configs: LimitConfig[];
   tenantId: string;
+  services: Service[];
+  instruments: Instrument[];
+  /** platform-admin gate — hides the Edit affordance for other admins. */
+  canPropose: boolean;
+  /** `{ code: display_name }` forwarded to the View drawer. */
+  serviceNames?: Record<string, string>;
 }) {
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -121,7 +174,16 @@ export function LimitsTable({
                     configType="limit"
                     data={cfg as unknown as Record<string, unknown>}
                     title={`Limit · ${cfg.transaction_type} · ${cfg.currency}`}
+                    serviceNames={serviceNames}
                   />
+                  {canPropose && (
+                    <EditLimitButton
+                      cfg={cfg}
+                      tenantId={tenantId}
+                      services={services}
+                      instruments={instruments}
+                    />
+                  )}
                   <Button
                     variant="ghost"
                     size="icon-sm"

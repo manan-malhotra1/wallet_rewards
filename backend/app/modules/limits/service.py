@@ -590,20 +590,25 @@ def _caps_snapshot(config: object, fields: tuple[str, ...]) -> dict[str, object]
     return snapshot
 
 
-async def create_limit_config(
-    session: AsyncSession,
-    request: LimitConfigCreateRequest,
-    *,
-    admin: AdminPrincipal | None = None,
-    ip_address: str | None = None,
-) -> LimitConfig:
-    """Create a new limit config row.
+# Cap columns carried into a limit config's audit snapshot.
+_LIMIT_CAP_FIELDS = (
+    "min_amount",
+    "max_amount",
+    "daily_count_cap",
+    "daily_value_cap",
+    "weekly_count_cap",
+    "weekly_value_cap",
+    "monthly_count_cap",
+    "monthly_value_cap",
+)
 
-    Raises 409 on unique-index collision (one config per
-    `(tenant, transaction_type, account_type, currency)`).
+
+def _new_limit_config(request: LimitConfigCreateRequest) -> LimitConfig:
+    """Build a LimitConfig ORM row from a validated create request (no DB I/O).
+
+    Shared by `create_limit_config` and `replace_limit_config_for_scope`.
     """
-    await _assert_tenant_exists(session, request.tenant_id)
-    config = LimitConfig(
+    return LimitConfig(
         tenant_id=request.tenant_id,
         transaction_type=request.transaction_type,
         account_type=request.account_type,
@@ -618,6 +623,33 @@ async def create_limit_config(
         monthly_count_cap=request.monthly_count_cap,
         monthly_value_cap=request.monthly_value_cap,
     )
+
+
+def _limit_config_state(config: LimitConfig) -> dict[str, object]:
+    """Serialise a limit config for an audit snapshot."""
+    return {
+        "transaction_type": config.transaction_type,
+        "account_type": config.account_type,
+        "currency": config.currency,
+        "user_type": config.user_type,
+        **_caps_snapshot(config, _LIMIT_CAP_FIELDS),
+    }
+
+
+async def create_limit_config(
+    session: AsyncSession,
+    request: LimitConfigCreateRequest,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> LimitConfig:
+    """Create a new limit config row.
+
+    Raises 409 on unique-index collision (one config per
+    `(tenant, transaction_type, account_type, currency)`).
+    """
+    await _assert_tenant_exists(session, request.tenant_id)
+    config = _new_limit_config(request)
     session.add(config)
     try:
         await session.flush()
@@ -637,30 +669,73 @@ async def create_limit_config(
             action="limit_config.created",
             entity_type="limit_config",
             entity_id=str(config.id),
-            after_state={
-                "transaction_type": config.transaction_type,
-                "account_type": config.account_type,
-                "currency": config.currency,
-                **_caps_snapshot(
-                    config,
-                    (
-                        "min_amount",
-                        "max_amount",
-                        "daily_count_cap",
-                        "daily_value_cap",
-                        "weekly_count_cap",
-                        "weekly_value_cap",
-                        "monthly_count_cap",
-                        "monthly_value_cap",
-                    ),
-                ),
-            },
+            after_state=_limit_config_state(config),
             ip_address=ip_address,
         )
 
     await session.commit()
     await session.refresh(config)
     return config
+
+
+async def replace_limit_config_for_scope(
+    session: AsyncSession,
+    requests: list[LimitConfigCreateRequest],
+    *,
+    target_config_id: UUID | None = None,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Atomically replace the limit config for a scope with a new one.
+
+    Scope = (tenant, transaction_type, account_type, currency, user_type) — a
+    single row (a limit config is never multi-band). The existing row for that
+    scope is deleted and the new one inserted in ONE transaction — the DELETE is
+    flushed before the INSERT so re-inserting the same scope never trips the
+    unique index — committed once. A mid-apply failure rolls the whole replace
+    back and never leaves the scope wiped.
+
+    Args:
+        requests: A one-element list holding the validated new config.
+        target_config_id: The live row the maker edited (audit traceability).
+
+    Side effects:
+        Deletes + inserts a limit_configs row; appends one
+        `limit_config.updated` audit row. Commits once.
+    """
+    first = requests[0]
+    scope = [
+        LimitConfig.tenant_id == first.tenant_id,
+        LimitConfig.transaction_type == first.transaction_type,
+        LimitConfig.account_type == first.account_type,
+        LimitConfig.currency == first.currency.upper(),
+        LimitConfig.user_type.is_(None)
+        if first.user_type is None
+        else LimitConfig.user_type == first.user_type,
+    ]
+    existing = list((await session.execute(select(LimitConfig).where(*scope))).scalars().all())
+    before = [_limit_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
+    await session.flush()  # DELETE must precede the INSERT (unique index).
+
+    new_config = _new_limit_config(first)
+    session.add(new_config)
+    await session.flush()
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=first.tenant_id,
+            action="limit_config.updated",
+            entity_type="limit_config",
+            entity_id=str(target_config_id or new_config.id),
+            before_state={"replaced": before},
+            after_state=_limit_config_state(new_config),
+            ip_address=ip_address,
+        )
+    await session.commit()
 
 
 async def list_limit_configs(session: AsyncSession, tenant_id: UUID) -> list[LimitConfig]:
@@ -733,6 +808,29 @@ _WALLET_CONFIG_FIELDS = (
 )
 
 
+def _new_wallet_limit_config(request: WalletLimitConfigCreateRequest) -> WalletLimitConfig:
+    """Build a WalletLimitConfig ORM row from a create request (no DB I/O).
+
+    Shared by `create_wallet_limit_config` and
+    `replace_wallet_limit_config_for_scope`.
+    """
+    return WalletLimitConfig(
+        tenant_id=request.tenant_id,
+        currency=request.currency.upper(),
+        user_type=request.user_type,
+        **{field: getattr(request, field) for field in _WALLET_CONFIG_FIELDS},
+    )
+
+
+def _wallet_limit_config_state(config: WalletLimitConfig) -> dict[str, object]:
+    """Serialise a wallet limit config for an audit snapshot."""
+    return {
+        "currency": config.currency,
+        "user_type": config.user_type,
+        **_caps_snapshot(config, _WALLET_CONFIG_FIELDS),
+    }
+
+
 async def create_wallet_limit_config(
     session: AsyncSession,
     request: WalletLimitConfigCreateRequest,
@@ -745,12 +843,7 @@ async def create_wallet_limit_config(
     Raises 409 on unique-index collision (one config per (tenant, currency)).
     """
     await _assert_tenant_exists(session, request.tenant_id)
-    config = WalletLimitConfig(
-        tenant_id=request.tenant_id,
-        currency=request.currency.upper(),
-        user_type=request.user_type,
-        **{field: getattr(request, field) for field in _WALLET_CONFIG_FIELDS},
-    )
+    config = _new_wallet_limit_config(request)
     session.add(config)
     try:
         await session.flush()
@@ -770,16 +863,71 @@ async def create_wallet_limit_config(
             action="wallet_limit_config.created",
             entity_type="wallet_limit_config",
             entity_id=str(config.id),
-            after_state={
-                "currency": config.currency,
-                **_caps_snapshot(config, _WALLET_CONFIG_FIELDS),
-            },
+            after_state=_wallet_limit_config_state(config),
             ip_address=ip_address,
         )
 
     await session.commit()
     await session.refresh(config)
     return config
+
+
+async def replace_wallet_limit_config_for_scope(
+    session: AsyncSession,
+    requests: list[WalletLimitConfigCreateRequest],
+    *,
+    target_config_id: UUID | None = None,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Atomically replace the wallet limit config for a scope with a new one.
+
+    Scope = (tenant, currency, user_type) — a single row. The existing row is
+    deleted and the new one inserted in ONE transaction — DELETE flushed before
+    INSERT so the unique index never trips — committed once. A mid-apply failure
+    rolls the whole replace back.
+
+    Args:
+        requests: A one-element list holding the validated new config.
+        target_config_id: The live row the maker edited (audit traceability).
+
+    Side effects:
+        Deletes + inserts a wallet_limit_configs row; appends one
+        `wallet_limit_config.updated` audit row. Commits once.
+    """
+    first = requests[0]
+    scope = [
+        WalletLimitConfig.tenant_id == first.tenant_id,
+        WalletLimitConfig.currency == first.currency.upper(),
+        WalletLimitConfig.user_type.is_(None)
+        if first.user_type is None
+        else WalletLimitConfig.user_type == first.user_type,
+    ]
+    existing = list(
+        (await session.execute(select(WalletLimitConfig).where(*scope))).scalars().all()
+    )
+    before = [_wallet_limit_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
+    await session.flush()  # DELETE must precede the INSERT (unique index).
+
+    new_config = _new_wallet_limit_config(first)
+    session.add(new_config)
+    await session.flush()
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=first.tenant_id,
+            action="wallet_limit_config.updated",
+            entity_type="wallet_limit_config",
+            entity_id=str(target_config_id or new_config.id),
+            before_state={"replaced": before},
+            after_state=_wallet_limit_config_state(new_config),
+            ip_address=ip_address,
+        )
+    await session.commit()
 
 
 async def list_wallet_limit_configs(

@@ -22,6 +22,8 @@ from app.modules.admin_profiles import record_admin
 from app.modules.audit.service import record_audit_for_admin
 from app.modules.config_requests.apply import (
     apply_config_request,
+    config_scope,
+    load_config_target,
     validate_band_payload,
 )
 from app.modules.config_requests.schemas import ConfigChangeProposeRequest
@@ -30,11 +32,14 @@ from app.shared.exceptions import (
     ConfigRequestForbidden,
     ConfigRequestInvalidState,
     ConfigRequestNotFound,
+    ConfigRequestTargetNotFound,
     SelfApprovalForbidden,
     TenantNotFound,
 )
 from app.shared.models import (
     CONFIG_OP_CREATE,
+    CONFIG_OP_DELETE,
+    CONFIG_OP_UPDATE,
     CONFIG_STATUS_APPLIED,
     CONFIG_STATUS_CHANGES_REQUESTED,
     CONFIG_STATUS_PENDING,
@@ -160,6 +165,41 @@ def _audit(
     )
 
 
+def _validate_payload(
+    config_type: str, payload: dict[str, Any] | None, tenant_id: UUID
+) -> tuple[dict[str, Any], list[BaseModel]]:
+    """Validate a create/update payload and normalise it to the stored shape.
+
+    A pricing/commission payload may be a multi-band schedule — every band and
+    the band set are validated, and the canonical `{"bands": [...]}` form is
+    always stored (a single band becomes a one-element list). Shared by the
+    create and update propose paths (an update payload IS a full new config,
+    identical in shape to create).
+
+    Returns:
+        The normalised payload dict AND the validated band models (the update
+        path reads the first band's scope; create ignores the models).
+
+    Raises:
+        AppHTTPException (422): a missing payload, a schema failure, or a band
+            whose tenant_id mismatches the request scope.
+    """
+    if payload is None:
+        raise AppHTTPException(
+            422, "config_request_payload_required", "This proposal needs a payload."
+        )
+    bands = validate_band_payload(config_type, payload)
+    # Tenant isolation: every band's tenant must match the request scope.
+    for band in bands:
+        if getattr(band, "tenant_id", tenant_id) != tenant_id:
+            raise AppHTTPException(
+                422,
+                "config_request_tenant_mismatch",
+                "The payload's tenant_id does not match the request tenant.",
+            )
+    return _normalise_create_payload(config_type, bands), bands
+
+
 async def propose_config_change(
     session: AsyncSession,
     request_data: ConfigChangeProposeRequest,
@@ -168,35 +208,51 @@ async def propose_config_change(
     admin: AdminPrincipal,
     ip_address: str | None = None,
 ) -> ConfigChangeRequest:
-    """Maker proposes a config create/delete → PENDING, no config write yet.
+    """Maker proposes a config create/update/delete → PENDING, no config write yet.
+
+    An update carries BOTH the full new config (`payload`, validated exactly
+    like a create) and the `target_config_id` of the live row being edited,
+    which must exist in this tenant for the config type.
 
     Raises:
         TenantNotFound (404).
-        AppHTTPException (422): a create without a payload, a delete without a
-            target, or a payload that fails its config type's create schema.
+        ConfigRequestTargetNotFound (404): an update/delete target that isn't here.
+        AppHTTPException (422): a create/update without a payload, an
+            update/delete without a target, or a payload that fails its schema.
     """
     await _assert_tenant_exists(session, tenant_id)
 
-    if request_data.operation == CONFIG_OP_CREATE:
-        if request_data.payload is None:
-            raise AppHTTPException(
-                422, "config_request_payload_required", "A create proposal needs a payload."
-            )
-        # Fail fast on a malformed payload; store the normalised JSON form. A
-        # pricing/commission create may be a multi-band schedule — validate every
-        # band + the band set, and always persist the canonical {"bands": [...]}
-        # shape (a single band becomes a one-element list).
-        bands = validate_band_payload(request_data.config_type, request_data.payload)
-        # Tenant isolation: every band's tenant must match the request scope.
-        for band in bands:
-            if getattr(band, "tenant_id", tenant_id) != tenant_id:
+    if request_data.operation in (CONFIG_OP_CREATE, CONFIG_OP_UPDATE):
+        payload, bands = _validate_payload(
+            request_data.config_type, request_data.payload, tenant_id
+        )
+        target_config_id = None
+        if request_data.operation == CONFIG_OP_UPDATE:
+            # An update edits a live row: require the target, verify it exists,
+            # and — the governance trust boundary — assert the edit's scope
+            # matches the target's. Otherwise a request naming target X (scope A)
+            # could carry a payload for scope B and silently replace B, leaving X
+            # untouched. Load the row ONCE and compare scope keys.
+            if request_data.target_config_id is None:
                 raise AppHTTPException(
                     422,
-                    "config_request_tenant_mismatch",
-                    "The payload's tenant_id does not match the request tenant.",
+                    "config_request_target_required",
+                    "An update proposal needs a target_config_id.",
                 )
-        payload = _normalise_create_payload(request_data.config_type, bands)
-        target_config_id = None
+            target = await load_config_target(
+                session, request_data.config_type, request_data.target_config_id, tenant_id
+            )
+            if target is None:
+                raise ConfigRequestTargetNotFound()
+            if config_scope(request_data.config_type, bands[0]) != config_scope(
+                request_data.config_type, target
+            ):
+                raise AppHTTPException(
+                    422,
+                    "config_request_scope_mismatch",
+                    "The edit's scope must match the config being edited.",
+                )
+            target_config_id = request_data.target_config_id
     else:  # delete
         if request_data.target_config_id is None:
             raise AppHTTPException(
@@ -338,7 +394,9 @@ async def revise_config_request(
         raise ConfigRequestInvalidState(request.status)
     if admin.id != request.maker_admin_id:
         raise ConfigRequestForbidden("Only the original maker may revise this request.")
-    if request.operation != CONFIG_OP_CREATE:
+    # Only a delete carries no payload to edit; create AND update are both
+    # revisable (their payload is a full config, editable the same way).
+    if request.operation == CONFIG_OP_DELETE:
         raise AppHTTPException(
             422, "config_request_not_editable", "A delete proposal has no payload to revise."
         )

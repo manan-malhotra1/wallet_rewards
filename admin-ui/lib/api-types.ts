@@ -465,8 +465,12 @@ export type ConfigType =
   | "commission"
   | "tax";
 
-/** The mutation a change request proposes. Updates are model as delete+create. */
-export type ConfigOperation = "create" | "delete";
+/**
+ * The mutation a change request proposes. An `update` re-proposes a live
+ * config's values in place (scope unchanged), carrying the create-shaped
+ * payload plus the `target_config_id` of the row being edited.
+ */
+export type ConfigOperation = "create" | "update" | "delete";
 
 /** Lifecycle status of a config change request. */
 export type ConfigRequestStatus =

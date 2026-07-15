@@ -32,11 +32,14 @@ export function ConfigRequestsTable({
   tenantId,
   canApprove,
   currentAdminId,
+  serviceNames,
 }: {
   requests: ConfigChangeRequest[];
   tenantId: string;
   canApprove: boolean;
   currentAdminId: string;
+  /** `{ code: display_name }` so the detail drawer shows friendly service names. */
+  serviceNames?: Record<string, string>;
 }) {
   const { toast } = useToast();
   const [detail, setDetail] = React.useState<ConfigChangeRequest | null>(null);
@@ -126,6 +129,7 @@ export function ConfigRequestsTable({
           open={open}
           onOpenChange={setOpen}
           onUpdated={(updated) => setDetail(updated)}
+          serviceNames={serviceNames}
         />
       )}
     </>

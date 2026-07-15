@@ -138,7 +138,16 @@ export default async function LimitsPage() {
               description="Without a config the orchestration silently allows any amount. Create the first one to bound user activity."
             />
           ) : (
-            <LimitsTable configs={configs} tenantId={activeTenantId} />
+            <LimitsTable
+              configs={configs}
+              tenantId={activeTenantId}
+              services={services}
+              instruments={instruments}
+              canPropose={canPropose}
+              serviceNames={Object.fromEntries(
+                services.map((s) => [s.code, s.display_name]),
+              )}
+            />
           )}
         </section>
 
@@ -168,7 +177,12 @@ export default async function LimitsPage() {
               description="Cap a user's max balance and cumulative send/receive volume per currency."
             />
           ) : (
-            <WalletLimitsTable configs={walletConfigs} tenantId={activeTenantId} />
+            <WalletLimitsTable
+              configs={walletConfigs}
+              tenantId={activeTenantId}
+              instruments={financialInstruments}
+              canPropose={canPropose}
+            />
           )}
         </section>
       </div>

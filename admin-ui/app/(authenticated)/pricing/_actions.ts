@@ -40,6 +40,32 @@ export async function proposePricingBandsAction(
   }
 }
 
+/**
+ * Propose UPDATING a live pricing config (Task 1). Re-proposes the config's
+ * values in place: the create-shaped `{ bands: [...] }` payload plus the
+ * `target_config_id` of the row being edited (scope unchanged). Nothing goes
+ * live until a second admin approves.
+ */
+export async function proposePricingUpdateAction(
+  tenantId: string,
+  targetConfigId: string,
+  payload: { bands: Record<string, unknown>[] },
+): Promise<PricingActionResult> {
+  try {
+    await proposeConfigChange(tenantId, {
+      config_type: "pricing",
+      operation: "update",
+      payload,
+      target_config_id: targetConfigId,
+    });
+    revalidatePath("/pricing");
+    revalidatePath("/config-requests");
+    return { ok: true };
+  } catch (err) {
+    return toResult(err);
+  }
+}
+
 /** Propose deleting a pricing config by id. Returns the standard {ok} result. */
 export async function proposePricingDeleteAction(
   configId: string,

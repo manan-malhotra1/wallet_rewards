@@ -3,13 +3,20 @@
  *
  * Min and max are optional; at least one of (min, max, daily_count_cap,
  * daily_value_cap) must be set (validated server-side).
+ *
+ * With a `reviseRequest`, it opens in revise mode. With an `editConfig` (a live
+ * service-limit row), it opens in EDIT mode (Task 1): pre-filled with the scope
+ * fields locked and submitting PROPOSES an `update` against the row's id.
  */
 "use client";
 
 import * as React from "react";
 
 import { reviseAndResubmitConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
-import { proposeLimitCreateAction } from "@/app/(authenticated)/limits/_actions";
+import {
+  proposeLimitCreateAction,
+  proposeLimitUpdateAction,
+} from "@/app/(authenticated)/limits/_actions";
 import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +42,7 @@ import { useToast } from "@/components/ui/toast";
 import type {
   ConfigChangeRequest,
   Instrument,
+  LimitConfig,
   Service,
   UserType,
 } from "@/lib/api-types";
@@ -58,14 +66,19 @@ function str(value: unknown, fallback = ""): string {
   return value === null || value === undefined ? fallback : String(value);
 }
 
-/** Derive the initial form from a revise proposal, or fresh defaults. */
+/** Derive the initial form from a revise proposal, an edited live row, or fresh defaults. */
 function initialForm(
   services: Service[],
   instruments: Instrument[],
   reviseRequest?: ConfigChangeRequest,
+  editConfig?: LimitConfig,
 ): FormState {
-  if (reviseRequest) {
-    const p = reviseRequest.payload ?? {};
+  // Revise takes precedence over edit.
+  const source = reviseRequest
+    ? reviseRequest.payload
+    : ((editConfig as Record<string, unknown> | undefined) ?? null);
+  if (source) {
+    const p = source;
     return {
       transaction_type: str(p.transaction_type),
       account_type: str(p.account_type, "financial_wallet"),
@@ -106,16 +119,32 @@ export function CreateLimitDialog({
   instruments,
   trigger,
   reviseRequest,
+  editConfig,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   tenantId: string;
   services: Service[];
   instruments: Instrument[];
-  trigger: React.ReactNode;
+  /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
+  trigger?: React.ReactNode;
   reviseRequest?: ConfigChangeRequest;
+  /** A live service-limit row to edit in place (proposes an `update`). */
+  editConfig?: LimitConfig;
+  /** Controlled open state (edit affordance drives this); uncontrolled otherwise. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  const editMode = Boolean(editConfig);
+  // Scope (identity) fields lock when editing a live config OR revising a
+  // sent-back UPDATE — both target an existing config's values, not its
+  // identity. A create revise keeps scope editable.
+  const scopeLocked = editMode || reviseRequest?.operation === "update";
   const [form, setForm] = React.useState<FormState>(() =>
-    initialForm(services, instruments, reviseRequest),
+    initialForm(services, instruments, reviseRequest, editConfig),
   );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
@@ -123,10 +152,10 @@ export function CreateLimitDialog({
 
   React.useEffect(() => {
     if (!open) {
-      setForm(initialForm(services, instruments, reviseRequest));
+      setForm(initialForm(services, instruments, reviseRequest, editConfig));
       setErrorBanner(null);
     }
-  }, [open, services, instruments, reviseRequest]);
+  }, [open, services, instruments, reviseRequest, editConfig]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -171,7 +200,9 @@ export function CreateLimitDialog({
           reviseRequest.id,
           payload,
         )
-      : await proposeLimitCreateAction(tenantId, payload);
+      : editConfig
+        ? await proposeLimitUpdateAction(tenantId, editConfig.id, payload)
+        : await proposeLimitCreateAction(tenantId, payload);
     setSubmitting(false);
     if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
@@ -188,10 +219,12 @@ export function CreateLimitDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{reviseRequest ? "Revise limit" : "New limit"}</DialogTitle>
+          <DialogTitle>
+            {reviseRequest ? "Revise limit" : editMode ? "Edit limit" : "New limit"}
+          </DialogTitle>
           <DialogDescription>
             Per-txn min/max plus rolling daily/weekly/monthly caps. At least one
             must be set.
@@ -204,7 +237,7 @@ export function CreateLimitDialog({
               <Select
                 value={form.transaction_type}
                 onValueChange={(v) => update("transaction_type", v)}
-                disabled={services.length === 0}
+                disabled={scopeLocked || services.length === 0}
               >
                 <SelectTrigger id="txn">
                   <SelectValue placeholder="Choose a service…" />
@@ -228,6 +261,7 @@ export function CreateLimitDialog({
               <Select
                 value={form.account_type}
                 onValueChange={(v) => update("account_type", v)}
+                disabled={scopeLocked}
               >
                 <SelectTrigger id="acct">
                   <SelectValue />
@@ -243,7 +277,7 @@ export function CreateLimitDialog({
               <Select
                 value={form.currency}
                 onValueChange={(v) => update("currency", v)}
-                disabled={instruments.length === 0}
+                disabled={scopeLocked || instruments.length === 0}
               >
                 <SelectTrigger id="ccy">
                   <SelectValue placeholder="Choose…" />
@@ -264,6 +298,7 @@ export function CreateLimitDialog({
               <Select
                 value={form.user_type}
                 onValueChange={(v) => update("user_type", v)}
+                disabled={scopeLocked}
               >
                 <SelectTrigger id="utype">
                   <SelectValue />

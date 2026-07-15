@@ -61,6 +61,7 @@ from app.shared.models.commissions import CommissionConfig
 from app.shared.models.config_requests import (
     CONFIG_OP_CREATE,
     CONFIG_OP_DELETE,
+    CONFIG_OP_UPDATE,
     CONFIG_OPERATIONS,
     CONFIG_STATUS_APPLIED,
     CONFIG_STATUS_CHANGES_REQUESTED,
@@ -226,6 +227,7 @@ __all__ = [
     "CONFIG_OPERATIONS",
     "CONFIG_OP_CREATE",
     "CONFIG_OP_DELETE",
+    "CONFIG_OP_UPDATE",
     "CONFIG_STATUSES",
     "CONFIG_STATUS_APPLIED",
     "CONFIG_STATUS_CHANGES_REQUESTED",

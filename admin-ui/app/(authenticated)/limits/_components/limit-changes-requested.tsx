@@ -34,6 +34,10 @@ export function LimitChangesRequested({
   const financialInstruments = instruments.filter(
     (i) => i.account_type === "financial_wallet",
   );
+  // code → display_name so a limit card's Service field reads friendly.
+  const serviceNames = Object.fromEntries(
+    services.map((s) => [s.code, s.display_name]),
+  );
 
   const editTrigger = (
     <Button variant="outline" size="sm">
@@ -47,10 +51,12 @@ export function LimitChangesRequested({
         Open requests
       </h2>
       {requests.map((req) => {
+        // Both create and update proposals can be revised & resubmitted when a
+        // checker sends them back; only deletes carry no editable payload.
         const canEdit =
           req.maker_admin_id === currentAdminId &&
           req.status === "CHANGES_REQUESTED" &&
-          req.operation === "create";
+          req.operation !== "delete";
         let editAction: ReactNode = undefined;
         if (canEdit && req.config_type === "limit") {
           editAction = (
@@ -78,6 +84,7 @@ export function LimitChangesRequested({
             request={req}
             tenantId={tenantId}
             currentAdminId={currentAdminId}
+            serviceNames={serviceNames}
             editAction={editAction}
           />
         );

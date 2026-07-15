@@ -135,16 +135,12 @@ async def calculate_commission(
 # -----------------------------------------------------------------------------
 
 
-async def create_commission_config(
-    session: AsyncSession,
-    request: CommissionConfigCreateRequest,
-    *,
-    admin: AdminPrincipal | None = None,
-    ip_address: str | None = None,
-) -> CommissionConfig:
-    """Persist a new commission config. 409 on unique-index collision."""
-    await _assert_tenant_exists(session, request.tenant_id)
-    config = CommissionConfig(
+def _new_commission_config(request: CommissionConfigCreateRequest) -> CommissionConfig:
+    """Build a CommissionConfig ORM row from a validated create request (no DB I/O).
+
+    Shared by `create_commission_config` and `replace_commission_config_for_scope`.
+    """
+    return CommissionConfig(
         tenant_id=request.tenant_id,
         transaction_type=request.transaction_type,
         currency=request.currency.upper(),
@@ -155,6 +151,34 @@ async def create_commission_config(
         variable_commission_pct=request.variable_commission_pct,
         commission_cap=request.commission_cap,
     )
+
+
+def _commission_config_state(config: CommissionConfig) -> dict[str, object]:
+    """Serialise a commission config for an audit snapshot (Decimals to str)."""
+    return {
+        "transaction_type": config.transaction_type,
+        "currency": config.currency,
+        "user_type": config.user_type,
+        "amount_from": str(config.amount_from) if config.amount_from is not None else None,
+        "amount_to": str(config.amount_to) if config.amount_to is not None else None,
+        "fixed_commission": str(config.fixed_commission),
+        "variable_commission_pct": str(config.variable_commission_pct),
+        "commission_cap": (
+            str(config.commission_cap) if config.commission_cap is not None else None
+        ),
+    }
+
+
+async def create_commission_config(
+    session: AsyncSession,
+    request: CommissionConfigCreateRequest,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> CommissionConfig:
+    """Persist a new commission config. 409 on unique-index collision."""
+    await _assert_tenant_exists(session, request.tenant_id)
+    config = _new_commission_config(request)
     session.add(config)
     try:
         await session.flush()
@@ -174,26 +198,73 @@ async def create_commission_config(
             action="commission_config.created",
             entity_type="commission_config",
             entity_id=str(config.id),
-            after_state={
-                "transaction_type": config.transaction_type,
-                "currency": config.currency,
-                "user_type": config.user_type,
-                "amount_from": (
-                    str(config.amount_from) if config.amount_from is not None else None
-                ),
-                "amount_to": str(config.amount_to) if config.amount_to is not None else None,
-                "fixed_commission": str(config.fixed_commission),
-                "variable_commission_pct": str(config.variable_commission_pct),
-                "commission_cap": (
-                    str(config.commission_cap) if config.commission_cap is not None else None
-                ),
-            },
+            after_state=_commission_config_state(config),
             ip_address=ip_address,
         )
 
     await session.commit()
     await session.refresh(config)
     return config
+
+
+async def replace_commission_config_for_scope(
+    session: AsyncSession,
+    requests: list[CommissionConfigCreateRequest],
+    *,
+    target_config_id: UUID | None = None,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Atomically replace ALL commission bands for a scope with a new band set.
+
+    Scope = the shared (tenant, transaction_type, currency, user_type) of the
+    incoming bands (no account_type — commission is keyed without it). Every
+    existing row for that scope is deleted and the new band(s) inserted in ONE
+    transaction — DELETEs flushed before INSERTs so the unique index never
+    trips — committed once. A mid-apply failure rolls the whole replace back.
+
+    Args:
+        requests: The validated new band set (one element for a single band).
+        target_config_id: The live row the maker edited (audit traceability).
+
+    Side effects:
+        Deletes + inserts commission_configs rows; appends one
+        `commission_config.updated` audit row. Commits once.
+    """
+    first = requests[0]
+    scope = [
+        CommissionConfig.tenant_id == first.tenant_id,
+        CommissionConfig.transaction_type == first.transaction_type,
+        CommissionConfig.currency == first.currency.upper(),
+        CommissionConfig.user_type.is_(None)
+        if first.user_type is None
+        else CommissionConfig.user_type == first.user_type,
+    ]
+    existing = list(
+        (await session.execute(select(CommissionConfig).where(*scope))).scalars().all()
+    )
+    before = [_commission_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
+    await session.flush()  # DELETEs must precede the INSERTs (unique index).
+
+    new_configs = [_new_commission_config(r) for r in requests]
+    session.add_all(new_configs)
+    await session.flush()
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=first.tenant_id,
+            action="commission_config.updated",
+            entity_type="commission_config",
+            entity_id=str(target_config_id or new_configs[0].id),
+            before_state={"replaced": before},
+            after_state={"bands": [_commission_config_state(c) for c in new_configs]},
+            ip_address=ip_address,
+        )
+    await session.commit()
 
 
 async def list_commission_configs(session: AsyncSession, tenant_id: UUID) -> list[CommissionConfig]:

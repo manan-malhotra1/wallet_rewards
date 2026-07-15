@@ -39,6 +39,32 @@ export async function proposeCommissionBandsAction(
   }
 }
 
+/**
+ * Propose UPDATING a live commission config (Task 1). Re-proposes the config's
+ * values in place: the create-shaped `{ bands: [...] }` payload plus the
+ * `target_config_id` of the row being edited (scope unchanged). Approval by a
+ * second admin applies the change.
+ */
+export async function proposeCommissionUpdateAction(
+  tenantId: string,
+  targetConfigId: string,
+  payload: { bands: Record<string, unknown>[] },
+): Promise<CommissionActionResult> {
+  try {
+    await proposeConfigChange(tenantId, {
+      config_type: "commission",
+      operation: "update",
+      payload,
+      target_config_id: targetConfigId,
+    });
+    revalidatePath("/commissions");
+    revalidatePath("/config-requests");
+    return { ok: true };
+  } catch (err) {
+    return toResult(err);
+  }
+}
+
 /** Propose deleting a commission config by id. */
 export async function proposeCommissionDeleteAction(
   configId: string,

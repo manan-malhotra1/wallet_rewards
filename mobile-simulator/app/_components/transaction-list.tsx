@@ -66,6 +66,11 @@ export function TransactionList({
               <div className="text-[11px] text-[var(--color-fg-muted)]">
                 {relativeTime(txn.created_at)} · {txn.status}
               </div>
+              {txn.reference ? (
+                <div className="font-mono text-[10px] text-[var(--color-fg-muted)]">
+                  {txn.reference}
+                </div>
+              ) : null}
               {chargesSummary(txn) ? (
                 <div className="text-[11px] text-[var(--color-fg-muted)]">
                   {chargesSummary(txn)}

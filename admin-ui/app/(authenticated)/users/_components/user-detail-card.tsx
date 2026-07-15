@@ -408,7 +408,7 @@ export function UserDetailCard({
                         {t.currency}
                       </TableCell>
                       <TableCell className="whitespace-nowrap font-mono text-[11px] text-muted-foreground">
-                        {shortId(t.id, "txn")}
+                        {t.reference ?? shortId(t.id, "txn")}
                       </TableCell>
                       <TableCell>
                         <StatusPill status={t.status.toUpperCase()} variant="dense" />

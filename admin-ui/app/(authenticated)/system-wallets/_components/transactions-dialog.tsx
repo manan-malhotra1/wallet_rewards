@@ -117,7 +117,7 @@ export function TransactionsDialog({
                         {r.entry_amount} {r.currency}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                        {shortId(r.transaction_id, "txn")}
+                        {r.reference ?? shortId(r.transaction_id, "txn")}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2">
                         <StatusPill status={r.status} variant="dense" />

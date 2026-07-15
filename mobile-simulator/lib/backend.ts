@@ -57,6 +57,8 @@ interface WalletAccount {
 
 export interface WalletTransaction {
   id: string;
+  // Customer-facing reference `S_<datetime><seq>` (null only for un-backfilled legacy rows).
+  reference: string | null;
   transaction_type: string;
   status: string;
   amount: string;

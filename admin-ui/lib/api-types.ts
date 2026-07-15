@@ -238,6 +238,8 @@ export interface SystemWallet {
 /** One row in the system-wallet transactions drill-down. */
 export interface SystemWalletTransaction {
   transaction_id: string;
+  /** Customer-facing reference S_<datetime><seq>; null for un-backfilled legacy rows. */
+  reference: string | null;
   transaction_type: string;
   status: string;
   entry_type: "DEBIT" | "CREDIT";

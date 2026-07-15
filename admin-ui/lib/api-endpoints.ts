@@ -217,6 +217,8 @@ export const getUserDetail = (tenant_id: string, user_id: string) =>
 /** One row in the admin user-detail Transactions table. */
 export interface UserTransaction {
   id: string;
+  /** Customer-facing reference S_<datetime><seq>; null for un-backfilled legacy rows. */
+  reference: string | null;
   transaction_type: string;
   status: string;
   amount: string;

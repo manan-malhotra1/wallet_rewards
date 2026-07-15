@@ -174,17 +174,23 @@ export function SystemWalletGrid({
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    <AdjustSystemWalletDialog
-                      account={w}
-                      tenantId={tenantId}
-                      mirrors={mirrors}
-                      trigger={
-                        <Button variant="ghost" size="sm" className="gap-1.5">
-                          <Coins className="h-3.5 w-3.5" />
-                          Adjust
-                        </Button>
-                      }
-                    />
+                    {/* A bank mirror is never an adjust TARGET — it's only ever a
+                        counter-leg (backend rejects it 422). Funding a mirror
+                        happens by adjusting a real wallet and picking it as the
+                        counter-leg. So no Adjust action on mirror rows. */}
+                    {!isMirror ? (
+                      <AdjustSystemWalletDialog
+                        account={w}
+                        tenantId={tenantId}
+                        mirrors={mirrors}
+                        trigger={
+                          <Button variant="ghost" size="sm" className="gap-1.5">
+                            <Coins className="h-3.5 w-3.5" />
+                            Adjust
+                          </Button>
+                        }
+                      />
+                    ) : null}
                     <TransactionsDialog
                       account={w}
                       tenantId={tenantId}

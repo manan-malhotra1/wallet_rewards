@@ -9,6 +9,7 @@
 import { Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { proposePricingDeleteAction } from "@/app/(authenticated)/pricing/_actions";
 import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
@@ -77,7 +78,7 @@ export function PricingTable({
             <TableHeaderCell className="text-right">Variable %</TableHeaderCell>
             <TableHeaderCell className="text-right">Fee cap</TableHeaderCell>
             <TableHeaderCell>Fee incl.</TableHeaderCell>
-            <TableHeaderCell className="w-[40px]"> </TableHeaderCell>
+            <TableHeaderCell className="w-[120px] text-right"> </TableHeaderCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -117,15 +118,22 @@ export function PricingTable({
                 )}
               </TableCell>
               <TableCell>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Propose delete of pricing config"
-                  disabled={pending === cfg.id}
-                  onClick={() => onDelete(cfg.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                </Button>
+                <div className="flex items-center justify-end gap-1">
+                  <ConfigViewButton
+                    configType="pricing"
+                    data={cfg as unknown as Record<string, unknown>}
+                    title={`Pricing · ${cfg.transaction_type} · ${cfg.currency}`}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Propose delete of pricing config"
+                    disabled={pending === cfg.id}
+                    onClick={() => onDelete(cfg.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}

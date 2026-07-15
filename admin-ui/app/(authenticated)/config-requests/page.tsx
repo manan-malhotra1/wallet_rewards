@@ -1,8 +1,9 @@
 /**
- * Config-requests review page (Epic 24 / Story 24.3). Lists maker-checker
- * change requests with a status filter (default: open = PENDING +
- * CHANGES_REQUESTED). Passes approver capability + the current admin id down
- * so the drawer can gate checker vs. maker actions.
+ * Config-requests review page (Epic 24 / Story 24.3; Epic 25). The checker's
+ * approval queue — defaults to PENDING (awaiting approval). CHANGES_REQUESTED
+ * items are edited by the maker on the native config pages (Epic 25), so they
+ * are not in the default view (a tab still exposes them for visibility). Passes
+ * approver capability + the current admin id down so the drawer can gate actions.
  */
 import Link from "next/link";
 import { GitPullRequest } from "lucide-react";
@@ -25,8 +26,7 @@ export const dynamic = "force-dynamic";
 /** Filter presets driving the status tab bar. `undefined` = all statuses. */
 const FILTERS: { key: string; label: string; statuses?: ConfigRequestStatus[] }[] =
   [
-    { key: "open", label: "Open", statuses: ["PENDING", "CHANGES_REQUESTED"] },
-    { key: "pending", label: "Pending", statuses: ["PENDING"] },
+    { key: "open", label: "Awaiting approval", statuses: ["PENDING"] },
     {
       key: "changes",
       label: "Changes requested",

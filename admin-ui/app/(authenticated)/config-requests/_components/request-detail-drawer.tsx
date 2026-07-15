@@ -1,19 +1,23 @@
 /**
- * Config-request detail drawer (Epic 24 / Story 24.3). Renders the proposed
- * payload, the review thread, and role-gated actions:
+ * Config-request detail drawer (Epic 24 / Story 24.3; Epic 25 / Task 7).
+ *
+ * Read-only view of the proposed change (rendered via the shared
+ * `ConfigDetail` in sans typography) plus the review thread, with role-gated
+ * actions:
  *   - Checker (config-approver, not the maker): Approve / Request changes.
- *   - Maker (while CHANGES_REQUESTED): Revise payload → Resubmit; Withdraw
- *     any non-terminal request.
+ *   - Maker: Withdraw any non-terminal request.
+ *
+ * The maker no longer edits the payload here — form-based revise now happens on
+ * the native config pages (Epic 25 / Task 9). No JSON editor, no mono font.
  */
 "use client";
 
 import * as React from "react";
 
+import { ConfigDetail } from "@/app/(authenticated)/_components/config-detail";
 import {
   approveConfigRequestAction,
   requestConfigChangesAction,
-  resubmitConfigRequestAction,
-  reviseConfigRequestAction,
   withdrawConfigRequestAction,
 } from "@/app/(authenticated)/config-requests/_actions";
 import { Badge } from "@/components/ui/badge";
@@ -39,46 +43,19 @@ function isNonTerminal(status: ConfigChangeRequest["status"]): boolean {
   return status === "PENDING" || status === "CHANGES_REQUESTED";
 }
 
-/** Render one payload value readably (objects fall back to JSON). */
-function renderValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-
-function PayloadView({ request }: { request: ConfigChangeRequest }) {
+/** The proposed change — a delete names its target; a create renders via ConfigDetail. */
+function ProposedChange({ request }: { request: ConfigChangeRequest }) {
   if (request.operation === "delete") {
     return (
       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
         <span className="text-muted-foreground">Target config: </span>
-        <span className="font-mono text-xs text-foreground">
-          {request.target_config_id ?? "—"}
+        <span className="text-foreground">
+          {request.target_config_id ? shortId(request.target_config_id) : "—"}
         </span>
       </div>
     );
   }
-  // Hide internal identifiers — tenant_id is constant/implicit and adds no
-  // value to an admin reviewing the change.
-  const HIDDEN_PAYLOAD_KEYS = new Set(["tenant_id"]);
-  const entries = Object.entries(request.payload ?? {}).filter(
-    ([key]) => !HIDDEN_PAYLOAD_KEYS.has(key),
-  );
-  if (entries.length === 0) {
-    return <p className="text-sm text-muted-foreground">No payload.</p>;
-  }
-  return (
-    <dl className="grid grid-cols-[minmax(0,10rem)_1fr] gap-x-3 gap-y-1.5 text-sm">
-      {entries.map(([key, value]) => (
-        <React.Fragment key={key}>
-          <dt className="font-mono text-xs text-muted-foreground">{key}</dt>
-          <dd className="font-mono text-xs text-foreground break-all">
-            {renderValue(value)}
-          </dd>
-        </React.Fragment>
-      ))}
-    </dl>
-  );
+  return <ConfigDetail configType={request.config_type} data={request.payload} />;
 }
 
 function ReviewThread({ request }: { request: ConfigChangeRequest }) {
@@ -96,7 +73,7 @@ function ReviewThread({ request }: { request: ConfigChangeRequest }) {
             <Badge variant="outline">{review.action}</Badge>
             <span className="text-muted-foreground">{review.actor_role}</span>
             <span className="text-muted-foreground">·</span>
-            <span className="font-mono text-muted-foreground">
+            <span className="text-muted-foreground">
               {review.actor_admin_name ?? shortId(review.actor_admin_id)}
             </span>
             <span className="ml-auto text-muted-foreground">
@@ -132,32 +109,22 @@ export function RequestDetailDrawer({
   const { toast } = useToast();
   const [busy, setBusy] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
-  // Comment box for request-changes; payload editor for revise.
+  // Comment box for request-changes (mandatory comment).
   const [commentMode, setCommentMode] = React.useState(false);
   const [comment, setComment] = React.useState("");
-  const [reviseMode, setReviseMode] = React.useState(false);
-  const [payloadText, setPayloadText] = React.useState("");
 
   // Reset transient editors whenever the drawer opens on a new request.
   React.useEffect(() => {
     setCommentMode(false);
     setComment("");
-    setReviseMode(false);
-    setPayloadText(JSON.stringify(request.payload ?? {}, null, 2));
     setErrorBanner(null);
-  }, [request.id, request.payload, open]);
+  }, [request.id, open]);
 
   const isMaker = currentAdminId === request.maker_admin_id;
   const isChecker = canApprove && !isMaker;
   const nonTerminal = isNonTerminal(request.status);
   // Checkers act on requests awaiting their review.
   const canReview = isChecker && request.status === "PENDING";
-  // Makers resubmit after changes were requested (create OR delete).
-  const canResubmit = isMaker && request.status === "CHANGES_REQUESTED";
-  // Revise edits a payload — only create proposals have one. Delete
-  // proposals carry no payload, so the backend rejects a revise (422
-  // config_request_not_editable); hide the affordance for them.
-  const canRevise = canResubmit && request.operation === "create";
 
   const run = async (
     label: string,
@@ -195,34 +162,6 @@ export function RequestDetailDrawer({
     if (ok) setCommentMode(false);
   };
 
-  const onRevise = async () => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(payloadText);
-    } catch {
-      setErrorBanner("Payload must be valid JSON.");
-      return;
-    }
-    // Must be a plain JSON object — arrays / scalars aren't valid payloads.
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      setErrorBanner("Payload must be a JSON object.");
-      return;
-    }
-    const ok = await run("Payload revised", () =>
-      reviseConfigRequestAction(
-        tenantId,
-        request.id,
-        parsed as Record<string, unknown>,
-      ),
-    );
-    if (ok) setReviseMode(false);
-  };
-
-  const onResubmit = () =>
-    run("Resubmitted for approval", () =>
-      resubmitConfigRequestAction(tenantId, request.id),
-    );
-
   const onWithdraw = () =>
     run("Request withdrawn", () =>
       withdrawConfigRequestAction(tenantId, request.id),
@@ -239,8 +178,8 @@ export function RequestDetailDrawer({
           </DrawerTitle>
           <div className="text-xs text-muted-foreground">
             Revision {request.revision} · maker{" "}
-            <span className="font-mono">{request.maker_admin_name ?? shortId(request.maker_admin_id)}</span>{" "}
-            · {formatTimestamp(request.created_at)}
+            {request.maker_admin_name ?? shortId(request.maker_admin_id)} ·{" "}
+            {formatTimestamp(request.created_at)}
           </div>
         </DrawerHeader>
         <DrawerBody className="space-y-6">
@@ -248,19 +187,7 @@ export function RequestDetailDrawer({
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Proposed change
             </h3>
-            {reviseMode ? (
-              <div className="space-y-2">
-                <Label htmlFor="payload-edit">Payload (JSON)</Label>
-                <Textarea
-                  id="payload-edit"
-                  value={payloadText}
-                  onChange={(e) => setPayloadText(e.target.value)}
-                  className="min-h-[180px] font-mono text-xs"
-                />
-              </div>
-            ) : (
-              <PayloadView request={request} />
-            )}
+            <ProposedChange request={request} />
           </section>
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -313,35 +240,7 @@ export function RequestDetailDrawer({
               </Button>
             </>
           )}
-          {/* Maker actions */}
-          {canRevise && !reviseMode && (
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => setReviseMode(true)}
-            >
-              Revise payload
-            </Button>
-          )}
-          {canRevise && reviseMode && (
-            <>
-              <Button
-                variant="ghost"
-                disabled={busy}
-                onClick={() => setReviseMode(false)}
-              >
-                Cancel
-              </Button>
-              <Button disabled={busy} onClick={onRevise}>
-                {busy ? "Saving…" : "Save payload"}
-              </Button>
-            </>
-          )}
-          {canResubmit && !reviseMode && (
-            <Button disabled={busy} onClick={onResubmit}>
-              {busy ? "Working…" : "Resubmit"}
-            </Button>
-          )}
+          {/* Maker action — form-based revise happens on the native pages. */}
           {isMaker && nonTerminal && (
             <Button variant="danger" disabled={busy} onClick={onWithdraw}>
               {busy ? "Working…" : "Withdraw"}

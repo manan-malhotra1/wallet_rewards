@@ -1,13 +1,27 @@
 /**
- * Create-commission dialog (Epic 24 / Story 24.2). Collects a commission
- * config incl. an optional slab band, then PROPOSES a create through the
- * maker-checker pipeline. Nothing goes live until a second admin approves.
+ * Create-commission dialog (Epic 24 / Story 24.2; Epic 25 / Task 8).
+ *
+ * Collects a commission SCHEDULE — shared scope (service / currency / user
+ * type) plus a repeatable list of amount bands, each with its own fixed +
+ * variable% + cap — then PROPOSES a create through the maker-checker pipeline.
+ *
+ * With a `reviseRequest`, it opens in revise mode: pre-filled from the
+ * proposal, the submit button reads "Resubmit", and it revises + resubmits the
+ * request instead of proposing a new one.
  */
 "use client";
 
+import { Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 
-import { proposeCommissionChangeAction } from "@/app/(authenticated)/commissions/_actions";
+import { proposeCommissionBandsAction } from "@/app/(authenticated)/commissions/_actions";
+import { reviseAndResubmitConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
+import {
+  emptyBand,
+  orNull,
+  validateBands,
+  type BandRow,
+} from "@/app/(authenticated)/_components/bands";
 import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,33 +44,84 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { Instrument, Service, UserType } from "@/lib/api-types";
+import type {
+  ConfigChangeRequest,
+  Instrument,
+  Service,
+  UserType,
+} from "@/lib/api-types";
 
-interface FormState {
+interface Scope {
   transaction_type: string;
   currency: string;
   user_type: string;
-  amount_from: string;
-  amount_to: string;
-  fixed_commission: string;
-  variable_commission_pct: string;
-  commission_cap: string;
 }
 
-function initialForm(services: Service[], instruments: Instrument[]): FormState {
+/** Extract the band rows from a proposal payload (multi-band or legacy flat). */
+function bandsFromPayload(
+  payload: Record<string, unknown> | null,
+): Record<string, unknown>[] {
+  if (!payload) return [];
+  const bands = (payload as { bands?: unknown }).bands;
+  return Array.isArray(bands)
+    ? (bands as Record<string, unknown>[])
+    : [payload];
+}
+
+function str(value: unknown, fallback = ""): string {
+  return value === null || value === undefined ? fallback : String(value);
+}
+
+/** Derive the initial scope + bands, from a revise proposal or fresh defaults. */
+function deriveInitial(
+  reviseRequest: ConfigChangeRequest | undefined,
+  services: Service[],
+  instruments: Instrument[],
+): { scope: Scope; bands: BandRow[] } {
+  if (reviseRequest) {
+    const rows = bandsFromPayload(reviseRequest.payload);
+    const first = rows[0] ?? {};
+    return {
+      scope: {
+        transaction_type: str(first.transaction_type),
+        currency: str(first.currency),
+        user_type: first.user_type ? str(first.user_type) : "all",
+      },
+      bands: rows.map((r) => ({
+        amount_from: str(r.amount_from),
+        amount_to: str(r.amount_to),
+        fixed: str(r.fixed_commission, "0"),
+        variable_pct: str(r.variable_commission_pct, "0"),
+        cap: str(r.commission_cap),
+      })),
+    };
+  }
   return {
-    transaction_type: services[0]?.code ?? "",
-    currency:
-      instruments.find((i) => i.account_type === "financial_wallet")?.code ??
-      instruments[0]?.code ??
-      "",
-    user_type: "all",
-    amount_from: "",
-    amount_to: "",
-    fixed_commission: "0",
-    variable_commission_pct: "0",
-    commission_cap: "",
+    scope: {
+      transaction_type: services[0]?.code ?? "",
+      currency:
+        instruments.find((i) => i.account_type === "financial_wallet")?.code ??
+        instruments[0]?.code ??
+        "",
+      user_type: "all",
+    },
+    bands: [emptyBand()],
   };
+}
+
+/** Live payout preview for one band — samples inside the band. */
+function bandPreview(band: BandRow): { sample: number; commission: string } {
+  const from = band.amount_from ? parseFloat(band.amount_from) : null;
+  const to = band.amount_to ? parseFloat(band.amount_to) : null;
+  let sample = 1000;
+  if (from !== null && to !== null) sample = (from + to) / 2;
+  else if (from !== null) sample = from;
+  else if (to !== null) sample = to;
+  const fixed = parseFloat(band.fixed) || 0;
+  const pct = parseFloat(band.variable_pct) || 0;
+  const cap = band.cap ? parseFloat(band.cap) : Infinity;
+  const variable = Math.min(pct * sample, cap);
+  return { sample, commission: (fixed + variable).toFixed(2) };
 }
 
 export function CreateCommissionDialog({
@@ -64,103 +129,107 @@ export function CreateCommissionDialog({
   services,
   instruments,
   trigger,
+  reviseRequest,
 }: {
   tenantId: string;
   services: Service[];
   instruments: Instrument[];
   trigger: React.ReactNode;
+  reviseRequest?: ConfigChangeRequest;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>(() =>
-    initialForm(services, instruments),
+  const initial = React.useMemo(
+    () => deriveInitial(reviseRequest, services, instruments),
+    [reviseRequest, services, instruments],
   );
+  const [scope, setScope] = React.useState<Scope>(initial.scope);
+  const [bands, setBands] = React.useState<BandRow[]>(initial.bands);
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
   const { toast } = useToast();
 
   React.useEffect(() => {
     if (!open) {
-      setForm(initialForm(services, instruments));
+      setScope(initial.scope);
+      setBands(initial.bands);
       setErrorBanner(null);
     }
-  }, [open, services, instruments]);
+  }, [open, initial]);
 
-  const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const updateScope = <K extends keyof Scope>(key: K, value: Scope[K]) =>
+    setScope((prev) => ({ ...prev, [key]: value }));
+
+  const updateBand = (index: number, key: keyof BandRow, value: string) =>
+    setBands((prev) =>
+      prev.map((b, i) => (i === index ? { ...b, [key]: value } : b)),
+    );
+
+  const addBand = () => setBands((prev) => [...prev, emptyBand()]);
+  const removeBand = (index: number) =>
+    setBands((prev) => prev.filter((_, i) => i !== index));
 
   const onSubmit = async () => {
     setErrorBanner(null);
-    if (
-      form.amount_from &&
-      form.amount_to &&
-      parseFloat(form.amount_to) <= parseFloat(form.amount_from)
-    ) {
-      setErrorBanner("Band upper bound must be greater than the lower bound.");
+    const bandError = validateBands(bands);
+    if (bandError) {
+      setErrorBanner(bandError);
       return;
     }
-    setSubmitting(true);
-    const result = await proposeCommissionChangeAction({
+    const rows = bands.map((b) => ({
       tenant_id: tenantId,
-      transaction_type: form.transaction_type,
-      currency: form.currency.toUpperCase(),
-      user_type: form.user_type === "all" ? null : (form.user_type as UserType),
-      amount_from: form.amount_from || undefined,
-      amount_to: form.amount_to || undefined,
-      fixed_commission: form.fixed_commission || "0",
-      variable_commission_pct: form.variable_commission_pct || "0",
-      commission_cap: form.commission_cap || undefined,
-    });
+      transaction_type: scope.transaction_type,
+      // Commission is keyed WITHOUT account_type (CommissionConfigCreateRequest
+      // has no such field) — do not send it.
+      currency: scope.currency.toUpperCase(),
+      user_type: scope.user_type === "all" ? null : (scope.user_type as UserType),
+      amount_from: orNull(b.amount_from),
+      amount_to: orNull(b.amount_to),
+      fixed_commission: b.fixed.trim() || "0",
+      variable_commission_pct: b.variable_pct.trim() || "0",
+      commission_cap: orNull(b.cap),
+    }));
+    setSubmitting(true);
+    const result = reviseRequest
+      ? await reviseAndResubmitConfigRequestAction(tenantId, reviseRequest.id, {
+          bands: rows,
+        })
+      : await proposeCommissionBandsAction(tenantId, { bands: rows });
     setSubmitting(false);
     if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
       return;
     }
     toast({
-      title: "Change proposed — pending approval",
-      description: `${form.transaction_type} · ${form.currency}`,
+      title: reviseRequest
+        ? "Resubmitted for approval"
+        : "Change proposed — pending approval",
+      description: `${scope.transaction_type} · ${scope.currency} · ${rows.length} band${rows.length === 1 ? "" : "s"}`,
     });
     setOpen(false);
   };
 
-  // Live payout preview — samples inside the band (midpoint when bounded).
-  const { sampleAmount, preview } = React.useMemo(() => {
-    const from = form.amount_from ? parseFloat(form.amount_from) : null;
-    const to = form.amount_to ? parseFloat(form.amount_to) : null;
-    let amount = 1000;
-    if (from !== null && to !== null) amount = (from + to) / 2;
-    else if (from !== null) amount = from;
-    else if (to !== null) amount = to;
-    const fixed = parseFloat(form.fixed_commission) || 0;
-    const pct = parseFloat(form.variable_commission_pct) || 0;
-    const cap = form.commission_cap ? parseFloat(form.commission_cap) : Infinity;
-    const variable = Math.min(pct * amount, cap);
-    return { sampleAmount: amount, preview: (fixed + variable).toFixed(2) };
-  }, [
-    form.fixed_commission,
-    form.variable_commission_pct,
-    form.commission_cap,
-    form.amount_from,
-    form.amount_to,
-  ]);
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>New commission config</DialogTitle>
+          <DialogTitle>
+            {reviseRequest
+              ? "Revise commission schedule"
+              : "New commission schedule"}
+          </DialogTitle>
           <DialogDescription>
-            Commission = fixed + min(variable% × amount, cap). Changes are
-            proposed and go live after a second admin approves.
+            Per band, commission = fixed + min(variable% × amount, cap). Changes
+            are proposed and go live after a second admin approves.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="max-h-[62vh] space-y-4 overflow-y-auto pr-1">
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label htmlFor="c-txn">Service</Label>
               <Select
-                value={form.transaction_type}
-                onValueChange={(v) => update("transaction_type", v)}
+                value={scope.transaction_type}
+                onValueChange={(v) => updateScope("transaction_type", v)}
                 disabled={services.length === 0}
               >
                 <SelectTrigger id="c-txn">
@@ -183,8 +252,8 @@ export function CreateCommissionDialog({
             <div>
               <Label htmlFor="c-ccy">Currency</Label>
               <Select
-                value={form.currency}
-                onValueChange={(v) => update("currency", v)}
+                value={scope.currency}
+                onValueChange={(v) => updateScope("currency", v)}
                 disabled={instruments.length === 0}
               >
                 <SelectTrigger id="c-ccy">
@@ -202,8 +271,8 @@ export function CreateCommissionDialog({
             <div>
               <Label htmlFor="c-utype">User type</Label>
               <Select
-                value={form.user_type}
-                onValueChange={(v) => update("user_type", v)}
+                value={scope.user_type}
+                onValueChange={(v) => updateScope("user_type", v)}
               >
                 <SelectTrigger id="c-utype">
                   <SelectValue />
@@ -219,73 +288,109 @@ export function CreateCommissionDialog({
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="c-afrom">Band from (optional)</Label>
-              <Input
-                id="c-afrom"
-                value={form.amount_from}
-                onChange={(e) => update("amount_from", e.target.value)}
-                placeholder="0"
-              />
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Bands</Label>
+              <Button variant="outline" size="sm" onClick={addBand}>
+                <Plus className="h-3.5 w-3.5" />
+                Add band
+              </Button>
             </div>
-            <div>
-              <Label htmlFor="c-ato">Band to (optional)</Label>
-              <Input
-                id="c-ato"
-                value={form.amount_to}
-                onChange={(e) => update("amount_to", e.target.value)}
-                placeholder="100"
-              />
-            </div>
+            {bands.map((band, i) => {
+              const preview = bandPreview(band);
+              return (
+                <div key={i} className="rounded-md border bg-muted/20 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Band {i + 1}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Remove band ${i + 1}`}
+                      disabled={bands.length === 1}
+                      onClick={() => removeBand(i)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    <div>
+                      <Label htmlFor={`c-from-${i}`} className="text-[11px]">
+                        From
+                      </Label>
+                      <Input
+                        id={`c-from-${i}`}
+                        value={band.amount_from}
+                        onChange={(e) => updateBand(i, "amount_from", e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`c-to-${i}`} className="text-[11px]">
+                        To
+                      </Label>
+                      <Input
+                        id={`c-to-${i}`}
+                        value={band.amount_to}
+                        onChange={(e) => updateBand(i, "amount_to", e.target.value)}
+                        placeholder="∞"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`c-fixed-${i}`} className="text-[11px]">
+                        Fixed
+                      </Label>
+                      <Input
+                        id={`c-fixed-${i}`}
+                        value={band.fixed}
+                        onChange={(e) => updateBand(i, "fixed", e.target.value)}
+                        placeholder="2"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`c-var-${i}`} className="text-[11px]">
+                        Variable %
+                      </Label>
+                      <Input
+                        id={`c-var-${i}`}
+                        value={band.variable_pct}
+                        onChange={(e) => updateBand(i, "variable_pct", e.target.value)}
+                        placeholder="0.01"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`c-cap-${i}`} className="text-[11px]">
+                        Cap
+                      </Label>
+                      <Input
+                        id={`c-cap-${i}`}
+                        value={band.cap}
+                        onChange={(e) => updateBand(i, "cap", e.target.value)}
+                        placeholder="25"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    On a sample {preview.sample.toFixed(2)} transaction,
+                    commission ≈{" "}
+                    <span className="text-foreground">{preview.commission}</span>.
+                  </p>
+                </div>
+              );
+            })}
+            <p className="text-[10px] text-muted-foreground">
+              Variable % is a decimal (0.01 = 1%). Leave the last band&apos;s
+              &ldquo;To&rdquo; blank for an open-ended top band.
+            </p>
           </div>
-          <p className="-mt-2 text-[10px] text-muted-foreground">
-            Leave the band empty to apply this commission to all amounts.
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label htmlFor="c-fixed">Fixed commission</Label>
-              <Input
-                id="c-fixed"
-                value={form.fixed_commission}
-                onChange={(e) => update("fixed_commission", e.target.value)}
-                placeholder="2"
-              />
-            </div>
-            <div>
-              <Label htmlFor="c-varpct">Variable %</Label>
-              <Input
-                id="c-varpct"
-                value={form.variable_commission_pct}
-                onChange={(e) =>
-                  update("variable_commission_pct", e.target.value)
-                }
-                placeholder="0.01"
-              />
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                As a decimal: 0.01 = 1%
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="c-cap">Commission cap (optional)</Label>
-              <Input
-                id="c-cap"
-                value={form.commission_cap}
-                onChange={(e) => update("commission_cap", e.target.value)}
-                placeholder="25"
-              />
-            </div>
-          </div>
-          <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            On a sample{" "}
-            <span className="font-mono text-foreground">
-              {sampleAmount.toFixed(2)}
-            </span>{" "}
-            transaction, the commission would be{" "}
-            <span className="font-mono text-foreground">{preview}</span>.
-          </div>
+
           {errorBanner && (
-            <ErrorBanner title="Couldn't propose" description={errorBanner} />
+            <ErrorBanner
+              title={reviseRequest ? "Couldn't resubmit" : "Couldn't propose"}
+              description={errorBanner}
+            />
           )}
         </div>
         <DialogFooter>
@@ -293,7 +398,13 @@ export function CreateCommissionDialog({
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={submitting}>
-            {submitting ? "Proposing…" : "Propose change"}
+            {submitting
+              ? reviseRequest
+                ? "Resubmitting…"
+                : "Proposing…"
+              : reviseRequest
+                ? "Resubmit"
+                : "Propose change"}
           </Button>
         </DialogFooter>
       </DialogContent>

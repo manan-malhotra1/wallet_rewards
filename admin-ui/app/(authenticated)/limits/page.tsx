@@ -7,15 +7,17 @@
  */
 import { ListChecks, Plus, Wallet } from "lucide-react";
 
+import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
 import {
+  listConfigRequests,
   listInstruments,
   listLimitConfigs,
   listServices,
   listWalletLimitConfigs,
 } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import type { Instrument, Service } from "@/lib/api-types";
+import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -23,6 +25,7 @@ import { PageHeader } from "@/components/ui/page-header";
 
 import { CreateLimitDialog } from "./_components/create-limit-dialog";
 import { CreateWalletLimitDialog } from "./_components/create-wallet-limit-dialog";
+import { LimitChangesRequested } from "./_components/limit-changes-requested";
 import { LimitsTable } from "./_components/limits-table";
 import { WalletLimitsTable } from "./_components/wallet-limits-table";
 
@@ -32,6 +35,9 @@ const NEW_BUTTON_CLASS =
   "inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90";
 
 export default async function LimitsPage() {
+  const session = await auth();
+  const currentAdminId = session?.user?.id ?? "";
+
   const activeTenantId = await getActiveTenantId();
   if (!activeTenantId) {
     return (
@@ -49,14 +55,25 @@ export default async function LimitsPage() {
   let walletConfigs: Awaited<ReturnType<typeof listWalletLimitConfigs>> = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
+  let changesRequested: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
-    [configs, walletConfigs, services, instruments] = await Promise.all([
-      listLimitConfigs(activeTenantId),
-      listWalletLimitConfigs(activeTenantId),
-      listServices(activeTenantId, "active"),
-      listInstruments(activeTenantId, "active"),
-    ]);
+    const [limitCr, walletCr] = [
+      listConfigRequests(activeTenantId, "CHANGES_REQUESTED", "limit"),
+      listConfigRequests(activeTenantId, "CHANGES_REQUESTED", "wallet_limit"),
+    ];
+    let limitChanges: ConfigChangeRequest[] = [];
+    let walletChanges: ConfigChangeRequest[] = [];
+    [configs, walletConfigs, services, instruments, limitChanges, walletChanges] =
+      await Promise.all([
+        listLimitConfigs(activeTenantId),
+        listWalletLimitConfigs(activeTenantId),
+        listServices(activeTenantId, "active"),
+        listInstruments(activeTenantId, "active"),
+        limitCr,
+        walletCr,
+      ]);
+    changesRequested = [...limitChanges, ...walletChanges];
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -91,6 +108,16 @@ export default async function LimitsPage() {
           <ErrorBanner
             title="Couldn't load limits"
             description={`${error.errorCode}: ${error.message}`}
+          />
+        )}
+
+        {!error && (
+          <LimitChangesRequested
+            requests={changesRequested}
+            tenantId={activeTenantId}
+            currentAdminId={currentAdminId}
+            services={services}
+            instruments={instruments}
           />
         )}
 

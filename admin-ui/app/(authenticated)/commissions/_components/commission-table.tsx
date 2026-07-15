@@ -8,6 +8,7 @@
 import { Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { proposeCommissionDeleteAction } from "@/app/(authenticated)/commissions/_actions";
 import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
@@ -69,7 +70,7 @@ export function CommissionTable({
             <TableHeaderCell className="text-right">Fixed</TableHeaderCell>
             <TableHeaderCell className="text-right">Variable %</TableHeaderCell>
             <TableHeaderCell className="text-right">Cap</TableHeaderCell>
-            <TableHeaderCell className="w-[40px]"> </TableHeaderCell>
+            <TableHeaderCell className="w-[120px] text-right"> </TableHeaderCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -99,15 +100,22 @@ export function CommissionTable({
                 {cfg.commission_cap ?? "—"}
               </TableCell>
               <TableCell>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Propose delete of commission config"
-                  disabled={pending === cfg.id}
-                  onClick={() => onDelete(cfg.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                </Button>
+                <div className="flex items-center justify-end gap-1">
+                  <ConfigViewButton
+                    configType="commission"
+                    data={cfg as unknown as Record<string, unknown>}
+                    title={`Commission · ${cfg.transaction_type} · ${cfg.currency}`}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Propose delete of commission config"
+                    disabled={pending === cfg.id}
+                    onClick={() => onDelete(cfg.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}

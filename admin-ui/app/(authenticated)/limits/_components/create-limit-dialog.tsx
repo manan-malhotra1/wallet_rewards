@@ -8,6 +8,7 @@
 
 import * as React from "react";
 
+import { reviseAndResubmitConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
 import { createLimitConfigAction } from "@/app/(authenticated)/limits/_actions";
 import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { Instrument, Service, UserType } from "@/lib/api-types";
+import type {
+  ConfigChangeRequest,
+  Instrument,
+  Service,
+  UserType,
+} from "@/lib/api-types";
 
 interface FormState {
   transaction_type: string;
@@ -48,7 +54,33 @@ interface FormState {
   monthly_value_cap: string;
 }
 
-function initialForm(services: Service[], instruments: Instrument[]): FormState {
+function str(value: unknown, fallback = ""): string {
+  return value === null || value === undefined ? fallback : String(value);
+}
+
+/** Derive the initial form from a revise proposal, or fresh defaults. */
+function initialForm(
+  services: Service[],
+  instruments: Instrument[],
+  reviseRequest?: ConfigChangeRequest,
+): FormState {
+  if (reviseRequest) {
+    const p = reviseRequest.payload ?? {};
+    return {
+      transaction_type: str(p.transaction_type),
+      account_type: str(p.account_type, "financial_wallet"),
+      currency: str(p.currency),
+      user_type: p.user_type ? str(p.user_type) : "all",
+      min_amount: str(p.min_amount),
+      max_amount: str(p.max_amount),
+      daily_count_cap: str(p.daily_count_cap),
+      daily_value_cap: str(p.daily_value_cap),
+      weekly_count_cap: str(p.weekly_count_cap),
+      weekly_value_cap: str(p.weekly_value_cap),
+      monthly_count_cap: str(p.monthly_count_cap),
+      monthly_value_cap: str(p.monthly_value_cap),
+    };
+  }
   return {
     transaction_type: services[0]?.code ?? "",
     account_type: "financial_wallet",
@@ -73,15 +105,17 @@ export function CreateLimitDialog({
   services,
   instruments,
   trigger,
+  reviseRequest,
 }: {
   tenantId: string;
   services: Service[];
   instruments: Instrument[];
   trigger: React.ReactNode;
+  reviseRequest?: ConfigChangeRequest;
 }) {
   const [open, setOpen] = React.useState(false);
   const [form, setForm] = React.useState<FormState>(() =>
-    initialForm(services, instruments),
+    initialForm(services, instruments, reviseRequest),
   );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
@@ -89,10 +123,10 @@ export function CreateLimitDialog({
 
   React.useEffect(() => {
     if (!open) {
-      setForm(initialForm(services, instruments));
+      setForm(initialForm(services, instruments, reviseRequest));
       setErrorBanner(null);
     }
-  }, [open, services, instruments]);
+  }, [open, services, instruments, reviseRequest]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -115,29 +149,36 @@ export function CreateLimitDialog({
     }
     setSubmitting(true);
     const num = (v: string) => (v.trim() ? Number(v) : undefined);
-    const str = (v: string) => (v.trim() ? v : undefined);
-    const result = await createLimitConfigAction({
+    const strOpt = (v: string) => (v.trim() ? v : undefined);
+    const payload = {
       tenant_id: tenantId,
       transaction_type: form.transaction_type,
       account_type: form.account_type,
       currency: form.currency.toUpperCase(),
       user_type: form.user_type === "all" ? null : (form.user_type as UserType),
-      min_amount: str(form.min_amount),
-      max_amount: str(form.max_amount),
+      min_amount: strOpt(form.min_amount),
+      max_amount: strOpt(form.max_amount),
       daily_count_cap: num(form.daily_count_cap),
-      daily_value_cap: str(form.daily_value_cap),
+      daily_value_cap: strOpt(form.daily_value_cap),
       weekly_count_cap: num(form.weekly_count_cap),
-      weekly_value_cap: str(form.weekly_value_cap),
+      weekly_value_cap: strOpt(form.weekly_value_cap),
       monthly_count_cap: num(form.monthly_count_cap),
-      monthly_value_cap: str(form.monthly_value_cap),
-    });
+      monthly_value_cap: strOpt(form.monthly_value_cap),
+    };
+    const result = reviseRequest
+      ? await reviseAndResubmitConfigRequestAction(
+          tenantId,
+          reviseRequest.id,
+          payload,
+        )
+      : await createLimitConfigAction(payload);
     setSubmitting(false);
     if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
       return;
     }
     toast({
-      title: "Limit created",
+      title: reviseRequest ? "Resubmitted for approval" : "Limit created",
       description: `${form.transaction_type} · ${form.currency}`,
     });
     setOpen(false);
@@ -148,7 +189,7 @@ export function CreateLimitDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New limit</DialogTitle>
+          <DialogTitle>{reviseRequest ? "Revise limit" : "New limit"}</DialogTitle>
           <DialogDescription>
             Per-txn min/max plus rolling daily/weekly/monthly caps. At least one
             must be set.
@@ -320,7 +361,13 @@ export function CreateLimitDialog({
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={submitting}>
-            {submitting ? "Saving…" : "Create"}
+            {submitting
+              ? reviseRequest
+                ? "Resubmitting…"
+                : "Saving…"
+              : reviseRequest
+                ? "Resubmit"
+                : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>

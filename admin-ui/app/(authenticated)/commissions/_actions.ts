@@ -11,34 +11,25 @@ import { revalidatePath } from "next/cache";
 
 import { ApiError } from "@/lib/api";
 import { proposeConfigChange } from "@/lib/api-endpoints";
-import type { UserType } from "@/lib/api-types";
 
 export type CommissionActionResult =
   | { ok: true }
   | { ok: false; errorCode: string; message: string };
 
-/** Fields the commission create dialog collects (money values are strings). */
-export interface ProposeCommissionInput {
-  tenant_id: string;
-  transaction_type: string;
-  currency: string;
-  user_type: UserType | null;
-  amount_from?: string;
-  amount_to?: string;
-  fixed_commission: string;
-  variable_commission_pct: string;
-  commission_cap?: string;
-}
-
-/** Propose creating a commission config. */
-export async function proposeCommissionChangeAction(
-  input: ProposeCommissionInput,
+/**
+ * Propose creating a commission SCHEDULE (Epic 25). The payload is a multi-band
+ * set: `{ bands: [ <full create row>, … ] }`, where each row repeats the shared
+ * scope. Approval by a second admin applies the change.
+ */
+export async function proposeCommissionBandsAction(
+  tenantId: string,
+  payload: { bands: Record<string, unknown>[] },
 ): Promise<CommissionActionResult> {
   try {
-    await proposeConfigChange(input.tenant_id, {
+    await proposeConfigChange(tenantId, {
       config_type: "commission",
       operation: "create",
-      payload: { ...input },
+      payload,
     });
     revalidatePath("/commissions");
     revalidatePath("/config-requests");

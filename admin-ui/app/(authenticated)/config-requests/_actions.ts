@@ -102,6 +102,26 @@ export async function resubmitConfigRequestAction(
   }
 }
 
+/**
+ * Revise the payload and re-submit for approval in one maker action (Epic 25).
+ * Powers the form-based "Edit & resubmit" flow on the native config pages: it
+ * PATCHes the revised payload, then flips the request back to PENDING.
+ */
+export async function reviseAndResubmitConfigRequestAction(
+  tenantId: string,
+  id: string,
+  payload: Record<string, unknown>,
+): Promise<ConfigRequestActionResult> {
+  try {
+    await reviseConfigRequest(tenantId, id, payload);
+    const request = await resubmitConfigRequest(tenantId, id);
+    revalidateAll();
+    return { ok: true, request };
+  } catch (err) {
+    return toResult(err);
+  }
+}
+
 /** Withdraw a non-terminal request (maker). */
 export async function withdrawConfigRequestAction(
   tenantId: string,

@@ -12,37 +12,25 @@ import { revalidatePath } from "next/cache";
 
 import { ApiError } from "@/lib/api";
 import { proposeConfigChange } from "@/lib/api-endpoints";
-import type { UserType } from "@/lib/api-types";
 
 export type PricingActionResult =
   | { ok: true }
   | { ok: false; errorCode: string; message: string };
 
-/** Fields the pricing create dialog collects (money values are strings). */
-export interface ProposePricingInput {
-  tenant_id: string;
-  transaction_type: string;
-  account_type: string;
-  currency: string;
-  user_type: UserType | null;
-  fixed_fee: string;
-  variable_fee_pct: string;
-  fee_cap?: string;
-  amount_from?: string;
-  amount_to?: string;
-  fee_inclusive: boolean;
-}
-
-/** Propose creating a pricing config. Returns the standard {ok} result. */
-export async function proposePricingChangeAction(
-  input: ProposePricingInput,
+/**
+ * Propose creating a pricing SCHEDULE (Epic 25). The payload is a multi-band
+ * set: `{ bands: [ <full create row>, … ] }`, where each row repeats the
+ * shared scope. Nothing goes live until a second admin approves.
+ */
+export async function proposePricingBandsAction(
+  tenantId: string,
+  payload: { bands: Record<string, unknown>[] },
 ): Promise<PricingActionResult> {
   try {
-    await proposeConfigChange(input.tenant_id, {
+    await proposeConfigChange(tenantId, {
       config_type: "pricing",
       operation: "create",
-      // The create schema (incl. tenant_id) travels as the request payload.
-      payload: { ...input },
+      payload,
     });
     revalidatePath("/pricing");
     revalidatePath("/config-requests");

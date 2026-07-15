@@ -7,6 +7,7 @@
 
 import * as React from "react";
 
+import { reviseAndResubmitConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
 import { proposeTaxChangeAction } from "@/app/(authenticated)/taxes/_actions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { Instrument } from "@/lib/api-types";
+import type { ConfigChangeRequest, Instrument } from "@/lib/api-types";
 
 interface FormState {
   currency: string;
@@ -40,7 +41,25 @@ interface FormState {
   commission_tax_inclusive: boolean;
 }
 
-function initialForm(instruments: Instrument[]): FormState {
+function str(value: unknown, fallback = ""): string {
+  return value === null || value === undefined ? fallback : String(value);
+}
+
+/** Derive the initial form from a revise proposal, or fresh defaults. */
+function initialForm(
+  instruments: Instrument[],
+  reviseRequest?: ConfigChangeRequest,
+): FormState {
+  if (reviseRequest) {
+    const p = reviseRequest.payload ?? {};
+    return {
+      currency: str(p.currency),
+      fee_tax_pct: str(p.fee_tax_pct, "0"),
+      commission_tax_pct: str(p.commission_tax_pct, "0"),
+      fee_tax_inclusive: Boolean(p.fee_tax_inclusive),
+      commission_tax_inclusive: Boolean(p.commission_tax_inclusive),
+    };
+  }
   return {
     currency:
       instruments.find((i) => i.account_type === "financial_wallet")?.code ??
@@ -57,14 +76,16 @@ export function CreateTaxDialog({
   tenantId,
   instruments,
   trigger,
+  reviseRequest,
 }: {
   tenantId: string;
   instruments: Instrument[];
   trigger: React.ReactNode;
+  reviseRequest?: ConfigChangeRequest;
 }) {
   const [open, setOpen] = React.useState(false);
   const [form, setForm] = React.useState<FormState>(() =>
-    initialForm(instruments),
+    initialForm(instruments, reviseRequest),
   );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
@@ -72,10 +93,10 @@ export function CreateTaxDialog({
 
   React.useEffect(() => {
     if (!open) {
-      setForm(initialForm(instruments));
+      setForm(initialForm(instruments, reviseRequest));
       setErrorBanner(null);
     }
-  }, [open, instruments]);
+  }, [open, instruments, reviseRequest]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -83,21 +104,30 @@ export function CreateTaxDialog({
   const onSubmit = async () => {
     setErrorBanner(null);
     setSubmitting(true);
-    const result = await proposeTaxChangeAction({
+    const payload = {
       tenant_id: tenantId,
       currency: form.currency.toUpperCase(),
       fee_tax_pct: form.fee_tax_pct || "0",
       commission_tax_pct: form.commission_tax_pct || "0",
       fee_tax_inclusive: form.fee_tax_inclusive,
       commission_tax_inclusive: form.commission_tax_inclusive,
-    });
+    };
+    const result = reviseRequest
+      ? await reviseAndResubmitConfigRequestAction(
+          tenantId,
+          reviseRequest.id,
+          payload,
+        )
+      : await proposeTaxChangeAction(payload);
     setSubmitting(false);
     if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
       return;
     }
     toast({
-      title: "Change proposed — pending approval",
+      title: reviseRequest
+        ? "Resubmitted for approval"
+        : "Change proposed — pending approval",
       description: `Tax · ${form.currency}`,
     });
     setOpen(false);
@@ -108,7 +138,9 @@ export function CreateTaxDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New tax config</DialogTitle>
+          <DialogTitle>
+            {reviseRequest ? "Revise tax config" : "New tax config"}
+          </DialogTitle>
           <DialogDescription>
             One tax config per currency — applied to fees and commissions
             independently. Goes live after a second admin approves.
@@ -183,7 +215,13 @@ export function CreateTaxDialog({
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={submitting}>
-            {submitting ? "Proposing…" : "Propose change"}
+            {submitting
+              ? reviseRequest
+                ? "Resubmitting…"
+                : "Proposing…"
+              : reviseRequest
+                ? "Resubmit"
+                : "Propose change"}
           </Button>
         </DialogFooter>
       </DialogContent>

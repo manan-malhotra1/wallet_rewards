@@ -9,16 +9,23 @@ import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
 import {
   listCommissionConfigs,
+  listConfigRequests,
   listInstruments,
   listServices,
 } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import type { CommissionConfig, Instrument, Service } from "@/lib/api-types";
+import type {
+  CommissionConfig,
+  ConfigChangeRequest,
+  Instrument,
+  Service,
+} from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
+import { CommissionChangesRequested } from "./_components/commission-changes-requested";
 import { CommissionTable } from "./_components/commission-table";
 import { CreateCommissionDialog } from "./_components/create-commission-dialog";
 
@@ -29,6 +36,7 @@ export default async function CommissionsPage() {
   // Only platform-admins may propose config changes; the backend also 403s,
   // this just hides affordances that would fail for other admins.
   const canPropose = session?.user?.roles?.includes("platform-admin") ?? false;
+  const currentAdminId = session?.user?.id ?? "";
 
   const activeTenantId = await getActiveTenantId();
   if (!activeTenantId) {
@@ -46,12 +54,14 @@ export default async function CommissionsPage() {
   let configs: CommissionConfig[] = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
+  let changesRequested: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
-    [configs, services, instruments] = await Promise.all([
+    [configs, services, instruments, changesRequested] = await Promise.all([
       listCommissionConfigs(activeTenantId),
       listServices(activeTenantId, "active"),
       listInstruments(activeTenantId, "active"),
+      listConfigRequests(activeTenantId, "CHANGES_REQUESTED", "commission"),
     ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
@@ -87,6 +97,15 @@ export default async function CommissionsPage() {
           <ErrorBanner
             title="Couldn't load commissions"
             description={`${error.errorCode}: ${error.message}`}
+          />
+        )}
+        {!error && (
+          <CommissionChangesRequested
+            requests={changesRequested}
+            tenantId={activeTenantId}
+            currentAdminId={currentAdminId}
+            services={services}
+            instruments={instruments}
           />
         )}
         {!error && configs.length === 0 ? (

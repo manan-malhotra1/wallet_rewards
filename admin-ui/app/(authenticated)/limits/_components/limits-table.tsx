@@ -7,6 +7,7 @@
 import { Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { deleteLimitConfigAction } from "@/app/(authenticated)/limits/_actions";
 import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
@@ -69,7 +70,7 @@ export function LimitsTable({
             <TableHeaderCell className="text-right">Weekly value</TableHeaderCell>
             <TableHeaderCell className="text-right">Monthly count</TableHeaderCell>
             <TableHeaderCell className="text-right">Monthly value</TableHeaderCell>
-            <TableHeaderCell className="w-[40px]"> </TableHeaderCell>
+            <TableHeaderCell className="w-[120px] text-right"> </TableHeaderCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -114,15 +115,22 @@ export function LimitsTable({
                 {cfg.monthly_value_cap ?? "—"}
               </TableCell>
               <TableCell>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Delete limit"
-                  disabled={pending === cfg.id}
-                  onClick={() => onDelete(cfg.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                </Button>
+                <div className="flex items-center justify-end gap-1">
+                  <ConfigViewButton
+                    configType="limit"
+                    data={cfg as unknown as Record<string, unknown>}
+                    title={`Limit · ${cfg.transaction_type} · ${cfg.currency}`}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Delete limit"
+                    disabled={pending === cfg.id}
+                    onClick={() => onDelete(cfg.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}

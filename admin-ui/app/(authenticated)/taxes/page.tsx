@@ -7,15 +7,20 @@ import { Plus, Receipt } from "lucide-react";
 
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
-import { listInstruments, listTaxConfigs } from "@/lib/api-endpoints";
+import {
+  listConfigRequests,
+  listInstruments,
+  listTaxConfigs,
+} from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import type { Instrument, TaxConfig } from "@/lib/api-types";
+import type { ConfigChangeRequest, Instrument, TaxConfig } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { CreateTaxDialog } from "./_components/create-tax-dialog";
+import { TaxChangesRequested } from "./_components/tax-changes-requested";
 import { TaxTable } from "./_components/tax-table";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +30,7 @@ export default async function TaxesPage() {
   // Only platform-admins may propose config changes; the backend also 403s,
   // this just hides affordances that would fail for other admins.
   const canPropose = session?.user?.roles?.includes("platform-admin") ?? false;
+  const currentAdminId = session?.user?.id ?? "";
 
   const activeTenantId = await getActiveTenantId();
   if (!activeTenantId) {
@@ -41,11 +47,13 @@ export default async function TaxesPage() {
 
   let configs: TaxConfig[] = [];
   let instruments: Instrument[] = [];
+  let changesRequested: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
-    [configs, instruments] = await Promise.all([
+    [configs, instruments, changesRequested] = await Promise.all([
       listTaxConfigs(activeTenantId),
       listInstruments(activeTenantId, "active"),
+      listConfigRequests(activeTenantId, "CHANGES_REQUESTED", "tax"),
     ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
@@ -80,6 +88,14 @@ export default async function TaxesPage() {
           <ErrorBanner
             title="Couldn't load taxes"
             description={`${error.errorCode}: ${error.message}`}
+          />
+        )}
+        {!error && (
+          <TaxChangesRequested
+            requests={changesRequested}
+            tenantId={activeTenantId}
+            currentAdminId={currentAdminId}
+            instruments={instruments}
           />
         )}
         {!error && configs.length === 0 ? (

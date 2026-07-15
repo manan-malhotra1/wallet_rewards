@@ -6,15 +6,21 @@ import { Coins, Plus } from "lucide-react";
 
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
-import { listInstruments, listPricingConfigs, listServices } from "@/lib/api-endpoints";
+import {
+  listConfigRequests,
+  listInstruments,
+  listPricingConfigs,
+  listServices,
+} from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import type { Instrument, Service } from "@/lib/api-types";
+import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { CreatePricingDialog } from "./_components/create-pricing-dialog";
+import { PricingChangesRequested } from "./_components/pricing-changes-requested";
 import { PricingTable } from "./_components/pricing-table";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +30,7 @@ export default async function PricingPage() {
   // Only platform-admins may propose config changes; the backend also 403s,
   // this just hides affordances that would fail for other admins.
   const canPropose = session?.user?.roles?.includes("platform-admin") ?? false;
+  const currentAdminId = session?.user?.id ?? "";
 
   const activeTenantId = await getActiveTenantId();
   if (!activeTenantId) {
@@ -41,12 +48,14 @@ export default async function PricingPage() {
   let configs: Awaited<ReturnType<typeof listPricingConfigs>> = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
+  let changesRequested: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
-    [configs, services, instruments] = await Promise.all([
+    [configs, services, instruments, changesRequested] = await Promise.all([
       listPricingConfigs(activeTenantId),
       listServices(activeTenantId, "active"),
       listInstruments(activeTenantId, "active"),
+      listConfigRequests(activeTenantId, "CHANGES_REQUESTED", "pricing"),
     ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
@@ -56,8 +65,8 @@ export default async function PricingPage() {
   return (
     <div>
       <PageHeader
-        title="Pricing"
-        subtitle="Fixed + variable fees per transaction type. Step 3 of payment orchestration."
+        title="Service charges"
+        subtitle="Fixed + variable fees per transaction type, by amount band."
         actions={
           canPropose ? (
             <CreatePricingDialog
@@ -82,6 +91,15 @@ export default async function PricingPage() {
           <ErrorBanner
             title="Couldn't load pricing"
             description={`${error.errorCode}: ${error.message}`}
+          />
+        )}
+        {!error && (
+          <PricingChangesRequested
+            requests={changesRequested}
+            tenantId={activeTenantId}
+            currentAdminId={currentAdminId}
+            services={services}
+            instruments={instruments}
           />
         )}
         {!error && configs.length === 0 ? (

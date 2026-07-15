@@ -472,13 +472,18 @@ export const proposeConfigChange = (
     query: { tenant_id },
   });
 
-/** List change requests, optionally filtered by lifecycle status. */
+/**
+ * List change requests, optionally filtered by lifecycle status and/or the
+ * config domain (`config_type`). Native config pages pass `config_type` to
+ * fetch only their own CHANGES_REQUESTED items.
+ */
 export const listConfigRequests = (
   tenant_id: string,
   status_filter?: ConfigRequestStatus,
+  config_type?: ConfigType,
 ) =>
   apiGet<ConfigChangeRequest[]>("/api/v1/config-requests", {
-    query: { tenant_id, status_filter },
+    query: { tenant_id, status_filter, config_type },
   });
 
 /** Fetch a single change request with its review thread. */

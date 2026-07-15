@@ -29,9 +29,7 @@ async def _make_user(
     db_session.add(user)
     await db_session.flush()
     if first_name is not None or last_name is not None:
-        db_session.add(
-            UserProfile(user_id=user.id, first_name=first_name, last_name=last_name)
-        )
+        db_session.add(UserProfile(user_id=user.id, first_name=first_name, last_name=last_name))
     for id_type, id_value in identifiers or []:
         db_session.add(
             UserIdentifier(
@@ -47,9 +45,7 @@ async def _make_user(
 
 
 @pytest.mark.asyncio
-async def test_resolves_to_profile_full_name(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_resolves_to_profile_full_name(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """A user with a profile resolves to the joined + stripped full name."""
     user = await _make_user(
         db_session,
@@ -58,9 +54,7 @@ async def test_resolves_to_profile_full_name(
         last_name="Doe",
         identifiers=[("phone", "+27825550101")],
     )
-    names = await resolve_user_names(
-        db_session, tenant_id=test_tenant.id, user_ids=[user.id]
-    )
+    names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[user.id])
     assert names[user.id] == "Jane Doe"
 
 
@@ -70,9 +64,7 @@ async def test_partial_profile_uses_available_name_part(
 ) -> None:
     """A profile with only a first name resolves to just that (no stray space)."""
     user = await _make_user(db_session, test_tenant, first_name="Jane")
-    names = await resolve_user_names(
-        db_session, tenant_id=test_tenant.id, user_ids=[user.id]
-    )
+    names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[user.id])
     assert names[user.id] == "Jane"
 
 
@@ -81,12 +73,8 @@ async def test_falls_back_to_identifier_when_no_profile(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
     """No profile → the primary identifier value stands in for the name."""
-    user = await _make_user(
-        db_session, test_tenant, identifiers=[("phone", "+27825550202")]
-    )
-    names = await resolve_user_names(
-        db_session, tenant_id=test_tenant.id, user_ids=[user.id]
-    )
+    user = await _make_user(db_session, test_tenant, identifiers=[("phone", "+27825550202")])
+    names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[user.id])
     assert names[user.id] == "+27825550202"
 
 
@@ -100,9 +88,7 @@ async def test_identifier_fallback_prefers_phone_over_email(
         test_tenant,
         identifiers=[("email", "jane@example.com"), ("phone", "+27825550303")],
     )
-    names = await resolve_user_names(
-        db_session, tenant_id=test_tenant.id, user_ids=[user.id]
-    )
+    names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[user.id])
     assert names[user.id] == "+27825550303"
 
 
@@ -112,20 +98,14 @@ async def test_omitted_when_no_profile_and_no_identifier(
 ) -> None:
     """A user with neither a profile nor an identifier is absent from the map."""
     user = await _make_user(db_session, test_tenant)
-    names = await resolve_user_names(
-        db_session, tenant_id=test_tenant.id, user_ids=[user.id]
-    )
+    names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[user.id])
     assert user.id not in names
 
 
 @pytest.mark.asyncio
-async def test_unknown_user_id_is_omitted(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_unknown_user_id_is_omitted(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """A user id that does not exist simply does not appear in the result."""
-    names = await resolve_user_names(
-        db_session, tenant_id=test_tenant.id, user_ids=[uuid4()]
-    )
+    names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[uuid4()])
     assert names == {}
 
 
@@ -141,21 +121,15 @@ async def test_tenant_scoped_does_not_resolve_other_tenant_user(
         last_name="Tenant",
         identifiers=[("phone", "+27825550404")],
     )
-    names = await resolve_user_names(
-        db_session, tenant_id=test_tenant.id, user_ids=[user.id]
-    )
+    names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[user.id])
     assert names == {}
 
 
 @pytest.mark.asyncio
-async def test_batches_mixed_users(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_batches_mixed_users(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """One call resolves profile-named, identifier-only, and nameless users."""
     named = await _make_user(db_session, test_tenant, first_name="Amara", last_name="N")
-    ident_only = await _make_user(
-        db_session, test_tenant, identifiers=[("phone", "+27825550505")]
-    )
+    ident_only = await _make_user(db_session, test_tenant, identifiers=[("phone", "+27825550505")])
     nameless = await _make_user(db_session, test_tenant)
 
     names = await resolve_user_names(

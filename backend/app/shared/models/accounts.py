@@ -52,9 +52,12 @@ ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING = "airtime_merchant_holding"
 # the operator tops the pool up. Unguarded (may run "negative"). One per
 # (tenant, currency).
 ACCOUNT_TYPE_COMMISSION = "commission"
-# Pricing v2 (Epic 19) — tax collector. Every tax leg (on a fee or a
-# commission) CREDITs this account. One per (tenant, currency).
-ACCOUNT_TYPE_TAXES = "taxes"
+# Pricing v2 (Epic 25) — tax collectors, split so the two tax bases are
+# distinguishable. Tax charged on a SERVICE FEE credits `tax_service_collected`;
+# tax charged on an agent COMMISSION credits `tax_commission_collected`. One of
+# each per (tenant, currency).
+ACCOUNT_TYPE_TAX_SERVICE = "tax_service_collected"
+ACCOUNT_TYPE_TAX_COMMISSION = "tax_commission_collected"
 
 ACCOUNT_TYPES = (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -66,7 +69,8 @@ ACCOUNT_TYPES = (
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
     ACCOUNT_TYPE_COMMISSION,
-    ACCOUNT_TYPE_TAXES,
+    ACCOUNT_TYPE_TAX_SERVICE,
+    ACCOUNT_TYPE_TAX_COMMISSION,
 )
 
 
@@ -94,7 +98,8 @@ class Account(Base):
             "'operator_adjustment', "
             "'airtime_merchant_holding', "
             "'commission', "
-            "'taxes'"
+            "'tax_service_collected', "
+            "'tax_commission_collected'"
             ")",
             name="ck_accounts_type",
         ),

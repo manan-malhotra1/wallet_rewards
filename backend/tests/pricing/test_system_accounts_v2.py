@@ -17,11 +17,11 @@ from app.modules.accounts.service import derive_balance
 from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
 from app.modules.pricing.service import (
     get_or_create_system_commission,
-    get_or_create_system_taxes,
+    get_or_create_system_tax_service,
 )
 from app.shared.models import (
     ACCOUNT_TYPE_COMMISSION,
-    ACCOUNT_TYPE_TAXES,
+    ACCOUNT_TYPE_TAX_SERVICE,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     Tenant,
@@ -53,11 +53,15 @@ async def test_get_or_create_taxes_is_idempotent(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
     """First call creates the taxes account; the second returns the same row."""
-    first = await get_or_create_system_taxes(db_session, tenant_id=test_tenant.id, currency="ZAR")
+    first = await get_or_create_system_tax_service(
+        db_session, tenant_id=test_tenant.id, currency="ZAR"
+    )
     await db_session.commit()
-    assert first.account_type == ACCOUNT_TYPE_TAXES
+    assert first.account_type == ACCOUNT_TYPE_TAX_SERVICE
 
-    second = await get_or_create_system_taxes(db_session, tenant_id=test_tenant.id, currency="ZAR")
+    second = await get_or_create_system_tax_service(
+        db_session, tenant_id=test_tenant.id, currency="ZAR"
+    )
     assert second.id == first.id
 
 
@@ -77,7 +81,9 @@ async def test_guard_skips_commission_and_taxes_credits(
     commission = await get_or_create_system_commission(
         session, tenant_id=test_tenant.id, currency="ZAR"
     )
-    taxes = await get_or_create_system_taxes(session, tenant_id=test_tenant.id, currency="ZAR")
+    taxes = await get_or_create_system_tax_service(
+        session, tenant_id=test_tenant.id, currency="ZAR"
+    )
     await session.commit()
 
     txn = await post_transaction(

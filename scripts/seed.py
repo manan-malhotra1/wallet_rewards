@@ -41,12 +41,15 @@ from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: 
 from app.modules.redemption.service import register_provider  # noqa: E402
 from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
+    ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+    ACCOUNT_TYPE_TAX_COMMISSION,
+    ACCOUNT_TYPE_TAX_SERVICE,
     MERCHANT_CATEGORY_AIRTIME,
     MERCHANT_MODE_SIMULATOR,
     USER_TYPE_AGENT,
@@ -800,7 +803,10 @@ async def seed() -> None:
             (ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE, "PTS", "System Points Issuance (master)"),
             (ACCOUNT_TYPE_SYSTEM_CASH_INFLOW, "ZAR", "Cash float"),
             (ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED, "ZAR", "Fees collected"),
-            (ACCOUNT_TYPE_OPERATOR_ADJUSTMENT, "ZAR", "Operator adjustments"),
+            (ACCOUNT_TYPE_OPERATOR_ADJUSTMENT, "ZAR", "Bank mirror account"),
+            (ACCOUNT_TYPE_COMMISSION, "ZAR", "Commission funded wallet"),
+            (ACCOUNT_TYPE_TAX_SERVICE, "ZAR", "Tax collected on service charges"),
+            (ACCOUNT_TYPE_TAX_COMMISSION, "ZAR", "Tax collected on commissions"),
         ]
         for account_type, currency, label in system_wallets:
             await _get_or_create_account(

@@ -38,7 +38,8 @@ class ChargeAccounts:
         payer_account_id: Principal source (e.g. the agent's e-float) — DEBIT.
         beneficiary_account_id: Principal destination (customer wallet) — CREDIT.
         fee_account_id: `system_fee_collected` — CREDIT of the net fee.
-        taxes_account_id: `taxes` wallet — CREDIT of every tax leg.
+        service_tax_account_id: `tax_service_collected` — CREDIT of the fee-tax.
+        commission_tax_account_id: `tax_commission_collected` — CREDIT of the commission-tax.
         commission_pool_account_id: `commission` pool — DEBIT of the payout.
         agent_account_id: The acting agent's wallet — CREDIT of the net commission.
     """
@@ -46,7 +47,8 @@ class ChargeAccounts:
     payer_account_id: UUID
     beneficiary_account_id: UUID
     fee_account_id: UUID
-    taxes_account_id: UUID
+    service_tax_account_id: UUID
+    commission_tax_account_id: UUID
     commission_pool_account_id: UUID
     agent_account_id: UUID
 
@@ -151,7 +153,8 @@ def assemble_charges(
     _append_if_positive(entries, accounts.payer_account_id, ENTRY_DEBIT, payer_debit)
     _append_if_positive(entries, accounts.beneficiary_account_id, ENTRY_CREDIT, beneficiary_credit)
     _append_if_positive(entries, accounts.fee_account_id, ENTRY_CREDIT, fee_net)
-    _append_if_positive(entries, accounts.taxes_account_id, ENTRY_CREDIT, tf)
+    # Fee-tax lands in the SERVICE-charge tax collector (Epic 25 split).
+    _append_if_positive(entries, accounts.service_tax_account_id, ENTRY_CREDIT, tf)
 
     # --- Commission + commission-tax (axis 3) --------------------------------
     # Always additive: DEBIT the pool, CREDIT the agent (net of inclusive tax).
@@ -161,7 +164,8 @@ def assemble_charges(
 
     _append_if_positive(entries, accounts.commission_pool_account_id, ENTRY_DEBIT, pool_debit)
     _append_if_positive(entries, accounts.agent_account_id, ENTRY_CREDIT, agent_credit)
-    _append_if_positive(entries, accounts.taxes_account_id, ENTRY_CREDIT, tc)
+    # Commission-tax lands in the COMMISSION tax collector (Epic 25 split).
+    _append_if_positive(entries, accounts.commission_tax_account_id, ENTRY_CREDIT, tc)
 
     return AssembledCharges(
         entries=entries,

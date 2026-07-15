@@ -37,7 +37,8 @@ from app.modules.pricing.assembler import (
 from app.modules.pricing.service import (
     get_or_create_system_commission,
     get_or_create_system_fee_account,
-    get_or_create_system_taxes,
+    get_or_create_system_tax_commission,
+    get_or_create_system_tax_service,
     resolve_fee,
 )
 from app.modules.roles.service import require_permission
@@ -242,7 +243,10 @@ async def cash_in(
     commission_pool = await get_or_create_system_commission(
         session, tenant_id=tenant_id, currency=currency
     )
-    taxes_account = await get_or_create_system_taxes(
+    service_tax_account = await get_or_create_system_tax_service(
+        session, tenant_id=tenant_id, currency=currency
+    )
+    commission_tax_account = await get_or_create_system_tax_commission(
         session, tenant_id=tenant_id, currency=currency
     )
     assembled = assemble_charges(
@@ -250,7 +254,8 @@ async def cash_in(
             payer_account_id=agent_wallet.id,
             beneficiary_account_id=customer_wallet.id,
             fee_account_id=fee_account.id,
-            taxes_account_id=taxes_account.id,
+            service_tax_account_id=service_tax_account.id,
+            commission_tax_account_id=commission_tax_account.id,
             commission_pool_account_id=commission_pool.id,
             agent_account_id=agent_wallet.id,  # commission lands on the agent's float
         ),

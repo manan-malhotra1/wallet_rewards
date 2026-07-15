@@ -62,9 +62,9 @@ def _checker(make_admin_token: Callable[..., str]) -> dict[str, str]:
 async def _pricing_count(session: AsyncSession, tenant: Tenant) -> int:
     return (
         await session.execute(
-            select(func.count()).select_from(PricingConfig).where(
-                PricingConfig.tenant_id == tenant.id
-            )
+            select(func.count())
+            .select_from(PricingConfig)
+            .where(PricingConfig.tenant_id == tenant.id)
         )
     ).scalar_one()
 
@@ -171,9 +171,9 @@ async def test_commission_multi_band_propose_and_apply(
     assert resp.status_code == 200, resp.text
     n = (
         await db_session.execute(
-            select(func.count()).select_from(CommissionConfig).where(
-                CommissionConfig.tenant_id == test_tenant.id
-            )
+            select(func.count())
+            .select_from(CommissionConfig)
+            .where(CommissionConfig.tenant_id == test_tenant.id)
         )
     ).scalar_one()
     assert n == 2

@@ -20,7 +20,8 @@ from app.modules.accounts.service import derive_balance
 from app.shared.models import (
     ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
-    ACCOUNT_TYPE_TAXES,
+    ACCOUNT_TYPE_TAX_COMMISSION,
+    ACCOUNT_TYPE_TAX_SERVICE,
     Account,
     Tenant,
 )
@@ -70,7 +71,10 @@ async def test_cash_in_happy_path_matches_worked_example(
 
     fee_acct = await _system_account(db_session, test_tenant, ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED)
     commission_acct = await _system_account(db_session, test_tenant, ACCOUNT_TYPE_COMMISSION)
-    taxes_acct = await _system_account(db_session, test_tenant, ACCOUNT_TYPE_TAXES)
+    service_tax_acct = await _system_account(db_session, test_tenant, ACCOUNT_TYPE_TAX_SERVICE)
+    commission_tax_acct = await _system_account(
+        db_session, test_tenant, ACCOUNT_TYPE_TAX_COMMISSION
+    )
 
     # customer receives A - F - Tf = 100 - 2 - 0.30
     assert await _balance(db_session, customer_wallet.id) == Decimal("97.70")
@@ -78,7 +82,9 @@ async def test_cash_in_happy_path_matches_worked_example(
     assert await _balance(db_session, agent_float.id) == Decimal("400.85")
     assert await _balance(db_session, fee_acct.id) == Decimal("2")
     assert await _balance(db_session, commission_acct.id) == Decimal("-1")  # pool paid out
-    assert await _balance(db_session, taxes_acct.id) == Decimal("0.45")  # 0.30 + 0.15
+    # Tax now splits into two collectors: fee-tax vs commission-tax (Epic 25).
+    assert await _balance(db_session, service_tax_acct.id) == Decimal("0.30")
+    assert await _balance(db_session, commission_tax_acct.id) == Decimal("0.15")
 
 
 @pytest.mark.asyncio

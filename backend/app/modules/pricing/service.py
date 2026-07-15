@@ -35,7 +35,8 @@ from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
-    ACCOUNT_TYPE_TAXES,
+    ACCOUNT_TYPE_TAX_COMMISSION,
+    ACCOUNT_TYPE_TAX_SERVICE,
     Account,
     PricingConfig,
     Tenant,
@@ -472,24 +473,33 @@ async def get_or_create_system_commission(
     )
 
 
-async def get_or_create_system_taxes(
+async def get_or_create_system_tax_service(
     session: AsyncSession, *, tenant_id: UUID, currency: str
 ) -> Account:
-    """Return the per-(tenant, currency) `taxes` collector account (Epic 19).
+    """Return the per-(tenant, currency) SERVICE-charge tax collector (Epic 25).
 
-    Every tax leg (on a fee or a commission) CREDITs this account.
-    Auto-created + idempotent.
-
-    Args:
-        session: Async DB session.
-        tenant_id: Tenant scope.
-        currency: ISO 4217. Case-insensitive.
+    Tax charged on a service fee CREDITs this account. Auto-created + idempotent.
     """
     return await _get_or_create_system_account(
         session,
         tenant_id=tenant_id,
         currency=currency,
-        account_type=ACCOUNT_TYPE_TAXES,
+        account_type=ACCOUNT_TYPE_TAX_SERVICE,
+    )
+
+
+async def get_or_create_system_tax_commission(
+    session: AsyncSession, *, tenant_id: UUID, currency: str
+) -> Account:
+    """Return the per-(tenant, currency) COMMISSION tax collector (Epic 25).
+
+    Tax charged on an agent commission CREDITs this account. Idempotent.
+    """
+    return await _get_or_create_system_account(
+        session,
+        tenant_id=tenant_id,
+        currency=currency,
+        account_type=ACCOUNT_TYPE_TAX_COMMISSION,
     )
 
 

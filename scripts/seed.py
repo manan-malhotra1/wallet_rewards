@@ -49,8 +49,10 @@ from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     MERCHANT_CATEGORY_AIRTIME,
     MERCHANT_MODE_SIMULATOR,
+    USER_TYPE_AGENT,
     USER_TYPE_MERCHANT,
     Account,
+    CommissionConfig,
     ExternalEventSource,
     Instrument,
     LimitConfig,
@@ -62,6 +64,7 @@ from app.shared.models import (  # noqa: E402
     Rule,
     Service,
     StepUpPolicy,
+    TaxConfig,
     Tenant,
     Transaction,
     User,
@@ -85,6 +88,16 @@ USERS_TO_SEED = [
         "first_name": "Bob",
         "last_name": "Nkomo",
         "opening_balance_zar": Decimal("500"),
+    },
+    # An agent (user_type='agent') with a funded e-float (its financial_wallet),
+    # so cash-in — an agent funding a customer's wallet for a commission — can be
+    # exercised end-to-end from the mobile-simulator.
+    {
+        "phone": "+27825558001",
+        "first_name": "Grace",
+        "last_name": "Dube",
+        "opening_balance_zar": Decimal("5000"),
+        "user_type": USER_TYPE_AGENT,
     },
 ]
 
@@ -210,8 +223,13 @@ async def _get_or_create_user(
     phone: str,
     first_name: str,
     last_name: str,
+    user_type: str | None = None,
 ) -> User:
-    """Return the user identified by `phone` in this tenant, creating it on first run."""
+    """Return the user identified by `phone` in this tenant, creating it on first run.
+
+    `user_type` defaults to the model default (consumer) when None; pass e.g.
+    `agent` to seed an agent that can cash-in.
+    """
     from app.auth.hashing import hash_pin
 
     result = await session.execute(
@@ -239,7 +257,8 @@ async def _get_or_create_user(
     # via the same helper the real flow uses.
     from app.auth.hashing import hash_pin
 
-    user = User(tenant_id=tenant.id, pin_hash=hash_pin("1234"))
+    user_kwargs = {"user_type": user_type} if user_type is not None else {}
+    user = User(tenant_id=tenant.id, pin_hash=hash_pin("1234"), **user_kwargs)
     session.add(user)
     await session.flush()
     session.add(
@@ -532,13 +551,22 @@ async def _get_or_create_airtime_merchant(session: AsyncSession, tenant: Tenant)
             UserIdentifier.identifier_value == AIRTIME_MERCHANT_PHONE,
         )
     )
+    from app.auth.hashing import hash_pin
+
     identifier = result.scalar_one_or_none()
     if identifier is not None:
         merchant = (
             await session.execute(select(User).where(User.id == identifier.user_id))
         ).scalar_one()
+        # Backfill a dev PIN so the simulator can log in as the merchant to show
+        # (read-only) the transactions run against its holding account.
+        if merchant.pin_hash is None:
+            merchant.pin_hash = hash_pin("1234")
+            await session.commit()
     else:
-        merchant = User(tenant_id=tenant.id, user_type=USER_TYPE_MERCHANT)
+        merchant = User(
+            tenant_id=tenant.id, user_type=USER_TYPE_MERCHANT, pin_hash=hash_pin("1234")
+        )
         session.add(merchant)
         await session.flush()
         session.add(
@@ -646,6 +674,79 @@ async def _get_or_create_airtime_pricing_and_limits(session: AsyncSession, tenan
         print("  + Limits: airtime_recharge R5-R1000 (default)")
 
 
+async def _get_or_create_cashin_charges(session: AsyncSession, tenant: Tenant) -> None:
+    """Demo cash-in charges for agents so commission + tax are non-zero.
+
+    Scoped to `user_type='agent'` (the acting party in a cash-in): a R2 fee, a
+    R1.50 agent commission, and a 15% tax on both fee and commission. Without a
+    commission config the commission would be 0, so this makes the fee /
+    commission / tax breakdown visible in the mobile-simulator.
+    """
+    exists = (
+        await session.execute(
+            select(PricingConfig).where(
+                PricingConfig.tenant_id == tenant.id,
+                PricingConfig.transaction_type == "cash_in",
+                PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                PricingConfig.currency == "ZAR",
+                PricingConfig.user_type == USER_TYPE_AGENT,
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        session.add(
+            PricingConfig(
+                tenant_id=tenant.id,
+                transaction_type="cash_in",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                user_type=USER_TYPE_AGENT,
+                fixed_fee=Decimal("2"),
+            )
+        )
+        session.add(
+            LimitConfig(
+                tenant_id=tenant.id,
+                transaction_type="cash_in",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                user_type=USER_TYPE_AGENT,
+                min_amount=Decimal("5"),
+                max_amount=Decimal("5000"),
+            )
+        )
+        session.add(
+            CommissionConfig(
+                tenant_id=tenant.id,
+                transaction_type="cash_in",
+                currency="ZAR",
+                user_type=USER_TYPE_AGENT,
+                fixed_commission=Decimal("1.50"),
+            )
+        )
+        await session.commit()
+        print("  + Cash-in charges (agent): R2 fee, R1.50 commission")
+
+    tax = (
+        await session.execute(
+            select(TaxConfig).where(
+                TaxConfig.tenant_id == tenant.id, TaxConfig.currency == "ZAR"
+            )
+        )
+    ).scalar_one_or_none()
+    if tax is None:
+        session.add(
+            TaxConfig(
+                tenant_id=tenant.id,
+                currency="ZAR",
+                fee_tax_pct=Decimal("0.15"),
+                commission_tax_pct=Decimal("0.15"),
+            )
+        )
+        await session.commit()
+        print("  + Tax: 15% on fees + commissions (ZAR)")
+
+
 async def seed() -> None:
     """Populate the local dev database with the canonical test data."""
     print("Seeding local development database...")
@@ -719,6 +820,7 @@ async def seed() -> None:
                 phone=spec["phone"],
                 first_name=spec["first_name"],
                 last_name=spec["last_name"],
+                user_type=spec.get("user_type"),
             )
             await _assign_role(session, user, standard_role)
             await _get_or_create_account(
@@ -773,6 +875,9 @@ async def seed() -> None:
         # end-to-end straight after a seed.
         await _get_or_create_airtime_merchant(session, tenant)
         await _get_or_create_airtime_pricing_and_limits(session, tenant)
+
+        # Cash-in charges so an agent cash-in shows a fee + commission + tax.
+        await _get_or_create_cashin_charges(session, tenant)
 
         # Phase C — sample external source + reward rules. The shared
         # secret is deterministic in dev so the mobile-simulator's env

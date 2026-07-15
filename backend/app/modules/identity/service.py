@@ -728,6 +728,8 @@ async def _build_recent_txns_payload(
                 "status": t.status,
                 "amount": str(t.amount),
                 "fee_amount": str(t.fee_amount),
+                "commission_amount": str(t.commission_amount),
+                "tax_amount": str(t.tax_amount),
                 "currency": t.currency,
                 "created_at": t.created_at,
                 "direction": direction,

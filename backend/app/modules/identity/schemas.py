@@ -168,6 +168,10 @@ class WalletTransactionOut(BaseModel):
     status: str
     amount: str
     fee_amount: str
+    # Display-only charge siblings (Epic 20): the commission paid to an agent and
+    # the tax collected on this transaction. Zero for transactions that bear none.
+    commission_amount: str
+    tax_amount: str
     currency: str
     created_at: datetime
     direction: Literal["in", "out"]

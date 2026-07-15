@@ -65,6 +65,49 @@ async def test_me_wallet_returns_caller_accounts(
 
 
 @pytest.mark.asyncio
+async def test_me_wallet_transaction_exposes_fee_commission_tax(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Each recent-transaction row carries fee/commission/tax (Epic 25 sim display)."""
+    from decimal import Decimal
+
+    from app.modules.payments.service import fund
+
+    db_session.add(
+        Account(
+            tenant_id=test_tenant.id,
+            user_id=test_user.id,
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+        )
+    )
+    await db_session.commit()
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=test_user.id,
+        amount=Decimal("100"),
+        currency="ZAR",
+        idempotency_key="seed-me-wallet-fee-fields",
+    )
+    await db_session.commit()
+
+    response = await async_client.get("/api/v1/identity/me/wallet", headers=alice_auth_header)
+    assert response.status_code == 200, response.text
+    txns = response.json()["recent_transactions"]
+    assert txns, "expected at least one recent transaction"
+    row = txns[0]
+    # Present and default to zero for a plain fund (no charges).
+    assert row["fee_amount"] == "0.000000"
+    assert row["commission_amount"] == "0.000000"
+    assert row["tax_amount"] == "0.000000"
+
+
+@pytest.mark.asyncio
 async def test_me_wallet_no_token_is_401(async_client: AsyncClient) -> None:
     """Missing Authorization header → 401."""
     response = await async_client.get("/api/v1/identity/me/wallet")

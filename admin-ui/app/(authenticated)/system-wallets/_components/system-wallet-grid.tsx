@@ -103,12 +103,17 @@ const TYPE_META: Record<
 export function SystemWalletGrid({
   wallets,
   tenantId,
+  mirrors: mirrorsProp,
 }: {
   wallets: SystemWallet[];
   tenantId: string;
+  /** Bank mirrors eligible as adjust counter-legs. Defaults to the mirrors
+   *  among `wallets` — pass explicitly when this grid renders non-mirror rows. */
+  mirrors?: SystemWallet[];
 }) {
   // Bank mirrors are the only valid counter-legs for adjust/withdraw.
-  const mirrors = wallets.filter((w) => w.account_type === "operator_adjustment");
+  const mirrors =
+    mirrorsProp ?? wallets.filter((w) => w.account_type === "operator_adjustment");
   return (
     <div className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-surface-1]">
       <Table>

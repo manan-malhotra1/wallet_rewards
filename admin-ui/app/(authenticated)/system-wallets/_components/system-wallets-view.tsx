@@ -1,26 +1,21 @@
 /**
- * <SystemWalletsView> — client container for the System Wallets table.
+ * <SystemWalletsView> — client container for the System Wallets page.
  *
- * Owns two pieces of client state on top of the server-fetched wallets:
- *  1. A currency checkbox filter (Feature 2) that narrows the rows shown.
- *  2. A reconciliation summary (Feature 1) comparing the sum of bank-mirror
- *     balances against the cash float, per currency — purely informational.
+ * Owns a currency checkbox filter, and splits the accounts into two panes:
+ * Bank mirrors (operator_adjustment — several, operator-named) shown ABOVE the
+ * platform's other system accounts. No reconciliation figure is shown — the
+ * mirrors and the cash float never match (the float distributes to users).
  */
 "use client";
 
 import * as React from "react";
 
-import { Money } from "@/components/ui/money";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { SystemWallet } from "@/lib/api-types";
 
 import { SystemWalletGrid } from "./system-wallet-grid";
 
-/** Sum a list of decimal-string balances into a fixed-2 string. */
-function sumBalances(wallets: SystemWallet[]): string {
-  const total = wallets.reduce((acc, w) => acc + Number(w.balance), 0);
-  return total.toFixed(2);
-}
+const MIRROR_TYPE = "operator_adjustment";
 
 export function SystemWalletsView({
   wallets,
@@ -44,57 +39,11 @@ export function SystemWalletsView({
     setChecked((prev) => ({ ...prev, [currency]: !prev[currency] }));
 
   const visibleWallets = wallets.filter((w) => checked[w.currency] ?? true);
-
-  // Reconciliation: bank-mirror total vs cash float, per currency where a
-  // mirror or cash float exists. Non-financial mirrors carry no cap; this is
-  // an eyeball check for the operator, not an enforced invariant.
-  const reconCurrencies = Array.from(
-    new Set(
-      wallets
-        .filter(
-          (w) =>
-            w.account_type === "operator_adjustment" ||
-            w.account_type === "system_cash_inflow",
-        )
-        .map((w) => w.currency),
-    ),
-  ).sort();
+  const mirrors = visibleWallets.filter((w) => w.account_type === MIRROR_TYPE);
+  const others = visibleWallets.filter((w) => w.account_type !== MIRROR_TYPE);
 
   return (
-    <div className="space-y-4">
-      {reconCurrencies.length > 0 ? (
-        <div className="rounded-lg border border-[--color-border] bg-[--color-surface-1] px-4 py-3 text-sm text-[--color-text-2]">
-          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[--color-text-3]">
-            Reconciliation
-          </p>
-          <div className="space-y-1">
-            {reconCurrencies.map((currency) => {
-              const mirrorTotal = sumBalances(
-                wallets.filter(
-                  (w) =>
-                    w.account_type === "operator_adjustment" &&
-                    w.currency === currency,
-                ),
-              );
-              const cashFloat = sumBalances(
-                wallets.filter(
-                  (w) =>
-                    w.account_type === "system_cash_inflow" &&
-                    w.currency === currency,
-                ),
-              );
-              return (
-                <p key={currency} className="tabular-nums">
-                  Bank mirrors total:{" "}
-                  <Money amount={mirrorTotal} currency={currency} /> vs Cash
-                  float: <Money amount={cashFloat} currency={currency} />
-                </p>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
+    <div className="space-y-6">
       {currencies.length > 1 ? (
         <div className="flex items-center gap-4">
           <span className="text-[11px] font-medium uppercase tracking-wide text-[--color-text-3]">
@@ -111,7 +60,24 @@ export function SystemWalletsView({
         </div>
       ) : null}
 
-      <SystemWalletGrid wallets={visibleWallets} tenantId={tenantId} />
+      {mirrors.length > 0 ? (
+        <section className="space-y-2">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-[--color-text-3]">
+            Bank mirrors
+          </h2>
+          {/* Mirrors can be the counter-leg for adjusting each other. */}
+          <SystemWalletGrid wallets={mirrors} mirrors={mirrors} tenantId={tenantId} />
+        </section>
+      ) : null}
+
+      <section className="space-y-2">
+        {mirrors.length > 0 ? (
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-[--color-text-3]">
+            System accounts
+          </h2>
+        ) : null}
+        <SystemWalletGrid wallets={others} mirrors={mirrors} tenantId={tenantId} />
+      </section>
     </div>
   );
 }

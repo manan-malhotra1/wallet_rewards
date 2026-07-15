@@ -25,6 +25,13 @@ import {
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import type { SystemWallet } from "@/lib/api-types";
@@ -34,16 +41,25 @@ type Direction = "fund" | "withdraw";
 export function AdjustSystemWalletDialog({
   account,
   tenantId,
+  mirrors,
   trigger,
 }: {
   account: SystemWallet;
   tenantId: string;
+  /** Candidate bank-mirror counter-legs (all operator_adjustment wallets). */
+  mirrors: SystemWallet[];
   trigger: React.ReactNode;
 }) {
+  // Counter-leg must match currency and can't be the account being adjusted.
+  const eligibleMirrors = mirrors.filter(
+    (m) => m.currency === account.currency && m.id !== account.id,
+  );
+
   const [open, setOpen] = React.useState(false);
   const [direction, setDirection] = React.useState<Direction>("fund");
   const [magnitude, setMagnitude] = React.useState("");
   const [reason, setReason] = React.useState("");
+  const [mirrorId, setMirrorId] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
@@ -53,6 +69,7 @@ export function AdjustSystemWalletDialog({
       setDirection("fund");
       setMagnitude("");
       setReason("");
+      setMirrorId("");
       setError(null);
       setSubmitting(false);
     }
@@ -63,6 +80,10 @@ export function AdjustSystemWalletDialog({
     const n = Number(magnitude);
     if (!Number.isFinite(n) || n <= 0) {
       setError("Amount must be a positive number.");
+      return;
+    }
+    if (!mirrorId) {
+      setError("Select a bank mirror for the counter-leg.");
       return;
     }
     if (!reason.trim()) {
@@ -76,6 +97,7 @@ export function AdjustSystemWalletDialog({
       account_id: account.id,
       amount: signed,
       reason,
+      bank_mirror_account_id: mirrorId,
     });
     setSubmitting(false);
     if (result.ok) {
@@ -142,6 +164,26 @@ export function AdjustSystemWalletDialog({
             <p className="mt-1 text-[11px] text-muted-foreground">
               Current balance: {account.balance} {account.currency}
             </p>
+          </div>
+          <div>
+            <Label htmlFor="adjust-mirror">Bank mirror (counter-leg)</Label>
+            <Select value={mirrorId} onValueChange={setMirrorId}>
+              <SelectTrigger id="adjust-mirror" className="mt-1">
+                <SelectValue placeholder="Select a bank mirror…" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleMirrors.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name ?? "Bank Mirror"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {eligibleMirrors.length === 0 ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                No {account.currency} bank mirror available. Create one first.
+              </p>
+            ) : null}
           </div>
           <div>
             <Label htmlFor="reason">Reason (audit)</Label>

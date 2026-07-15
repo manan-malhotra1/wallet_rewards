@@ -2,7 +2,7 @@
  * /system-wallets — treasury page. Cards per system account with balance,
  * plus a header "Fund user" CTA and per-row Adjust + Transactions actions.
  */
-import { Banknote, Minus, Plus } from "lucide-react";
+import { Banknote, Landmark, Minus, Plus } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import { getActiveTenantId } from "@/lib/active-tenant";
@@ -13,7 +13,8 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { FundUserDialog } from "./_components/fund-user-dialog";
-import { SystemWalletGrid } from "./_components/system-wallet-grid";
+import { NewBankMirrorDialog } from "./_components/new-bank-mirror-dialog";
+import { SystemWalletsView } from "./_components/system-wallets-view";
 import { WithdrawFromUserDialog } from "./_components/withdraw-from-user-dialog";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,11 @@ export default async function SystemWalletsPage() {
     else throw err;
   }
 
+  // Bank mirrors are the eligible counter-legs for withdraw/adjust; the
+  // "New bank mirror" dialog offers the currencies already in play.
+  const mirrors = wallets.filter((w) => w.account_type === "operator_adjustment");
+  const currencies = Array.from(new Set(wallets.map((w) => w.currency))).sort();
+
   return (
     <div>
       <PageHeader
@@ -48,8 +54,22 @@ export default async function SystemWalletsPage() {
         subtitle="Platform-owned ledger accounts."
         actions={
           <div className="flex gap-2">
+            <NewBankMirrorDialog
+              tenantId={activeTenantId}
+              currencies={currencies}
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-[--color-border] bg-[--color-surface-1] px-3 text-sm font-medium text-[--color-text-1] hover:bg-[--color-surface-2]"
+                >
+                  <Landmark className="h-3.5 w-3.5" />
+                  New bank mirror
+                </button>
+              }
+            />
             <WithdrawFromUserDialog
               tenantId={activeTenantId}
+              mirrors={mirrors}
               trigger={
                 <button
                   type="button"
@@ -89,7 +109,7 @@ export default async function SystemWalletsPage() {
             description="A tenant gets its system_points_issuance + system_cash_inflow on first seed. Run make seed to populate."
           />
         ) : (
-          <SystemWalletGrid wallets={wallets} tenantId={activeTenantId} />
+          <SystemWalletsView wallets={wallets} tenantId={activeTenantId} />
         )}
       </div>
     </div>

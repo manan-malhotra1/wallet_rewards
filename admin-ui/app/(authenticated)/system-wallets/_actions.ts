@@ -8,10 +8,13 @@ import { revalidatePath } from "next/cache";
 import { ApiError } from "@/lib/api";
 import {
   adjustSystemWallet,
+  createBankMirror,
   fundUser,
   listSystemWalletTransactions,
+  renameBankMirror,
   withdrawFromUser,
   type AdjustSystemWalletPayload,
+  type CreateBankMirrorPayload,
   type FundUserPayload,
   type WithdrawFromUserPayload,
 } from "@/lib/api-endpoints";
@@ -90,6 +93,61 @@ export async function adjustSystemWalletAction(
       ok: true,
       message: `${verb} ${res.currency} ${res.amount}. New balance: ${res.new_balance}.`,
     };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, errorCode: err.errorCode, message: err.message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+/** Create a new named bank-mirror (operator_adjustment) account. */
+export async function createBankMirrorAction(
+  tenantId: string,
+  payload: CreateBankMirrorPayload,
+): Promise<TreasuryActionResult> {
+  if (!payload.name.trim()) {
+    return { ok: false, errorCode: "missing_name", message: "Name is required." };
+  }
+  try {
+    const res = await createBankMirror(tenantId, {
+      currency: payload.currency.toUpperCase(),
+      name: payload.name.trim(),
+    });
+    revalidatePath("/system-wallets");
+    return {
+      ok: true,
+      message: `Created bank mirror "${res.name ?? res.id}" (${res.currency}).`,
+    };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, errorCode: err.errorCode, message: err.message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+/** Rename an existing bank-mirror account. */
+export async function renameBankMirrorAction(
+  tenantId: string,
+  accountId: string,
+  name: string,
+): Promise<TreasuryActionResult> {
+  if (!name.trim()) {
+    return { ok: false, errorCode: "missing_name", message: "Name is required." };
+  }
+  try {
+    const res = await renameBankMirror(tenantId, accountId, { name: name.trim() });
+    revalidatePath("/system-wallets");
+    return { ok: true, message: `Renamed to "${res.name ?? res.id}".` };
   } catch (err) {
     if (err instanceof ApiError) {
       return { ok: false, errorCode: err.errorCode, message: err.message };

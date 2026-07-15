@@ -633,6 +633,8 @@ export interface WithdrawFromUserPayload {
   amount: string;
   currency: string;
   reason: string;
+  /** The chosen bank-mirror (operator_adjustment) account to use as the counter-leg. */
+  bank_mirror_account_id: string;
 }
 
 /** Result type mirrors FundUserResponse (same shape — derived balance after the move). */
@@ -644,7 +646,37 @@ export interface AdjustSystemWalletPayload {
   account_id: string;
   amount: string; // signed
   reason: string;
+  /** The chosen bank-mirror (operator_adjustment) account to use as the counter-leg. */
+  bank_mirror_account_id: string;
 }
+
+// ---- Bank mirrors (named operator_adjustment accounts) -------------------
+
+export interface CreateBankMirrorPayload {
+  currency: string;
+  name: string;
+}
+
+/** Create a named bank-mirror account. Duplicate name → 409 bank_mirror_name_already_exists. */
+export const createBankMirror = (
+  tenant_id: string,
+  payload: CreateBankMirrorPayload,
+) =>
+  apiPost<SystemWallet>("/api/v1/treasury/bank-mirrors", payload, {
+    query: { tenant_id },
+  });
+
+/** Rename an existing bank-mirror account. Collision → 409; unknown → 404. */
+export const renameBankMirror = (
+  tenant_id: string,
+  account_id: string,
+  payload: { name: string },
+) =>
+  apiPatch<SystemWallet>(
+    `/api/v1/treasury/bank-mirrors/${account_id}`,
+    payload,
+    { query: { tenant_id } },
+  );
 
 export const adjustSystemWallet = (payload: AdjustSystemWalletPayload) =>
   apiPost<AdjustSystemWalletResponse>(

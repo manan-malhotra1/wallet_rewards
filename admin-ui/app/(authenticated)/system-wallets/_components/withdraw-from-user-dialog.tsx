@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import type { TreasuryIdentifierType } from "@/lib/api-endpoints";
+import type { SystemWallet } from "@/lib/api-types";
 
 const IDENTIFIER_LABEL: Record<TreasuryIdentifierType, string> = {
   phone: "Phone",
@@ -54,6 +55,7 @@ interface FormState {
   amount: string;
   currency: string;
   reason: string;
+  bank_mirror_account_id: string;
 }
 
 const INITIAL: FormState = {
@@ -62,13 +64,17 @@ const INITIAL: FormState = {
   amount: "",
   currency: "ZAR",
   reason: "",
+  bank_mirror_account_id: "",
 };
 
 export function WithdrawFromUserDialog({
   tenantId,
+  mirrors,
   trigger,
 }: {
   tenantId: string;
+  /** Candidate bank-mirror counter-legs (all operator_adjustment wallets). */
+  mirrors: SystemWallet[];
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -76,6 +82,11 @@ export function WithdrawFromUserDialog({
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
+
+  // Counter-leg must match the withdrawal currency.
+  const eligibleMirrors = mirrors.filter(
+    (m) => m.currency === form.currency.toUpperCase(),
+  );
 
   React.useEffect(() => {
     if (!open) {
@@ -98,6 +109,10 @@ export function WithdrawFromUserDialog({
       setError("Amount must be a positive number.");
       return;
     }
+    if (!form.bank_mirror_account_id) {
+      setError("Select a bank mirror for the counter-leg.");
+      return;
+    }
     if (!form.reason.trim()) {
       setError("Reason is required for the audit row.");
       return;
@@ -110,6 +125,7 @@ export function WithdrawFromUserDialog({
       amount: form.amount,
       currency: form.currency.toUpperCase(),
       reason: form.reason,
+      bank_mirror_account_id: form.bank_mirror_account_id,
     });
     setSubmitting(false);
     if (result.ok) {
@@ -179,11 +195,39 @@ export function WithdrawFromUserDialog({
               <Input
                 id="w-currency"
                 value={form.currency}
-                onChange={(e) => update("currency", e.target.value)}
+                onChange={(e) => {
+                  // Currency drives which mirrors are eligible — drop any
+                  // now-ineligible selection so we never submit a mismatch.
+                  update("currency", e.target.value);
+                  update("bank_mirror_account_id", "");
+                }}
                 maxLength={10}
                 className="mt-1 uppercase"
               />
             </div>
+          </div>
+          <div>
+            <Label htmlFor="w-mirror">Bank mirror (counter-leg)</Label>
+            <Select
+              value={form.bank_mirror_account_id}
+              onValueChange={(v) => update("bank_mirror_account_id", v)}
+            >
+              <SelectTrigger id="w-mirror" className="mt-1">
+                <SelectValue placeholder="Select a bank mirror…" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleMirrors.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name ?? "Bank Mirror"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {eligibleMirrors.length === 0 ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                No {form.currency.toUpperCase()} bank mirror available. Create one first.
+              </p>
+            ) : null}
           </div>
           <div>
             <Label htmlFor="w-reason">Reason (audit)</Label>

@@ -37,6 +37,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { SystemWallet } from "@/lib/api-types";
 
 import { AdjustSystemWalletDialog } from "./adjust-system-wallet-dialog";
+import { RenameBankMirrorDialog } from "./rename-bank-mirror-dialog";
 import { TransactionsDialog } from "./transactions-dialog";
 
 // Friendly name + a tooltip explaining what each platform account is for.
@@ -106,6 +107,8 @@ export function SystemWalletGrid({
   wallets: SystemWallet[];
   tenantId: string;
 }) {
+  // Bank mirrors are the only valid counter-legs for adjust/withdraw.
+  const mirrors = wallets.filter((w) => w.account_type === "operator_adjustment");
   return (
     <div className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-surface-1]">
       <Table>
@@ -127,22 +130,29 @@ export function SystemWalletGrid({
             };
             const Icon = meta.icon;
             const isPoints = w.currency === "PTS";
+            const isMirror = w.account_type === "operator_adjustment";
+            // Bank mirrors show their operator-chosen name; every other type
+            // keeps its generic TYPE_META label.
+            const label = isMirror ? (w.name ?? "Bank Mirror") : meta.label;
             return (
               <TableRow key={w.id}>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Icon className="h-3.5 w-3.5 text-[--color-text-3]" aria-hidden="true" />
-                    <span className="font-medium">{meta.label}</span>
+                    <span className="font-medium">{label}</span>
                     {meta.description ? (
                       <Tooltip content={meta.description}>
                         <button
                           type="button"
-                          aria-label={`About ${meta.label}`}
+                          aria-label={`About ${label}`}
                           className="text-[--color-text-3] hover:text-[--color-text-1]"
                         >
                           <Info className="h-3.5 w-3.5" />
                         </button>
                       </Tooltip>
+                    ) : null}
+                    {isMirror ? (
+                      <RenameBankMirrorDialog account={w} tenantId={tenantId} />
                     ) : null}
                   </div>
                 </TableCell>
@@ -162,6 +172,7 @@ export function SystemWalletGrid({
                     <AdjustSystemWalletDialog
                       account={w}
                       tenantId={tenantId}
+                      mirrors={mirrors}
                       trigger={
                         <Button variant="ghost" size="sm" className="gap-1.5">
                           <Coins className="h-3.5 w-3.5" />

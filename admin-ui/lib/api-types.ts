@@ -231,6 +231,8 @@ export interface SystemWallet {
   status: string;
   balance: string;
   created_at: string;
+  /** Operator-chosen label; populated for bank mirrors (operator_adjustment), null otherwise. */
+  name: string | null;
 }
 
 /** One row in the system-wallet transactions drill-down. */

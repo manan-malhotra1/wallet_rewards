@@ -8,16 +8,57 @@ import { revalidatePath } from "next/cache";
 
 import {
   buyAirtime,
+  cashIn,
   fireEventHttp,
   fireEventKafka,
   sendP2P,
   simulateAirtimeCallback,
 } from "@/lib/backend";
-import type { UserKey } from "@/lib/config";
+import { config, type UserKey } from "@/lib/config";
 
 export type ActionResult =
   | { ok: true; message: string }
   | { ok: false; message: string; needsPin?: boolean };
+
+export async function cashInAction(
+  agent: UserKey,
+  customer: UserKey,
+  amount: string,
+  pin?: string,
+): Promise<ActionResult> {
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return { ok: false, message: "Amount must be a positive number." };
+  }
+  const res = await cashIn(agent, customer, amount, pin);
+  revalidatePath("/");
+  if (res.ok) {
+    // Surface the fee / commission / tax breakdown from the response.
+    try {
+      const b = JSON.parse(res.body) as {
+        amount: string;
+        fee: string;
+        commission: string;
+        tax: string;
+      };
+      return {
+        ok: true,
+        message:
+          `Cashed in R ${b.amount} to ${config.users[customer].label} — ` +
+          `fee R ${b.fee}, commission R ${b.commission}, tax R ${b.tax}.`,
+      };
+    } catch {
+      return { ok: true, message: `Cashed in R ${amount}.` };
+    }
+  }
+  if (res.status === 401 && res.body.includes("step_up_required")) {
+    return { ok: false, message: res.body, needsPin: true };
+  }
+  if (res.status === 401 && res.body.includes("invalid_step_up_pin")) {
+    return { ok: false, message: "Incorrect PIN. Try again.", needsPin: true };
+  }
+  return { ok: false, message: `${res.status}: ${res.body}` };
+}
 
 export async function sendP2PAction(
   sender: UserKey,

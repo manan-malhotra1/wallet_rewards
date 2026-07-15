@@ -60,6 +60,10 @@ export interface WalletTransaction {
   transaction_type: string;
   status: string;
   amount: string;
+  // Charge breakdown (decimal strings; "0.000000" when none) — shown per row.
+  fee_amount: string;
+  commission_amount: string;
+  tax_amount: string;
   currency: string;
   created_at: string;
 }
@@ -173,6 +177,52 @@ export async function sendP2P(
     const text = await res.text();
     if (!text.includes("step_up_required") && !text.includes("invalid_step_up_pin")) {
       sessionCache.delete(config.users[sender].phone);
+      res = await once();
+      return { ok: res.ok, status: res.status, body: await res.text() };
+    }
+    return { ok: false, status: 401, body: text };
+  }
+  return { ok: res.ok, status: res.status, body: await res.text() };
+}
+
+export async function cashIn(
+  agent: UserKey,
+  customer: UserKey,
+  amount: string,
+  pin?: string,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  // Agent funds the customer's wallet from the agent's e-float, earning a
+  // commission. Mirrors sendP2P's step-up + expired-session retry handling.
+  const customerPhone = config.users[customer].phone;
+  const newKey = () =>
+    `sim-cashin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const body = (): string =>
+    JSON.stringify({
+      customer: { identifier_type: "phone", identifier_value: customerPhone },
+      amount,
+      currency: "ZAR",
+      ...(pin ? { pin } : {}),
+    });
+
+  async function once(): Promise<Response> {
+    const token = await loginUser(agent);
+    return fetch(`${config.backendUrl}/api/v1/cashin`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": newKey(),
+      },
+      body: body(),
+      cache: "no-store",
+    });
+  }
+
+  let res = await once();
+  if (res.status === 401) {
+    const text = await res.text();
+    if (!text.includes("step_up_required") && !text.includes("invalid_step_up_pin")) {
+      sessionCache.delete(config.users[agent].phone);
       res = await once();
       return { ok: res.ok, status: res.status, body: await res.text() };
     }

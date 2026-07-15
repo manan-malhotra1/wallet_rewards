@@ -16,6 +16,21 @@ import { formatAmount, relativeTime, transactionTypeLabel } from "@/lib/format";
 const VISIBLE = 4;
 const MAX = 20;
 
+/**
+ * A "fee R2.00 · commission R1.50 · tax R0.53" line for a transaction, listing
+ * only the non-zero charges. Returns "" when the transaction bears none.
+ */
+function chargesSummary(txn: WalletTransaction): string {
+  const parts: string[] = [];
+  const add = (label: string, value: string) => {
+    if (Number(value) > 0) parts.push(`${label} R${formatAmount(value, txn.currency)}`);
+  };
+  add("fee", txn.fee_amount);
+  add("commission", txn.commission_amount);
+  add("tax", txn.tax_amount);
+  return parts.join(" · ");
+}
+
 export function TransactionList({
   transactions,
 }: {
@@ -51,6 +66,11 @@ export function TransactionList({
               <div className="text-[11px] text-[var(--color-fg-muted)]">
                 {relativeTime(txn.created_at)} · {txn.status}
               </div>
+              {chargesSummary(txn) ? (
+                <div className="text-[11px] text-[var(--color-fg-muted)]">
+                  {chargesSummary(txn)}
+                </div>
+              ) : null}
             </div>
             <div className="font-mono tabular-nums text-[var(--color-fg)]">
               {formatAmount(txn.amount, txn.currency)} {txn.currency}

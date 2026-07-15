@@ -31,6 +31,18 @@ export const config = {
       phone: required("SASAI_BOB_PHONE"),
       pin: required("SASAI_BOB_PIN"),
     },
+    // Agent + merchant default to the seeded phones/PINs so existing .env.local
+    // files keep working without edits (scripts/seed.py seeds both with PIN 1234).
+    agent: {
+      label: "Grace (Agent)",
+      phone: process.env.SASAI_AGENT_PHONE ?? "+27825558001",
+      pin: process.env.SASAI_AGENT_PIN ?? "1234",
+    },
+    merchant: {
+      label: "Airtime Merchant",
+      phone: process.env.SASAI_MERCHANT_PHONE ?? "+27825559001",
+      pin: process.env.SASAI_MERCHANT_PIN ?? "1234",
+    },
   },
   eventSource: {
     key: process.env.EVENT_SOURCE_KEY ?? "sasai-bank",
@@ -44,8 +56,9 @@ export const config = {
     "dev-airtime-callback-secret-do-not-use-in-prod",
 } as const;
 
-export type UserKey = "alice" | "bob";
+export type UserKey = "alice" | "bob" | "agent" | "merchant";
 
+/** The P2P counterparty for alice/bob (the two consumer wallets). */
 export function otherUser(u: UserKey): UserKey {
   return u === "alice" ? "bob" : "alice";
 }

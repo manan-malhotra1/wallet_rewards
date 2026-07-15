@@ -7,10 +7,11 @@
  * each load re-fetches both wallets so users see the latest state
  * after a P2P or event fire (which revalidatePath this route).
  */
-import { config } from "@/lib/config";
+import { config, type UserKey } from "@/lib/config";
 import { getMyWallet, type Wallet } from "@/lib/backend";
 
 import { AirtimeForm } from "./_components/airtime-form";
+import { CashInForm } from "./_components/cashin-form";
 import { EventTrigger } from "./_components/event-trigger";
 import { P2PForm } from "./_components/p2p-form";
 import { SasaiLogo } from "./_components/sasai-logo";
@@ -18,7 +19,7 @@ import { WalletPane } from "./_components/wallet-pane";
 
 export const dynamic = "force-dynamic";
 
-async function loadWalletSafely(user: "alice" | "bob"): Promise<{
+async function loadWalletSafely(user: UserKey): Promise<{
   wallet: Wallet | null;
   error: string | null;
 }> {
@@ -34,11 +35,14 @@ async function loadWalletSafely(user: "alice" | "bob"): Promise<{
 }
 
 export default async function HomePage() {
-  const [alice, bob] = await Promise.all([
+  const [alice, bob, agent, merchant] = await Promise.all([
     loadWalletSafely("alice"),
     loadWalletSafely("bob"),
+    loadWalletSafely("agent"),
+    loadWalletSafely("merchant"),
   ]);
-  const anyError = alice.error || bob.error;
+  const firstError =
+    alice.error ?? bob.error ?? agent.error ?? merchant.error;
 
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
@@ -54,17 +58,18 @@ export default async function HomePage() {
         </div>
       </header>
 
-      {anyError ? (
+      {firstError ? (
         <div className="rounded-lg border border-[var(--color-danger)] bg-red-50 px-4 py-3 text-sm text-[var(--color-danger)]">
           <div className="font-semibold">Couldn't load wallet data</div>
           <div className="mt-1 font-mono text-[11px] whitespace-pre-wrap">
-            {alice.error ?? bob.error}
+            {firstError}
           </div>
           <div className="mt-2 text-xs">
             Check that the backend is running on{" "}
             <span className="font-mono">{config.backendUrl}</span> with{" "}
             <span className="font-mono">SIMULATOR_DEV_MODE=true</span> and
-            that <span className="font-mono">make seed</span> has been run.
+            that <span className="font-mono">make seed</span> has been run
+            (the agent + merchant need the latest seed).
           </div>
         </div>
       ) : null}
@@ -78,6 +83,13 @@ export default async function HomePage() {
           <P2PForm sender="bob" recipient="alice" />
           <AirtimeForm buyer="bob" />
         </WalletPane>
+        {/* Agent — cash-in only (funds a customer, earns commission). */}
+        <WalletPane user="agent" phone={config.users.agent.phone} wallet={agent.wallet}>
+          <CashInForm agent="agent" />
+        </WalletPane>
+        {/* Airtime merchant — read-only: shows the recharges run against its
+            holding account. No action forms. */}
+        <WalletPane user="merchant" phone={config.users.merchant.phone} wallet={merchant.wallet} />
       </div>
 
       <EventTrigger />

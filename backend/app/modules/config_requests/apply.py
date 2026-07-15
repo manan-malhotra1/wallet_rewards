@@ -131,9 +131,18 @@ def validate_band_payload(config_type: str, payload: dict[str, Any]) -> list[Bas
 
 
 def _assert_shared_scope(models: list[BaseModel]) -> None:
-    """All bands must share (transaction_type, account_type, currency, user_type)."""
+    """All bands must share their scope keys.
+
+    `account_type` only exists on pricing rows (commission is keyed without it),
+    so read it defensively — a commission schedule shares service/currency/type.
+    """
     scopes = {
-        (m.transaction_type, m.account_type, m.currency, m.user_type)  # type: ignore[attr-defined]
+        (
+            m.transaction_type,  # type: ignore[attr-defined]
+            getattr(m, "account_type", None),
+            m.currency,  # type: ignore[attr-defined]
+            m.user_type,  # type: ignore[attr-defined]
+        )
         for m in models
     }
     if len(scopes) > 1:

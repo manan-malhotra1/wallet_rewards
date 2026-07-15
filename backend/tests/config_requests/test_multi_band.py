@@ -131,6 +131,54 @@ async def test_single_dict_payload_still_applies(
     assert await _pricing_count(db_session, test_tenant) == 1
 
 
+def _commission_band(tenant_id, frm, to, fixed):
+    """A commission band — note: NO account_type (commission is keyed without it)."""
+    return {
+        "tenant_id": str(tenant_id),
+        "transaction_type": "cash_in",
+        "currency": "ZAR",
+        "user_type": "agent",
+        "amount_from": frm,
+        "amount_to": to,
+        "fixed_commission": fixed,
+    }
+
+
+async def test_commission_multi_band_propose_and_apply(
+    async_client, db_session, test_tenant, make_admin_token
+):
+    """Commission schedules (no account_type) must propose + apply, not 500."""
+    from sqlalchemy import func, select
+
+    from app.shared.models import CommissionConfig
+
+    body = {
+        "config_type": "commission",
+        "operation": "create",
+        "payload": {
+            "bands": [
+                _commission_band(test_tenant.id, "0", "100", "1"),
+                _commission_band(test_tenant.id, "100", None, "2"),
+            ]
+        },
+    }
+    rid = (
+        await async_client.post(_url(test_tenant), json=body, headers=_maker(make_admin_token))
+    ).json()["id"]
+    resp = await async_client.post(
+        _url(test_tenant, f"/{rid}/approve"), headers=_checker(make_admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    n = (
+        await db_session.execute(
+            select(func.count()).select_from(CommissionConfig).where(
+                CommissionConfig.tenant_id == test_tenant.id
+            )
+        )
+    ).scalar_one()
+    assert n == 2
+
+
 async def test_list_filtered_by_config_type(async_client, test_tenant, make_admin_token):
     await async_client.post(
         _url(test_tenant), json=_bands_body(test_tenant.id), headers=_maker(make_admin_token)

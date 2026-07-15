@@ -23,10 +23,12 @@ from app.modules.config_requests.schemas import (
     ConfigChangeReviseRequest,
     ConfigReviewOut,
     ConfigRevisionOut,
+    ConfigType,
 )
 from app.modules.config_requests.service import (
     approve_config_request,
     get_config_request,
+    list_config_history_for_scope,
     list_config_requests,
     propose_config_change,
     request_config_changes,
@@ -96,6 +98,33 @@ async def get_requests(
     _ = admin
     requests = await list_config_requests(
         session, tenant_id, status=status_filter, config_type=config_type
+    )
+    outs = [ConfigChangeRequestOut.model_validate(r) for r in requests]
+    await _attach_admin_names(session, outs)
+    return outs
+
+
+@router.get("/history", response_model=list[ConfigChangeRequestOut])
+async def get_config_history(
+    tenant_id: UUID,
+    config_type: ConfigType,
+    target_config_id: UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[ConfigChangeRequestOut]:
+    """List every past version of a LIVE config (identified by scope), oldest-first.
+
+    Given the CURRENT live row's `target_config_id`, returns each APPLIED
+    create/update of that config's scope in apply order. The MOST RECENT entry
+    (last in the list) is the current live config; earlier entries are prior
+    versions a "restore this version" action can re-propose.
+
+    This STATIC route is declared before `GET /{request_id}` so "history" is
+    never captured as a request id.
+    """
+    _ = admin
+    requests = await list_config_history_for_scope(
+        session, tenant_id, config_type, target_config_id
     )
     outs = [ConfigChangeRequestOut.model_validate(r) for r in requests]
     await _attach_admin_names(session, outs)

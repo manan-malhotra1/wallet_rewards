@@ -516,6 +516,63 @@ async def list_config_requests(
     return list(result.scalars().all())
 
 
+async def list_config_history_for_scope(
+    session: AsyncSession,
+    tenant_id: UUID,
+    config_type: str,
+    target_config_id: UUID,
+) -> list[ConfigChangeRequest]:
+    """Return every APPLIED version of the live config named by target, oldest-first.
+
+    A live config's stable identity is its SCOPE, not its row id — an approved
+    `update` atomically replaces the scope, minting a new row id each time. So a
+    config's version history is every APPLIED create/update request of this
+    config_type whose payload scope equals the live row's scope, in apply order.
+    The final entry mirrors the current live values.
+
+    Scope matching handles both payload shapes uniformly: `validate_band_payload`
+    parses a multi-band `{"bands": [...]}` (pricing/commission) or a flat dict
+    (limit/wallet_limit/tax) into create-schema bands, and `config_scope` reads
+    the first band's scope — currency compared case-insensitively.
+
+    Args:
+        target_config_id: The CURRENT live row id (an update changes it).
+
+    Returns:
+        The matching requests ordered by `updated_at` ASC (apply time — approve
+        stages the APPLIED transition in the same commit), so the latest is last.
+        Reviews/revisions are omitted to stay lean, mirroring the list endpoint.
+
+    Raises:
+        ConfigRequestTargetNotFound (404): no such live row in this tenant.
+    """
+    target = await load_config_target(session, config_type, target_config_id, tenant_id)
+    if target is None:
+        raise ConfigRequestTargetNotFound()
+    target_scope = config_scope(config_type, target)
+
+    stmt = (
+        select(ConfigChangeRequest)
+        .where(
+            ConfigChangeRequest.tenant_id == tenant_id,
+            ConfigChangeRequest.config_type == config_type,
+            ConfigChangeRequest.status == CONFIG_STATUS_APPLIED,
+            ConfigChangeRequest.operation.in_([CONFIG_OP_CREATE, CONFIG_OP_UPDATE]),
+        )
+        .order_by(ConfigChangeRequest.updated_at.asc())
+    )
+    result = await session.execute(stmt)
+
+    history: list[ConfigChangeRequest] = []
+    for request in result.scalars().all():
+        if not request.payload:
+            continue
+        bands = validate_band_payload(config_type, request.payload)
+        if config_scope(config_type, bands[0]) == target_scope:
+            history.append(request)
+    return history
+
+
 async def get_config_request(
     session: AsyncSession, request_id: UUID, tenant_id: UUID
 ) -> tuple[ConfigChangeRequest, list[ConfigChangeReview], list[ConfigChangeRevision]]:

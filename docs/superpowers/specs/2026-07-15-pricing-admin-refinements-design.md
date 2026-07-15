@@ -89,6 +89,26 @@ labeled group) following the existing `NavItem` pattern.
 - The drawer stays: read-only payload + review thread; **checker** actions (approve /
   request-changes with mandatory comment) remain. Maker no longer edits in the drawer.
 
+## D. View details for pricing / commission / taxes
+
+Today the native tables list rows but there is no way to see a config's full detail.
+Add a **View** affordance (row click or a "View" action) on each native page that opens a
+read-only detail panel (drawer) showing the config's fields — and, for pricing/commission,
+all bands of the schedule grouped together — in the app's normal typography.
+
+The same read-only presentation renders the **proposed change** in the config-request
+approval drawer (replacing the raw JSON/mono block): a shared `ConfigDetail` view that takes
+a config-or-payload and renders a labeled, readable field/band list. This unifies "view a
+live config" and "view a proposed change" and is what the checker reads before approving.
+
+## E. Typography fix (approval drawer)
+
+The approval drawer renders the proposed change, ids, and the maker line in `font-mono`
+(GeistMono), which clashes with the sans (GeistSans) admin pages. Fix: render the proposed
+change and metadata in the standard **sans** typography via the shared `ConfigDetail` view
+(D); reserve `font-mono` only for genuinely code-like tokens (e.g. a raw id fallback), matching
+the rest of the admin UI. No new font — use the existing design-system classes/tokens.
+
 ## Backend surface summary
 
 - `config_requests/schemas.py` — payload typing allows the `{bands:[…]}` shape.
@@ -102,8 +122,11 @@ labeled group) following the existing `NavItem` pattern.
 - `sidebar.tsx` + `command-palette.tsx` — Pricing parent + relabel.
 - pricing & commission create dialogs — repeatable bands + revise/pre-fill mode.
 - pricing / commission / tax / limits pages — "Changes requested" section + Edit-&-resubmit
-  wiring to the dialog in revise mode.
-- `request-detail-drawer.tsx` — drop JSON revise; view-only for makers.
+  wiring to the dialog in revise mode; **View** action opening the shared `ConfigDetail`.
+- New `ConfigDetail` read-only presentation (sans typography, grouped bands) reused by the
+  native "View" and the approval drawer's proposed-change block.
+- `request-detail-drawer.tsx` — drop JSON revise; render proposed change via `ConfigDetail`
+  (sans, not mono); view-only for makers.
 - `lib/api-types.ts` / `lib/api-endpoints.ts` — band-set payload types; reuse existing
   propose/revise/resubmit wrappers.
 

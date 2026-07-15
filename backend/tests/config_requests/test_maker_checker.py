@@ -197,7 +197,8 @@ async def test_full_revise_resubmit_loop_applies_revised_config(
     )
     assert revised.status_code == 200, revised.text
     assert revised.json()["revision"] == 2
-    assert revised.json()["payload"]["fixed_fee"] == "3"
+    # Pricing payloads are stored as a multi-band schedule (Epic 25).
+    assert revised.json()["payload"]["bands"][0]["fixed_fee"] == "3"
 
     # Maker resubmits → back to PENDING.
     resub = await async_client.post(

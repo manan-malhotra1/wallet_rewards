@@ -87,12 +87,15 @@ async def post_propose(
 async def get_requests(
     tenant_id: UUID,
     status_filter: str | None = None,
+    config_type: str | None = None,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[ConfigChangeRequestOut]:
-    """List a tenant's config-change requests (optionally filtered by status)."""
+    """List a tenant's config-change requests (optionally filtered by status/type)."""
     _ = admin
-    requests = await list_config_requests(session, tenant_id, status=status_filter)
+    requests = await list_config_requests(
+        session, tenant_id, status=status_filter, config_type=config_type
+    )
     outs = [ConfigChangeRequestOut.model_validate(r) for r in requests]
     await _attach_admin_names(session, outs)
     return outs

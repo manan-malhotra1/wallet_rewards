@@ -13,13 +13,17 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
 from app.modules.admin_profiles import record_admin
 from app.modules.audit.service import record_audit_for_admin
-from app.modules.config_requests.apply import apply_config_request, build_create_schema
+from app.modules.config_requests.apply import (
+    apply_config_request,
+    validate_band_payload,
+)
 from app.modules.config_requests.schemas import ConfigChangeProposeRequest
 from app.shared.exceptions import (
     AppHTTPException,
@@ -48,6 +52,20 @@ from app.shared.models import (
     ConfigChangeReview,
     Tenant,
 )
+
+
+def _normalise_create_payload(config_type: str, bands: list[BaseModel]) -> dict[str, Any]:
+    """Serialise validated create-schema models into the stored payload shape.
+
+    Multi-band types (pricing/commission) store `{"bands": [row, ...]}`; every
+    other type is a single flat dict (its create schema), matching what
+    `validate_band_payload` + `apply_config_request` expect on the way back.
+    """
+    from app.modules.config_requests.apply import MULTI_BAND_TYPES
+
+    if config_type in MULTI_BAND_TYPES:
+        return {"bands": [band.model_dump(mode="json") for band in bands]}
+    return bands[0].model_dump(mode="json")
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -143,16 +161,20 @@ async def propose_config_change(
             raise AppHTTPException(
                 422, "config_request_payload_required", "A create proposal needs a payload."
             )
-        # Fail fast on a malformed payload; store the normalised JSON form.
-        schema = build_create_schema(request_data.config_type, request_data.payload)
-        # Tenant isolation: the payload's own tenant must match the request scope.
-        if getattr(schema, "tenant_id", tenant_id) != tenant_id:
-            raise AppHTTPException(
-                422,
-                "config_request_tenant_mismatch",
-                "The payload's tenant_id does not match the request tenant.",
-            )
-        payload = schema.model_dump(mode="json")
+        # Fail fast on a malformed payload; store the normalised JSON form. A
+        # pricing/commission create may be a multi-band schedule — validate every
+        # band + the band set, and always persist the canonical {"bands": [...]}
+        # shape (a single band becomes a one-element list).
+        bands = validate_band_payload(request_data.config_type, request_data.payload)
+        # Tenant isolation: every band's tenant must match the request scope.
+        for band in bands:
+            if getattr(band, "tenant_id", tenant_id) != tenant_id:
+                raise AppHTTPException(
+                    422,
+                    "config_request_tenant_mismatch",
+                    "The payload's tenant_id does not match the request tenant.",
+                )
+        payload = _normalise_create_payload(request_data.config_type, bands)
         target_config_id = None
     else:  # delete
         if request_data.target_config_id is None:
@@ -298,8 +320,10 @@ async def revise_config_request(
             422, "config_request_not_editable", "A delete proposal has no payload to revise."
         )
 
-    schema = build_create_schema(request.config_type, payload)
-    request.payload = schema.model_dump(mode="json")
+    # Same multi-band handling as propose — validate the (possibly multi-band)
+    # revised payload and re-store it in the same shape propose uses.
+    bands = validate_band_payload(request.config_type, payload)
+    request.payload = _normalise_create_payload(request.config_type, bands)
     request.revision += 1
     _add_review(
         session,
@@ -388,12 +412,22 @@ async def withdraw_config_request(
 
 
 async def list_config_requests(
-    session: AsyncSession, tenant_id: UUID, *, status: str | None = None
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    status: str | None = None,
+    config_type: str | None = None,
 ) -> list[ConfigChangeRequest]:
-    """Return a tenant's config requests, newest-first, optionally by status."""
+    """Return a tenant's config requests, newest-first, optionally by status/type.
+
+    `config_type` lets a native page (Service charges / Commission / …) fetch only
+    its own requests (e.g. its CHANGES_REQUESTED items).
+    """
     stmt = select(ConfigChangeRequest).where(ConfigChangeRequest.tenant_id == tenant_id)
     if status is not None:
         stmt = stmt.where(ConfigChangeRequest.status == status)
+    if config_type is not None:
+        stmt = stmt.where(ConfigChangeRequest.config_type == config_type)
     stmt = stmt.order_by(ConfigChangeRequest.created_at.desc())
     result = await session.execute(stmt)
     return list(result.scalars().all())

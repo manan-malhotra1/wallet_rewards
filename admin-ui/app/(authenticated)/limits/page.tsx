@@ -36,6 +36,9 @@ const NEW_BUTTON_CLASS =
 
 export default async function LimitsPage() {
   const session = await auth();
+  // Only platform-admins may propose config changes; the backend also 403s,
+  // this just hides affordances that would fail for other admins.
+  const canPropose = session?.user?.roles?.includes("platform-admin") ?? false;
   const currentAdminId = session?.user?.id ?? "";
 
   const activeTenantId = await getActiveTenantId();
@@ -55,25 +58,25 @@ export default async function LimitsPage() {
   let walletConfigs: Awaited<ReturnType<typeof listWalletLimitConfigs>> = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
-  let changesRequested: ConfigChangeRequest[] = [];
+  let openRequests: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
-    const [limitCr, walletCr] = [
-      listConfigRequests(activeTenantId, "CHANGES_REQUESTED", "limit"),
-      listConfigRequests(activeTenantId, "CHANGES_REQUESTED", "wallet_limit"),
-    ];
-    let limitChanges: ConfigChangeRequest[] = [];
-    let walletChanges: ConfigChangeRequest[] = [];
-    [configs, walletConfigs, services, instruments, limitChanges, walletChanges] =
+    let limitRequests: ConfigChangeRequest[] = [];
+    let walletRequests: ConfigChangeRequest[] = [];
+    [configs, walletConfigs, services, instruments, limitRequests, walletRequests] =
       await Promise.all([
         listLimitConfigs(activeTenantId),
         listWalletLimitConfigs(activeTenantId),
         listServices(activeTenantId, "active"),
         listInstruments(activeTenantId, "active"),
-        limitCr,
-        walletCr,
+        // All in-flight limit + wallet-limit proposals (both open statuses) so
+        // anyone can see a change is under approval; card actions are maker-gated.
+        listConfigRequests(activeTenantId, undefined, "limit"),
+        listConfigRequests(activeTenantId, undefined, "wallet_limit"),
       ]);
-    changesRequested = [...limitChanges, ...walletChanges];
+    openRequests = [...limitRequests, ...walletRequests].filter(
+      (r) => r.status === "PENDING" || r.status === "CHANGES_REQUESTED",
+    );
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -90,17 +93,19 @@ export default async function LimitsPage() {
         title="Limits"
         subtitle="Per-service min/max + rolling daily/weekly/monthly caps, and per-wallet max balance + cumulative send/receive caps. Step 2 of payment orchestration."
         actions={
-          <CreateLimitDialog
-            tenantId={activeTenantId}
-            services={services}
-            instruments={instruments}
-            trigger={
-              <button type="button" className={NEW_BUTTON_CLASS}>
-                <Plus className="h-3.5 w-3.5" />
-                New limit
-              </button>
-            }
-          />
+          canPropose ? (
+            <CreateLimitDialog
+              tenantId={activeTenantId}
+              services={services}
+              instruments={instruments}
+              trigger={
+                <button type="button" className={NEW_BUTTON_CLASS}>
+                  <Plus className="h-3.5 w-3.5" />
+                  New limit
+                </button>
+              }
+            />
+          ) : undefined
         }
       />
       <div className="space-y-8 p-6">
@@ -113,7 +118,7 @@ export default async function LimitsPage() {
 
         {!error && (
           <LimitChangesRequested
-            requests={changesRequested}
+            requests={openRequests}
             tenantId={activeTenantId}
             currentAdminId={currentAdminId}
             services={services}
@@ -143,16 +148,18 @@ export default async function LimitsPage() {
             <h2 className="text-sm font-semibold text-muted-foreground">
               Wallet limits
             </h2>
-            <CreateWalletLimitDialog
-              tenantId={activeTenantId}
-              instruments={financialInstruments}
-              trigger={
-                <button type="button" className={NEW_BUTTON_CLASS}>
-                  <Plus className="h-3.5 w-3.5" />
-                  New wallet limit
-                </button>
-              }
-            />
+            {canPropose && (
+              <CreateWalletLimitDialog
+                tenantId={activeTenantId}
+                instruments={financialInstruments}
+                trigger={
+                  <button type="button" className={NEW_BUTTON_CLASS}>
+                    <Plus className="h-3.5 w-3.5" />
+                    New wallet limit
+                  </button>
+                }
+              />
+            )}
           </div>
           {!error && walletConfigs.length === 0 ? (
             <EmptyState

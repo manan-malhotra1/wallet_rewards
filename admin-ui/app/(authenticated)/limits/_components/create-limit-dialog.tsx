@@ -9,7 +9,7 @@
 import * as React from "react";
 
 import { reviseAndResubmitConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
-import { createLimitConfigAction } from "@/app/(authenticated)/limits/_actions";
+import { proposeLimitCreateAction } from "@/app/(authenticated)/limits/_actions";
 import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -171,14 +171,16 @@ export function CreateLimitDialog({
           reviseRequest.id,
           payload,
         )
-      : await createLimitConfigAction(payload);
+      : await proposeLimitCreateAction(tenantId, payload);
     setSubmitting(false);
     if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
       return;
     }
     toast({
-      title: reviseRequest ? "Resubmitted for approval" : "Limit created",
+      title: reviseRequest
+        ? "Resubmitted for approval"
+        : "Change proposed — pending approval",
       description: `${form.transaction_type} · ${form.currency}`,
     });
     setOpen(false);
@@ -364,10 +366,10 @@ export function CreateLimitDialog({
             {submitting
               ? reviseRequest
                 ? "Resubmitting…"
-                : "Saving…"
+                : "Proposing…"
               : reviseRequest
                 ? "Resubmit"
-                : "Create"}
+                : "Propose change"}
           </Button>
         </DialogFooter>
       </DialogContent>

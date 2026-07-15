@@ -1,6 +1,7 @@
 /**
- * <LimitsTable> — every configured limit in the active tenant.
- * Inline delete via server action; create through the dialog.
+ * <LimitsTable> — every configured limit in the active tenant. Deleting
+ * PROPOSES a delete through the maker-checker pipeline; the row is removed only
+ * once a second admin approves. Create through the dialog (also propose).
  */
 "use client";
 
@@ -8,7 +9,7 @@ import { Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
-import { deleteLimitConfigAction } from "@/app/(authenticated)/limits/_actions";
+import { proposeLimitDeleteAction } from "@/app/(authenticated)/limits/_actions";
 import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,13 +41,13 @@ export function LimitsTable({
 
   const onDelete = async (id: string) => {
     setPending(id);
-    const result = await deleteLimitConfigAction(id, tenantId);
+    const result = await proposeLimitDeleteAction(id, tenantId);
     setPending(null);
     if (result.ok) {
-      toast({ title: "Limit deleted" });
+      toast({ title: "Delete proposed — pending approval" });
     } else {
       toast({
-        title: "Couldn't delete",
+        title: "Couldn't propose delete",
         description: `${result.errorCode}: ${result.message}`,
         variant: "danger",
       });
@@ -124,7 +125,7 @@ export function LimitsTable({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Delete limit"
+                    aria-label="Propose delete of limit"
                     disabled={pending === cfg.id}
                     onClick={() => onDelete(cfg.id)}
                   >

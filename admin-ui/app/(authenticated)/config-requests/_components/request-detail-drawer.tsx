@@ -35,8 +35,8 @@ import { Label } from "@/components/ui/label";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { cn, formatTimestamp, shortId } from "@/lib/utils";
 import type { ConfigChangeRequest } from "@/lib/api-types";
-import { formatTimestamp, shortId } from "@/lib/utils";
 
 /** Non-terminal statuses can still be withdrawn / acted on. */
 function isNonTerminal(status: ConfigChangeRequest["status"]): boolean {
@@ -86,6 +86,61 @@ function ReviewThread({ request }: { request: ConfigChangeRequest }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * Version history — a compact revision selector plus the selected revision's
+ * payload rendered via `ConfigDetail`. Defaults to the latest revision. Only
+ * meaningful for create ops (delete ops carry no payload); renders nothing when
+ * the detail endpoint returned no revisions.
+ */
+function VersionHistory({ request }: { request: ConfigChangeRequest }) {
+  const revisions = request.revisions ?? [];
+  // Ascending by revision so the last entry is the latest.
+  const ordered = React.useMemo(
+    () => [...revisions].sort((a, b) => a.revision - b.revision),
+    [revisions],
+  );
+  const [selected, setSelected] = React.useState<number | null>(null);
+
+  // Reset to the latest revision whenever the drawer opens on a new request.
+  React.useEffect(() => {
+    setSelected(ordered.length > 0 ? ordered[ordered.length - 1].revision : null);
+  }, [request.id, ordered]);
+
+  if (request.operation === "delete" || ordered.length === 0) return null;
+
+  const current = ordered.find((r) => r.revision === selected) ?? ordered[ordered.length - 1];
+
+  return (
+    <section>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Versions
+      </h3>
+      <div className="mb-3 flex flex-wrap gap-1">
+        {ordered.map((rev) => (
+          <button
+            key={rev.revision}
+            type="button"
+            onClick={() => setSelected(rev.revision)}
+            title={formatTimestamp(rev.created_at)}
+            className={cn(
+              "rounded-md px-2.5 py-1 text-xs transition-colors",
+              rev.revision === current.revision
+                ? "bg-primary font-medium text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            v{rev.revision}
+          </button>
+        ))}
+      </div>
+      <div className="mb-2 text-xs text-muted-foreground">
+        Revision {current.revision} · {formatTimestamp(current.created_at)}
+      </div>
+      <ConfigDetail configType={request.config_type} data={current.payload} />
+    </section>
   );
 }
 
@@ -189,6 +244,7 @@ export function RequestDetailDrawer({
             </h3>
             <ProposedChange request={request} />
           </section>
+          <VersionHistory request={request} />
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Review thread

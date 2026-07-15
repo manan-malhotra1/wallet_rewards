@@ -1,7 +1,8 @@
 /**
  * <WalletLimitsTable> — per-(tenant, currency) financial-wallet limits:
  * a max-balance ceiling + cumulative send/receive caps (daily/weekly/monthly).
- * Inline delete via server action; create through the dialog.
+ * Deleting PROPOSES a delete through the maker-checker pipeline; the row is
+ * removed only once a second admin approves. Create through the dialog.
  */
 "use client";
 
@@ -9,7 +10,7 @@ import { Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
-import { deleteWalletLimitConfigAction } from "@/app/(authenticated)/limits/_actions";
+import { proposeWalletLimitDeleteAction } from "@/app/(authenticated)/limits/_actions";
 import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,13 +55,13 @@ export function WalletLimitsTable({
 
   const onDelete = async (id: string) => {
     setPending(id);
-    const result = await deleteWalletLimitConfigAction(id, tenantId);
+    const result = await proposeWalletLimitDeleteAction(id, tenantId);
     setPending(null);
     if (result.ok) {
-      toast({ title: "Wallet limit deleted" });
+      toast({ title: "Delete proposed — pending approval" });
     } else {
       toast({
-        title: "Couldn't delete",
+        title: "Couldn't propose delete",
         description: `${result.errorCode}: ${result.message}`,
         variant: "danger",
       });
@@ -110,7 +111,7 @@ export function WalletLimitsTable({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Delete wallet limit"
+                    aria-label="Propose delete of wallet limit"
                     disabled={pending === cfg.id}
                     onClick={() => onDelete(cfg.id)}
                   >

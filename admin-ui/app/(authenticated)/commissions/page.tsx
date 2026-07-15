@@ -54,15 +54,21 @@ export default async function CommissionsPage() {
   let configs: CommissionConfig[] = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
-  let changesRequested: ConfigChangeRequest[] = [];
+  let openRequests: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
-    [configs, services, instruments, changesRequested] = await Promise.all([
+    let requests: ConfigChangeRequest[] = [];
+    [configs, services, instruments, requests] = await Promise.all([
       listCommissionConfigs(activeTenantId),
       listServices(activeTenantId, "active"),
       listInstruments(activeTenantId, "active"),
-      listConfigRequests(activeTenantId, "CHANGES_REQUESTED", "commission"),
+      // All in-flight commission proposals (both open statuses); card actions
+      // are maker-gated.
+      listConfigRequests(activeTenantId, undefined, "commission"),
     ]);
+    openRequests = requests.filter(
+      (r) => r.status === "PENDING" || r.status === "CHANGES_REQUESTED",
+    );
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -101,7 +107,7 @@ export default async function CommissionsPage() {
         )}
         {!error && (
           <CommissionChangesRequested
-            requests={changesRequested}
+            requests={openRequests}
             tenantId={activeTenantId}
             currentAdminId={currentAdminId}
             services={services}

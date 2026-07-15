@@ -47,14 +47,20 @@ export default async function TaxesPage() {
 
   let configs: TaxConfig[] = [];
   let instruments: Instrument[] = [];
-  let changesRequested: ConfigChangeRequest[] = [];
+  let openRequests: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
-    [configs, instruments, changesRequested] = await Promise.all([
+    let requests: ConfigChangeRequest[] = [];
+    [configs, instruments, requests] = await Promise.all([
       listTaxConfigs(activeTenantId),
       listInstruments(activeTenantId, "active"),
-      listConfigRequests(activeTenantId, "CHANGES_REQUESTED", "tax"),
+      // All in-flight tax proposals (both open statuses); card actions are
+      // maker-gated.
+      listConfigRequests(activeTenantId, undefined, "tax"),
     ]);
+    openRequests = requests.filter(
+      (r) => r.status === "PENDING" || r.status === "CHANGES_REQUESTED",
+    );
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -92,7 +98,7 @@ export default async function TaxesPage() {
         )}
         {!error && (
           <TaxChangesRequested
-            requests={changesRequested}
+            requests={openRequests}
             tenantId={activeTenantId}
             currentAdminId={currentAdminId}
             instruments={instruments}

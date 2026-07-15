@@ -392,16 +392,11 @@ export interface CreateLimitConfigPayload {
   monthly_value_cap?: string;
 }
 
+// Since maker-checker, limit + wallet-limit writes flow through
+// `proposeConfigChange`; the direct create/delete endpoints were removed on the
+// backend. Reads stay direct. The Create*Payload types double as propose payloads.
 export const listLimitConfigs = (tenant_id: string) =>
   apiGet<LimitConfig[]>("/api/v1/limits/configs", { query: { tenant_id } });
-
-export const createLimitConfig = (payload: CreateLimitConfigPayload) =>
-  apiPost<LimitConfig>("/api/v1/limits/configs", payload);
-
-export const deleteLimitConfig = (config_id: string, tenant_id: string) =>
-  apiDelete<void>(`/api/v1/limits/configs/${config_id}`, {
-    query: { tenant_id },
-  });
 
 export interface CreateWalletLimitConfigPayload {
   tenant_id: string;
@@ -424,14 +419,6 @@ export interface CreateWalletLimitConfigPayload {
 
 export const listWalletLimitConfigs = (tenant_id: string) =>
   apiGet<WalletLimitConfig[]>("/api/v1/limits/wallet-configs", {
-    query: { tenant_id },
-  });
-
-export const createWalletLimitConfig = (payload: CreateWalletLimitConfigPayload) =>
-  apiPost<WalletLimitConfig>("/api/v1/limits/wallet-configs", payload);
-
-export const deleteWalletLimitConfig = (config_id: string, tenant_id: string) =>
-  apiDelete<void>(`/api/v1/limits/wallet-configs/${config_id}`, {
     query: { tenant_id },
   });
 

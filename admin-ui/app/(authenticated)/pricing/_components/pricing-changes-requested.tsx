@@ -1,11 +1,13 @@
 /**
- * "Changes requested" section for the Service charges page (Epic 25 / Task 9).
- * Lists the maker's sent-back pricing proposals; the maker gets an
- * "Edit & resubmit" button that opens the create dialog in revise mode.
+ * "Open requests" section for the Service charges page. Lists the tenant's
+ * in-flight pricing proposals (PENDING + CHANGES_REQUESTED) so anyone can see a
+ * change is under approval. The maker additionally gets an "Edit & resubmit"
+ * button (CHANGES_REQUESTED creates only) that opens the create dialog in
+ * revise mode; withdraw + version history live on the card itself.
  */
 "use client";
 
-import { ChangesRequestedCard } from "@/app/(authenticated)/_components/changes-requested-card";
+import { OpenRequestCard } from "@/app/(authenticated)/_components/open-request-card";
 import { Button } from "@/components/ui/button";
 import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
 
@@ -28,30 +30,37 @@ export function PricingChangesRequested({
   return (
     <section className="mb-6 space-y-3">
       <h2 className="text-sm font-semibold text-muted-foreground">
-        Changes requested
+        Open requests
       </h2>
-      {requests.map((req) => (
-        <ChangesRequestedCard
-          key={req.id}
-          request={req}
-          action={
-            req.maker_admin_id === currentAdminId &&
-            req.operation === "create" ? (
-              <CreatePricingDialog
-                tenantId={tenantId}
-                services={services}
-                instruments={instruments}
-                reviseRequest={req}
-                trigger={
-                  <Button variant="outline" size="sm">
-                    Edit &amp; resubmit
-                  </Button>
-                }
-              />
-            ) : undefined
-          }
-        />
-      ))}
+      {requests.map((req) => {
+        const canEdit =
+          req.maker_admin_id === currentAdminId &&
+          req.status === "CHANGES_REQUESTED" &&
+          req.operation === "create";
+        return (
+          <OpenRequestCard
+            key={req.id}
+            request={req}
+            tenantId={tenantId}
+            currentAdminId={currentAdminId}
+            editAction={
+              canEdit ? (
+                <CreatePricingDialog
+                  tenantId={tenantId}
+                  services={services}
+                  instruments={instruments}
+                  reviseRequest={req}
+                  trigger={
+                    <Button variant="outline" size="sm">
+                      Edit &amp; resubmit
+                    </Button>
+                  }
+                />
+              ) : undefined
+            }
+          />
+        );
+      })}
     </section>
   );
 }

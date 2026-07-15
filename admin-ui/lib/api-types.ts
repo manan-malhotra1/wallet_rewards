@@ -490,6 +490,17 @@ export type ConfigReviewAction =
   | "approved"
   | "withdrawn";
 
+/**
+ * One historical revision of a change request's proposed payload. The detail
+ * endpoint (`GET /config-requests/{id}`) returns these ascending by revision;
+ * the list endpoint does not. Lets maker + checker inspect any past version.
+ */
+export interface ConfigRevision {
+  revision: number;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
 /** One entry in a change request's review thread. */
 export interface ConfigReview {
   id: string;
@@ -525,6 +536,11 @@ export interface ConfigChangeRequest {
   created_at: string;
   updated_at: string;
   reviews: ConfigReview[];
+  /**
+   * Per-revision payload snapshots, ascending. Present only on the single-request
+   * detail endpoint (`getConfigRequest`), absent on the list endpoint.
+   */
+  revisions?: ConfigRevision[];
 }
 
 export interface RewardBudget {

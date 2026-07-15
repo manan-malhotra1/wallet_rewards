@@ -42,6 +42,8 @@ from app.modules.treasury.schemas import (
 from app.shared.exceptions import (
     AccountNotFound,
     AppHTTPException,
+    BankMirrorNameAlreadyExists,
+    CurrencyMismatch,
     InsufficientFunds,
     NothingToWithdraw,
     TenantNotFound,
@@ -59,6 +61,11 @@ from app.shared.models import (
 # Helpers
 # -----------------------------------------------------------------------------
 
+# The name given to the default/back-compat bank mirror. The single mirror that
+# existed before named mirrors (Epic 26) is backfilled to this name, and the
+# lazy get-or-create path uses it so old callers keep landing on one stable row.
+BANK_MIRROR_PRIMARY_NAME = "Primary"
+
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
     """Raise TenantNotFound if the tenant is unknown."""
@@ -67,18 +74,46 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
         raise TenantNotFound()
 
 
+def _to_system_wallet_out(account: Account, balance: Decimal) -> SystemWalletOut:
+    """Project an Account + its derived balance into the API response shape."""
+    return SystemWalletOut(
+        id=account.id,
+        tenant_id=account.tenant_id,
+        account_type=account.account_type,
+        name=account.name,
+        currency=account.currency,
+        status=account.status,
+        balance=balance,
+        created_at=account.created_at,
+    )
+
+
+async def project_system_wallet(session: AsyncSession, account: Account) -> SystemWalletOut:
+    """Serialize a system account with its freshly derived balance.
+
+    Router-facing helper so the create / rename endpoints return the same shape
+    as the list endpoint without hand-rolling balance derivation in the router.
+    """
+    balance, _reserved = await derive_balance(session, account.id)
+    return _to_system_wallet_out(account, balance)
+
+
 async def get_or_create_operator_adjustment(
     session: AsyncSession, *, tenant_id: UUID, currency: str
 ) -> Account:
-    """Fetch-or-create the per-(tenant, currency) operator_adjustment account.
+    """Fetch-or-create the "Primary" bank mirror for a (tenant, currency).
+
+    Back-compat / seed path only. Named bank mirrors (Epic 26) let the operator
+    pick a counter-leg explicitly, but user-initiated external withdraws and the
+    seed still need one stable mirror without asking a human — that is "Primary".
 
     Lazy so the operator doesn't have to pre-seed anything in a new tenant.
 
     Concurrency-safe: callers pre-create this BEFORE taking the wallet lock
     (Epic 18 S4 H-01), so two concurrent first-ever withdraws for the same
     (tenant, currency) can race the INSERT. The loser hits the
-    `uq_accounts_system_scoped` unique constraint; we roll back and re-read the
-    winner's row rather than surfacing a raw IntegrityError (mirrors
+    `uq_accounts_bank_mirror` unique constraint (on name); we roll back and
+    re-read the winner's row rather than surfacing a raw IntegrityError (mirrors
     `create_account` and `post_transaction`).
     """
     currency = currency.upper()
@@ -87,6 +122,7 @@ async def get_or_create_operator_adjustment(
         Account.account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
         Account.currency == currency,
         Account.user_id.is_(None),
+        Account.name == BANK_MIRROR_PRIMARY_NAME,
     )
     existing = (await session.execute(stmt)).scalar_one_or_none()
     if existing is not None:
@@ -95,6 +131,7 @@ async def get_or_create_operator_adjustment(
         tenant_id=tenant_id,
         account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
         currency=currency,
+        name=BANK_MIRROR_PRIMARY_NAME,
     )
     session.add(account)
     try:
@@ -106,6 +143,163 @@ async def get_or_create_operator_adjustment(
         return (await session.execute(stmt)).scalar_one()
     await session.refresh(account)
     return account
+
+
+async def create_bank_mirror(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    currency: str,
+    name: str,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> Account:
+    """Create a new named bank mirror (operator_adjustment) for a currency.
+
+    Bank mirrors are the counter-leg for admin withdraw + adjust; several may
+    coexist per (tenant, currency), each picked explicitly by the operator.
+
+    Args:
+        name: Human-readable label, unique per (tenant, currency).
+
+    Returns:
+        The created Account.
+
+    Raises:
+        TenantNotFound: tenant_id is unknown.
+        BankMirrorNameAlreadyExists: `name` is already taken in this scope
+            (`uq_accounts_bank_mirror` violation).
+
+    Side effects:
+        Commits the session and writes a `treasury.create_bank_mirror` audit row.
+    """
+    await _assert_tenant_exists(session, tenant_id)
+    currency = currency.upper()
+    account = Account(
+        tenant_id=tenant_id,
+        account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+        currency=currency,
+        name=name,
+    )
+    session.add(account)
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise BankMirrorNameAlreadyExists() from exc
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="treasury.create_bank_mirror",
+        entity_type="account",
+        entity_id=str(account.id),
+        after_state={"name": name, "currency": currency},
+        ip_address=ip_address,
+    )
+    await session.commit()
+    await session.refresh(account)
+    return account
+
+
+async def rename_bank_mirror(
+    session: AsyncSession,
+    *,
+    account_id: UUID,
+    tenant_id: UUID,
+    name: str,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> Account:
+    """Rename an existing bank mirror.
+
+    Args:
+        account_id: The bank mirror to rename.
+        name: New label, unique per (tenant, currency).
+
+    Returns:
+        The updated Account.
+
+    Raises:
+        AccountNotFound: no such operator_adjustment account in this tenant.
+        BankMirrorNameAlreadyExists: `name` collides with another mirror.
+
+    Side effects:
+        Commits the session and writes a `treasury.rename_bank_mirror` audit row.
+    """
+    mirror = (
+        await session.execute(
+            select(Account).where(
+                Account.id == account_id,
+                Account.tenant_id == tenant_id,
+                Account.account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+                Account.user_id.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if mirror is None:
+        raise AccountNotFound()
+
+    old_name = mirror.name
+    mirror.name = name
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise BankMirrorNameAlreadyExists() from exc
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="treasury.rename_bank_mirror",
+        entity_type="account",
+        entity_id=str(account_id),
+        before_state={"name": old_name},
+        after_state={"name": name},
+        ip_address=ip_address,
+    )
+    await session.commit()
+    await session.refresh(mirror)
+    return mirror
+
+
+async def resolve_bank_mirror(
+    session: AsyncSession,
+    *,
+    account_id: UUID,
+    tenant_id: UUID,
+    currency: str,
+) -> Account:
+    """Load and validate a caller-supplied bank mirror for a counter-leg.
+
+    Args:
+        account_id: The operator-selected bank mirror.
+        currency: The action currency; must match the mirror's currency.
+
+    Returns:
+        The validated operator_adjustment Account.
+
+    Raises:
+        AccountNotFound: no such operator_adjustment in this tenant.
+        CurrencyMismatch: the mirror holds a different currency.
+    """
+    mirror = (
+        await session.execute(
+            select(Account).where(
+                Account.id == account_id,
+                Account.tenant_id == tenant_id,
+                Account.account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+                Account.user_id.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if mirror is None:
+        raise AccountNotFound()
+    if mirror.currency != currency.upper():
+        raise CurrencyMismatch()
+    return mirror
 
 
 async def resolve_user_financial_wallet(
@@ -240,7 +434,7 @@ async def list_system_wallets(session: AsyncSession, *, tenant_id: UUID) -> list
             await session.execute(
                 select(Account)
                 .where(Account.tenant_id == tenant_id, Account.user_id.is_(None))
-                .order_by(Account.account_type, Account.currency)
+                .order_by(Account.account_type, Account.currency, Account.name)
             )
         )
         .scalars()
@@ -249,17 +443,7 @@ async def list_system_wallets(session: AsyncSession, *, tenant_id: UUID) -> list
     out: list[SystemWalletOut] = []
     for acct in rows:
         balance, _reserved = await derive_balance(session, acct.id)
-        out.append(
-            SystemWalletOut(
-                id=acct.id,
-                tenant_id=acct.tenant_id,
-                account_type=acct.account_type,
-                currency=acct.currency,
-                status=acct.status,
-                balance=balance,
-                created_at=acct.created_at,
-            )
-        )
+        out.append(_to_system_wallet_out(acct, balance))
     return out
 
 
@@ -406,6 +590,7 @@ async def withdraw_from_user(
     identifier_value: str,
     amount: Decimal | None,
     currency: str,
+    bank_mirror_account_id: UUID,
     reason: str,
     admin: AdminPrincipal,
     ip_address: str | None = None,
@@ -414,8 +599,8 @@ async def withdraw_from_user(
     """Admin debits a user's wallet and returns the funds to the operator pool.
 
     The mirror of `fund_user`: DEBIT user's financial_wallet, CREDIT the
-    `operator_adjustment` system account. Both are real money moving back
-    into the operator's cash float at the counter.
+    operator-selected bank mirror (`operator_adjustment`). Both are real money
+    moving back into the operator's cash float at the counter.
 
     Admin operations are PIN-less and fee-less: the operator's Keycloak
     session is the only authentication. The target user is identified
@@ -426,6 +611,8 @@ async def withdraw_from_user(
         identifier_type / identifier_value: Resolved to a user via
             identity.resolve_identifier — typically phone at the counter.
         amount, currency: Withdraw parameters.
+        bank_mirror_account_id: The operator-selected bank mirror that receives
+            the CREDIT counter-leg.
         reason: Free-text reason, persisted in the audit row.
         admin: Authenticated admin initiating the action.
         ip_address: Caller IP for the audit row.
@@ -436,7 +623,9 @@ async def withdraw_from_user(
     Raises:
         TenantNotFound: tenant_id is unknown.
         UserNotFound: identifier doesn't resolve in this tenant.
-        AccountNotFound: user has no financial_wallet for this currency.
+        AccountNotFound: user has no financial_wallet for this currency, or the
+            bank mirror doesn't exist in this tenant.
+        CurrencyMismatch: the bank mirror holds a different currency.
         InsufficientFunds: user balance < requested amount.
 
     Side effects:
@@ -449,13 +638,14 @@ async def withdraw_from_user(
     user_id, user_wallet = await resolve_user_financial_wallet(
         session, tenant_id, identifier_type, identifier_value, currency
     )
-    # Resolve the counter account up front so it exists before `post_user_withdraw`
-    # posts the legs. No explicit wallet lock here: `post_transaction`'s balance
-    # guard (invariant #11) locks the wallet FOR UPDATE and runs the overdraft
-    # check under it, held through the debit commit — so concurrent withdraws on
-    # this wallet serialise there and neither can drive the balance negative.
-    operator_adjustment = await get_or_create_operator_adjustment(
-        session, tenant_id=tenant_id, currency=currency
+    # Resolve the operator-selected counter account up front so it exists before
+    # `post_user_withdraw` posts the legs. No explicit wallet lock here:
+    # `post_transaction`'s balance guard (invariant #11) locks the wallet
+    # FOR UPDATE and runs the overdraft check under it, held through the debit
+    # commit — so concurrent withdraws on this wallet serialise there and neither
+    # can drive the balance negative.
+    operator_adjustment = await resolve_bank_mirror(
+        session, account_id=bank_mirror_account_id, tenant_id=tenant_id, currency=currency
     )
     final_amount = await resolve_withdraw_amount(
         session, user_wallet, amount=amount, withdraw_all=withdraw_all
@@ -485,6 +675,7 @@ async def withdraw_from_user(
             "reason": reason,
             "identifier_type": identifier_type,
             "withdraw_all": withdraw_all,
+            "bank_mirror_account_id": str(operator_adjustment.id),
         },
         ip_address=ip_address,
     )
@@ -506,14 +697,15 @@ async def adjust_system_wallet(
     tenant_id: UUID,
     account_id: UUID,
     amount: Decimal,  # signed
+    bank_mirror_account_id: UUID,
     reason: str,
     admin: AdminPrincipal,
     ip_address: str | None = None,
 ) -> AdjustSystemWalletResponse:
     """Fund (positive amount) or withdraw (negative) a system wallet.
 
-    Posts a balanced transaction with the `operator_adjustment` account
-    (one per tenant + currency, lazy-created) as the counter-leg.
+    Posts a balanced transaction with the operator-selected bank mirror
+    (`operator_adjustment`) as the counter-leg.
 
       amount > 0  (fund the float):
         DEBIT  operator_adjustment   |amount|
@@ -527,8 +719,12 @@ async def adjust_system_wallet(
     must be a system-owned account (user_id IS NULL). Adjusting a
     user wallet via this surface is rejected (use `fund_user`).
 
-    The operator_adjustment account is itself a valid target — that
-    would just be a no-op rebalance, so we reject it as well.
+    A bank mirror (operator_adjustment) is never a valid TARGET — it is only
+    ever the counter-leg — so targeting one is rejected 422.
+
+    Raises:
+        AccountNotFound: unknown target, or unknown bank mirror, in this tenant.
+        CurrencyMismatch: the bank mirror's currency differs from the target's.
     """
     if amount == 0:
         raise AppHTTPException(422, "amount_zero", "Amount must be non-zero.")
@@ -554,8 +750,11 @@ async def adjust_system_wallet(
             "be the target of an adjustment.",
         )
 
-    counter = await get_or_create_operator_adjustment(
-        session, tenant_id=tenant_id, currency=target.currency
+    counter = await resolve_bank_mirror(
+        session,
+        account_id=bank_mirror_account_id,
+        tenant_id=tenant_id,
+        currency=target.currency,
     )
 
     magnitude = abs(amount)
@@ -598,6 +797,7 @@ async def adjust_system_wallet(
             "transaction_id": str(txn.id),
             "reason": reason,
             "target_account_type": target.account_type,
+            "bank_mirror_account_id": str(counter.id),
         },
         ip_address=ip_address,
     )

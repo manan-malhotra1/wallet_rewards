@@ -39,6 +39,7 @@ from app.database import SessionLocal  # noqa: E402
 from app.modules.payments.service import fund  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
 from app.modules.redemption.service import register_provider  # noqa: E402
+from app.modules.treasury.service import BANK_MIRROR_PRIMARY_NAME  # noqa: E402
 from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
     ACCOUNT_TYPE_COMMISSION,
@@ -294,10 +295,16 @@ async def _get_or_create_account(
     account_type: str,
     currency: str,
     label: str,
+    name: str | None = None,
 ) -> Account:
     """Idempotently create one account for a (tenant, user, type, currency) tuple.
 
     A `user=None` call creates a SYSTEM-owned account (one per tenant per type).
+
+    Args:
+        name: Persisted account name — used by bank mirrors (operator_adjustment)
+            where several coexist per (tenant, currency) and are matched by name.
+            NULL for every other account type.
     """
     query = select(Account).where(
         Account.tenant_id == tenant.id,
@@ -308,6 +315,10 @@ async def _get_or_create_account(
         query = query.where(Account.user_id == user.id)
     else:
         query = query.where(Account.user_id.is_(None))
+    # Bank mirrors are keyed by name within (tenant, currency); scope the
+    # idempotency lookup so re-seeding matches the right mirror.
+    if name is not None:
+        query = query.where(Account.name == name)
 
     # Use `.first()` (not `scalar_one_or_none()`) so an already-duplicated DB
     # state doesn't crash the seed. Older builds had no unique constraint
@@ -325,6 +336,7 @@ async def _get_or_create_account(
         user_id=user.id if user is not None else None,
         account_type=account_type,
         currency=currency,
+        name=name,
     )
     session.add(account)
     await session.commit()
@@ -809,6 +821,13 @@ async def seed() -> None:
             (ACCOUNT_TYPE_TAX_COMMISSION, "ZAR", "Tax collected on commissions"),
         ]
         for account_type, currency, label in system_wallets:
+            # The seeded bank mirror is the back-compat "Primary" mirror; every
+            # other system wallet is unnamed.
+            name = (
+                BANK_MIRROR_PRIMARY_NAME
+                if account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT
+                else None
+            )
             await _get_or_create_account(
                 session,
                 tenant,
@@ -816,6 +835,7 @@ async def seed() -> None:
                 account_type=account_type,
                 currency=currency,
                 label=label,
+                name=name,
             )
 
         # Users + their wallets + opening balances.

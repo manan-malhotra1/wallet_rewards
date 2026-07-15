@@ -22,6 +22,9 @@ class SystemWalletOut(BaseModel):
     id: UUID
     tenant_id: UUID
     account_type: str
+    # Bank mirrors (operator_adjustment) carry a name so the UI can list each
+    # one separately; NULL for every other system account type.
+    name: str | None = None
     currency: str
     status: str
     balance: Decimal
@@ -93,6 +96,9 @@ class WithdrawFromUserRequest(BaseModel):
     amount: Decimal | None = Field(default=None, gt=Decimal("0"))
     withdraw_all: bool = False
     currency: str = Field(min_length=2, max_length=10)
+    # The bank mirror (operator_adjustment) that receives the counter-leg —
+    # the operator picks it explicitly; there is no implicit default.
+    bank_mirror_account_id: UUID
     reason: str = Field(min_length=1, max_length=500)
 
     @model_validator(mode="after")
@@ -127,6 +133,9 @@ class AdjustSystemWalletRequest(BaseModel):
     tenant_id: UUID
     account_id: UUID
     amount: Decimal  # signed
+    # The bank mirror (operator_adjustment) used as the counter-leg — the
+    # operator picks it explicitly; there is no implicit default.
+    bank_mirror_account_id: UUID
     reason: str = Field(min_length=1, max_length=500)
 
 
@@ -140,3 +149,19 @@ class AdjustSystemWalletResponse(BaseModel):
     amount: Decimal  # signed
     currency: str
     new_balance: Decimal
+
+
+class CreateBankMirrorRequest(BaseModel):
+    """Create a new named bank mirror (operator_adjustment) for a currency.
+
+    Names are unique per (tenant, currency); a duplicate is rejected 409.
+    """
+
+    currency: str = Field(min_length=2, max_length=10)
+    name: str = Field(min_length=1, max_length=100)
+
+
+class RenameBankMirrorRequest(BaseModel):
+    """Rename an existing bank mirror. New name must be unique in its scope."""
+
+    name: str = Field(min_length=1, max_length=100)

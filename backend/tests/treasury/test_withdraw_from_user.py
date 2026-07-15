@@ -1,9 +1,12 @@
 """Tests for POST /api/v1/treasury/withdraw (admin pull-back).
 
 Mirrors test_fund_user.py but verifies the reverse direction (user wallet
-debited, operator_adjustment credited). Admin operations are PIN-less and
-fee-less — step-up PIN policies apply to user-initiated transactions
-only, not back-office moves.
+debited, the operator-selected bank mirror credited). Admin operations are
+PIN-less and fee-less — step-up PIN policies apply to user-initiated
+transactions only, not back-office moves.
+
+Every withdraw now requires an explicit `bank_mirror_account_id` — the operator
+picks which bank mirror (operator_adjustment) is the counter-leg (Epic 26).
 """
 
 from __future__ import annotations
@@ -13,7 +16,6 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.accounts.service import derive_balance
@@ -37,6 +39,27 @@ def _user_phone(user: User) -> str:
     return next(
         ident.identifier_value for ident in user.identifiers if ident.identifier_type == "phone"
     )
+
+
+async def _seed_bank_mirror(
+    session: AsyncSession,
+    tenant: Tenant,
+    *,
+    name: str = "Primary",
+    currency: str = "ZAR",
+) -> Account:
+    """Insert a named bank mirror (operator_adjustment) for the tenant."""
+    mirror = Account(
+        tenant_id=tenant.id,
+        user_id=None,
+        account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+        currency=currency,
+        name=name,
+    )
+    session.add(mirror)
+    await session.commit()
+    await session.refresh(mirror)
+    return mirror
 
 
 async def _seed_user_wallet_with_balance(
@@ -104,6 +127,7 @@ async def test_withdraw_happy_path(
     wallet = await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
+    mirror = await _seed_bank_mirror(db_session, test_tenant)
 
     resp = await async_client.post(
         "/api/v1/treasury/withdraw",
@@ -114,6 +138,7 @@ async def test_withdraw_happy_path(
             "identifier_value": _user_phone(test_user),
             "amount": "200",
             "currency": "ZAR",
+            "bank_mirror_account_id": str(mirror.id),
             "reason": "Cash-out at agent counter.",
         },
     )
@@ -127,17 +152,19 @@ async def test_withdraw_happy_path(
 
 
 @pytest.mark.asyncio
-async def test_withdraw_credits_operator_adjustment(
+async def test_withdraw_credits_chosen_bank_mirror(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Counter-leg lands on the operator_adjustment account (lazy-created)."""
+    """The counter-leg lands on the operator-selected mirror, not any other."""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
+    chosen = await _seed_bank_mirror(db_session, test_tenant, name="Standard Bank")
+    other = await _seed_bank_mirror(db_session, test_tenant, name="Nedbank")
 
     await async_client.post(
         "/api/v1/treasury/withdraw",
@@ -148,21 +175,103 @@ async def test_withdraw_credits_operator_adjustment(
             "identifier_value": _user_phone(test_user),
             "amount": "120",
             "currency": "ZAR",
+            "bank_mirror_account_id": str(chosen.id),
             "reason": "Counter cash-out.",
         },
     )
 
-    operator_account = (
-        await db_session.execute(
-            select(Account).where(
-                Account.tenant_id == test_tenant.id,
-                Account.account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
-                Account.currency == "ZAR",
-            )
-        )
-    ).scalar_one()
-    op_balance, _ = await derive_balance(db_session, operator_account.id)
-    assert op_balance == Decimal("120")
+    chosen_balance, _ = await derive_balance(db_session, chosen.id)
+    other_balance, _ = await derive_balance(db_session, other.id)
+    assert chosen_balance == Decimal("120")
+    assert other_balance == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_withdraw_unknown_mirror_returns_404(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """A bank_mirror_account_id that doesn't exist → 404."""
+    await _seed_user_wallet_with_balance(
+        db_session, test_tenant, test_user, starting_balance=Decimal("500")
+    )
+    resp = await async_client.post(
+        "/api/v1/treasury/withdraw",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
+            "amount": "100",
+            "currency": "ZAR",
+            "bank_mirror_account_id": str(uuid4()),
+            "reason": "bad mirror",
+        },
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_withdraw_foreign_tenant_mirror_returns_404(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    other_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """A mirror belonging to another tenant is not resolvable → 404."""
+    await _seed_user_wallet_with_balance(
+        db_session, test_tenant, test_user, starting_balance=Decimal("500")
+    )
+    foreign_mirror = await _seed_bank_mirror(db_session, other_tenant)
+    resp = await async_client.post(
+        "/api/v1/treasury/withdraw",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
+            "amount": "100",
+            "currency": "ZAR",
+            "bank_mirror_account_id": str(foreign_mirror.id),
+            "reason": "cross-tenant mirror",
+        },
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_withdraw_mirror_currency_mismatch_returns_422(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """A USD mirror can't be the counter-leg of a ZAR withdraw → 422."""
+    await _seed_user_wallet_with_balance(
+        db_session, test_tenant, test_user, starting_balance=Decimal("500")
+    )
+    usd_mirror = await _seed_bank_mirror(db_session, test_tenant, name="USD Mirror", currency="USD")
+    resp = await async_client.post(
+        "/api/v1/treasury/withdraw",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
+            "amount": "100",
+            "currency": "ZAR",
+            "bank_mirror_account_id": str(usd_mirror.id),
+            "reason": "currency mismatch",
+        },
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error_code"] == "currency_mismatch"
 
 
 @pytest.mark.asyncio
@@ -177,6 +286,7 @@ async def test_withdraw_rejects_insufficient_balance(
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("50")
     )
+    mirror = await _seed_bank_mirror(db_session, test_tenant)
 
     resp = await async_client.post(
         "/api/v1/treasury/withdraw",
@@ -187,6 +297,7 @@ async def test_withdraw_rejects_insufficient_balance(
             "identifier_value": _user_phone(test_user),
             "amount": "100",
             "currency": "ZAR",
+            "bank_mirror_account_id": str(mirror.id),
             "reason": "Over-draw attempt.",
         },
     )
@@ -197,11 +308,13 @@ async def test_withdraw_rejects_insufficient_balance(
 @pytest.mark.asyncio
 async def test_withdraw_missing_wallet_returns_404(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
     """User without a wallet for the currency → 404."""
+    mirror = await _seed_bank_mirror(db_session, test_tenant)
     resp = await async_client.post(
         "/api/v1/treasury/withdraw",
         headers=admin_auth_header,
@@ -211,6 +324,7 @@ async def test_withdraw_missing_wallet_returns_404(
             "identifier_value": _user_phone(test_user),
             "amount": "10",
             "currency": "ZAR",
+            "bank_mirror_account_id": str(mirror.id),
             "reason": "No wallet.",
         },
     )
@@ -230,10 +344,38 @@ async def test_withdraw_requires_auth(
             "identifier_value": _user_phone(test_user),
             "amount": "10",
             "currency": "ZAR",
+            "bank_mirror_account_id": str(uuid4()),
             "reason": "x",
         },
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_withdraw_missing_bank_mirror_is_validation_error(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Omitting bank_mirror_account_id is a 422 — the field is now required."""
+    await _seed_user_wallet_with_balance(
+        db_session, test_tenant, test_user, starting_balance=Decimal("100")
+    )
+    resp = await async_client.post(
+        "/api/v1/treasury/withdraw",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "identifier_type": "phone",
+            "identifier_value": _user_phone(test_user),
+            "amount": "10",
+            "currency": "ZAR",
+            "reason": "no mirror supplied",
+        },
+    )
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -245,10 +387,11 @@ async def test_withdraw_ignores_user_pin_field(
     admin_auth_header: dict[str, str],
 ) -> None:
     """Admin treasury endpoints are PIN-less — an unknown 'pin' field is
-    rejected at validation rather than silently consumed."""
+    ignored rather than acted on. The withdraw still completes 201."""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
+    mirror = await _seed_bank_mirror(db_session, test_tenant)
     resp = await async_client.post(
         "/api/v1/treasury/withdraw",
         headers=admin_auth_header,
@@ -258,10 +401,10 @@ async def test_withdraw_ignores_user_pin_field(
             "identifier_value": _user_phone(test_user),
             "amount": "100",
             "currency": "ZAR",
+            "bank_mirror_account_id": str(mirror.id),
             "reason": "smoke test",
-            # Stray PIN field — Pydantic default ignores extras, so this
-            # asserts the *backend* does not act on it. The withdraw
-            # still completes 201.
+            # Stray PIN field — Pydantic ignores extras; this asserts the
+            # backend does not act on it.
             "pin": "1234",
         },
     )
@@ -281,6 +424,8 @@ async def test_withdraw_cross_tenant_returns_404(
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("100")
     )
+    # Mirror in tenant B so schema-valid; the user resolution under B fails first.
+    mirror = await _seed_bank_mirror(db_session, other_tenant)
 
     resp = await async_client.post(
         "/api/v1/treasury/withdraw",
@@ -291,6 +436,7 @@ async def test_withdraw_cross_tenant_returns_404(
             "identifier_value": _user_phone(test_user),
             "amount": "10",
             "currency": "ZAR",
+            "bank_mirror_account_id": str(mirror.id),
             "reason": "wrong tenant",
         },
     )
@@ -309,6 +455,7 @@ async def test_withdraw_all_empties_the_wallet(
     wallet = await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
+    mirror = await _seed_bank_mirror(db_session, test_tenant)
     resp = await async_client.post(
         "/api/v1/treasury/withdraw",
         headers=admin_auth_header,
@@ -318,6 +465,7 @@ async def test_withdraw_all_empties_the_wallet(
             "identifier_value": _user_phone(test_user),
             "withdraw_all": True,
             "currency": "ZAR",
+            "bank_mirror_account_id": str(mirror.id),
             "reason": "Close account — withdraw all.",
         },
     )
@@ -351,6 +499,7 @@ async def test_withdraw_all_with_amount_is_rejected(
             "amount": "10",
             "withdraw_all": True,
             "currency": "ZAR",
+            "bank_mirror_account_id": str(uuid4()),
             "reason": "conflicting",
         },
     )
@@ -377,6 +526,7 @@ async def test_withdraw_without_amount_or_all_is_rejected(
             "identifier_type": "phone",
             "identifier_value": _user_phone(test_user),
             "currency": "ZAR",
+            "bank_mirror_account_id": str(uuid4()),
             "reason": "no amount",
         },
     )
@@ -400,6 +550,7 @@ async def test_withdraw_all_on_empty_wallet_is_rejected(
     )
     db_session.add(wallet)
     await db_session.commit()
+    mirror = await _seed_bank_mirror(db_session, test_tenant)
 
     resp = await async_client.post(
         "/api/v1/treasury/withdraw",
@@ -410,6 +561,7 @@ async def test_withdraw_all_on_empty_wallet_is_rejected(
             "identifier_value": _user_phone(test_user),
             "withdraw_all": True,
             "currency": "ZAR",
+            "bank_mirror_account_id": str(mirror.id),
             "reason": "nothing there",
         },
     )

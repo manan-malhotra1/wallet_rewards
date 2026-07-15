@@ -103,6 +103,22 @@ class AccountAlreadyExists(AppHTTPException):
         )
 
 
+class BankMirrorNameAlreadyExists(AppHTTPException):
+    """Another bank mirror already uses this name for the (tenant, currency).
+
+    Bank mirrors are `operator_adjustment` accounts; several coexist per
+    (tenant, currency) but each name must be unique (partial UNIQUE index
+    `uq_accounts_bank_mirror`). Surfaces as 409 rather than a raw IntegrityError.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "bank_mirror_name_already_exists",
+            "A bank mirror with this name already exists for this currency.",
+        )
+
+
 class InstrumentNotFound(AppHTTPException):
     """The given instrument_id doesn't map to a live row in this tenant."""
 

@@ -1,11 +1,13 @@
 """Treasury FastAPI router (admin-gated).
 
-Five routes:
-  - GET  /system-wallets                     list system accounts + balances
-  - GET  /system-wallets/{id}/transactions    drill-down (paginated)
-  - POST /fund-user                          admin fund wrapper
-  - POST /withdraw                           admin pull-back wrapper
-  - POST /adjust-system-wallet               fund/withdraw via operator_adjustment
+Routes:
+  - GET   /system-wallets                     list system accounts + balances
+  - GET   /system-wallets/{id}/transactions    drill-down (paginated)
+  - POST  /fund-user                          admin fund wrapper
+  - POST  /withdraw                           admin pull-back wrapper
+  - POST  /adjust-system-wallet               fund/withdraw via a bank mirror
+  - POST  /bank-mirrors                       create a named bank mirror
+  - PATCH /bank-mirrors/{account_id}          rename a bank mirror
 """
 
 from __future__ import annotations
@@ -21,8 +23,10 @@ from app.dependencies import require_admin_role
 from app.modules.treasury.schemas import (
     AdjustSystemWalletRequest,
     AdjustSystemWalletResponse,
+    CreateBankMirrorRequest,
     FundUserRequest,
     FundUserResponse,
+    RenameBankMirrorRequest,
     SystemWalletOut,
     SystemWalletTransactionOut,
     WithdrawFromUserRequest,
@@ -30,9 +34,12 @@ from app.modules.treasury.schemas import (
 )
 from app.modules.treasury.service import (
     adjust_system_wallet,
+    create_bank_mirror,
     fund_user,
     list_account_transactions,
     list_system_wallets,
+    project_system_wallet,
+    rename_bank_mirror,
     withdraw_from_user,
 )
 
@@ -118,6 +125,7 @@ async def post_withdraw_from_user(
         amount=request.amount,
         withdraw_all=request.withdraw_all,
         currency=request.currency,
+        bank_mirror_account_id=request.bank_mirror_account_id,
         reason=request.reason,
         admin=admin,
         ip_address=_client_ip(fastapi_request),
@@ -145,7 +153,49 @@ async def post_adjust_system_wallet(
         tenant_id=request.tenant_id,
         account_id=request.account_id,
         amount=request.amount,
+        bank_mirror_account_id=request.bank_mirror_account_id,
         reason=request.reason,
         admin=admin,
         ip_address=_client_ip(fastapi_request),
     )
+
+
+@router.post("/bank-mirrors", response_model=SystemWalletOut, status_code=201)
+async def post_create_bank_mirror(
+    request: CreateBankMirrorRequest,
+    tenant_id: UUID,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> SystemWalletOut:
+    """Create a new named bank mirror (operator_adjustment) for a currency."""
+    account = await create_bank_mirror(
+        session,
+        tenant_id=tenant_id,
+        currency=request.currency,
+        name=request.name,
+        admin=admin,
+        ip_address=_client_ip(fastapi_request),
+    )
+    return await project_system_wallet(session, account)
+
+
+@router.patch("/bank-mirrors/{account_id}", response_model=SystemWalletOut)
+async def patch_rename_bank_mirror(
+    account_id: UUID,
+    request: RenameBankMirrorRequest,
+    tenant_id: UUID,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> SystemWalletOut:
+    """Rename an existing bank mirror."""
+    account = await rename_bank_mirror(
+        session,
+        account_id=account_id,
+        tenant_id=tenant_id,
+        name=request.name,
+        admin=admin,
+        ip_address=_client_ip(fastapi_request),
+    )
+    return await project_system_wallet(session, account)

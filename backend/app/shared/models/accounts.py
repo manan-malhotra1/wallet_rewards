@@ -128,13 +128,30 @@ class Account(Base):
             unique=True,
             postgresql_where=text("user_id IS NOT NULL"),
         ),
+        # System accounts stay single-instance per (tenant, type, currency),
+        # EXCEPT `operator_adjustment` (bank mirrors) — those may have several
+        # per (tenant, currency), each distinguished by `name` (see
+        # `uq_accounts_bank_mirror`). Migration 0035 relaxed this predicate.
         Index(
             "uq_accounts_system_scoped",
             "tenant_id",
             "account_type",
             "currency",
             unique=True,
-            postgresql_where=text("user_id IS NULL"),
+            postgresql_where=text("user_id IS NULL AND account_type <> 'operator_adjustment'"),
+        ),
+        # Bank mirrors (operator_adjustment) — several per (tenant, currency),
+        # unique BY NAME. Lets an operator run multiple named cash-float mirrors
+        # and pick which one is the counter-leg per withdraw / adjust (Epic 26).
+        Index(
+            "uq_accounts_bank_mirror",
+            "tenant_id",
+            "currency",
+            "name",
+            unique=True,
+            postgresql_where=text(
+                "account_type = 'operator_adjustment' AND user_id IS NULL"
+            ),
         ),
     )
 
@@ -151,6 +168,10 @@ class Account(Base):
         UUID(as_uuid=True), nullable=True
     )  # FK to merchants.id added in a later migration when merchants table exists.
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    # Human-readable label — currently used only by bank mirrors
+    # (operator_adjustment), where several coexist per (tenant, currency) and
+    # the operator picks one by name. NULL for every other account type.
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     created_at: Mapped[datetime] = created_at_col()

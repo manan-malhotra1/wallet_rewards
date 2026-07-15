@@ -181,6 +181,9 @@ export function PricingTable({
                     data={cfg as unknown as Record<string, unknown>}
                     title={`Pricing · ${serviceLabel(cfg.transaction_type, serviceNames)} · ${cfg.currency}`}
                     serviceNames={serviceNames}
+                    tenantId={tenantId}
+                    targetConfigId={cfg.id}
+                    canPropose={canPropose}
                   />
                   {canPropose && (
                     <EditPricingButton

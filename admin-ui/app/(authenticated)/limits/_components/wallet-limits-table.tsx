@@ -155,6 +155,9 @@ export function WalletLimitsTable({
                     configType="wallet_limit"
                     data={cfg as unknown as Record<string, unknown>}
                     title={`Wallet limit · ${cfg.currency}`}
+                    tenantId={tenantId}
+                    targetConfigId={cfg.id}
+                    canPropose={canPropose}
                   />
                   {canPropose && (
                     <EditWalletLimitButton

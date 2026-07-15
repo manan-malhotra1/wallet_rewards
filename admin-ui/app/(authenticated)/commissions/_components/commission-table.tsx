@@ -162,6 +162,9 @@ export function CommissionTable({
                     data={cfg as unknown as Record<string, unknown>}
                     title={`Commission · ${serviceLabel(cfg.transaction_type, serviceNames)} · ${cfg.currency}`}
                     serviceNames={serviceNames}
+                    tenantId={tenantId}
+                    targetConfigId={cfg.id}
+                    canPropose={canPropose}
                   />
                   {canPropose && (
                     <EditCommissionButton

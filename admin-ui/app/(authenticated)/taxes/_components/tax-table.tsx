@@ -141,6 +141,9 @@ export function TaxTable({
                     configType="tax"
                     data={cfg as unknown as Record<string, unknown>}
                     title={`Tax · ${cfg.currency}`}
+                    tenantId={tenantId}
+                    targetConfigId={cfg.id}
+                    canPropose={canPropose}
                   />
                   {canPropose && (
                     <EditTaxButton

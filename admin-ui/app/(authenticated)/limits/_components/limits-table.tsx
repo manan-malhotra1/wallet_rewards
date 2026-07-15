@@ -179,6 +179,9 @@ export function LimitsTable({
                     data={cfg as unknown as Record<string, unknown>}
                     title={`Limit · ${serviceLabel(cfg.transaction_type, serviceNames)} · ${cfg.currency}`}
                     serviceNames={serviceNames}
+                    tenantId={tenantId}
+                    targetConfigId={cfg.id}
+                    canPropose={canPropose}
                   />
                   {canPropose && (
                     <EditLimitButton

@@ -475,6 +475,21 @@ export const listConfigRequests = (
     query: { tenant_id, status_filter, config_type },
   });
 
+/**
+ * Full applied-version history for one live config row (Epic 25 — version
+ * history + restore). Returns every APPLIED change request that targeted this
+ * config, ordered oldest-first; the LAST element is the current live config,
+ * earlier ones are prior versions. 404 if the target no longer exists.
+ */
+export const getConfigHistory = (
+  tenant_id: string,
+  config_type: ConfigType,
+  target_config_id: string,
+) =>
+  apiGet<ConfigChangeRequest[]>("/api/v1/config-requests/history", {
+    query: { tenant_id, config_type, target_config_id },
+  });
+
 /** Fetch a single change request with its review thread. */
 export const getConfigRequest = (tenant_id: string, id: string) =>
   apiGet<ConfigChangeRequest>(`/api/v1/config-requests/${id}`, {

@@ -50,6 +50,7 @@ from app.shared.models import (
     REVIEW_ROLE_MAKER,
     ConfigChangeRequest,
     ConfigChangeReview,
+    ConfigChangeRevision,
     Tenant,
 )
 
@@ -110,6 +111,26 @@ def _add_review(
             actor_role=actor_role,
             action=action,
             comment=comment,
+        )
+    )
+
+
+def _add_revision(
+    session: AsyncSession,
+    request: ConfigChangeRequest,
+) -> None:
+    """Append an immutable payload snapshot at the request's current revision.
+
+    Called at propose (revision 1) and after each revise (bumped revision). The
+    snapshot copies whatever `request.payload` currently holds (None for a
+    delete proposal). Append-only — snapshots are never updated or deleted.
+    """
+    session.add(
+        ConfigChangeRevision(
+            tenant_id=request.tenant_id,
+            request_id=request.id,
+            revision=request.revision,
+            payload=request.payload,
         )
     )
 
@@ -205,6 +226,8 @@ async def propose_config_change(
         actor_role=REVIEW_ROLE_MAKER,
         action=REVIEW_ACTION_SUBMITTED,
     )
+    # Snapshot revision 1's payload so the whole version history is readable.
+    _add_revision(session, request)
     _audit(session, admin, request, "config_request.proposed", ip_address)
     await record_admin(session, admin)
     await session.commit()
@@ -332,6 +355,8 @@ async def revise_config_request(
         actor_role=REVIEW_ROLE_MAKER,
         action=REVIEW_ACTION_REVISED,
     )
+    # Snapshot the newly-bumped revision's payload (append-only history).
+    _add_revision(session, request)
     _audit(session, admin, request, "config_request.revised", ip_address)
     await record_admin(session, admin)
     await session.commit()
@@ -435,12 +460,23 @@ async def list_config_requests(
 
 async def get_config_request(
     session: AsyncSession, request_id: UUID, tenant_id: UUID
-) -> tuple[ConfigChangeRequest, list[ConfigChangeReview]]:
-    """Return a request with its full review thread (oldest-first)."""
+) -> tuple[ConfigChangeRequest, list[ConfigChangeReview], list[ConfigChangeRevision]]:
+    """Return a request with its review thread + payload snapshots.
+
+    Returns:
+        The request, its review thread (oldest-first), and its per-revision
+        payload snapshots (revision-ascending). The list endpoint omits the
+        snapshots to stay lean; only this detail path loads them.
+    """
     request = await _load_request(session, request_id, tenant_id)
-    result = await session.execute(
+    reviews = await session.execute(
         select(ConfigChangeReview)
         .where(ConfigChangeReview.request_id == request.id)
         .order_by(ConfigChangeReview.created_at.asc())
     )
-    return request, list(result.scalars().all())
+    revisions = await session.execute(
+        select(ConfigChangeRevision)
+        .where(ConfigChangeRevision.request_id == request.id)
+        .order_by(ConfigChangeRevision.revision.asc())
+    )
+    return request, list(reviews.scalars().all()), list(revisions.scalars().all())

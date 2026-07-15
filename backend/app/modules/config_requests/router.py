@@ -22,6 +22,7 @@ from app.modules.config_requests.schemas import (
     ConfigChangeRequestOut,
     ConfigChangeReviseRequest,
     ConfigReviewOut,
+    ConfigRevisionOut,
 )
 from app.modules.config_requests.service import (
     approve_config_request,
@@ -110,9 +111,10 @@ async def get_request(
 ) -> ConfigChangeRequestOut:
     """Fetch one request with its full review thread."""
     _ = admin
-    request, reviews = await get_config_request(session, request_id, tenant_id)
+    request, reviews, revisions = await get_config_request(session, request_id, tenant_id)
     out = ConfigChangeRequestOut.model_validate(request)
     out.reviews = [ConfigReviewOut.model_validate(r) for r in reviews]
+    out.revisions = [ConfigRevisionOut.model_validate(r) for r in revisions]
     await _attach_admin_names(session, [out])
     return out
 

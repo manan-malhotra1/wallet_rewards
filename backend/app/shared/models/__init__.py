@@ -84,6 +84,7 @@ from app.shared.models.config_requests import (
     REVIEW_ROLE_MAKER,
     ConfigChangeRequest,
     ConfigChangeReview,
+    ConfigChangeRevision,
 )
 from app.shared.models.events import (
     INGESTION_STATUS_DUPLICATE,
@@ -318,6 +319,7 @@ __all__ = [
     # Config governance — maker-checker (Pricing v2 Epic 22)
     "ConfigChangeRequest",
     "ConfigChangeReview",
+    "ConfigChangeRevision",
     "EventIngestionLog",
     # Events
     "ExternalEventSource",

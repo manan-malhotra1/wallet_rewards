@@ -52,8 +52,19 @@ class ConfigReviewOut(BaseModel):
     created_at: datetime
 
 
+class ConfigRevisionOut(BaseModel):
+    """One immutable payload snapshot of the request at a given revision."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    revision: int
+    # None for a delete proposal (no payload) or a pre-snapshot backfill gap.
+    payload: dict[str, Any] | None
+    created_at: datetime
+
+
 class ConfigChangeRequestOut(BaseModel):
-    """A config-change request, optionally with its review thread."""
+    """A config-change request, optionally with its review thread + snapshots."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -73,3 +84,5 @@ class ConfigChangeRequestOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     reviews: list[ConfigReviewOut] = Field(default_factory=list)
+    # Per-revision payload snapshots (detail endpoint only), revision-ascending.
+    revisions: list[ConfigRevisionOut] = Field(default_factory=list)

@@ -24,6 +24,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -146,4 +147,37 @@ class ConfigChangeReview(Base):
     action: Mapped[str] = mapped_column(String(20), nullable=False)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Append-only — no updated_at (mirrors ledger_entries / audit_log).
+    created_at: Mapped[datetime] = created_at_col()
+
+
+class ConfigChangeRevision(Base):
+    """An immutable snapshot of a request's payload at one revision.
+
+    The request row keeps only the LATEST payload (revise overwrites it in
+    place). To let both maker and checker read what every prior version looked
+    like, we append one snapshot per revision here: revision 1 at propose, then
+    one more each time the maker revises. Append-only — never updated or deleted
+    (mirrors ledger_entries / audit_log / config_change_reviews).
+    """
+
+    __tablename__ = "config_change_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "request_id", "revision", name="uq_config_change_revisions_request_revision"
+        ),
+        Index("ix_config_change_revisions_request", "request_id", "revision"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("config_change_requests.id"), nullable=False
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The proposed config row as of this revision. NULL for a delete proposal,
+    # which carries no payload.
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Append-only — no updated_at.
     created_at: Mapped[datetime] = created_at_col()

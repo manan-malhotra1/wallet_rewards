@@ -36,6 +36,20 @@ export function formatAmount(
 }
 
 /**
+ * Format a money cap/limit cell: a dash for empty values, else the amount at
+ * 2 decimals with thousands separators. Backend stores `Numeric(20,6)`, so raw
+ * cells would otherwise leak 6 trailing decimals — this clamps every money
+ * cell to 2. Use for money caps only; count caps stay bare integers.
+ *
+ * @param value Decimal-string / number / null / undefined / "" from a config row.
+ * @returns `"—"` for null/undefined/empty, else the 2-decimal formatted amount.
+ */
+export function formatCap(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "—";
+  return formatAmount(String(value), { fractionDigits: 2 });
+}
+
+/**
  * Format an ISO timestamp as `MMM dd HH:mm` (e.g. `Apr 28 09:14`).
  * Short enough for dense tables; long enough to disambiguate weeks.
  */

@@ -25,7 +25,8 @@ import {
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
 import type { Instrument, PricingConfig, Service } from "@/lib/api-types";
-import { formatAmount } from "@/lib/utils";
+import { serviceLabel } from "@/lib/service-label";
+import { formatAmount, formatCap } from "@/lib/utils";
 
 import { CreatePricingDialog } from "./create-pricing-dialog";
 
@@ -139,7 +140,9 @@ export function PricingTable({
           {configs.map((cfg) => (
             <TableRow key={cfg.id}>
               <TableCell className="font-medium">
-                <Badge variant="info">{cfg.transaction_type}</Badge>
+                <Badge variant="info">
+                  {serviceLabel(cfg.transaction_type, serviceNames)}
+                </Badge>
               </TableCell>
               <TableCell>
                 {ACCOUNT_TYPE_LABEL[cfg.account_type] ?? cfg.account_type}
@@ -162,7 +165,7 @@ export function PricingTable({
                 {(parseFloat(cfg.variable_fee_pct) * 100).toFixed(2)}%
               </TableCell>
               <TableCell className="text-right font-mono">
-                {cfg.fee_cap ?? "—"}
+                {formatCap(cfg.fee_cap)}
               </TableCell>
               <TableCell>
                 {cfg.fee_inclusive ? (
@@ -176,7 +179,7 @@ export function PricingTable({
                   <ConfigViewButton
                     configType="pricing"
                     data={cfg as unknown as Record<string, unknown>}
-                    title={`Pricing · ${cfg.transaction_type} · ${cfg.currency}`}
+                    title={`Pricing · ${serviceLabel(cfg.transaction_type, serviceNames)} · ${cfg.currency}`}
                     serviceNames={serviceNames}
                   />
                   {canPropose && (

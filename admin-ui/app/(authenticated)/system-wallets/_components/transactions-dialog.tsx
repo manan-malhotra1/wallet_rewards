@@ -20,7 +20,7 @@ import {
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { StatusPill } from "@/components/ui/status-pill";
 import { transactionTypeLabel } from "@/lib/transaction-type-label";
-import { formatTimestamp, shortId } from "@/lib/utils";
+import { formatAmount, formatTimestamp, shortId } from "@/lib/utils";
 import type { SystemWallet, SystemWalletTransaction } from "@/lib/api-types";
 
 export function TransactionsDialog({
@@ -115,7 +115,7 @@ export function TransactionsDialog({
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums">
                         {isCredit ? "+" : "−"}
-                        {r.entry_amount} {r.currency}
+                        {formatAmount(r.entry_amount)} {r.currency}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-muted-foreground">
                         {r.reference ?? shortId(r.transaction_id, "txn")}

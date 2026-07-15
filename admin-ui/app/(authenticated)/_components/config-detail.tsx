@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ConfigType, UserType } from "@/lib/api-types";
-import { transactionTypeLabel } from "@/lib/transaction-type-label";
+import { serviceLabel } from "@/lib/service-label";
 import { formatAmount } from "@/lib/utils";
 
 type Row = Record<string, unknown>;
@@ -83,18 +83,6 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   financial_wallet: "Wallet",
   points_account: "Points",
 };
-
-/**
- * Friendly display name for a transaction-type code. Prefers the tenant's
- * service `display_name` map when supplied, else falls back to the shared
- * `transactionTypeLabel` (which title-cases unknown codes).
- */
-function serviceLabel(
-  code: string,
-  serviceNames: Record<string, string> | undefined,
-): string {
-  return serviceNames?.[code] ?? transactionTypeLabel(code);
-}
 
 /** Title-case a snake_case key when no explicit label exists. */
 function humanize(key: string): string {

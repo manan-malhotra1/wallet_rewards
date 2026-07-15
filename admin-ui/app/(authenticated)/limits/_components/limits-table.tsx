@@ -24,6 +24,8 @@ import {
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
 import type { Instrument, LimitConfig, Service } from "@/lib/api-types";
+import { serviceLabel } from "@/lib/service-label";
+import { formatCap } from "@/lib/utils";
 
 import { CreateLimitDialog } from "./create-limit-dialog";
 
@@ -131,7 +133,9 @@ export function LimitsTable({
           {configs.map((cfg) => (
             <TableRow key={cfg.id}>
               <TableCell className="font-medium">
-                <Badge variant="info">{cfg.transaction_type}</Badge>
+                <Badge variant="info">
+                  {serviceLabel(cfg.transaction_type, serviceNames)}
+                </Badge>
               </TableCell>
               <TableCell>
                 {ACCOUNT_TYPE_LABEL[cfg.account_type] ?? cfg.account_type}
@@ -145,35 +149,35 @@ export function LimitsTable({
                 )}
               </TableCell>
               <TableCell className="text-right font-mono">
-                {cfg.min_amount ?? "—"}
+                {formatCap(cfg.min_amount)}
               </TableCell>
               <TableCell className="text-right font-mono">
-                {cfg.max_amount ?? "—"}
+                {formatCap(cfg.max_amount)}
               </TableCell>
               <TableCell className="text-right font-mono">
                 {cfg.daily_count_cap ?? "—"}
               </TableCell>
               <TableCell className="text-right font-mono">
-                {cfg.daily_value_cap ?? "—"}
+                {formatCap(cfg.daily_value_cap)}
               </TableCell>
               <TableCell className="text-right font-mono">
                 {cfg.weekly_count_cap ?? "—"}
               </TableCell>
               <TableCell className="text-right font-mono">
-                {cfg.weekly_value_cap ?? "—"}
+                {formatCap(cfg.weekly_value_cap)}
               </TableCell>
               <TableCell className="text-right font-mono">
                 {cfg.monthly_count_cap ?? "—"}
               </TableCell>
               <TableCell className="text-right font-mono">
-                {cfg.monthly_value_cap ?? "—"}
+                {formatCap(cfg.monthly_value_cap)}
               </TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-1">
                   <ConfigViewButton
                     configType="limit"
                     data={cfg as unknown as Record<string, unknown>}
-                    title={`Limit · ${cfg.transaction_type} · ${cfg.currency}`}
+                    title={`Limit · ${serviceLabel(cfg.transaction_type, serviceNames)} · ${cfg.currency}`}
                     serviceNames={serviceNames}
                   />
                   {canPropose && (

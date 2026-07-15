@@ -15,6 +15,7 @@ import {
   simulateAirtimeCallback,
 } from "@/lib/backend";
 import { config, type UserKey } from "@/lib/config";
+import { formatAmount } from "@/lib/format";
 
 export type ActionResult =
   | { ok: true; message: string }
@@ -44,11 +45,12 @@ export async function cashInAction(
       return {
         ok: true,
         message:
-          `Cashed in R ${b.amount} to ${config.users[customer].label} — ` +
-          `fee R ${b.fee}, commission R ${b.commission}, tax R ${b.tax}.`,
+          `Cashed in R ${formatAmount(b.amount, "ZAR")} to ${config.users[customer].label} — ` +
+          `fee R ${formatAmount(b.fee, "ZAR")}, commission R ${formatAmount(b.commission, "ZAR")}, ` +
+          `tax R ${formatAmount(b.tax, "ZAR")}.`,
       };
     } catch {
-      return { ok: true, message: `Cashed in R ${amount}.` };
+      return { ok: true, message: `Cashed in R ${formatAmount(amount, "ZAR")}.` };
     }
   }
   if (res.status === 401 && res.body.includes("step_up_required")) {
@@ -73,7 +75,10 @@ export async function sendP2PAction(
   const res = await sendP2P(sender, recipient, amount, pin);
   revalidatePath("/");
   if (res.ok) {
-    return { ok: true, message: `Sent R ${amount} from ${sender} → ${recipient}.` };
+    return {
+      ok: true,
+      message: `Sent R ${formatAmount(amount, "ZAR")} from ${sender} → ${recipient}.`,
+    };
   }
   // Surface the step-up flag so the UI can pop a PIN prompt without
   // parsing the error body itself.

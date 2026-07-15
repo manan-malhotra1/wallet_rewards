@@ -24,6 +24,7 @@ import {
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
 import type { Instrument, WalletLimitConfig } from "@/lib/api-types";
+import { formatCap } from "@/lib/utils";
 
 import { CreateWalletLimitDialog } from "./create-wallet-limit-dialog";
 
@@ -40,7 +41,8 @@ function capsSummary(cfg: WalletLimitConfig, dir: "send" | "receive"): string {
     const count = cfg[`${dir}_${win}_count_cap` as keyof WalletLimitConfig];
     const value = cfg[`${dir}_${win}_value_cap` as keyof WalletLimitConfig];
     if (count != null || value != null) {
-      parts.push(`${short} ${count ?? "—"}× / ${value ?? "—"}`);
+      // Count legs stay bare integers; value legs are money → clamp to 2dp.
+      parts.push(`${short} ${count ?? "—"}× / ${formatCap(value)}`);
     }
   }
   return parts.length ? parts.join("  ·  ") : "—";
@@ -139,7 +141,7 @@ export function WalletLimitsTable({
                 )}
               </TableCell>
               <TableCell className="text-right font-mono">
-                {cfg.max_balance ?? "—"}
+                {formatCap(cfg.max_balance)}
               </TableCell>
               <TableCell className="font-mono text-[11px] text-muted-foreground">
                 {capsSummary(cfg, "send")}

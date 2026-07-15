@@ -24,7 +24,8 @@ import {
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
 import type { CommissionConfig, Instrument, Service } from "@/lib/api-types";
-import { formatAmount } from "@/lib/utils";
+import { serviceLabel } from "@/lib/service-label";
+import { formatAmount, formatCap } from "@/lib/utils";
 
 import { CreateCommissionDialog } from "./create-commission-dialog";
 
@@ -130,7 +131,9 @@ export function CommissionTable({
           {configs.map((cfg) => (
             <TableRow key={cfg.id}>
               <TableCell className="font-medium">
-                <Badge variant="info">{cfg.transaction_type}</Badge>
+                <Badge variant="info">
+                  {serviceLabel(cfg.transaction_type, serviceNames)}
+                </Badge>
               </TableCell>
               <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
               <TableCell>
@@ -150,14 +153,14 @@ export function CommissionTable({
                 {(parseFloat(cfg.variable_commission_pct) * 100).toFixed(2)}%
               </TableCell>
               <TableCell className="text-right font-mono">
-                {cfg.commission_cap ?? "—"}
+                {formatCap(cfg.commission_cap)}
               </TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-1">
                   <ConfigViewButton
                     configType="commission"
                     data={cfg as unknown as Record<string, unknown>}
-                    title={`Commission · ${cfg.transaction_type} · ${cfg.currency}`}
+                    title={`Commission · ${serviceLabel(cfg.transaction_type, serviceNames)} · ${cfg.currency}`}
                     serviceNames={serviceNames}
                   />
                   {canPropose && (

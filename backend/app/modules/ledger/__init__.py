@@ -11,6 +11,7 @@ append-only, double-entry, idempotent, sum-to-zero, external calls after commit.
 from app.modules.ledger.service import (
     LedgerEntryRequest,
     PostTransactionRequest,
+    build_reference,
     post_transaction,
     sum_completed_balance,
 )
@@ -18,6 +19,7 @@ from app.modules.ledger.service import (
 __all__ = [
     "LedgerEntryRequest",
     "PostTransactionRequest",
+    "build_reference",
     "post_transaction",
     "sum_completed_balance",
 ]

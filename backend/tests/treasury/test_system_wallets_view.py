@@ -130,6 +130,10 @@ async def test_system_wallet_transactions_drill_down(
     assert any(
         r["entry_type"] == "DEBIT" and Decimal(r["entry_amount"]) == Decimal("100") for r in rows
     )
+    # Every drill-down row carries the parent transaction's customer reference.
+    import re
+
+    assert all(re.match(r"^S_\d{14}\d{6,}$", r["reference"]) for r in rows)
 
 
 @pytest.mark.asyncio

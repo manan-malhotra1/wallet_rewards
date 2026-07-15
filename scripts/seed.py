@@ -31,7 +31,7 @@ sys.path.insert(0, str(BACKEND))
 
 from decimal import Decimal  # noqa: E402
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
 from app.auth.secret_box import encrypt_secret  # noqa: E402
@@ -121,6 +121,14 @@ async def _get_or_create_tenant(session: AsyncSession) -> Tenant:
     session.add(tenant)
     await session.commit()
     await session.refresh(tenant)
+
+    # Provision the tenant's transaction-reference sequence so fresh dev DBs
+    # match what the 0036 migration creates for existing tenants. Sequences are
+    # not ORM-expressible — raw SQL is the sanctioned exception; only the
+    # validated uuid-hex name is interpolated, never user input.
+    await session.execute(text(f'CREATE SEQUENCE IF NOT EXISTS "txn_ref_seq_{tenant.id.hex}"'))
+    await session.commit()
+
     print(f"  + Created tenant: {tenant.name} ({tenant.id})")
     return tenant
 

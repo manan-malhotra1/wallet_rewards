@@ -65,6 +65,7 @@ async def post_cash_in(
     )
     return CashInResponse(
         transaction_id=txn.id,
+        reference=txn.reference,
         status=txn.status,
         amount=request.amount,
         # The ORM types these NUMERIC columns as float; coerce back to Decimal.

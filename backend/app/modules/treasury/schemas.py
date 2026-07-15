@@ -42,6 +42,8 @@ class SystemWalletTransactionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     transaction_id: UUID
+    # Customer-facing reference `S_<YYYYMMDDHHMMSS><NNNNNN>` for the parent txn.
+    reference: str | None = None
     transaction_type: str
     status: str
     entry_type: str  # "DEBIT" | "CREDIT"

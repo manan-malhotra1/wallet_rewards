@@ -25,6 +25,7 @@ from sqlalchemy import (
     Numeric,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -77,6 +78,17 @@ class Transaction(Base):
             "tenant_id",
             "created_at",
         ),
+        # Customer-facing reference is unique WITHIN a tenant — each tenant runs
+        # its own `txn_ref_seq_<hex>` sequence, so two tenants can legitimately
+        # share the same string. Partial (WHERE reference IS NOT NULL) so the
+        # nullable backfill window doesn't collide many NULLs.
+        Index(
+            "uq_transactions_reference_per_tenant",
+            "tenant_id",
+            "reference",
+            unique=True,
+            postgresql_where=text("reference IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -84,6 +96,11 @@ class Transaction(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
     )
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Human-facing reference `S_<YYYYMMDDHHMMSS><NNNNNN>` — the timestamp part is
+    # the creation instant (UTC) and NNNNNN a per-tenant running number drawn from
+    # `txn_ref_seq_<tenant_hex>`. Nullable so the backfill migration can populate
+    # it in a second pass; `post_transaction` always sets it on new rows.
+    reference: Mapped[str | None] = mapped_column(String(40), nullable=True)
     transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=TXN_STATUS_PENDING

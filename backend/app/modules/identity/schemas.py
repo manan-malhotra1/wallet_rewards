@@ -164,6 +164,9 @@ class WalletTransactionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    # Customer-facing reference `S_<YYYYMMDDHHMMSS><NNNNNN>`. Null only for the
+    # legacy window before a row was backfilled; always set on new transactions.
+    reference: str | None = None
     transaction_type: str
     status: str
     amount: str

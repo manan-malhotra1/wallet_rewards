@@ -483,6 +483,7 @@ async def list_account_transactions(
     return [
         SystemWalletTransactionOut(
             transaction_id=txn.id,
+            reference=txn.reference,
             transaction_type=txn.transaction_type,
             status=txn.status,
             entry_type=entry.entry_type,

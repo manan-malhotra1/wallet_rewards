@@ -724,6 +724,7 @@ async def _build_recent_txns_payload(
         payload.append(
             {
                 "id": t.id,
+                "reference": t.reference,
                 "transaction_type": t.transaction_type,
                 "status": t.status,
                 "amount": str(t.amount),

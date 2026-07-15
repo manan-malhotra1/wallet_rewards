@@ -16,11 +16,12 @@ function commits — never inside (NFR-0130).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import case, func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import case, func, select, text
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.exceptions import (
@@ -160,9 +161,18 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
         request.amount if request.amount is not None else max(e.amount for e in request.entries)
     )
 
+    # Customer-facing reference for a genuinely NEW transaction only — an
+    # idempotent replay returned above and MUST NOT consume a sequence number
+    # or change the stored reference. One `now(UTC)` feeds the timestamp part;
+    # the running number comes from this tenant's Postgres sequence.
+    created_at = datetime.now(UTC)
+    seq = await _next_reference_number(session, request.tenant_id)
+    reference = build_reference(created_at, seq)
+
     txn = Transaction(
         tenant_id=request.tenant_id,
         idempotency_key=request.idempotency_key,
+        reference=reference,
         transaction_type=request.transaction_type,
         status=request.status,
         initiated_by=request.initiated_by,
@@ -342,6 +352,78 @@ async def _find_by_idempotency(
         )
     )
     return result.scalar_one_or_none()
+
+
+# Postgres SQLSTATE 42P01 (undefined_table) — nextval() on a missing sequence
+# raises this. Sequences aren't ORM-expressible, so we detect the code rather
+# than a fragile message match.
+_UNDEFINED_TABLE_SQLSTATE = "42P01"
+
+
+def _tenant_sequence_name(tenant_id: UUID) -> str:
+    """Return the reference sequence name for a tenant: `txn_ref_seq_<hex>`.
+
+    The uuid hex is `[0-9a-f]{32}` — no user input — so it is safe to
+    interpolate into raw SQL for `nextval` / `CREATE SEQUENCE`.
+    """
+    return f"txn_ref_seq_{tenant_id.hex}"
+
+
+def build_reference(ts: datetime, seq: int) -> str:
+    """Build a customer reference `S_<YYYYMMDDHHMMSS><NNNNNN>` (pure).
+
+    Args:
+        ts: The transaction's creation instant. The caller passes UTC; the
+            14-digit timestamp segment is rendered from whatever tzinfo it
+            carries via `strftime`, so pass an aware UTC datetime.
+        seq: The per-tenant running number. Zero-padded to at least 6 digits;
+            longer numbers keep all their digits.
+
+    Returns:
+        e.g. `S_20260715143022000042`.
+    """
+    return f"S_{ts.strftime('%Y%m%d%H%M%S')}{seq:06d}"
+
+
+async def _next_reference_number(session: AsyncSession, tenant_id: UUID) -> int:
+    """Draw the next per-tenant running number from its Postgres sequence.
+
+    Uses a native SEQUENCE (`txn_ref_seq_<hex>`) for fast, concurrent-safe
+    numbering. Sequences are not ORM-expressible, so `nextval` goes through
+    raw `text()` — the ONE sanctioned raw-SQL exception here. Only the
+    validated uuid-hex sequence name is interpolated; never user input.
+
+    A rolled-back transaction may burn a number: GAPS ARE ACCEPTABLE and by
+    design (a locking counter would serialise every money path — the M-01
+    class of bug we explicitly avoid).
+
+    The sequence is created up-front by the migration + seed. As a safety net
+    (e.g. a tenant created outside seed), a missing sequence is created and the
+    draw retried ONCE — this fallback runs at most once per tenant, never on the
+    hot path. The first `nextval` runs inside a SAVEPOINT so its failure doesn't
+    poison the outer transaction.
+
+    Args:
+        session: Async DB session with an open transaction.
+        tenant_id: Tenant whose sequence to advance.
+
+    Returns:
+        The next running number (monotonic per tenant, gaps allowed).
+    """
+    seq_name = _tenant_sequence_name(tenant_id)
+    nextval_stmt = text(f'SELECT nextval(\'"{seq_name}"\')')
+    try:
+        async with session.begin_nested():
+            result = await session.execute(nextval_stmt)
+            return int(result.scalar_one())
+    except ProgrammingError as exc:
+        sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+        if sqlstate != _UNDEFINED_TABLE_SQLSTATE:
+            raise
+        # Sequence not provisioned yet for this tenant — create and retry once.
+        await session.execute(text(f'CREATE SEQUENCE IF NOT EXISTS "{seq_name}"'))
+        result = await session.execute(nextval_stmt)
+        return int(result.scalar_one())
 
 
 async def sum_completed_balance(session: AsyncSession, account_id: UUID) -> Decimal:

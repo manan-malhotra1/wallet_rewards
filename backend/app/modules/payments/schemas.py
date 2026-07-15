@@ -74,6 +74,8 @@ class P2PResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     transaction_id: UUID
+    # Customer-facing reference `S_<YYYYMMDDHHMMSS><NNNNNN>` for this transfer.
+    reference: str | None = None
     status: str
     amount: Decimal
     fee: Decimal

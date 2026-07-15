@@ -108,6 +108,46 @@ async def test_me_wallet_transaction_exposes_fee_commission_tax(
 
 
 @pytest.mark.asyncio
+async def test_me_wallet_transaction_exposes_reference(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Each recent-transaction row carries the customer-facing `reference`."""
+    import re
+    from decimal import Decimal
+
+    from app.modules.payments.service import fund
+
+    db_session.add(
+        Account(
+            tenant_id=test_tenant.id,
+            user_id=test_user.id,
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+        )
+    )
+    await db_session.commit()
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=test_user.id,
+        amount=Decimal("100"),
+        currency="ZAR",
+        idempotency_key="seed-me-wallet-reference",
+    )
+    await db_session.commit()
+
+    response = await async_client.get("/api/v1/identity/me/wallet", headers=alice_auth_header)
+    assert response.status_code == 200, response.text
+    txns = response.json()["recent_transactions"]
+    assert txns, "expected at least one recent transaction"
+    assert re.match(r"^S_\d{14}\d{6,}$", txns[0]["reference"]), txns[0]["reference"]
+
+
+@pytest.mark.asyncio
 async def test_me_wallet_no_token_is_401(async_client: AsyncClient) -> None:
     """Missing Authorization header → 401."""
     response = await async_client.get("/api/v1/identity/me/wallet")

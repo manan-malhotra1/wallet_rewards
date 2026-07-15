@@ -35,21 +35,12 @@ import {
 } from "@/components/ui/table";
 import type { UserDetail } from "@/lib/api-types";
 import type { UserTransaction } from "@/lib/api-endpoints";
+import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
 import { ResetPinButton } from "./reset-pin-button";
 import { ChangeTypeDialog } from "./change-type-dialog";
 import { UserTypeBadge } from "./user-type-badge";
-
-const TRANSACTION_TYPE_LABEL: Record<string, string> = {
-  p2p: "Peer-to-Peer",
-  fund: "Fund",
-  withdraw: "Withdraw",
-  redemption: "Redemption",
-  airtime_recharge: "Airtime Recharge",
-  reward_issuance: "Reward",
-  treasury_adjust: "Treasury adjust",
-};
 
 const SYSTEM_COUNTERPARTY_LABEL: Record<string, string> = {
   withdraw: "Operator float",
@@ -63,10 +54,6 @@ const SYSTEM_COUNTERPARTY_LABEL: Record<string, string> = {
 function counterpartyDisplay(txn: UserTransaction): string {
   if (txn.counterparty_name) return txn.counterparty_name;
   return SYSTEM_COUNTERPARTY_LABEL[txn.transaction_type] ?? "—";
-}
-
-function serviceDisplay(transaction_type: string): string {
-  return TRANSACTION_TYPE_LABEL[transaction_type] ?? transaction_type;
 }
 
 const IDENTIFIER_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -371,7 +358,7 @@ export function UserDetailCard({
                         {formatTimestamp(t.created_at)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap font-medium">
-                        {serviceDisplay(t.transaction_type)}
+                        {transactionTypeLabel(t.transaction_type)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         <span

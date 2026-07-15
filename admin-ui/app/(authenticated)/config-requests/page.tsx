@@ -80,7 +80,7 @@ export default async function ConfigRequestsPage({
   return (
     <div>
       <PageHeader
-        title="Config requests"
+        title="Configuration approvals"
         subtitle="Review and approve proposed pricing, commission, tax, and limit changes (maker-checker)."
       />
       <div className="space-y-4 p-6">

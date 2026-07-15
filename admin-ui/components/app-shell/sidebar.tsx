@@ -80,7 +80,7 @@ const CONFIG: NavEntry[] = [
       { label: "Taxes", href: "/taxes", icon: Receipt },
     ],
   },
-  { label: "Config requests", href: "/config-requests", icon: GitPullRequest },
+  { label: "Configuration approvals", href: "/config-requests", icon: GitPullRequest },
   { label: "Redemption", href: "/redemption", icon: CreditCard },
   { label: "Services", href: "/services", icon: Tag },
   { label: "Instruments", href: "/instruments", icon: Ticket },

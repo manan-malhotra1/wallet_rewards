@@ -48,7 +48,7 @@ const NAV: NavItem[] = [
   { label: "Go to Service charges", href: "/pricing", icon: Coins },
   { label: "Go to Commission", href: "/commissions", icon: Percent },
   { label: "Go to Taxes", href: "/taxes", icon: Receipt },
-  { label: "Go to Config requests", href: "/config-requests", icon: GitPullRequest },
+  { label: "Go to Configuration approvals", href: "/config-requests", icon: GitPullRequest },
   { label: "Go to Redemption", href: "/redemption", icon: CreditCard },
   { label: "Go to Services", href: "/services", icon: Tag },
   { label: "Go to Instruments", href: "/instruments", icon: Ticket },

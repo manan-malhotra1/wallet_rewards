@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { StatusPill } from "@/components/ui/status-pill";
+import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 import type { SystemWallet, SystemWalletTransaction } from "@/lib/api-types";
 
@@ -92,8 +93,8 @@ export function TransactionsDialog({
                       <td className="whitespace-nowrap px-3 py-2 text-[11px] text-muted-foreground">
                         {formatTimestamp(r.created_at)}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px]">
-                        {r.transaction_type}
+                      <td className="whitespace-nowrap px-3 py-2 text-[11px]">
+                        {transactionTypeLabel(r.transaction_type)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2">
                         <span

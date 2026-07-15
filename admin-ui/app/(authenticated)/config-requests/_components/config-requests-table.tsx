@@ -5,12 +5,14 @@
  */
 "use client";
 
+import { Eye, Loader2 } from "lucide-react";
 import * as React from "react";
 
 import { loadConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -94,14 +96,21 @@ export function ConfigRequestsTable({
                   {formatTimestamp(req.created_at)}
                 </TableCell>
                 <TableCell>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loadingId === req.id}
-                    onClick={() => openDetail(req.id)}
-                  >
-                    {loadingId === req.id ? "…" : "View"}
-                  </Button>
+                  <Tooltip content="View">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="View"
+                      disabled={loadingId === req.id}
+                      onClick={() => openDetail(req.id)}
+                    >
+                      {loadingId === req.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </Tooltip>
                 </TableCell>
               </TableRow>
             ))}

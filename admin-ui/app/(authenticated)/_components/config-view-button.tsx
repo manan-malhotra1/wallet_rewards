@@ -5,6 +5,7 @@
  */
 "use client";
 
+import { Eye } from "lucide-react";
 import * as React from "react";
 
 import { ConfigDetail } from "@/app/(authenticated)/_components/config-detail";
@@ -16,6 +17,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { ConfigType } from "@/lib/api-types";
 
 export function ConfigViewButton({
@@ -30,9 +32,16 @@ export function ConfigViewButton({
   const [open, setOpen] = React.useState(false);
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        View
-      </Button>
+      <Tooltip content="View">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="View"
+          onClick={() => setOpen(true)}
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+      </Tooltip>
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerContent>
           <DrawerHeader>

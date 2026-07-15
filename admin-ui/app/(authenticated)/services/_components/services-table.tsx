@@ -108,8 +108,8 @@ export function ServicesTable({
       <Table>
         <TableHead>
           <TableRow>
-            <TableHeaderCell>Code</TableHeaderCell>
             <TableHeaderCell>Display name</TableHeaderCell>
+            <TableHeaderCell>Code</TableHeaderCell>
             <TableHeaderCell>Description</TableHeaderCell>
             <TableHeaderCell>Status</TableHeaderCell>
             <TableHeaderCell />
@@ -118,7 +118,6 @@ export function ServicesTable({
         <TableBody>
           {services.map((svc) => (
             <TableRow key={svc.id}>
-              <TableCell className="font-mono text-[12px]">{svc.code}</TableCell>
               <TableCell>
                 {editingId === svc.id ? (
                   <Input
@@ -130,6 +129,9 @@ export function ServicesTable({
                 ) : (
                   <span className="font-medium">{svc.display_name}</span>
                 )}
+              </TableCell>
+              <TableCell className="font-mono text-[12px] text-[--color-text-3]">
+                {svc.code}
               </TableCell>
               <TableCell className="text-[12px] text-[--color-text-3]">
                 {svc.description ?? "—"}

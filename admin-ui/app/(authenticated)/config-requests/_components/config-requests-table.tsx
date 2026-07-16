@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import type { ConfigChangeRequest } from "@/lib/api-types";
+import { configTypeLabel } from "@/lib/config-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
 import { RequestDetailDrawer } from "./request-detail-drawer";
@@ -81,7 +82,7 @@ export function ConfigRequestsTable({
             {requests.map((req) => (
               <TableRow key={req.id}>
                 <TableCell>
-                  <Badge variant="info">{req.config_type}</Badge>
+                  <Badge variant="info">{configTypeLabel(req.config_type)}</Badge>
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">{req.operation}</Badge>

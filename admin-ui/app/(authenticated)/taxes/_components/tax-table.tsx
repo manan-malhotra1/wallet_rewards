@@ -8,6 +8,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ChangeProposedTooltip } from "@/app/(authenticated)/_components/change-proposed-tooltip";
 import { ConfigStatusPill } from "@/app/(authenticated)/_components/config-status-pill";
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { proposeTaxDeleteAction } from "@/app/(authenticated)/taxes/_actions";
@@ -41,12 +42,29 @@ function EditTaxButton({
   cfg,
   tenantId,
   instruments,
+  changeProposed,
 }: {
   cfg: TaxConfig;
   tenantId: string;
   instruments: Instrument[];
+  /** Open request on this scope → disable Edit; the maker resolves it first. */
+  changeProposed: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
+  if (changeProposed) {
+    return (
+      <ChangeProposedTooltip>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Edit tax config"
+          disabled
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      </ChangeProposedTooltip>
+    );
+  }
   return (
     <>
       <Tooltip content="Edit">
@@ -118,7 +136,13 @@ export function TaxTable({
           </TableRow>
         </TableHead>
         <TableBody>
-          {configs.map((cfg) => (
+          {configs.map((cfg) => {
+            // A scope with an open request can't take another Edit / Delete /
+            // restore — those affordances are disabled until it's resolved.
+            const changeProposed = changeProposedKeys.has(
+              configScopeKey("tax", cfg as unknown as Record<string, unknown>),
+            );
+            return (
             <TableRow key={cfg.id}>
               <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
               <TableCell className="text-right font-mono">
@@ -142,11 +166,7 @@ export function TaxTable({
                 )}
               </TableCell>
               <TableCell>
-                <ConfigStatusPill
-                  changeProposed={changeProposedKeys.has(
-                    configScopeKey("tax", cfg as unknown as Record<string, unknown>),
-                  )}
-                />
+                <ConfigStatusPill changeProposed={changeProposed} />
               </TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-1">
@@ -157,27 +177,43 @@ export function TaxTable({
                     tenantId={tenantId}
                     targetConfigId={cfg.id}
                     canPropose={canPropose}
+                    changeProposed={changeProposed}
                   />
                   {canPropose && (
                     <EditTaxButton
                       cfg={cfg}
                       tenantId={tenantId}
                       instruments={instruments}
+                      changeProposed={changeProposed}
                     />
                   )}
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Propose delete of tax config"
-                    disabled={pending === cfg.id}
-                    onClick={() => onDelete(cfg.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
+                  {changeProposed ? (
+                    <ChangeProposedTooltip>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Propose delete of tax config"
+                        disabled
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </ChangeProposedTooltip>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Propose delete of tax config"
+                      disabled={pending === cfg.id}
+                      onClick={() => onDelete(cfg.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  )}
                 </div>
               </TableCell>
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
     </div>

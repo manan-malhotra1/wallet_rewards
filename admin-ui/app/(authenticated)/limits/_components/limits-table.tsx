@@ -8,6 +8,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ChangeProposedTooltip } from "@/app/(authenticated)/_components/change-proposed-tooltip";
 import { ConfigStatusPill } from "@/app/(authenticated)/_components/config-status-pill";
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { proposeLimitDeleteAction } from "@/app/(authenticated)/limits/_actions";
@@ -45,13 +46,30 @@ function EditLimitButton({
   tenantId,
   services,
   instruments,
+  changeProposed,
 }: {
   cfg: LimitConfig;
   tenantId: string;
   services: Service[];
   instruments: Instrument[];
+  /** Open request on this scope → disable Edit; the maker resolves it first. */
+  changeProposed: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
+  if (changeProposed) {
+    return (
+      <ChangeProposedTooltip>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Edit limit"
+          disabled
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      </ChangeProposedTooltip>
+    );
+  }
   return (
     <>
       <Tooltip content="Edit">
@@ -136,7 +154,13 @@ export function LimitsTable({
           </TableRow>
         </TableHead>
         <TableBody>
-          {configs.map((cfg) => (
+          {configs.map((cfg) => {
+            // A scope with an open request can't take another Edit / Delete /
+            // restore — those affordances are disabled until it's resolved.
+            const changeProposed = changeProposedKeys.has(
+              configScopeKey("limit", cfg as unknown as Record<string, unknown>),
+            );
+            return (
             <TableRow key={cfg.id}>
               <TableCell className="font-medium">
                 <Badge variant="info">
@@ -179,11 +203,7 @@ export function LimitsTable({
                 {formatCap(cfg.monthly_value_cap)}
               </TableCell>
               <TableCell>
-                <ConfigStatusPill
-                  changeProposed={changeProposedKeys.has(
-                    configScopeKey("limit", cfg as unknown as Record<string, unknown>),
-                  )}
-                />
+                <ConfigStatusPill changeProposed={changeProposed} />
               </TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-1">
@@ -195,6 +215,7 @@ export function LimitsTable({
                     tenantId={tenantId}
                     targetConfigId={cfg.id}
                     canPropose={canPropose}
+                    changeProposed={changeProposed}
                   />
                   {canPropose && (
                     <EditLimitButton
@@ -202,21 +223,36 @@ export function LimitsTable({
                       tenantId={tenantId}
                       services={services}
                       instruments={instruments}
+                      changeProposed={changeProposed}
                     />
                   )}
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Propose delete of limit"
-                    disabled={pending === cfg.id}
-                    onClick={() => onDelete(cfg.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
+                  {changeProposed ? (
+                    <ChangeProposedTooltip>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Propose delete of limit"
+                        disabled
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </ChangeProposedTooltip>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Propose delete of limit"
+                      disabled={pending === cfg.id}
+                      onClick={() => onDelete(cfg.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  )}
                 </div>
               </TableCell>
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
     </div>

@@ -11,6 +11,7 @@
 import { ChevronDown, ChevronRight, Columns2, Eye, History, List } from "lucide-react";
 import * as React from "react";
 
+import { ChangeProposedTooltip } from "@/app/(authenticated)/_components/change-proposed-tooltip";
 import { ConfigCompare } from "@/app/(authenticated)/_components/config-compare";
 import { ConfigDetail } from "@/app/(authenticated)/_components/config-detail";
 import {
@@ -66,6 +67,7 @@ function VersionRow({
   configType,
   serviceNames,
   canPropose,
+  changeProposed,
   onRestore,
 }: {
   version: ConfigChangeRequest;
@@ -74,6 +76,7 @@ function VersionRow({
   configType: ConfigType;
   serviceNames?: Record<string, string>;
   canPropose: boolean;
+  changeProposed: boolean;
   onRestore: () => void;
 }) {
   const [expanded, setExpanded] = React.useState(false);
@@ -103,11 +106,21 @@ function VersionRow({
             </span>
           </span>
         </button>
-        {!isCurrent && canPropose && (
-          <Button variant="outline" size="sm" onClick={onRestore}>
-            Make this version latest
-          </Button>
-        )}
+        {!isCurrent &&
+          canPropose &&
+          // A scope with an open request can't take a second proposal — the
+          // restore would be rejected, so disable it and explain why.
+          (changeProposed ? (
+            <ChangeProposedTooltip>
+              <Button variant="outline" size="sm" disabled>
+                Make this version latest
+              </Button>
+            </ChangeProposedTooltip>
+          ) : (
+            <Button variant="outline" size="sm" onClick={onRestore}>
+              Make this version latest
+            </Button>
+          ))}
       </div>
       {expanded && (
         <div className="border-t px-3 py-3">
@@ -134,6 +147,8 @@ function VersionRow({
  * @param targetConfigId The live row's id; keys its version history.
  * @param canPropose Platform-admin gate for the "Make this version latest"
  *   affordance (the backend re-validates).
+ * @param changeProposed Whether an open update/delete request already targets
+ *   this row's scope — disables every per-version restore affordance.
  */
 export function ConfigViewButton({
   configType,
@@ -143,6 +158,7 @@ export function ConfigViewButton({
   tenantId,
   targetConfigId,
   canPropose,
+  changeProposed,
 }: {
   configType: ConfigType;
   data: Record<string, unknown>;
@@ -151,6 +167,7 @@ export function ConfigViewButton({
   tenantId: string;
   targetConfigId: string;
   canPropose: boolean;
+  changeProposed: boolean;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = React.useState(false);
@@ -234,6 +251,7 @@ export function ConfigViewButton({
                 configType={configType}
                 serviceNames={serviceNames}
                 canPropose={canPropose}
+                changeProposed={changeProposed}
                 onRestore={(version, label) => setConfirming({ version, label })}
               />
             </section>
@@ -278,12 +296,14 @@ function VersionHistory({
   configType,
   serviceNames,
   canPropose,
+  changeProposed,
   onRestore,
 }: {
   load: LoadState;
   configType: ConfigType;
   serviceNames?: Record<string, string>;
   canPropose: boolean;
+  changeProposed: boolean;
   onRestore: (version: ConfigChangeRequest, label: string) => void;
 }) {
   const [comparing, setComparing] = React.useState(false);
@@ -330,6 +350,7 @@ function VersionHistory({
           configType={configType}
           serviceNames={serviceNames}
           canPropose={canPropose}
+          changeProposed={changeProposed}
           onRestore={onRestore}
         />
       )}
@@ -348,12 +369,14 @@ function VersionList({
   configType,
   serviceNames,
   canPropose,
+  changeProposed,
   onRestore,
 }: {
   versions: ConfigChangeRequest[];
   configType: ConfigType;
   serviceNames?: Record<string, string>;
   canPropose: boolean;
+  changeProposed: boolean;
   onRestore: (version: ConfigChangeRequest, label: string) => void;
 }) {
   const currentIndex = versions.length - 1;
@@ -377,6 +400,7 @@ function VersionList({
           configType={configType}
           serviceNames={serviceNames}
           canPropose={canPropose}
+          changeProposed={changeProposed}
           onRestore={() => onRestore(version, label)}
         />
       ))}

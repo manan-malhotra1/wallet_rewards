@@ -985,6 +985,24 @@ class ConfigRequestTargetNotFound(AppHTTPException):
         )
 
 
+class ConfigRequestAlreadyOpen(AppHTTPException):
+    """An OPEN change request already exists for this config scope.
+
+    One in-flight change per (tenant_id, config_type, scope): a maker may not
+    stack a second proposal on a scope that already has a PENDING or
+    CHANGES_REQUESTED request. The maker must approve, reject, or withdraw the
+    open one — or revise it in place — before proposing another change.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "config_request_already_open",
+            "A change for this config is already awaiting approval — approve, "
+            "reject, or withdraw it first.",
+        )
+
+
 # --- Step-up PIN ----------------------------------------------------------
 
 

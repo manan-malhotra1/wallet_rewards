@@ -10,6 +10,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ChangeProposedTooltip } from "@/app/(authenticated)/_components/change-proposed-tooltip";
 import { ConfigStatusPill } from "@/app/(authenticated)/_components/config-status-pill";
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { proposeCommissionDeleteAction } from "@/app/(authenticated)/commissions/_actions";
@@ -120,6 +121,11 @@ export function CommissionTable({
               .map((b) => bandRange(b.amount_from, b.amount_to))
               .join(" · ");
             const count = group.bands.length;
+            // A scope with an open request can't take another Edit / Delete /
+            // restore — those affordances are disabled until it's resolved.
+            const changeProposed = changeProposedKeys.has(
+              configScopeKey("commission", group),
+            );
             return (
               <TableRow key={group.key}>
                 <TableCell className="font-medium">
@@ -151,11 +157,7 @@ export function CommissionTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <ConfigStatusPill
-                    changeProposed={changeProposedKeys.has(
-                      configScopeKey("commission", group),
-                    )}
-                  />
+                  <ConfigStatusPill changeProposed={changeProposed} />
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">
@@ -167,6 +169,7 @@ export function CommissionTable({
                       tenantId={tenantId}
                       targetConfigId={group.bands[0].id}
                       canPropose={canPropose}
+                      changeProposed={changeProposed}
                     />
                     {canPropose && (
                       <EditCommissionButton
@@ -174,17 +177,31 @@ export function CommissionTable({
                         tenantId={tenantId}
                         services={services}
                         instruments={instruments}
+                        changeProposed={changeProposed}
                       />
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Propose delete of commission schedule"
-                      disabled={pending === group.key}
-                      onClick={() => onDelete(group)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
+                    {changeProposed ? (
+                      <ChangeProposedTooltip>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Propose delete of commission schedule"
+                          disabled
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </ChangeProposedTooltip>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Propose delete of commission schedule"
+                        disabled={pending === group.key}
+                        onClick={() => onDelete(group)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
@@ -206,13 +223,30 @@ function EditCommissionButton({
   tenantId,
   services,
   instruments,
+  changeProposed,
 }: {
   group: CommissionConfigGroup;
   tenantId: string;
   services: Service[];
   instruments: Instrument[];
+  /** Open request on this scope → disable Edit; the maker resolves it first. */
+  changeProposed: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
+  if (changeProposed) {
+    return (
+      <ChangeProposedTooltip>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Edit commission schedule"
+          disabled
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      </ChangeProposedTooltip>
+    );
+  }
   return (
     <>
       <Tooltip content="Edit">

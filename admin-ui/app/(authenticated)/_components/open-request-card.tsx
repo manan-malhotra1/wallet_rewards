@@ -35,6 +35,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { useToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { ConfigChangeRequest } from "@/lib/api-types";
+import { configTypeLabel } from "@/lib/config-type-label";
 import { serviceLabel } from "@/lib/service-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
@@ -43,34 +44,64 @@ const USER_TYPE_LABEL: Record<string, string> = Object.fromEntries(
   USER_TYPE_OPTIONS.map((o) => [o.value, o.label]),
 );
 
+/** Verb that opens the plain-English description sentence, per operation. */
+const OPERATION_VERB: Record<ConfigChangeRequest["operation"], string> = {
+  create: "New",
+  update: "Change to",
+  delete: "Delete",
+};
+
 /** Non-terminal statuses can still be withdrawn / edited by the maker. */
 function isNonTerminal(status: ConfigChangeRequest["status"]): boolean {
   return status === "PENDING" || status === "CHANGES_REQUESTED";
 }
 
 /**
- * One-line scope summary from the request payload, e.g. "Cash In · ZAR · Agent".
- * Currency-only config types (tax / wallet_limit) drop the service leg and read
- * as "ZAR" or "ZAR · Agent". Falls back to "—" when the payload is absent.
+ * A user-type code rendered friendly and pluralised for a "who this applies to"
+ * clause, e.g. `agent` → "Agents". A null / absent type means every type.
  */
-function scopeSummary(
+function userTypeLabel(userType: unknown): string {
+  if (userType == null || userType === "" || userType === "all") {
+    return "all users";
+  }
+  const code = String(userType);
+  return `${USER_TYPE_LABEL[code] ?? code}s`;
+}
+
+/**
+ * Plain-English description of what a request proposes, e.g. "Change to Service
+ * charge rule for Peer-to-Peer service, for Consumers (ZAR)".
+ *
+ * Currency-only config types (tax / wallet_limit) carry no transaction_type, so
+ * the "for {Service} service" clause is omitted for them. A delete carries no
+ * payload, so it degrades to just the verb + config-type ("Delete Tax rule").
+ *
+ * @param request The change request to describe.
+ * @param serviceNames `{ code: display_name }` so the service reads friendly.
+ * @returns A one-line sentence suitable as the card's primary text.
+ */
+function describeRequest(
   request: ConfigChangeRequest,
   serviceNames?: Record<string, string>,
 ): string {
   const payload = request.payload;
-  if (!payload) return "—";
+  let sentence = `${OPERATION_VERB[request.operation]} ${configTypeLabel(
+    request.config_type,
+  )} rule`;
+  if (!payload) return sentence;
+
   const bands = Array.isArray(payload.bands)
     ? (payload.bands as Array<Record<string, unknown>>)
     : null;
-  const txnCode =
+  const serviceCode =
     (payload.transaction_type as string | undefined) ??
     (bands?.[0]?.transaction_type as string | undefined);
-  const userType = payload.user_type as string | undefined;
-  const parts: string[] = [];
-  if (txnCode) parts.push(serviceLabel(txnCode, serviceNames));
-  if (payload.currency) parts.push(String(payload.currency));
-  if (userType) parts.push(USER_TYPE_LABEL[userType] ?? userType);
-  return parts.length ? parts.join(" · ") : "—";
+  if (serviceCode) {
+    sentence += ` for ${serviceLabel(serviceCode, serviceNames)} service`;
+  }
+  sentence += `, for ${userTypeLabel(payload.user_type)}`;
+  if (payload.currency) sentence += ` (${String(payload.currency)})`;
+  return sentence;
 }
 
 /** The most recent checker comment asking for changes (falls back to any comment). */
@@ -155,36 +186,13 @@ export function OpenRequestCard({
     : "border-amber-500/40 bg-amber-500/5";
 
   return (
-    <div className={`rounded-lg border p-3 ${accent}`}>
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Badge variant="info">{request.config_type}</Badge>
-        <Badge variant="secondary">{request.operation}</Badge>
-        {request.operation === "delete" ? (
-          <span className="text-sm text-foreground">
-            Removes{" "}
-            {request.target_config_id
-              ? shortId(request.target_config_id)
-              : "config"}
-          </span>
-        ) : (
-          <span className="text-sm text-foreground">
-            {scopeSummary(request, serviceNames)}
-          </span>
-        )}
-        {/* A brand-new create has no prior applied version — make it obvious the
-            config isn't live yet and only becomes v1 once approved. */}
-        {request.operation === "create" && (
-          <Badge variant="outline">Not yet active — becomes v1 once approved</Badge>
-        )}
-        <StatusPill status={request.status} />
-        <span className="text-muted-foreground">
-          maker {request.maker_admin_name ?? shortId(request.maker_admin_id)}
-        </span>
-        <span className="text-muted-foreground">·</span>
-        <span className="text-muted-foreground">
-          {formatTimestamp(request.updated_at)}
-        </span>
-        <div className="ml-auto flex items-center gap-1">
+    <div className={`space-y-2 rounded-lg border p-3 ${accent}`}>
+      <div className="flex items-start gap-2">
+        {/* Primary text: a plain-English sentence describing the proposal. */}
+        <p className="flex-1 text-sm font-medium text-foreground">
+          {describeRequest(request, serviceNames)}
+        </p>
+        <div className="flex shrink-0 items-center gap-1">
           <Tooltip content="View details">
             <Button
               variant="ghost"
@@ -209,9 +217,27 @@ export function OpenRequestCard({
           )}
         </div>
       </div>
+      {/* Secondary line: the supporting metadata, subordinate to the sentence. */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <Badge variant="info">{configTypeLabel(request.config_type)}</Badge>
+        <Badge variant="secondary">{request.operation}</Badge>
+        {/* A brand-new create has no prior applied version — make it obvious the
+            config isn't live yet and only becomes v1 once approved. */}
+        {request.operation === "create" && (
+          <Badge variant="outline">Not yet active — becomes v1 once approved</Badge>
+        )}
+        <StatusPill status={request.status} />
+        <span className="text-muted-foreground">
+          maker {request.maker_admin_name ?? shortId(request.maker_admin_id)}
+        </span>
+        <span className="text-muted-foreground">·</span>
+        <span className="text-muted-foreground">
+          {formatTimestamp(request.updated_at)}
+        </span>
+      </div>
       {comment && (
         <p
-          className="mt-2 truncate text-xs text-muted-foreground"
+          className="truncate text-xs text-muted-foreground"
           title={comment}
         >
           <span className="font-medium">Checker: </span>

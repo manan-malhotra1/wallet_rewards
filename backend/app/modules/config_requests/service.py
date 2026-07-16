@@ -29,6 +29,7 @@ from app.modules.config_requests.apply import (
 from app.modules.config_requests.schemas import ConfigChangeProposeRequest
 from app.shared.exceptions import (
     AppHTTPException,
+    ConfigRequestAlreadyOpen,
     ConfigRequestForbidden,
     ConfigRequestInvalidState,
     ConfigRequestNotFound,
@@ -58,6 +59,11 @@ from app.shared.models import (
     ConfigChangeRevision,
     Tenant,
 )
+
+# A request still inside the maker-checker loop: the maker may approve/reject/
+# withdraw or revise it, but MUST NOT stack another change on the same scope
+# while it is open. APPLIED / WITHDRAWN are terminal and never block a re-propose.
+_OPEN_STATUSES = (CONFIG_STATUS_PENDING, CONFIG_STATUS_CHANGES_REQUESTED)
 
 
 def _normalise_create_payload(config_type: str, bands: list[BaseModel]) -> dict[str, Any]:
@@ -200,6 +206,64 @@ def _validate_payload(
     return _normalise_create_payload(config_type, bands), bands
 
 
+async def _request_scope(
+    session: AsyncSession, request: ConfigChangeRequest
+) -> tuple[object, ...] | None:
+    """Resolve an existing request's config scope for the open-request guard.
+
+    A create/update carries its scope in its payload (first band); a delete's
+    scope lives on its live target row, loaded fresh. A delete whose target row
+    is already gone has no resolvable scope and is treated as non-conflicting.
+
+    Returns:
+        The scope tuple, or None when it cannot be resolved (a delete with a
+        missing target, or a create/update with no payload).
+    """
+    if request.operation == CONFIG_OP_DELETE:
+        if request.target_config_id is None:
+            return None
+        target = await load_config_target(
+            session, request.config_type, request.target_config_id, request.tenant_id
+        )
+        return None if target is None else config_scope(request.config_type, target)
+    if not request.payload:
+        return None
+    bands = validate_band_payload(request.config_type, request.payload)
+    return config_scope(request.config_type, bands[0])
+
+
+async def _open_request_scope_conflict(
+    session: AsyncSession,
+    tenant_id: UUID,
+    config_type: str,
+    new_scope: tuple[object, ...] | None,
+) -> bool:
+    """True if an OPEN request already targets the same (tenant, type, scope).
+
+    "Open" = PENDING or CHANGES_REQUESTED (still in the maker-checker loop). Each
+    open request's scope is resolved the same way the new one is (payload for
+    create/update, live target row for delete). Enforces one in-flight change per
+    config scope so a maker can't stack duplicate pending edits.
+
+    Returns:
+        False when `new_scope` is None — a new delete whose target is absent has
+        no scope to conflict on, and the apply-time 404 handles that path.
+    """
+    if new_scope is None:
+        return False
+    result = await session.execute(
+        select(ConfigChangeRequest).where(
+            ConfigChangeRequest.tenant_id == tenant_id,
+            ConfigChangeRequest.config_type == config_type,
+            ConfigChangeRequest.status.in_(_OPEN_STATUSES),
+        )
+    )
+    for existing in result.scalars().all():
+        if await _request_scope(session, existing) == new_scope:
+            return True
+    return False
+
+
 async def propose_config_change(
     session: AsyncSession,
     request_data: ConfigChangeProposeRequest,
@@ -255,6 +319,7 @@ async def propose_config_change(
                     "The edit's scope must match the config being edited.",
                 )
             target_config_id = request_data.target_config_id
+        new_scope: tuple[object, ...] | None = config_scope(request_data.config_type, bands[0])
     else:  # delete
         if request_data.target_config_id is None:
             raise AppHTTPException(
@@ -264,6 +329,25 @@ async def propose_config_change(
             )
         payload = None
         target_config_id = request_data.target_config_id
+        # A delete's scope lives on its live target row; resolve it for the guard.
+        # A missing target has no scope — the apply-time 404 handles that path, so
+        # propose stays non-blocking (preserving the delete propose contract).
+        delete_target = await load_config_target(
+            session, request_data.config_type, target_config_id, tenant_id
+        )
+        new_scope = (
+            None
+            if delete_target is None
+            else config_scope(request_data.config_type, delete_target)
+        )
+
+    # Trust boundary: one in-flight change per config scope. Reject a proposal
+    # whose scope already has an OPEN (PENDING / CHANGES_REQUESTED) request — the
+    # maker must resolve or revise that one first, not stack a duplicate.
+    if await _open_request_scope_conflict(
+        session, tenant_id, request_data.config_type, new_scope
+    ):
+        raise ConfigRequestAlreadyOpen()
 
     request = ConfigChangeRequest(
         tenant_id=tenant_id,

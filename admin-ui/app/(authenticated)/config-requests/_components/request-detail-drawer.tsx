@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { configTypeLabel } from "@/lib/config-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 import type { ConfigChangeRequest } from "@/lib/api-types";
 
@@ -283,7 +284,7 @@ export function RequestDetailDrawer({
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle className="flex items-center gap-2">
-            <Badge variant="info">{request.config_type}</Badge>
+            <Badge variant="info">{configTypeLabel(request.config_type)}</Badge>
             <Badge variant="secondary">{request.operation}</Badge>
             <StatusPill status={request.status} variant="full" />
           </DrawerTitle>

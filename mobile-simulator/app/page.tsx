@@ -15,6 +15,7 @@ import { CashInForm } from "./_components/cashin-form";
 import { EventTrigger } from "./_components/event-trigger";
 import { P2PForm } from "./_components/p2p-form";
 import { PartnerApiForm } from "./_components/partner-api-form";
+import { SasaiLogo } from "./_components/sasai-logo";
 import { WalletPane } from "./_components/wallet-pane";
 
 export const dynamic = "force-dynamic";
@@ -46,24 +47,14 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
-      <header
-        className="flex items-center justify-between rounded-xl px-5 py-4"
-        style={{ backgroundColor: "#144989" }}
-      >
+      <header className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-white px-5 py-4 shadow-sm">
         <div className="flex items-center gap-3">
-          {/* Sasai brand mark on the navy banner (logo forced white). */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/sasai-logo.png"
-            alt="Sasai"
-            className="select-none"
-            style={{ height: 32, width: "auto", filter: "brightness(0) invert(1)" }}
-          />
-          <span className="hidden rounded-full border border-white/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/80 sm:inline">
+          <SasaiLogo height={32} />
+          <span className="hidden rounded-full border border-[var(--color-border)] bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-fg-muted)] sm:inline">
             Mobile Simulator
           </span>
         </div>
-        <div className="text-right text-[11px] text-white/70">
+        <div className="text-right text-[11px] text-[var(--color-fg-muted)]">
           backend: <span className="font-mono">{config.backendUrl}</span>
         </div>
       </header>

@@ -2,8 +2,10 @@
  * Login page — in-app credentials form (email + password). The Keycloak
  * password grant runs server-side inside the credentials provider's
  * `authorize()` callback in `auth.ts`; this page just renders the brand
- * chrome (Sasai navy field + top logo) and embeds <LoginForm/>.
+ * chrome (Sasai navy field + logo card) and embeds <LoginForm/>.
  */
+import { SasaiLogo } from "@/components/branding/sasai-logo";
+
 import { LoginForm } from "./login-form";
 
 export const dynamic = "force-dynamic";
@@ -19,19 +21,13 @@ export default async function LoginPage({
   const { from = "/dashboard", reason } = await searchParams;
   return (
     <div
-      className="flex min-h-screen flex-col items-center justify-center gap-8 p-6"
+      className="flex min-h-screen items-center justify-center p-6"
       style={{ backgroundColor: SASAI_NAVY }}
     >
-      {/* Sasai brand mark at the top of the login modal (logo forced white). */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/sasai-logo.png"
-        alt="Sasai"
-        className="select-none"
-        style={{ height: 48, width: "auto", filter: "brightness(0) invert(1)" }}
-      />
       <div className="w-full max-w-md rounded-2xl border bg-card p-8 shadow-xl">
-        <div className="mb-6 flex justify-center">
+        {/* Sasai brand mark at the top of the modal (on the white card). */}
+        <div className="mb-6 flex flex-col items-center gap-3">
+          <SasaiLogo height={36} />
           <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Admin Console
           </span>

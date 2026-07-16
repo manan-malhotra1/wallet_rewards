@@ -13,7 +13,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      {/* Sasai brand navy field; the wallet/header cards sit on top as white. */}
+      <body style={{ backgroundColor: "#144989", minHeight: "100vh" }}>
+        {children}
+      </body>
     </html>
   );
 }

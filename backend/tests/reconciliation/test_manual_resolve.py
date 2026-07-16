@@ -317,6 +317,8 @@ async def test_manual_resolve_writes_audit_entry(
     entry = entries[0]
     assert entry.actor_type == "admin"
     assert entry.note == "audit reason"
+    # The client IP is threaded from the router into the audit row (NFR-0160).
+    assert entry.ip_address == "127.0.0.1"
     assert entry.before_state["status"] == "MANUAL_REVIEW"
     assert entry.after_state["status"] == REDEMPTION_STATUS_FAILED
 

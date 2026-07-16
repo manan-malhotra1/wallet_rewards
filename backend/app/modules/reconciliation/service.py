@@ -271,6 +271,7 @@ async def manually_resolve(
     request: ResolveRequest,
     *,
     actor_id: str = "operator-test",
+    ip_address: str | None = None,
 ) -> Redemption:
     """Operator terminates a MANUAL_REVIEW redemption (Pay-PRD-0790, 0780, 0770).
 
@@ -287,6 +288,7 @@ async def manually_resolve(
         request: ResolveRequest with tenant_id, outcome, reason.
         actor_id: For Phase E.1 this is a fixed string; Phase F resolves it
             from the authenticated admin Keycloak ID.
+        ip_address: Caller IP, threaded into the audit_log row (audit context).
 
     Returns:
         The updated Redemption.
@@ -360,6 +362,7 @@ async def manually_resolve(
             entity_id=str(redemption.id),
             before_state=before,
             after_state=after,
+            ip_address=ip_address,
             note=request.reason,
         )
     )

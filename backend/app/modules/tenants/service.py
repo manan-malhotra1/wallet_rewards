@@ -12,6 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AdminPrincipal
+from app.modules.audit.service import record_audit_for_admin
 from app.modules.tenants.schemas import TenantUpdateRequest
 from app.shared.exceptions import TenantNameAlreadyExists, TenantNotFound
 from app.shared.models import Tenant
@@ -40,6 +42,9 @@ async def update_tenant(
     tenant_id: uuid.UUID,
     payload: TenantUpdateRequest,
     session: AsyncSession,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> Tenant:
     """Apply name / business_type changes to an existing tenant.
 
@@ -47,6 +52,8 @@ async def update_tenant(
         tenant_id: Target tenant id.
         payload: TenantUpdateRequest; fields left as None are ignored.
         session: Async DB session, committed before returning.
+        admin: Authenticated admin — the audit actor.
+        ip_address: Caller IP (audit context).
 
     Returns:
         The refreshed Tenant row with updated columns.
@@ -56,20 +63,42 @@ async def update_tenant(
         TenantNameAlreadyExists: payload.name collides with another tenant.
 
     Side effects:
-        Commits the session. No Kafka emit (tenants table is configuration,
-        not a real-time domain event source).
+        Writes a `tenant.updated` audit_log row (before/after snapshot),
+        committed atomically with the change (NFR-0250). No Kafka emit
+        (tenants table is configuration, not a real-time domain event source).
     """
     tenant = await get_tenant_by_id(tenant_id, session)
 
-    # Snapshot before-state for the structured log. Tenants are configuration,
-    # not money — full audit_log integration lands when partner identity changes
-    # arrive in Phase 5. For now we log the operator action.
-    before = {"name": tenant.name, "business_type": tenant.business_type}
+    # Snapshot before-state for both the audit row and the structured log.
+    before = {
+        "name": tenant.name,
+        "business_type": tenant.business_type,
+        "base_currency": tenant.base_currency,
+        "status": tenant.status,
+    }
 
     if payload.name is not None:
         tenant.name = payload.name
     if payload.business_type is not None:
         tenant.business_type = payload.business_type
+
+    after = {
+        "name": tenant.name,
+        "business_type": tenant.business_type,
+        "base_currency": tenant.base_currency,
+        "status": tenant.status,
+    }
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant.id,
+        action="tenant.updated",
+        entity_type="tenant",
+        entity_id=str(tenant.id),
+        before_state=before,
+        after_state=after,
+        ip_address=ip_address,
+    )
 
     try:
         await session.commit()

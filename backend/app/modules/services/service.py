@@ -13,6 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AdminPrincipal
+from app.modules.audit.service import record_audit_for_admin
 from app.modules.services.schemas import (
     ServiceCreateRequest,
     ServiceUpdateRequest,
@@ -68,14 +70,27 @@ async def get_service_by_id(
     return service
 
 
-async def create_service(session: AsyncSession, payload: ServiceCreateRequest) -> Service:
+async def create_service(
+    session: AsyncSession,
+    payload: ServiceCreateRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> Service:
     """Insert a new catalog row.
+
+    Args:
+        session: Async DB session.
+        payload: Validated create request.
+        admin: Authenticated admin — the audit actor.
+        ip_address: Caller IP (audit context).
 
     Raises:
         ServiceCodeAlreadyExists: another live row with the same code exists.
 
     Side effects:
-        Commits the session.
+        Writes a `service.created` audit_log row, committed atomically with the
+        insert (NFR-0250).
     """
     service = Service(
         tenant_id=payload.tenant_id,
@@ -85,12 +100,27 @@ async def create_service(session: AsyncSession, payload: ServiceCreateRequest) -
     )
     session.add(service)
     try:
-        await session.commit()
+        await session.flush()
     except IntegrityError as exc:
         await session.rollback()
         if "uq_services_tenant_code_alive" in str(exc.orig).lower():
             raise ServiceCodeAlreadyExists(payload.code) from exc
         raise
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=service.tenant_id,
+        action="service.created",
+        entity_type="service",
+        entity_id=str(service.id),
+        after_state={
+            "code": service.code,
+            "display_name": service.display_name,
+            "status": service.status,
+        },
+        ip_address=ip_address,
+    )
+    await session.commit()
     await session.refresh(service)
     log.info(
         "service_created",
@@ -106,13 +136,17 @@ async def update_service(
     tenant_id: uuid.UUID,
     service_id: uuid.UUID,
     payload: ServiceUpdateRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> Service:
     """Apply display_name / description / status edits.
 
     Code is intentionally immutable here — see schemas.ServiceUpdateRequest.
 
     Side effects:
-        Commits the session.
+        Writes a `service.updated` audit_log row (before/after snapshot),
+        committed atomically with the change (NFR-0250).
     """
     service = await get_service_by_id(session, tenant_id, service_id)
     before = {
@@ -127,6 +161,17 @@ async def update_service(
     if payload.status is not None:
         service.status = payload.status
 
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=service.tenant_id,
+        action="service.updated",
+        entity_type="service",
+        entity_id=str(service.id),
+        before_state=before,
+        after_state={"display_name": service.display_name, "status": service.status},
+        ip_address=ip_address,
+    )
     await session.commit()
     await session.refresh(service)
     log.info(
@@ -143,6 +188,9 @@ async def soft_delete_service(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     service_id: uuid.UUID,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> Service:
     """Mark the service as deleted_at=now() and return the row.
 
@@ -151,10 +199,26 @@ async def soft_delete_service(
     way `get_service_by_id` handles soft-deleted rows).
 
     Side effects:
-        Commits the session.
+        Writes a `service.deleted` audit_log row (before-state snapshot),
+        committed atomically with the soft-delete (NFR-0250).
     """
     service = await get_service_by_id(session, tenant_id, service_id)
+    before = {
+        "code": service.code,
+        "display_name": service.display_name,
+        "status": service.status,
+    }
     service.deleted_at = datetime.now(UTC)
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=service.tenant_id,
+        action="service.deleted",
+        entity_type="service",
+        entity_id=str(service.id),
+        before_state=before,
+        ip_address=ip_address,
+    )
     await session.commit()
     await session.refresh(service)
     log.info(

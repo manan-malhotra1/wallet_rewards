@@ -13,7 +13,7 @@ transaction_type inputs on Limits / Pricing / Campaigns pages.
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
@@ -55,12 +55,17 @@ async def get_services(
 @router.post("", response_model=ServiceOut, status_code=201)
 async def post_service(
     payload: ServiceCreateRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> ServiceOut:
     """Create a new service in the tenant catalog."""
-    _ = admin
-    service = await create_service(session, payload)
+    service = await create_service(
+        session,
+        payload,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return ServiceOut.model_validate(service)
 
 
@@ -69,12 +74,19 @@ async def patch_service(
     service_id: uuid.UUID,
     tenant_id: uuid.UUID,
     payload: ServiceUpdateRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> ServiceOut:
     """Update display_name / description / status on a service."""
-    _ = admin
-    service = await update_service(session, tenant_id, service_id, payload)
+    service = await update_service(
+        session,
+        tenant_id,
+        service_id,
+        payload,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return ServiceOut.model_validate(service)
 
 
@@ -82,10 +94,16 @@ async def patch_service(
 async def delete_service(
     service_id: uuid.UUID,
     tenant_id: uuid.UUID,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> ServiceOut:
     """Soft-delete the service so it disappears from dropdowns."""
-    _ = admin
-    service = await soft_delete_service(session, tenant_id, service_id)
+    service = await soft_delete_service(
+        session,
+        tenant_id,
+        service_id,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return ServiceOut.model_validate(service)

@@ -14,7 +14,7 @@ also backfills user accounts so the instrument is spendable immediately.
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
@@ -51,12 +51,17 @@ async def get_instruments(
 @router.post("", response_model=InstrumentOut, status_code=201)
 async def post_instrument(
     payload: InstrumentCreateRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> InstrumentOut:
     """Create a new instrument; optionally backfill accounts for existing users."""
-    _ = admin
-    instrument = await create_instrument(session, payload)
+    instrument = await create_instrument(
+        session,
+        payload,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return InstrumentOut.model_validate(instrument)
 
 
@@ -65,12 +70,19 @@ async def patch_instrument(
     instrument_id: uuid.UUID,
     tenant_id: uuid.UUID,
     payload: InstrumentUpdateRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> InstrumentOut:
     """Update symbol / display_name / description / status."""
-    _ = admin
-    instrument = await update_instrument(session, tenant_id, instrument_id, payload)
+    instrument = await update_instrument(
+        session,
+        tenant_id,
+        instrument_id,
+        payload,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return InstrumentOut.model_validate(instrument)
 
 
@@ -78,10 +90,16 @@ async def patch_instrument(
 async def delete_instrument(
     instrument_id: uuid.UUID,
     tenant_id: uuid.UUID,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> InstrumentOut:
     """Soft-delete the instrument so it disappears from dropdowns."""
-    _ = admin
-    instrument = await soft_delete_instrument(session, tenant_id, instrument_id)
+    instrument = await soft_delete_instrument(
+        session,
+        tenant_id,
+        instrument_id,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return InstrumentOut.model_validate(instrument)

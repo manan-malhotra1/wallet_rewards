@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.secret_box import encrypt_secret
-from app.shared.models import ApiKey, Tenant, User, UserIdentifier
+from app.shared.models import ApiKey, AuditLog, Tenant, User, UserIdentifier
 
 _SECRET = "ext-partner-secret-do-not-log"
 
@@ -73,6 +73,78 @@ async def test_valid_request_creates_user_in_key_tenant(
     assert data["tenant_id"] == str(test_tenant.id)  # tenant from key, not body
     assert data["user_type"] == "consumer"
     assert data["identifiers"][0]["identifier_value"] == "partner.user@example.com"
+
+
+@pytest.mark.asyncio
+async def test_valid_request_writes_system_actor_audit(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    api_key: dict[str, str],
+) -> None:
+    """The partner path has no admin — the created user is audited as a
+    system actor keyed on the API key (NFR-0160 / NFR-0250)."""
+    raw = json.dumps(_body("audited.partner@example.com")).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert resp.status_code == 201, resp.text
+    user_id = resp.json()["id"]
+
+    rows = (
+        (
+            await db_session.execute(
+                select(AuditLog).where(
+                    AuditLog.entity_type == "user",
+                    AuditLog.entity_id == user_id,
+                    AuditLog.action == "user.created",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.actor_type == "system"
+    assert row.actor_id == f"apikey:{api_key['key_id']}"
+    assert row.tenant_id == test_tenant.id
+    assert row.after_state["identifier_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_idempotent_replay_writes_no_second_audit(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    api_key: dict[str, str],
+) -> None:
+    """An idempotent replay (existing identifier) must not double-audit."""
+    raw = json.dumps(_body("dupaudit@example.com")).encode()
+    first = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert first.status_code == 201, first.text
+    user_id = first.json()["id"]
+
+    raw2 = json.dumps(_body("dupaudit@example.com")).encode()
+    second = await async_client.post(
+        "/api/v1/external/users",
+        content=raw2,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw2, idem="idem-key-2"),
+    )
+    assert second.status_code == 200, second.text
+
+    count = await db_session.scalar(
+        select(func.count())
+        .select_from(AuditLog)
+        .where(AuditLog.entity_id == user_id, AuditLog.action == "user.created")
+    )
+    assert count == 1
 
 
 @pytest.mark.asyncio

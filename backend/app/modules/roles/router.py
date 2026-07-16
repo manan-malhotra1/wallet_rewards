@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, status
+from fastapi import APIRouter, Body, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
@@ -55,15 +55,22 @@ router = APIRouter(prefix="/api/v1", tags=["roles"])
 _admin_only = Depends(require_admin_role("platform-admin"))
 
 
+def _client_ip(request: Request) -> str | None:
+    """Best-effort caller IP for the audit trail (None behind a stripped proxy)."""
+    return request.client.host if request.client else None
+
+
 @router.post("/roles", response_model=RoleOut, status_code=201)
 async def post_role(
     request: CreateRoleRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = _admin_only,
     session: AsyncSession = Depends(get_async_session),
 ) -> RoleOut:
     """Create a role in a tenant. Admin only."""
-    _ = admin
-    role = await create_role(session, request)
+    role = await create_role(
+        session, request, admin=admin, ip_address=_client_ip(fastapi_request)
+    )
     return RoleOut.model_validate(role)
 
 
@@ -97,12 +104,14 @@ async def patch_role(
     role_id: UUID,
     tenant_id: UUID,
     request: UpdateRoleRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = _admin_only,
     session: AsyncSession = Depends(get_async_session),
 ) -> RoleOut:
     """Update role description and/or status."""
-    _ = admin
-    role = await update_role(session, role_id, tenant_id, request)
+    role = await update_role(
+        session, role_id, tenant_id, request, admin=admin, ip_address=_client_ip(fastapi_request)
+    )
     return RoleOut.model_validate(role)
 
 
@@ -120,12 +129,14 @@ async def post_permission(
     role_id: UUID,
     tenant_id: UUID,
     request: SetPermissionRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = _admin_only,
     session: AsyncSession = Depends(get_async_session),
 ) -> RolePermissionOut:
     """Create or update a (role, transaction_type) permission."""
-    _ = admin
-    perm = await set_permission(session, role_id, tenant_id, request)
+    perm = await set_permission(
+        session, role_id, tenant_id, request, admin=admin, ip_address=_client_ip(fastapi_request)
+    )
     return RolePermissionOut.model_validate(perm)
 
 
@@ -137,12 +148,19 @@ async def delete_permission(
     role_id: UUID,
     transaction_type: str,
     tenant_id: UUID,
+    fastapi_request: Request,
     admin: AdminPrincipal = _admin_only,
     session: AsyncSession = Depends(get_async_session),
 ) -> None:
     """Remove a (role, transaction_type) permission. Idempotent."""
-    _ = admin
-    await remove_permission(session, role_id, tenant_id, transaction_type)
+    await remove_permission(
+        session,
+        role_id,
+        tenant_id,
+        transaction_type,
+        admin=admin,
+        ip_address=_client_ip(fastapi_request),
+    )
 
 
 @router.get(
@@ -175,12 +193,14 @@ async def post_user_role(
     user_id: UUID,
     tenant_id: UUID,
     request: AssignRoleRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = _admin_only,
     session: AsyncSession = Depends(get_async_session),
 ) -> UserRoleOut:
     """Assign a role to a user. Idempotent — re-assigning returns existing row."""
-    _ = admin
-    row = await assign_role_to_user(session, user_id, tenant_id, request)
+    row = await assign_role_to_user(
+        session, user_id, tenant_id, request, admin=admin, ip_address=_client_ip(fastapi_request)
+    )
     return UserRoleOut.model_validate(row)
 
 
@@ -192,12 +212,14 @@ async def delete_user_role(
     user_id: UUID,
     role_id: UUID,
     tenant_id: UUID,
+    fastapi_request: Request,
     admin: AdminPrincipal = _admin_only,
     session: AsyncSession = Depends(get_async_session),
 ) -> None:
     """Remove a role from a user. Idempotent."""
-    _ = admin
-    await remove_role_from_user(session, user_id, tenant_id, role_id)
+    await remove_role_from_user(
+        session, user_id, tenant_id, role_id, admin=admin, ip_address=_client_ip(fastapi_request)
+    )
 
 
 @router.get("/users/{user_id}/roles", response_model=list[UserRoleOut])

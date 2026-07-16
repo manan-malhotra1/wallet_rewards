@@ -11,7 +11,7 @@ and PATCH for the per-tenant identity card.
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,10 +57,16 @@ async def get_tenant(
 async def patch_tenant(
     tenant_id: uuid.UUID,
     payload: TenantUpdateRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> TenantOut:
     """Update an existing tenant's name / business_type."""
-    _ = admin
-    tenant = await update_tenant(tenant_id, payload, session)
+    tenant = await update_tenant(
+        tenant_id,
+        payload,
+        session,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return TenantOut.model_validate(tenant)

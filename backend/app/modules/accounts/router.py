@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
@@ -32,6 +32,7 @@ router = APIRouter(prefix="/api/v1/accounts", tags=["accounts"])
 @router.post("", response_model=AccountOut, status_code=201)
 async def post_account(
     request: CreateAccountRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> AccountOut:
@@ -41,8 +42,12 @@ async def post_account(
     registered (Phase F.2 OTP flow); this endpoint exists for system /
     master / provider wallet management.
     """
-    _ = admin  # F.5 will use admin.id for audit_log writes
-    account = await create_account(session, request)
+    account = await create_account(
+        session,
+        request,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return AccountOut.model_validate(account)
 
 

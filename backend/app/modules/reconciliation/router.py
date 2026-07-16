@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
@@ -108,15 +108,22 @@ async def get_manual_review(
 async def post_resolve(
     redemption_id: UUID,
     request: ResolveRequest,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> RedemptionOut:
     """Operator manually resolves a MANUAL_REVIEW redemption (Pay-PRD-0780).
 
     Requires `platform-admin` role. The admin's `sub` is passed to the audit
-    log as the actor (rest of the audit-everywhere wiring lands in F.5).
+    log as the actor, along with the caller IP.
     """
-    redemption = await manually_resolve(session, redemption_id, request, actor_id=admin.id)
+    redemption = await manually_resolve(
+        session,
+        redemption_id,
+        request,
+        actor_id=admin.id,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
     return RedemptionOut.model_validate(redemption)
 
 

@@ -14,7 +14,9 @@ from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AdminPrincipal
 from app.modules.accounts.schemas import CreateAccountRequest
+from app.modules.audit.service import record_audit_for_admin
 from app.shared.exceptions import (
     AccountAlreadyExists,
     AccountNotFound,
@@ -40,7 +42,13 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
         raise TenantNotFound()
 
 
-async def create_account(session: AsyncSession, request: CreateAccountRequest) -> Account:
+async def create_account(
+    session: AsyncSession,
+    request: CreateAccountRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> Account:
     """Create a new account.
 
     Validates that:
@@ -51,6 +59,8 @@ async def create_account(session: AsyncSession, request: CreateAccountRequest) -
     Args:
         session: Async DB session.
         request: Validated CreateAccountRequest.
+        admin: Authenticated admin — the audit actor.
+        ip_address: Caller IP (audit context).
 
     Returns:
         The persisted Account.
@@ -59,6 +69,10 @@ async def create_account(session: AsyncSession, request: CreateAccountRequest) -
         TenantNotFound: 404 when tenant_id is unknown.
         InvalidAccountType: 422 when account_type is unrecognised (belt-and-braces
             on top of the Pydantic Literal).
+
+    Side effects:
+        Writes an `account.created` audit_log row (owner scope + type/currency,
+        never secrets), committed atomically with the insert (NFR-0250).
     """
     if request.account_type not in ACCOUNT_TYPES:
         raise InvalidAccountType()
@@ -74,7 +88,7 @@ async def create_account(session: AsyncSession, request: CreateAccountRequest) -
     )
     session.add(account)
     try:
-        await session.commit()
+        await session.flush()
     except IntegrityError as exc:
         # Partial UNIQUE index `uq_accounts_user_scoped` (or
         # `uq_accounts_system_scoped`) fires when the same (tenant, user,
@@ -86,6 +100,22 @@ async def create_account(session: AsyncSession, request: CreateAccountRequest) -
         ):
             raise AccountAlreadyExists() from exc
         raise
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=request.tenant_id,
+        action="account.created",
+        entity_type="account",
+        entity_id=str(account.id),
+        after_state={
+            "account_type": account.account_type,
+            "currency": account.currency,
+            "user_id": str(account.user_id) if account.user_id else None,
+            "merchant_id": str(account.merchant_id) if account.merchant_id else None,
+        },
+        ip_address=ip_address,
+    )
+    await session.commit()
     await session.refresh(account)
     return account
 

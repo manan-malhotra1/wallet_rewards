@@ -15,6 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AdminPrincipal
+from app.modules.audit.service import record_audit_for_admin
 from app.modules.roles.schemas import (
     AssignRoleRequest,
     CreateRoleRequest,
@@ -45,17 +47,53 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
         raise TenantNotFound()
 
 
+def _role_snapshot(role: Role) -> dict[str, str | None]:
+    """JSONB-friendly snapshot of a role's auditable fields."""
+    return {
+        "id": str(role.id),
+        "name": role.name,
+        "description": role.description,
+        "status": role.status,
+    }
+
+
+def _permission_snapshot(perm: RolePermission) -> dict[str, str | bool]:
+    """JSONB-friendly snapshot of a (role, transaction_type) permission."""
+    return {
+        "role_id": str(perm.role_id),
+        "transaction_type": perm.transaction_type,
+        "permitted": perm.permitted,
+    }
+
+
+def _binding_snapshot(binding: UserRole) -> dict[str, str]:
+    """JSONB-friendly snapshot of a user-role assignment."""
+    return {
+        "id": str(binding.id),
+        "user_id": str(binding.user_id),
+        "role_id": str(binding.role_id),
+    }
+
+
 # -----------------------------------------------------------------------------
 # Role CRUD
 # -----------------------------------------------------------------------------
 
 
-async def create_role(session: AsyncSession, request: CreateRoleRequest) -> Role:
+async def create_role(
+    session: AsyncSession,
+    request: CreateRoleRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> Role:
     """Create a new role in a tenant.
 
     Args:
         session: Async DB session.
         request: Validated payload.
+        admin: Authenticated admin — the audit actor.
+        ip_address: Caller IP (audit context).
 
     Returns:
         The persisted Role.
@@ -63,6 +101,10 @@ async def create_role(session: AsyncSession, request: CreateRoleRequest) -> Role
     Raises:
         TenantNotFound: unknown tenant.
         RoleAlreadyExists: 409 — name already taken in this tenant.
+
+    Side effects:
+        Writes a `role.created` audit_log row, committed atomically with the
+        role insert (NFR-0250).
     """
     await _assert_tenant_exists(session, request.tenant_id)
     role = Role(
@@ -72,10 +114,21 @@ async def create_role(session: AsyncSession, request: CreateRoleRequest) -> Role
     )
     session.add(role)
     try:
-        await session.commit()
+        await session.flush()
     except IntegrityError as exc:
         await session.rollback()
         raise RoleAlreadyExists(request.name) from exc
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=request.tenant_id,
+        action="role.created",
+        entity_type="role",
+        entity_id=str(role.id),
+        after_state=_role_snapshot(role),
+        ip_address=ip_address,
+    )
+    await session.commit()
     await session.refresh(role)
     return role
 
@@ -105,13 +158,33 @@ async def update_role(
     role_id: UUID,
     tenant_id: UUID,
     request: UpdateRoleRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> Role:
-    """Partial update — description and/or status."""
+    """Partial update — description and/or status.
+
+    Side effects:
+        Writes a `role.updated` audit_log row (before/after snapshot),
+        committed atomically with the change (NFR-0250).
+    """
     role = await get_role(session, role_id, tenant_id)
+    before = _role_snapshot(role)
     if request.description is not None:
         role.description = request.description
     if request.status is not None:
         role.status = request.status
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="role.updated",
+        entity_type="role",
+        entity_id=str(role.id),
+        before_state=before,
+        after_state=_role_snapshot(role),
+        ip_address=ip_address,
+    )
     await session.commit()
     await session.refresh(role)
     return role
@@ -127,8 +200,17 @@ async def set_permission(
     role_id: UUID,
     tenant_id: UUID,
     request: SetPermissionRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> RolePermission:
-    """Upsert a permission row for (role, transaction_type)."""
+    """Upsert a permission row for (role, transaction_type).
+
+    Side effects:
+        Writes a `role.permission_granted` audit_log row (before/after snapshot),
+        committed atomically with the upsert (NFR-0250). Authorization edits
+        govern who may move money, so this write is mandatory.
+    """
     # Tenant-scoped role lookup also serves as 404 guard.
     role = await get_role(session, role_id, tenant_id)
 
@@ -139,6 +221,7 @@ async def set_permission(
         )
     )
     perm = result.scalar_one_or_none()
+    before = _permission_snapshot(perm) if perm is not None else None
     if perm is None:
         perm = RolePermission(
             role_id=role.id,
@@ -146,8 +229,20 @@ async def set_permission(
             permitted=request.permitted,
         )
         session.add(perm)
+        await session.flush()
     else:
         perm.permitted = request.permitted
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="role.permission_granted",
+        entity_type="role",
+        entity_id=str(role.id),
+        before_state=before,
+        after_state=_permission_snapshot(perm),
+        ip_address=ip_address,
+    )
     await session.commit()
     await session.refresh(perm)
     return perm
@@ -158,8 +253,17 @@ async def remove_permission(
     role_id: UUID,
     tenant_id: UUID,
     transaction_type: str,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> None:
-    """Delete a permission row. No-op if absent."""
+    """Delete a permission row. No-op if absent.
+
+    Side effects:
+        When a row is actually deleted, writes a `role.permission_revoked`
+        audit_log row (before-state snapshot), committed atomically with the
+        delete (NFR-0250). A no-op removal writes nothing.
+    """
     role = await get_role(session, role_id, tenant_id)
     result = await session.execute(
         select(RolePermission).where(
@@ -169,7 +273,18 @@ async def remove_permission(
     )
     perm = result.scalar_one_or_none()
     if perm is not None:
+        before = _permission_snapshot(perm)
         await session.delete(perm)
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=tenant_id,
+            action="role.permission_revoked",
+            entity_type="role",
+            entity_id=str(role.id),
+            before_state=before,
+            ip_address=ip_address,
+        )
         await session.commit()
 
 
@@ -202,8 +317,18 @@ async def assign_role_to_user(
     user_id: UUID,
     tenant_id: UUID,
     request: AssignRoleRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> UserRole:
-    """Assign a role to a user. Both must live in the same tenant."""
+    """Assign a role to a user. Both must live in the same tenant.
+
+    Side effects:
+        When a NEW binding is created, writes a `user.role_assigned` audit_log
+        row (entity_type `user_role`), committed atomically with the insert
+        (NFR-0250). An idempotent re-assignment (binding already present)
+        writes nothing.
+    """
     user = await _find_user_in_tenant(session, user_id, tenant_id)
     role = await get_role(session, request.role_id, tenant_id)
 
@@ -217,6 +342,17 @@ async def assign_role_to_user(
 
     user_role = UserRole(user_id=user.id, role_id=role.id)
     session.add(user_role)
+    await session.flush()
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="user.role_assigned",
+        entity_type="user_role",
+        entity_id=str(user_role.id),
+        after_state=_binding_snapshot(user_role),
+        ip_address=ip_address,
+    )
     await session.commit()
     await session.refresh(user_role)
     return user_role
@@ -227,15 +363,36 @@ async def remove_role_from_user(
     user_id: UUID,
     tenant_id: UUID,
     role_id: UUID,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> None:
-    """Remove a role from a user. No-op if not assigned."""
+    """Remove a role from a user. No-op if not assigned.
+
+    Side effects:
+        When a binding is actually removed, writes a `user.role_removed`
+        audit_log row (entity_type `user_role`, before-state snapshot),
+        committed atomically with the delete (NFR-0250). A no-op removal
+        writes nothing.
+    """
     user = await _find_user_in_tenant(session, user_id, tenant_id)
     result = await session.execute(
         select(UserRole).where(UserRole.user_id == user.id, UserRole.role_id == role_id)
     )
     row = result.scalar_one_or_none()
     if row is not None:
+        before = _binding_snapshot(row)
         await session.delete(row)
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=tenant_id,
+            action="user.role_removed",
+            entity_type="user_role",
+            entity_id=before["id"],
+            before_state=before,
+            ip_address=ip_address,
+        )
         await session.commit()
 
 

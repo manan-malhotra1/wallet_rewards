@@ -14,6 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AdminPrincipal
+from app.modules.audit.service import record_audit_for_admin
 from app.modules.instruments.schemas import (
     InstrumentCreateRequest,
     InstrumentUpdateRequest,
@@ -68,6 +70,9 @@ async def get_instrument_by_id(
 async def create_instrument(
     session: AsyncSession,
     payload: InstrumentCreateRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> Instrument:
     """Insert a new instrument and optionally backfill user accounts.
 
@@ -76,12 +81,15 @@ async def create_instrument(
             true, accounts are created for every existing user *after*
             the instrument row commits — the account write is in the
             same transaction so partial state is impossible.
+        admin: Authenticated admin — the audit actor.
+        ip_address: Caller IP (audit context).
 
     Raises:
         InstrumentCodeAlreadyExists: another live instrument has this code.
 
     Side effects:
-        Commits the session. May add 0..N Account rows when backfilling.
+        Writes an `instrument.created` audit_log row, committed atomically with
+        the insert (NFR-0250). May add 0..N Account rows when backfilling.
     """
     instrument = Instrument(
         tenant_id=payload.tenant_id,
@@ -109,6 +117,23 @@ async def create_instrument(
             currency=payload.code,
         )
 
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=instrument.tenant_id,
+        action="instrument.created",
+        entity_type="instrument",
+        entity_id=str(instrument.id),
+        after_state={
+            "code": instrument.code,
+            "symbol": instrument.symbol,
+            "display_name": instrument.display_name,
+            "account_type": instrument.account_type,
+            "status": instrument.status,
+            "backfilled_accounts": backfilled_count,
+        },
+        ip_address=ip_address,
+    )
     await session.commit()
     await session.refresh(instrument)
     log.info(
@@ -165,11 +190,17 @@ async def update_instrument(
     tenant_id: uuid.UUID,
     instrument_id: uuid.UUID,
     payload: InstrumentUpdateRequest,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> Instrument:
     """Apply symbol / display_name / description / status edits.
 
-    Code and account_type are intentionally immutable. Side effects:
-    commits the session.
+    Code and account_type are intentionally immutable.
+
+    Side effects:
+        Writes an `instrument.updated` audit_log row (before/after snapshot),
+        committed atomically with the change (NFR-0250).
     """
     instrument = await get_instrument_by_id(session, tenant_id, instrument_id)
     before = {
@@ -187,6 +218,21 @@ async def update_instrument(
     if payload.status is not None:
         instrument.status = payload.status
 
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=instrument.tenant_id,
+        action="instrument.updated",
+        entity_type="instrument",
+        entity_id=str(instrument.id),
+        before_state=before,
+        after_state={
+            "symbol": instrument.symbol,
+            "display_name": instrument.display_name,
+            "status": instrument.status,
+        },
+        ip_address=ip_address,
+    )
     await session.commit()
     await session.refresh(instrument)
     log.info(
@@ -207,10 +253,34 @@ async def soft_delete_instrument(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     instrument_id: uuid.UUID,
+    *,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
 ) -> Instrument:
-    """Mark the instrument deleted_at=now(). Existing accounts are not touched."""
+    """Mark the instrument deleted_at=now(). Existing accounts are not touched.
+
+    Side effects:
+        Writes an `instrument.deleted` audit_log row (before-state snapshot),
+        committed atomically with the soft-delete (NFR-0250).
+    """
     instrument = await get_instrument_by_id(session, tenant_id, instrument_id)
+    before = {
+        "code": instrument.code,
+        "symbol": instrument.symbol,
+        "display_name": instrument.display_name,
+        "status": instrument.status,
+    }
     instrument.deleted_at = datetime.now(UTC)
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=instrument.tenant_id,
+        action="instrument.deleted",
+        entity_type="instrument",
+        entity_id=str(instrument.id),
+        before_state=before,
+        ip_address=ip_address,
+    )
     await session.commit()
     await session.refresh(instrument)
     log.info(

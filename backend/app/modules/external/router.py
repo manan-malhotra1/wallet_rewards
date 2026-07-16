@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.api_key import ApiKeyPrincipal, require_api_key
 from app.database import get_async_session
+from app.modules.audit.service import record_audit
 from app.modules.external.schemas import (
     ExternalCreateUserRequest,
     ExternalFundRequest,
@@ -29,6 +30,7 @@ from app.modules.identity.service import create_user, resolve_identifier
 from app.modules.treasury.schemas import FundUserResponse, WithdrawFromUserResponse
 from app.shared.exceptions import IdentifierAlreadyInUse, UserNotFound
 from app.shared.models import User
+from app.shared.models.audit import ACTOR_SYSTEM
 
 router = APIRouter(prefix="/api/v1/external", tags=["external"])
 
@@ -79,6 +81,23 @@ async def create_external_user(
     )
     try:
         user = await create_user(session, create_req)
+        # The internal identity.create_user only audits admin-initiated creates;
+        # the partner path has no admin principal, so record a system-actor
+        # `user.created` row here (mirrors external_fund / external_withdraw).
+        record_audit(
+            session,
+            tenant_id=principal.tenant_id,
+            actor_id=f"apikey:{principal.key_id}",
+            actor_type=ACTOR_SYSTEM,
+            action="user.created",
+            entity_type="user",
+            entity_id=str(user.id),
+            after_state={
+                "identifier_count": len(create_req.identifiers),
+                "has_profile": create_req.profile is not None,
+                "user_type": user.user_type,
+            },
+        )
         await session.commit()
     except IdentifierAlreadyInUse:
         # create_user rolled back before raising; resolve the existing user.

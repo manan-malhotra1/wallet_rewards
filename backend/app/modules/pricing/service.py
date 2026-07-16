@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,6 @@ from app.modules.pricing.schemas import PricingConfigCreateRequest
 from app.shared.exceptions import (
     AppHTTPException,
     PricingConfigMissing,
-    PricingConfigNotFound,
     ServiceNotConfigured,
     TenantNotFound,
 )
@@ -530,6 +529,31 @@ def _new_pricing_config(request: PricingConfigCreateRequest) -> PricingConfig:
     )
 
 
+def _pricing_scope_filter(
+    *,
+    tenant_id: UUID,
+    transaction_type: str,
+    account_type: str,
+    currency: str,
+    user_type: str | None,
+) -> list[ColumnElement[bool]]:
+    """Column predicates selecting EVERY pricing row in one scope.
+
+    Shared by `replace_pricing_config_for_scope` and
+    `delete_pricing_config_for_scope` so the scope definition lives in one place.
+    `currency` is upper-cased; a NULL `user_type` is matched with IS NULL.
+    """
+    return [
+        PricingConfig.tenant_id == tenant_id,
+        PricingConfig.transaction_type == transaction_type,
+        PricingConfig.account_type == account_type,
+        PricingConfig.currency == currency.upper(),
+        PricingConfig.user_type.is_(None)
+        if user_type is None
+        else PricingConfig.user_type == user_type,
+    ]
+
+
 def _pricing_config_state(config: PricingConfig) -> dict[str, object]:
     """Serialise a pricing config for an audit snapshot (Decimals to str)."""
     return {
@@ -612,15 +636,13 @@ async def replace_pricing_config_for_scope(
         `pricing_config.updated` audit row. Commits once.
     """
     first = requests[0]
-    scope = [
-        PricingConfig.tenant_id == first.tenant_id,
-        PricingConfig.transaction_type == first.transaction_type,
-        PricingConfig.account_type == first.account_type,
-        PricingConfig.currency == first.currency.upper(),
-        PricingConfig.user_type.is_(None)
-        if first.user_type is None
-        else PricingConfig.user_type == first.user_type,
-    ]
+    scope = _pricing_scope_filter(
+        tenant_id=first.tenant_id,
+        transaction_type=first.transaction_type,
+        account_type=first.account_type,
+        currency=first.currency,
+        user_type=first.user_type,
+    )
     existing = list((await session.execute(select(PricingConfig).where(*scope))).scalars().all())
     before = [_pricing_config_state(c) for c in existing]
     for row in existing:
@@ -656,39 +678,51 @@ async def list_pricing_configs(session: AsyncSession, tenant_id: UUID) -> list[P
     return list(result.scalars().all())
 
 
-async def delete_pricing_config(
+async def delete_pricing_config_for_scope(
     session: AsyncSession,
-    config_id: UUID,
-    tenant_id: UUID,
+    target: PricingConfig,
     *,
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> None:
-    """Delete a pricing config. Tenant-isolated."""
-    result = await session.execute(
-        select(PricingConfig).where(
-            PricingConfig.id == config_id,
-            PricingConfig.tenant_id == tenant_id,
-        )
+    """Delete EVERY pricing band sharing `target`'s scope, in one commit.
+
+    A pricing schedule is several bands sharing (tenant, transaction_type,
+    account_type, currency, user_type); a per-config delete removes them all —
+    not only the band named by the maker. The removals plus one
+    `pricing_config.deleted` audit row (its before_state summarising every
+    removed band) land in ONE transaction — committed once — so a mid-delete
+    failure rolls the whole scope back and never leaves it partially wiped
+    (money-adjacent config). Single-band scopes remove exactly one row.
+
+    Args:
+        target: The live row whose scope is removed — already loaded and
+            tenant-checked by the caller; its id anchors the audit entry.
+
+    Side effects:
+        Deletes pricing_configs rows; appends one `pricing_config.deleted` audit
+        row. Commits once.
+    """
+    scope = _pricing_scope_filter(
+        tenant_id=target.tenant_id,
+        transaction_type=target.transaction_type,
+        account_type=target.account_type,
+        currency=target.currency,
+        user_type=target.user_type,
     )
-    config = result.scalar_one_or_none()
-    if config is None:
-        raise PricingConfigNotFound()
-    before = {
-        "transaction_type": config.transaction_type,
-        "account_type": config.account_type,
-        "currency": config.currency,
-    }
-    await session.delete(config)
+    existing = list((await session.execute(select(PricingConfig).where(*scope))).scalars().all())
+    before = [_pricing_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
     if admin is not None:
         record_audit_for_admin(
             session,
             admin,
-            tenant_id=tenant_id,
+            tenant_id=target.tenant_id,
             action="pricing_config.deleted",
             entity_type="pricing_config",
-            entity_id=str(config_id),
-            before_state=before,
+            entity_id=str(target.id),
+            before_state={"deleted": before},
             ip_address=ip_address,
         )
     await session.commit()

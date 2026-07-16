@@ -11,7 +11,7 @@ from app.modules.taxes.service import (
     TaxComputation,
     calculate_tax,
     create_tax_config,
-    delete_tax_config,
+    delete_tax_config_for_scope,
     list_tax_configs,
 )
 
@@ -19,7 +19,7 @@ __all__ = [
     "TaxComputation",
     "calculate_tax",
     "create_tax_config",
-    "delete_tax_config",
+    "delete_tax_config_for_scope",
     "list_tax_configs",
     "router",
 ]

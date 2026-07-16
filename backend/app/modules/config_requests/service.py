@@ -216,7 +216,9 @@ async def propose_config_change(
 
     Raises:
         TenantNotFound (404).
-        ConfigRequestTargetNotFound (404): an update/delete target that isn't here.
+        ConfigRequestTargetNotFound (404): an update target that isn't here. A
+            delete's target is NOT checked at propose — its scope is resolved
+            from the live row at apply time, which 404s with the same code.
         AppHTTPException (422): a create/update without a payload, an
             update/delete without a target, or a payload that fails its schema.
     """

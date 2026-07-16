@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,14 +36,12 @@ from app.shared.exceptions import (
     AppHTTPException,
     DailyCountExceeded,
     DailyValueExceeded,
-    LimitConfigNotFound,
     MaxBalanceExceeded,
     MonthlyCountExceeded,
     MonthlyValueExceeded,
     RecipientLimitReached,
     RecipientMaxBalanceExceeded,
     TenantNotFound,
-    WalletLimitConfigNotFound,
     WalletReceiveLimitExceeded,
     WalletSendLimitExceeded,
     WeeklyCountExceeded,
@@ -625,6 +623,32 @@ def _new_limit_config(request: LimitConfigCreateRequest) -> LimitConfig:
     )
 
 
+def _limit_scope_filter(
+    *,
+    tenant_id: UUID,
+    transaction_type: str,
+    account_type: str,
+    currency: str,
+    user_type: str | None,
+) -> list[ColumnElement[bool]]:
+    """Column predicates selecting the limit row(s) in one scope.
+
+    Shared by `replace_limit_config_for_scope` and
+    `delete_limit_config_for_scope`. Scope = (tenant, transaction_type,
+    account_type, currency, user_type) — a single row. `currency` is upper-cased;
+    a NULL `user_type` matched with IS NULL.
+    """
+    return [
+        LimitConfig.tenant_id == tenant_id,
+        LimitConfig.transaction_type == transaction_type,
+        LimitConfig.account_type == account_type,
+        LimitConfig.currency == currency.upper(),
+        LimitConfig.user_type.is_(None)
+        if user_type is None
+        else LimitConfig.user_type == user_type,
+    ]
+
+
 def _limit_config_state(config: LimitConfig) -> dict[str, object]:
     """Serialise a limit config for an audit snapshot."""
     return {
@@ -704,15 +728,13 @@ async def replace_limit_config_for_scope(
         `limit_config.updated` audit row. Commits once.
     """
     first = requests[0]
-    scope = [
-        LimitConfig.tenant_id == first.tenant_id,
-        LimitConfig.transaction_type == first.transaction_type,
-        LimitConfig.account_type == first.account_type,
-        LimitConfig.currency == first.currency.upper(),
-        LimitConfig.user_type.is_(None)
-        if first.user_type is None
-        else LimitConfig.user_type == first.user_type,
-    ]
+    scope = _limit_scope_filter(
+        tenant_id=first.tenant_id,
+        transaction_type=first.transaction_type,
+        account_type=first.account_type,
+        currency=first.currency,
+        user_type=first.user_type,
+    )
     existing = list((await session.execute(select(LimitConfig).where(*scope))).scalars().all())
     before = [_limit_config_state(c) for c in existing]
     for row in existing:
@@ -748,39 +770,49 @@ async def list_limit_configs(session: AsyncSession, tenant_id: UUID) -> list[Lim
     return list(result.scalars().all())
 
 
-async def delete_limit_config(
+async def delete_limit_config_for_scope(
     session: AsyncSession,
-    config_id: UUID,
-    tenant_id: UUID,
+    target: LimitConfig,
     *,
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> None:
-    """Delete a limit config. Tenant-isolated."""
-    result = await session.execute(
-        select(LimitConfig).where(
-            LimitConfig.id == config_id,
-            LimitConfig.tenant_id == tenant_id,
-        )
+    """Delete every limit row sharing `target`'s scope, in one commit.
+
+    Scope = (tenant, transaction_type, account_type, currency, user_type) — a
+    single row, so this removes exactly that config (behaviour-preserving vs the
+    legacy single-row delete). The removal plus one `limit_config.deleted` audit
+    row (before_state summarising the removed row) land in ONE transaction, so a
+    mid-delete failure rolls back.
+
+    Args:
+        target: The live row whose scope is removed — already loaded and
+            tenant-checked by the caller; its id anchors the audit entry.
+
+    Side effects:
+        Deletes a limit_configs row; appends one `limit_config.deleted` audit
+        row. Commits once.
+    """
+    scope = _limit_scope_filter(
+        tenant_id=target.tenant_id,
+        transaction_type=target.transaction_type,
+        account_type=target.account_type,
+        currency=target.currency,
+        user_type=target.user_type,
     )
-    config = result.scalar_one_or_none()
-    if config is None:
-        raise LimitConfigNotFound()
-    before = {
-        "transaction_type": config.transaction_type,
-        "account_type": config.account_type,
-        "currency": config.currency,
-    }
-    await session.delete(config)
+    existing = list((await session.execute(select(LimitConfig).where(*scope))).scalars().all())
+    before = [_limit_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
     if admin is not None:
         record_audit_for_admin(
             session,
             admin,
-            tenant_id=tenant_id,
+            tenant_id=target.tenant_id,
             action="limit_config.deleted",
             entity_type="limit_config",
-            entity_id=str(config_id),
-            before_state=before,
+            entity_id=str(target.id),
+            before_state={"deleted": before},
             ip_address=ip_address,
         )
     await session.commit()
@@ -820,6 +852,25 @@ def _new_wallet_limit_config(request: WalletLimitConfigCreateRequest) -> WalletL
         user_type=request.user_type,
         **{field: getattr(request, field) for field in _WALLET_CONFIG_FIELDS},
     )
+
+
+def _wallet_limit_scope_filter(
+    *, tenant_id: UUID, currency: str, user_type: str | None
+) -> list[ColumnElement[bool]]:
+    """Column predicates selecting the wallet-limit row(s) in one scope.
+
+    Shared by `replace_wallet_limit_config_for_scope` and
+    `delete_wallet_limit_config_for_scope`. Scope = (tenant, currency, user_type)
+    — a single row. `currency` is upper-cased; a NULL `user_type` matched with
+    IS NULL.
+    """
+    return [
+        WalletLimitConfig.tenant_id == tenant_id,
+        WalletLimitConfig.currency == currency.upper(),
+        WalletLimitConfig.user_type.is_(None)
+        if user_type is None
+        else WalletLimitConfig.user_type == user_type,
+    ]
 
 
 def _wallet_limit_config_state(config: WalletLimitConfig) -> dict[str, object]:
@@ -896,13 +947,9 @@ async def replace_wallet_limit_config_for_scope(
         `wallet_limit_config.updated` audit row. Commits once.
     """
     first = requests[0]
-    scope = [
-        WalletLimitConfig.tenant_id == first.tenant_id,
-        WalletLimitConfig.currency == first.currency.upper(),
-        WalletLimitConfig.user_type.is_(None)
-        if first.user_type is None
-        else WalletLimitConfig.user_type == first.user_type,
-    ]
+    scope = _wallet_limit_scope_filter(
+        tenant_id=first.tenant_id, currency=first.currency, user_type=first.user_type
+    )
     existing = list(
         (await session.execute(select(WalletLimitConfig).where(*scope))).scalars().all()
     )
@@ -942,35 +989,47 @@ async def list_wallet_limit_configs(
     return list(result.scalars().all())
 
 
-async def delete_wallet_limit_config(
+async def delete_wallet_limit_config_for_scope(
     session: AsyncSession,
-    config_id: UUID,
-    tenant_id: UUID,
+    target: WalletLimitConfig,
     *,
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> None:
-    """Delete a wallet limit config. Tenant-isolated; 404 when not found."""
-    result = await session.execute(
-        select(WalletLimitConfig).where(
-            WalletLimitConfig.id == config_id,
-            WalletLimitConfig.tenant_id == tenant_id,
-        )
+    """Delete every wallet-limit row sharing `target`'s scope, in one commit.
+
+    Scope = (tenant, currency, user_type) — a single row, so this removes exactly
+    that config (behaviour-preserving vs the legacy single-row delete). The
+    removal plus one `wallet_limit_config.deleted` audit row (before_state
+    summarising the removed row) land in ONE transaction, so a mid-delete failure
+    rolls back.
+
+    Args:
+        target: The live row whose scope is removed — already loaded and
+            tenant-checked by the caller; its id anchors the audit entry.
+
+    Side effects:
+        Deletes a wallet_limit_configs row; appends one
+        `wallet_limit_config.deleted` audit row. Commits once.
+    """
+    scope = _wallet_limit_scope_filter(
+        tenant_id=target.tenant_id, currency=target.currency, user_type=target.user_type
     )
-    config = result.scalar_one_or_none()
-    if config is None:
-        raise WalletLimitConfigNotFound()
-    before = {"currency": config.currency}
-    await session.delete(config)
+    existing = list(
+        (await session.execute(select(WalletLimitConfig).where(*scope))).scalars().all()
+    )
+    before = [_wallet_limit_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
     if admin is not None:
         record_audit_for_admin(
             session,
             admin,
-            tenant_id=tenant_id,
+            tenant_id=target.tenant_id,
             action="wallet_limit_config.deleted",
             entity_type="wallet_limit_config",
-            entity_id=str(config_id),
-            before_state=before,
+            entity_id=str(target.id),
+            before_state={"deleted": before},
             ip_address=ip_address,
         )
     await session.commit()

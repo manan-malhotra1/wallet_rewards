@@ -14,14 +14,14 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
 from app.modules.audit.service import record_audit_for_admin
 from app.modules.taxes.schemas import TaxConfigCreateRequest
-from app.shared.exceptions import AppHTTPException, TaxConfigNotFound, TenantNotFound
+from app.shared.exceptions import AppHTTPException, TenantNotFound
 from app.shared.models import TaxConfig, Tenant
 
 _SIX_DP = Decimal("0.000001")
@@ -124,6 +124,18 @@ def _new_tax_config(request: TaxConfigCreateRequest) -> TaxConfig:
     )
 
 
+def _tax_scope_filter(*, tenant_id: UUID, currency: str) -> list[ColumnElement[bool]]:
+    """Column predicates selecting the tax row(s) in one scope.
+
+    Shared by `replace_tax_config_for_scope` and `delete_tax_config_for_scope`.
+    Scope = (tenant, currency) — a single row. `currency` is upper-cased.
+    """
+    return [
+        TaxConfig.tenant_id == tenant_id,
+        TaxConfig.currency == currency.upper(),
+    ]
+
+
 def _tax_config_state(config: TaxConfig) -> dict[str, object]:
     """Serialise a tax config for an audit snapshot."""
     return {
@@ -197,10 +209,7 @@ async def replace_tax_config_for_scope(
         audit row. Commits once.
     """
     first = requests[0]
-    scope = [
-        TaxConfig.tenant_id == first.tenant_id,
-        TaxConfig.currency == first.currency.upper(),
-    ]
+    scope = _tax_scope_filter(tenant_id=first.tenant_id, currency=first.currency)
     existing = list((await session.execute(select(TaxConfig).where(*scope))).scalars().all())
     before = [_tax_config_state(c) for c in existing]
     for row in existing:
@@ -236,39 +245,42 @@ async def list_tax_configs(session: AsyncSession, tenant_id: UUID) -> list[TaxCo
     return list(result.scalars().all())
 
 
-async def delete_tax_config(
+async def delete_tax_config_for_scope(
     session: AsyncSession,
-    config_id: UUID,
-    tenant_id: UUID,
+    target: TaxConfig,
     *,
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> None:
-    """Delete a tax config. Tenant-isolated."""
-    result = await session.execute(
-        select(TaxConfig).where(
-            TaxConfig.id == config_id,
-            TaxConfig.tenant_id == tenant_id,
-        )
-    )
-    config = result.scalar_one_or_none()
-    if config is None:
-        raise TaxConfigNotFound()
-    before = {
-        "currency": config.currency,
-        "fee_tax_pct": str(config.fee_tax_pct),
-        "commission_tax_pct": str(config.commission_tax_pct),
-    }
-    await session.delete(config)
+    """Delete every tax row sharing `target`'s scope, in one commit.
+
+    Scope = (tenant, currency) — a single row, so this removes exactly that
+    config (behaviour-preserving vs the legacy single-row delete). The removal
+    plus one `tax_config.deleted` audit row (before_state summarising the removed
+    row) land in ONE transaction, so a mid-delete failure rolls back.
+
+    Args:
+        target: The live row whose scope is removed — already loaded and
+            tenant-checked by the caller; its id anchors the audit entry.
+
+    Side effects:
+        Deletes a tax_configs row; appends one `tax_config.deleted` audit row.
+        Commits once.
+    """
+    scope = _tax_scope_filter(tenant_id=target.tenant_id, currency=target.currency)
+    existing = list((await session.execute(select(TaxConfig).where(*scope))).scalars().all())
+    before = [_tax_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
     if admin is not None:
         record_audit_for_admin(
             session,
             admin,
-            tenant_id=tenant_id,
+            tenant_id=target.tenant_id,
             action="tax_config.deleted",
             entity_type="tax_config",
-            entity_id=str(config_id),
-            before_state=before,
+            entity_id=str(target.id),
+            before_state={"deleted": before},
             ip_address=ip_address,
         )
     await session.commit()

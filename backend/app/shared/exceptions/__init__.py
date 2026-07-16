@@ -910,41 +910,6 @@ class BudgetNotFound(AppHTTPException):
         super().__init__(404, "budget_not_found", "Budget not found.")
 
 
-class LimitConfigNotFound(AppHTTPException):
-    """The referenced limit config row doesn't exist or belongs to a different tenant."""
-
-    def __init__(self) -> None:
-        super().__init__(404, "limit_config_not_found", "Limit config not found.")
-
-
-class WalletLimitConfigNotFound(AppHTTPException):
-    """The wallet limit config row doesn't exist or belongs to a different tenant."""
-
-    def __init__(self) -> None:
-        super().__init__(404, "wallet_limit_config_not_found", "Wallet limit config not found.")
-
-
-class PricingConfigNotFound(AppHTTPException):
-    """The referenced pricing config row doesn't exist or belongs to a different tenant."""
-
-    def __init__(self) -> None:
-        super().__init__(404, "pricing_config_not_found", "Pricing config not found.")
-
-
-class CommissionConfigNotFound(AppHTTPException):
-    """The referenced commission config row doesn't exist or belongs to another tenant."""
-
-    def __init__(self) -> None:
-        super().__init__(404, "commission_config_not_found", "Commission config not found.")
-
-
-class TaxConfigNotFound(AppHTTPException):
-    """The referenced tax config row doesn't exist or belongs to another tenant."""
-
-    def __init__(self) -> None:
-        super().__init__(404, "tax_config_not_found", "Tax config not found.")
-
-
 # --- Config governance: maker-checker (Pricing v2 Epic 22) ------------------
 
 
@@ -1006,8 +971,10 @@ class ConfigRequestCommentRequired(AppHTTPException):
 class ConfigRequestTargetNotFound(AppHTTPException):
     """The `target_config_id` on an update/delete proposal does not exist here.
 
-    Raised at propose time when the live config row the maker wants to edit is
-    absent in this tenant for the given config type.
+    Raised at propose time for an update (the live config row the maker wants to
+    edit is absent in this tenant for the given config type), and at APPLY time
+    for a delete — the target's scope is resolved from the live row when the
+    checker approves, so a row gone by then 404s with this same uniform code.
     """
 
     def __init__(self) -> None:

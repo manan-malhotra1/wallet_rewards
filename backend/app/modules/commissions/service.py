@@ -13,7 +13,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +22,6 @@ from app.modules.audit.service import record_audit_for_admin
 from app.modules.commissions.schemas import CommissionConfigCreateRequest
 from app.shared.exceptions import (
     AppHTTPException,
-    CommissionConfigNotFound,
     TenantNotFound,
 )
 from app.shared.models import CommissionConfig, Tenant
@@ -153,6 +152,29 @@ def _new_commission_config(request: CommissionConfigCreateRequest) -> Commission
     )
 
 
+def _commission_scope_filter(
+    *,
+    tenant_id: UUID,
+    transaction_type: str,
+    currency: str,
+    user_type: str | None,
+) -> list[ColumnElement[bool]]:
+    """Column predicates selecting EVERY commission row in one scope.
+
+    Shared by `replace_commission_config_for_scope` and
+    `delete_commission_config_for_scope`. No account_type — commission is keyed
+    without it. `currency` is upper-cased; a NULL `user_type` matched with IS NULL.
+    """
+    return [
+        CommissionConfig.tenant_id == tenant_id,
+        CommissionConfig.transaction_type == transaction_type,
+        CommissionConfig.currency == currency.upper(),
+        CommissionConfig.user_type.is_(None)
+        if user_type is None
+        else CommissionConfig.user_type == user_type,
+    ]
+
+
 def _commission_config_state(config: CommissionConfig) -> dict[str, object]:
     """Serialise a commission config for an audit snapshot (Decimals to str)."""
     return {
@@ -232,14 +254,12 @@ async def replace_commission_config_for_scope(
         `commission_config.updated` audit row. Commits once.
     """
     first = requests[0]
-    scope = [
-        CommissionConfig.tenant_id == first.tenant_id,
-        CommissionConfig.transaction_type == first.transaction_type,
-        CommissionConfig.currency == first.currency.upper(),
-        CommissionConfig.user_type.is_(None)
-        if first.user_type is None
-        else CommissionConfig.user_type == first.user_type,
-    ]
+    scope = _commission_scope_filter(
+        tenant_id=first.tenant_id,
+        transaction_type=first.transaction_type,
+        currency=first.currency,
+        user_type=first.user_type,
+    )
     existing = list(
         (await session.execute(select(CommissionConfig).where(*scope))).scalars().all()
     )
@@ -277,39 +297,50 @@ async def list_commission_configs(session: AsyncSession, tenant_id: UUID) -> lis
     return list(result.scalars().all())
 
 
-async def delete_commission_config(
+async def delete_commission_config_for_scope(
     session: AsyncSession,
-    config_id: UUID,
-    tenant_id: UUID,
+    target: CommissionConfig,
     *,
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> None:
-    """Delete a commission config. Tenant-isolated."""
-    result = await session.execute(
-        select(CommissionConfig).where(
-            CommissionConfig.id == config_id,
-            CommissionConfig.tenant_id == tenant_id,
-        )
+    """Delete EVERY commission band sharing `target`'s scope, in one commit.
+
+    A commission schedule is several bands sharing (tenant, transaction_type,
+    currency, user_type); a per-config delete removes them all — not only the
+    band named by the maker. The removals plus one `commission_config.deleted`
+    audit row (before_state summarising every removed band) land in ONE
+    transaction, so a mid-delete failure rolls the whole scope back.
+
+    Args:
+        target: The live row whose scope is removed — already loaded and
+            tenant-checked by the caller; its id anchors the audit entry.
+
+    Side effects:
+        Deletes commission_configs rows; appends one `commission_config.deleted`
+        audit row. Commits once.
+    """
+    scope = _commission_scope_filter(
+        tenant_id=target.tenant_id,
+        transaction_type=target.transaction_type,
+        currency=target.currency,
+        user_type=target.user_type,
     )
-    config = result.scalar_one_or_none()
-    if config is None:
-        raise CommissionConfigNotFound()
-    before = {
-        "transaction_type": config.transaction_type,
-        "currency": config.currency,
-        "user_type": config.user_type,
-    }
-    await session.delete(config)
+    existing = list(
+        (await session.execute(select(CommissionConfig).where(*scope))).scalars().all()
+    )
+    before = [_commission_config_state(c) for c in existing]
+    for row in existing:
+        await session.delete(row)
     if admin is not None:
         record_audit_for_admin(
             session,
             admin,
-            tenant_id=tenant_id,
+            tenant_id=target.tenant_id,
             action="commission_config.deleted",
             entity_type="commission_config",
-            entity_id=str(config_id),
-            before_state=before,
+            entity_id=str(target.id),
+            before_state={"deleted": before},
             ip_address=ip_address,
         )
     await session.commit()

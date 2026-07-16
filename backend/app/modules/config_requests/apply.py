@@ -10,6 +10,12 @@ An `update` is an ATOMIC REPLACE: a per-type `replace_*_config_for_scope` helper
 deletes every existing row for the payload's scope and inserts the new row(s)
 within ONE transaction (one commit at the end). Composing create+delete would
 commit the delete first and break atomicity, so update never does that.
+
+A `delete` removes the WHOLE SCOPE of the target row, not just the one band the
+maker clicked: the admin UI shows one row per config (scope), so for multi-band
+types (pricing/commission) approving a delete via any band id wipes every band
+sharing that scope. Single-row types (limit/wallet_limit/tax) hold exactly one
+row per scope — identical to the legacy single-row delete.
 """
 
 from __future__ import annotations
@@ -26,7 +32,7 @@ from app.auth.principals import AdminPrincipal
 from app.modules.commissions.schemas import CommissionConfigCreateRequest
 from app.modules.commissions.service import (
     create_commission_config,
-    delete_commission_config,
+    delete_commission_config_for_scope,
     replace_commission_config_for_scope,
 )
 from app.modules.limits.schemas import (
@@ -36,24 +42,24 @@ from app.modules.limits.schemas import (
 from app.modules.limits.service import (
     create_limit_config,
     create_wallet_limit_config,
-    delete_limit_config,
-    delete_wallet_limit_config,
+    delete_limit_config_for_scope,
+    delete_wallet_limit_config_for_scope,
     replace_limit_config_for_scope,
     replace_wallet_limit_config_for_scope,
 )
 from app.modules.pricing.schemas import PricingConfigCreateRequest
 from app.modules.pricing.service import (
     create_pricing_config,
-    delete_pricing_config,
+    delete_pricing_config_for_scope,
     replace_pricing_config_for_scope,
 )
 from app.modules.taxes.schemas import TaxConfigCreateRequest
 from app.modules.taxes.service import (
     create_tax_config,
-    delete_tax_config,
+    delete_tax_config_for_scope,
     replace_tax_config_for_scope,
 )
-from app.shared.exceptions import AppHTTPException
+from app.shared.exceptions import AppHTTPException, ConfigRequestTargetNotFound
 from app.shared.models import (
     CONFIG_OP_CREATE,
     CONFIG_OP_UPDATE,
@@ -70,33 +76,22 @@ from app.shared.models import (
     WalletLimitConfig,
 )
 
-# A create needs the schema to parse the payload + the create fn; a delete needs
-# the delete fn. `_CreateFn` and `_DeleteFn` mirror every config service's shape.
+# A create needs the schema to parse the payload + the create fn. `_CreateFn`
+# mirrors every config service's create signature.
 _CreateFn = Callable[..., Awaitable[object]]
-_DeleteFn = Callable[..., Awaitable[None]]
 # A replace takes the validated band set + target id, deletes the scope and
-# inserts the new row(s) in one commit (see the module docstring).
+# inserts the new row(s) in one commit (see the module docstring). A delete-by-
+# scope takes the loaded target row and removes its whole scope in one commit.
 _ReplaceFn = Callable[..., Awaitable[None]]
+_DeleteScopeFn = Callable[..., Awaitable[None]]
 
-# config_type -> (create-request schema, create fn, delete fn).
-_DISPATCH: dict[str, tuple[type[BaseModel], _CreateFn, _DeleteFn]] = {
-    CONFIG_TYPE_PRICING: (
-        PricingConfigCreateRequest,
-        create_pricing_config,
-        delete_pricing_config,
-    ),
-    CONFIG_TYPE_LIMIT: (LimitConfigCreateRequest, create_limit_config, delete_limit_config),
-    CONFIG_TYPE_WALLET_LIMIT: (
-        WalletLimitConfigCreateRequest,
-        create_wallet_limit_config,
-        delete_wallet_limit_config,
-    ),
-    CONFIG_TYPE_COMMISSION: (
-        CommissionConfigCreateRequest,
-        create_commission_config,
-        delete_commission_config,
-    ),
-    CONFIG_TYPE_TAX: (TaxConfigCreateRequest, create_tax_config, delete_tax_config),
+# config_type -> (create-request schema, create fn).
+_DISPATCH: dict[str, tuple[type[BaseModel], _CreateFn]] = {
+    CONFIG_TYPE_PRICING: (PricingConfigCreateRequest, create_pricing_config),
+    CONFIG_TYPE_LIMIT: (LimitConfigCreateRequest, create_limit_config),
+    CONFIG_TYPE_WALLET_LIMIT: (WalletLimitConfigCreateRequest, create_wallet_limit_config),
+    CONFIG_TYPE_COMMISSION: (CommissionConfigCreateRequest, create_commission_config),
+    CONFIG_TYPE_TAX: (TaxConfigCreateRequest, create_tax_config),
 }
 
 # config_type -> the atomic-replace helper an `update` dispatches to.
@@ -106,6 +101,17 @@ _REPLACE_DISPATCH: dict[str, _ReplaceFn] = {
     CONFIG_TYPE_WALLET_LIMIT: replace_wallet_limit_config_for_scope,
     CONFIG_TYPE_COMMISSION: replace_commission_config_for_scope,
     CONFIG_TYPE_TAX: replace_tax_config_for_scope,
+}
+
+# config_type -> the scope-delete helper a `delete` dispatches to. Each removes
+# EVERY row sharing the target's scope (a whole schedule for multi-band types),
+# in one commit.
+_DELETE_SCOPE_DISPATCH: dict[str, _DeleteScopeFn] = {
+    CONFIG_TYPE_PRICING: delete_pricing_config_for_scope,
+    CONFIG_TYPE_LIMIT: delete_limit_config_for_scope,
+    CONFIG_TYPE_WALLET_LIMIT: delete_wallet_limit_config_for_scope,
+    CONFIG_TYPE_COMMISSION: delete_commission_config_for_scope,
+    CONFIG_TYPE_TAX: delete_tax_config_for_scope,
 }
 
 # config_type -> its real config-table model (for the update/delete target
@@ -177,7 +183,7 @@ def build_create_schema(config_type: str, payload: dict[str, Any]) -> BaseModel:
     Raises:
         AppHTTPException (422): the payload doesn't match the create schema.
     """
-    schema_cls, _, _ = _DISPATCH[config_type]
+    schema_cls, _ = _DISPATCH[config_type]
     try:
         return schema_cls.model_validate(payload)
     except ValueError as exc:
@@ -285,11 +291,18 @@ async def apply_config_request(
     so a mid-apply failure rolls the whole replace back (the scope is never left
     partially wiped).
 
+    A delete removes the target's ENTIRE scope, not just the named row: for a
+    multi-band type (pricing/commission) that is the whole schedule; for a
+    single-row type (limit/wallet_limit/tax) the scope holds exactly one row, so
+    it is behaviour-preserving. The scope-delete helper removes every row and
+    writes one `*_config.deleted` audit in a single commit.
+
     Raises:
+        ConfigRequestTargetNotFound (404): a delete whose target row is absent.
         AppHTTPException (409/404/422): propagated from the underlying service
-            (e.g. unique collision, missing delete target, bad payload).
+            (e.g. unique collision, bad payload).
     """
-    _schema_cls, create_fn, delete_fn = _DISPATCH[request.config_type]
+    _schema_cls, create_fn = _DISPATCH[request.config_type]
     if request.operation == CONFIG_OP_CREATE:
         # A create may be a multi-band schedule — apply every band in this same
         # transaction so approval is all-or-none (a failure rolls back all rows
@@ -309,12 +322,15 @@ async def apply_config_request(
             ip_address=ip_address,
         )
     else:
-        # delete — target_config_id is guaranteed set by the propose validation.
+        # delete — remove the target's ENTIRE scope. Load the live target (its
+        # id is guaranteed set by the propose validation) and 404 uniformly if
+        # it is gone; the per-type helper then deletes every row of that row's
+        # scope + writes one `.deleted` audit in a single commit.
         assert request.target_config_id is not None
-        await delete_fn(
-            session,
-            request.target_config_id,
-            request.tenant_id,
-            admin=admin,
-            ip_address=ip_address,
+        target = await load_config_target(
+            session, request.config_type, request.target_config_id, request.tenant_id
         )
+        if target is None:
+            raise ConfigRequestTargetNotFound()
+        delete_scope_fn = _DELETE_SCOPE_DISPATCH[request.config_type]
+        await delete_scope_fn(session, target, admin=admin, ip_address=ip_address)

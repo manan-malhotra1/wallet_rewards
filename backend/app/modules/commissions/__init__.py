@@ -9,14 +9,14 @@ from app.modules.commissions.router import router
 from app.modules.commissions.service import (
     calculate_commission,
     create_commission_config,
-    delete_commission_config,
+    delete_commission_config_for_scope,
     list_commission_configs,
 )
 
 __all__ = [
     "calculate_commission",
     "create_commission_config",
-    "delete_commission_config",
+    "delete_commission_config_for_scope",
     "list_commission_configs",
     "router",
 ]

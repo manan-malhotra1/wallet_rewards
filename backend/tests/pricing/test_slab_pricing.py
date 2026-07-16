@@ -1,6 +1,6 @@
 """Amount-slab pricing tests (Story 19.2).
 
-The amount picks the band whose `[amount_from, amount_to)` contains it; a
+The amount picks the band whose `[amount_from, amount_to]` contains it; a
 specific band beats the NULL-band default; a typed row beats the NULL-type
 default; and a single NULL-band config keeps working (back-compat).
 """
@@ -65,9 +65,13 @@ async def _fee(session: AsyncSession, tenant: Tenant, user: User, amount: str) -
 
 @pytest.mark.asyncio
 async def test_amount_selects_the_right_band(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """Two bands [0,100) fee 2 and [100,None) fee 9 — amount picks the band."""
+    """Two bands [0,99] fee 2 and [100,None] fee 9 — amount picks the band.
+
+    Bounds are inclusive on both ends, so the bands must not share the 100
+    endpoint; the closed band ends at 99 and the open band starts at 100.
+    """
     await _make_band(
-        db_session, test_tenant, user_type=None, amount_from="0", amount_to="100", fixed_fee="2"
+        db_session, test_tenant, user_type=None, amount_from="0", amount_to="99", fixed_fee="2"
     )
     await _make_band(
         db_session, test_tenant, user_type=None, amount_from="100", amount_to=None, fixed_fee="9"
@@ -75,6 +79,7 @@ async def test_amount_selects_the_right_band(db_session: AsyncSession, test_tena
     consumer = await _make_user(db_session, test_tenant, "consumer")
 
     assert await _fee(db_session, test_tenant, consumer, "50") == Decimal("2.000000")
+    assert await _fee(db_session, test_tenant, consumer, "99") == Decimal("2.000000")  # upper incl
     assert await _fee(db_session, test_tenant, consumer, "100") == Decimal("9.000000")  # upper open
     assert await _fee(db_session, test_tenant, consumer, "500") == Decimal("9.000000")
 

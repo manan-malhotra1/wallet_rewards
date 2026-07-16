@@ -284,7 +284,7 @@ async def test_update_pricing_replaces_whole_band_set(
         "payload": {
             "bands": [
                 _pricing_band(test_tenant.id, "0", "100", "1"),
-                _pricing_band(test_tenant.id, "100", None, "2"),
+                _pricing_band(test_tenant.id, "101", None, "2"),
             ]
         },
     }
@@ -310,8 +310,8 @@ async def test_update_pricing_replaces_whole_band_set(
         "payload": {
             "bands": [
                 _pricing_band(test_tenant.id, "0", "100", "1"),
-                _pricing_band(test_tenant.id, "100", "500", "2"),
-                _pricing_band(test_tenant.id, "500", None, "4"),
+                _pricing_band(test_tenant.id, "101", "500", "2"),
+                _pricing_band(test_tenant.id, "501", None, "4"),
             ]
         },
     }

@@ -63,8 +63,9 @@ async def _find_pricing_config(
     """Resolve the fee config for a slot, type- and amount-aware (Epics 16, 19).
 
     Matches the row whose `user_type` is the caller's OR the NULL default, AND
-    whose amount band `[amount_from, amount_to)` contains `amount` (a NULL bound
-    is open on that side; both NULL = applies to all amounts). Precedence:
+    whose amount band `[amount_from, amount_to]` contains `amount` (inclusive on
+    BOTH ends — an amount equal to `amount_to` still matches; a NULL bound is
+    open on that side; both NULL = applies to all amounts). Precedence:
     a typed row beats the NULL-type default, and a specific band beats the
     NULL-band default (`ORDER BY user_type NULLS LAST, amount_from NULLS LAST`).
     Returns None when nothing matches.
@@ -86,7 +87,7 @@ async def _find_pricing_config(
             ),
             or_(
                 PricingConfig.amount_to.is_(None),
-                PricingConfig.amount_to > amount,
+                PricingConfig.amount_to >= amount,
             ),
         )
         .order_by(

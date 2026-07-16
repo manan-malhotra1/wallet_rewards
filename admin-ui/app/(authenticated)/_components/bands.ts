@@ -33,7 +33,10 @@ function bound(value: string): number | null {
  *
  * Rules (mirrors the backend): at least one band; each bounded band's upper
  * bound exceeds its lower bound; bands are ascending and non-overlapping; only
- * the final band may be open-ended (blank upper bound).
+ * the final band may be open-ended (blank upper bound). Band bounds are
+ * INCLUSIVE on both ends (a 401–500 band charges exactly 500), so the next
+ * band must start STRICTLY ABOVE the previous band's upper bound — e.g.
+ * 1–200 then 201–300 is valid, but 1–200 then 200–300 overlaps at 200.
  */
 export function validateBands(bands: BandRow[]): string | null {
   if (bands.length === 0) return "Add at least one band.";
@@ -48,8 +51,10 @@ export function validateBands(bands: BandRow[]): string | null {
     }
     if (i > 0) {
       const prevTo = bound(bands[i - 1].amount_to);
-      if (prevTo === null || from === null || from < prevTo) {
-        return "Bands must be ascending and non-overlapping.";
+      // Inclusive upper bound: the next band must start ABOVE prevTo, so a
+      // `from` equal to prevTo (e.g. 200 after a 1–200 band) is an overlap.
+      if (prevTo === null || from === null || from <= prevTo) {
+        return "Bands must be ascending and non-overlapping (a band's upper amount is included, so the next band must start above it).";
       }
     }
   }

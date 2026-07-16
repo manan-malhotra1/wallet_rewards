@@ -251,7 +251,13 @@ def _assert_shared_scope(models: list[BaseModel]) -> None:
 
 
 def _assert_bands_ordered(models: list[BaseModel]) -> None:
-    """Bands must be ascending + non-overlapping; only the last may be open-ended."""
+    """Bands must be ascending + non-overlapping; only the last may be open-ended.
+
+    Bounds are inclusive on both ends (`[amount_from, amount_to]`), so two bands
+    overlap when the next band STARTS AT OR BEFORE the previous band's inclusive
+    end. This permits the common +1-gap authoring (1-200, 201-400) but rejects
+    shared-boundary bands (1-200, 200-400) that would both contain 200.
+    """
     bands = sorted(
         models,
         key=lambda m: (m.amount_from is None, m.amount_from or 0),  # type: ignore[attr-defined]
@@ -265,8 +271,9 @@ def _assert_bands_ordered(models: list[BaseModel]) -> None:
             )
         if i > 0:
             prev_to = bands[i - 1].amount_to  # type: ignore[attr-defined]
-            # An open-ended earlier band, or a start below the previous end, overlaps.
-            if prev_to is None or (frm is not None and frm < prev_to):
+            # An open-ended earlier band, or a start at/below the previous
+            # inclusive end, overlaps (bounds are inclusive on both ends).
+            if prev_to is None or (frm is not None and frm <= prev_to):
                 raise AppHTTPException(
                     422, "config_request_band_overlap", "Bands must not overlap."
                 )

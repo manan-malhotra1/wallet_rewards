@@ -174,8 +174,8 @@ async def test_delete_pricing_removes_whole_scope_leaves_other_scope(
             "payload": {
                 "bands": [
                     _pricing_band(test_tenant.id, "0", "100", "1"),
-                    _pricing_band(test_tenant.id, "100", "500", "2"),
-                    _pricing_band(test_tenant.id, "500", None, "3"),
+                    _pricing_band(test_tenant.id, "101", "500", "2"),
+                    _pricing_band(test_tenant.id, "501", None, "3"),
                 ]
             },
         },
@@ -225,7 +225,7 @@ async def test_delete_commission_removes_whole_schedule(
             "payload": {
                 "bands": [
                     _commission_band(test_tenant.id, "0", "100", "1"),
-                    _commission_band(test_tenant.id, "100", None, "2"),
+                    _commission_band(test_tenant.id, "101", None, "2"),
                 ]
             },
         },
@@ -368,7 +368,7 @@ async def test_delete_writes_one_deleted_audit_summarising_scope(
             "payload": {
                 "bands": [
                     _pricing_band(test_tenant.id, "0", "100", "1"),
-                    _pricing_band(test_tenant.id, "100", None, "2"),
+                    _pricing_band(test_tenant.id, "101", None, "2"),
                 ]
             },
         },
@@ -459,7 +459,7 @@ async def test_delete_apply_failure_leaves_scope_intact(
             "payload": {
                 "bands": [
                     _pricing_band(test_tenant.id, "0", "100", "1"),
-                    _pricing_band(test_tenant.id, "100", None, "2"),
+                    _pricing_band(test_tenant.id, "101", None, "2"),
                 ]
             },
         },

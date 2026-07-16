@@ -42,7 +42,7 @@ def _bands_body(tenant_id, bands=None):
         "operation": "create",
         "payload": {
             "bands": bands
-            or [_band(tenant_id, "0", "100", "1"), _band(tenant_id, "100", None, "2")]
+            or [_band(tenant_id, "0", "100", "1"), _band(tenant_id, "101", None, "2")]
         },
     }
 
@@ -158,7 +158,7 @@ async def test_commission_multi_band_propose_and_apply(
         "payload": {
             "bands": [
                 _commission_band(test_tenant.id, "0", "100", "1"),
-                _commission_band(test_tenant.id, "100", None, "2"),
+                _commission_band(test_tenant.id, "101", None, "2"),
             ]
         },
     }

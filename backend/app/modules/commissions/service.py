@@ -46,9 +46,11 @@ async def _find_commission_config(
 ) -> CommissionConfig | None:
     """Resolve the commission config for a slot, type- and amount-aware.
 
-    Same precedence rules as pricing: a typed row beats the NULL-type default,
-    and a specific amount band beats the NULL-band default. Returns None when
-    nothing matches (→ no commission).
+    Same rules as pricing: the amount band `[amount_from, amount_to]` is
+    inclusive on BOTH ends (an amount equal to `amount_to` still matches; a NULL
+    bound is open on that side). A typed row beats the NULL-type default, and a
+    specific amount band beats the NULL-band default. Returns None when nothing
+    matches (→ no commission).
     """
     result = await session.execute(
         select(CommissionConfig)
@@ -66,7 +68,7 @@ async def _find_commission_config(
             ),
             or_(
                 CommissionConfig.amount_to.is_(None),
-                CommissionConfig.amount_to > amount,
+                CommissionConfig.amount_to >= amount,
             ),
         )
         .order_by(

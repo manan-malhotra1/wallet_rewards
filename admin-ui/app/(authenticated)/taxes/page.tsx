@@ -14,6 +14,7 @@ import {
 } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import type { ConfigChangeRequest, Instrument, TaxConfig } from "@/lib/api-types";
+import { changeProposedScopeKeys } from "@/lib/config-scope";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -116,6 +117,11 @@ export default async function TaxesPage() {
             tenantId={activeTenantId}
             instruments={instruments}
             canPropose={canPropose}
+            changeProposedKeys={changeProposedScopeKeys(
+              "tax",
+              openRequests,
+              configs,
+            )}
           />
         )}
       </div>

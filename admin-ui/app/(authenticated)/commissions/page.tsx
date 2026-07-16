@@ -21,6 +21,7 @@ import type {
   Service,
 } from "@/lib/api-types";
 import { groupCommissionConfigs } from "@/lib/config-groups";
+import { changeProposedScopeKeys } from "@/lib/config-scope";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -130,6 +131,11 @@ export default async function CommissionsPage() {
             canPropose={canPropose}
             serviceNames={Object.fromEntries(
               services.map((s) => [s.code, s.display_name]),
+            )}
+            changeProposedKeys={changeProposedScopeKeys(
+              "commission",
+              openRequests,
+              configs,
             )}
           />
         )}

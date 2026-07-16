@@ -8,8 +8,10 @@
 import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ConfigStatusPill } from "@/app/(authenticated)/_components/config-status-pill";
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { proposeLimitDeleteAction } from "@/app/(authenticated)/limits/_actions";
+import { configScopeKey } from "@/lib/config-scope";
 import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,6 +83,7 @@ export function LimitsTable({
   instruments,
   canPropose,
   serviceNames,
+  changeProposedKeys,
 }: {
   configs: LimitConfig[];
   tenantId: string;
@@ -90,6 +93,8 @@ export function LimitsTable({
   canPropose: boolean;
   /** `{ code: display_name }` forwarded to the View drawer. */
   serviceNames?: Record<string, string>;
+  /** Scope keys with an open update/delete request → "change proposed" status. */
+  changeProposedKeys: ReadonlySet<string>;
 }) {
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -126,6 +131,7 @@ export function LimitsTable({
             <TableHeaderCell className="text-right">Weekly value</TableHeaderCell>
             <TableHeaderCell className="text-right">Monthly count</TableHeaderCell>
             <TableHeaderCell className="text-right">Monthly value</TableHeaderCell>
+            <TableHeaderCell>Status</TableHeaderCell>
             <TableHeaderCell className="w-[120px] text-right"> </TableHeaderCell>
           </TableRow>
         </TableHead>
@@ -171,6 +177,13 @@ export function LimitsTable({
               </TableCell>
               <TableCell className="text-right font-mono">
                 {formatCap(cfg.monthly_value_cap)}
+              </TableCell>
+              <TableCell>
+                <ConfigStatusPill
+                  changeProposed={changeProposedKeys.has(
+                    configScopeKey("limit", cfg as unknown as Record<string, unknown>),
+                  )}
+                />
               </TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-1">

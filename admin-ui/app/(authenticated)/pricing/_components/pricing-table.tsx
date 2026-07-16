@@ -10,8 +10,10 @@
 import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ConfigStatusPill } from "@/app/(authenticated)/_components/config-status-pill";
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { proposePricingDeleteAction } from "@/app/(authenticated)/pricing/_actions";
+import { configScopeKey } from "@/lib/config-scope";
 import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +58,7 @@ export function PricingTable({
   instruments,
   canPropose,
   serviceNames,
+  changeProposedKeys,
 }: {
   groups: PricingConfigGroup[];
   tenantId: string;
@@ -65,6 +68,8 @@ export function PricingTable({
   canPropose: boolean;
   /** `{ code: display_name }` forwarded to the View drawer. */
   serviceNames?: Record<string, string>;
+  /** Scope keys with an open update/delete request → "change proposed" status. */
+  changeProposedKeys: ReadonlySet<string>;
 }) {
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -103,6 +108,7 @@ export function PricingTable({
             <TableHeaderCell>Currency</TableHeaderCell>
             <TableHeaderCell>User type</TableHeaderCell>
             <TableHeaderCell>Bands</TableHeaderCell>
+            <TableHeaderCell>Status</TableHeaderCell>
             <TableHeaderCell className="w-[120px] text-right"> </TableHeaderCell>
           </TableRow>
         </TableHead>
@@ -145,6 +151,13 @@ export function PricingTable({
                       {ranges}
                     </span>
                   </div>
+                </TableCell>
+                <TableCell>
+                  <ConfigStatusPill
+                    changeProposed={changeProposedKeys.has(
+                      configScopeKey("pricing", group),
+                    )}
+                  />
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">

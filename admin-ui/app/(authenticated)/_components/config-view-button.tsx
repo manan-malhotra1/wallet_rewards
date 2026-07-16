@@ -8,9 +8,10 @@
  */
 "use client";
 
-import { ChevronDown, ChevronRight, Eye, History } from "lucide-react";
+import { ChevronDown, ChevronRight, Columns2, Eye, History, List } from "lucide-react";
 import * as React from "react";
 
+import { ConfigCompare } from "@/app/(authenticated)/_components/config-compare";
 import { ConfigDetail } from "@/app/(authenticated)/_components/config-detail";
 import {
   loadConfigHistoryAction,
@@ -36,7 +37,7 @@ import {
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
 import type { ConfigChangeRequest, ConfigType } from "@/lib/api-types";
-import { formatTimestamp } from "@/lib/utils";
+import { cn, formatTimestamp } from "@/lib/utils";
 
 type LoadState =
   | { status: "idle" }
@@ -285,6 +286,8 @@ function VersionHistory({
   canPropose: boolean;
   onRestore: (version: ConfigChangeRequest, label: string) => void;
 }) {
+  const [comparing, setComparing] = React.useState(false);
+
   if (load.status === "loading" || load.status === "idle") {
     return <p className="text-sm text-muted-foreground">Loading versions…</p>;
   }
@@ -295,19 +298,71 @@ function VersionHistory({
     return <p className="text-sm text-muted-foreground">No prior versions.</p>;
   }
 
-  // Backend returns applied versions oldest-first; the last entry is the live
-  // config. Number by approval order — oldest = v1 — so the live version is
-  // "Active · vN". Display newest-first while keeping each version's label.
-  const currentIndex = load.versions.length - 1;
-  const rows = load.versions
+  return (
+    <div className="space-y-3">
+      {/* Comparison is opt-in; the version list stays the default view. */}
+      <button
+        type="button"
+        onClick={() => setComparing((v) => !v)}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+      >
+        {comparing ? (
+          <>
+            <List className="h-3.5 w-3.5" aria-hidden="true" />
+            Show list
+          </>
+        ) : (
+          <>
+            <Columns2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Compare versions
+          </>
+        )}
+      </button>
+      {comparing ? (
+        <VersionCompare
+          versions={load.versions}
+          configType={configType}
+          serviceNames={serviceNames}
+        />
+      ) : (
+        <VersionList
+          versions={load.versions}
+          configType={configType}
+          serviceNames={serviceNames}
+          canPropose={canPropose}
+          onRestore={onRestore}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Number applied versions oldest-first (v1..vN); the last is the live config. */
+function versionLabel(index: number, total: number): string {
+  return index === total - 1 ? `Active · v${index + 1}` : `v${index + 1}`;
+}
+
+/** The default view: every applied version, newest-first, expandable + restorable. */
+function VersionList({
+  versions,
+  configType,
+  serviceNames,
+  canPropose,
+  onRestore,
+}: {
+  versions: ConfigChangeRequest[];
+  configType: ConfigType;
+  serviceNames?: Record<string, string>;
+  canPropose: boolean;
+  onRestore: (version: ConfigChangeRequest, label: string) => void;
+}) {
+  const currentIndex = versions.length - 1;
+  const rows = versions
     .map((version, index) => ({
       version,
       index,
       isCurrent: index === currentIndex,
-      label:
-        index === currentIndex
-          ? `Active · v${index + 1}`
-          : `v${index + 1}`,
+      label: versionLabel(index, versions.length),
     }))
     .reverse();
 
@@ -326,5 +381,98 @@ function VersionHistory({
         />
       ))}
     </ul>
+  );
+}
+
+/** Version chips for picking one side of the comparison (v1..vN). */
+function VersionChips({
+  versions,
+  selected,
+  onSelect,
+}: {
+  versions: ConfigChangeRequest[];
+  selected: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {versions.map((version, index) => (
+        <button
+          key={version.id ?? index}
+          type="button"
+          onClick={() => onSelect(index)}
+          className={cn(
+            "rounded-md px-2 py-0.5 text-xs transition-colors",
+            index === selected
+              ? "bg-primary font-medium text-primary-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          )}
+        >
+          v{index + 1}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Opt-in comparison: pick any two applied versions (base + compare) and render
+ * a side-by-side diff. Defaults to the previous version vs the current one.
+ */
+function VersionCompare({
+  versions,
+  configType,
+  serviceNames,
+}: {
+  versions: ConfigChangeRequest[];
+  configType: ConfigType;
+  serviceNames?: Record<string, string>;
+}) {
+  const currentIndex = versions.length - 1;
+  const [baseIndex, setBaseIndex] = React.useState(currentIndex - 1);
+  const [compareIndex, setCompareIndex] = React.useState(currentIndex);
+
+  const base = versions[baseIndex];
+  const compare = versions[compareIndex];
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Base</span>
+          <VersionChips
+            versions={versions}
+            selected={baseIndex}
+            onSelect={setBaseIndex}
+          />
+        </div>
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Compare</span>
+          <VersionChips
+            versions={versions}
+            selected={compareIndex}
+            onSelect={setCompareIndex}
+          />
+        </div>
+      </div>
+      {baseIndex === compareIndex ? (
+        <p className="text-sm text-muted-foreground">
+          Pick two different versions to compare.
+        </p>
+      ) : (
+        <ConfigCompare
+          configType={configType}
+          left={{
+            label: versionLabel(baseIndex, versions.length),
+            data: base?.payload ?? null,
+          }}
+          right={{
+            label: versionLabel(compareIndex, versions.length),
+            data: compare?.payload ?? null,
+          }}
+          serviceNames={serviceNames}
+        />
+      )}
+    </div>
   );
 }

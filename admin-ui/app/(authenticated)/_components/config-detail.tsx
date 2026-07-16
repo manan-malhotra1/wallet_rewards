@@ -24,13 +24,16 @@ import type { ConfigType, UserType } from "@/lib/api-types";
 import { serviceLabel } from "@/lib/service-label";
 import { formatAmount } from "@/lib/utils";
 
-type Row = Record<string, unknown>;
+export type Row = Record<string, unknown>;
 
 /** Config types whose payloads carry a multi-band schedule. */
-const BAND_TYPES: ReadonlySet<ConfigType> = new Set(["pricing", "commission"]);
+export const BAND_TYPES: ReadonlySet<ConfigType> = new Set([
+  "pricing",
+  "commission",
+]);
 
 /** Keys never shown — internal identifiers + timestamps. */
-const HIDDEN_KEYS = new Set(["tenant_id", "id", "created_at", "updated_at"]);
+export const HIDDEN_KEYS = new Set(["tenant_id", "id", "created_at", "updated_at"]);
 
 /** Money-valued keys formatted with thousands separators + 2 decimals. */
 const MONEY_KEYS = new Set([
@@ -79,25 +82,35 @@ const FIELD_LABELS: Record<string, string> = {
   receive_monthly_value_cap: "Receive · monthly value",
 };
 
-const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+export const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   financial_wallet: "Wallet",
   points_account: "Points",
 };
 
 /** Title-case a snake_case key when no explicit label exists. */
-function humanize(key: string): string {
+export function humanize(key: string): string {
   const words = key.replace(/_/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+/** Human label for any config field (explicit map, else title-cased key). */
+export function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? humanize(key);
+}
+
 /** Format a decimal-string rate (e.g. "0.15") as a percentage. */
-function pct(value: unknown): string {
+export function pct(value: unknown): string {
   const n = Number(value);
   return Number.isFinite(n) ? `${(n * 100).toFixed(2)}%` : String(value);
 }
 
-/** Format one scalar field value for display. */
-function formatValue(key: string, value: unknown): string {
+/**
+ * Format one scalar field value for display (booleans, percentages, money,
+ * plain strings). The single source of truth for config value formatting —
+ * both the detail view and the side-by-side compare share it so displayed
+ * values (and thus diff detection) stay consistent.
+ */
+export function formatValue(key: string, value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (key.endsWith("_pct")) return pct(value);
@@ -107,14 +120,68 @@ function formatValue(key: string, value: unknown): string {
   return String(value);
 }
 
+/** The fixed / variable-% / cap payload keys for a band config type. */
+export function bandFieldKeys(configType: ConfigType): {
+  fixedKey: string;
+  varKey: string;
+  capKey: string;
+} {
+  const isPricing = configType === "pricing";
+  return {
+    fixedKey: isPricing ? "fixed_fee" : "fixed_commission",
+    varKey: isPricing ? "variable_fee_pct" : "variable_commission_pct",
+    capKey: isPricing ? "fee_cap" : "commission_cap",
+  };
+}
+
+/**
+ * Extract the band rows from a config payload. Band types wrap their bands in
+ * a `{ bands: [...] }` payload (or a single flat row for legacy data); flat
+ * types have no bands and yield an empty list.
+ */
+export function bandsOf(configType: ConfigType, data: Row | null): Row[] {
+  if (!data || !BAND_TYPES.has(configType)) return [];
+  const rawBands = (data as Row).bands;
+  return Array.isArray(rawBands) ? (rawBands as Row[]) : [data];
+}
+
 /** Render the slab band as "from–to", "≥from", "≤to", or "all". */
-function bandLabel(from: unknown, to: unknown): string {
+export function bandLabel(from: unknown, to: unknown): string {
   const f = from === null || from === undefined || from === "" ? null : String(from);
   const t = to === null || to === undefined || to === "" ? null : String(to);
   if (f && t) return `${formatAmount(f)}–${formatAmount(t)}`;
   if (f) return `≥ ${formatAmount(f)}`;
   if (t) return `≤ ${formatAmount(t)}`;
   return "all";
+}
+
+/**
+ * Render one flat field's value as display-ready JSX: a service badge for
+ * `transaction_type`, a user-type badge (or "All types") for `user_type`, the
+ * friendly account-type label for `account_type`, else the formatted scalar.
+ * Shared by the detail view and the compare so both render fields identically.
+ */
+export function renderFieldValue(
+  key: string,
+  value: unknown,
+  serviceNames?: Record<string, string>,
+): React.ReactNode {
+  if (key === "transaction_type") {
+    return (
+      <Badge variant="info">{serviceLabel(String(value), serviceNames)}</Badge>
+    );
+  }
+  if (key === "user_type") {
+    return value ? (
+      <UserTypeBadge type={value as UserType} />
+    ) : (
+      <span className="text-muted-foreground">All types</span>
+    );
+  }
+  if (key === "account_type") {
+    return ACCOUNT_TYPE_LABEL[String(value)] ?? String(value);
+  }
+  return formatValue(key, value);
 }
 
 /** One labeled definition-list row (sans typography). */
@@ -170,10 +237,7 @@ function ScopeFields({
 
 /** Render the bands table (from/to/fixed/variable%/cap). */
 function BandsTable({ configType, bands }: { configType: ConfigType; bands: Row[] }) {
-  const isPricing = configType === "pricing";
-  const fixedKey = isPricing ? "fixed_fee" : "fixed_commission";
-  const varKey = isPricing ? "variable_fee_pct" : "variable_commission_pct";
-  const capKey = isPricing ? "fee_cap" : "commission_cap";
+  const { fixedKey, varKey, capKey } = bandFieldKeys(configType);
   return (
     <div className="overflow-hidden rounded-lg border bg-card">
       <Table>
@@ -190,17 +254,13 @@ function BandsTable({ configType, bands }: { configType: ConfigType; bands: Row[
             <TableRow key={i}>
               <TableCell>{bandLabel(band.amount_from, band.amount_to)}</TableCell>
               <TableCell className="text-right tabular-nums">
-                {formatAmount(String(band[fixedKey] ?? "0"), { fractionDigits: 2 })}
+                {formatValue(fixedKey, band[fixedKey] ?? "0")}
               </TableCell>
               <TableCell className="text-right tabular-nums">
-                {pct(band[varKey] ?? "0")}
+                {formatValue(varKey, band[varKey] ?? "0")}
               </TableCell>
               <TableCell className="text-right tabular-nums">
-                {band[capKey] === null ||
-                band[capKey] === undefined ||
-                band[capKey] === ""
-                  ? "—"
-                  : formatAmount(String(band[capKey]), { fractionDigits: 2 })}
+                {formatValue(capKey, band[capKey])}
               </TableCell>
             </TableRow>
           ))}
@@ -225,22 +285,8 @@ function FlatFields({
   return (
     <dl className="grid grid-cols-[minmax(0,11rem)_1fr] gap-x-3 gap-y-1.5">
       {entries.map(([key, value]) => (
-        <Field key={key} label={FIELD_LABELS[key] ?? humanize(key)}>
-          {key === "transaction_type" ? (
-            <Badge variant="info">
-              {serviceLabel(String(value), serviceNames)}
-            </Badge>
-          ) : key === "user_type" ? (
-            value ? (
-              <UserTypeBadge type={value as UserType} />
-            ) : (
-              <span className="text-muted-foreground">All types</span>
-            )
-          ) : key === "account_type" ? (
-            ACCOUNT_TYPE_LABEL[String(value)] ?? String(value)
-          ) : (
-            formatValue(key, value)
-          )}
+        <Field key={key} label={fieldLabel(key)}>
+          {renderFieldValue(key, value, serviceNames)}
         </Field>
       ))}
     </dl>
@@ -271,8 +317,7 @@ export function ConfigDetail({
   }
 
   if (BAND_TYPES.has(configType)) {
-    const rawBands = (data as Row).bands;
-    const bands: Row[] = Array.isArray(rawBands) ? (rawBands as Row[]) : [data];
+    const bands = bandsOf(configType, data);
     if (bands.length === 0) {
       return <p className="text-sm text-muted-foreground">No bands.</p>;
     }

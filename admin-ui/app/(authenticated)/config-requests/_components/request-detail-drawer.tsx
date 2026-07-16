@@ -14,9 +14,11 @@
 
 import * as React from "react";
 
+import { ConfigCompare } from "@/app/(authenticated)/_components/config-compare";
 import { ConfigDetail } from "@/app/(authenticated)/_components/config-detail";
 import {
   approveConfigRequestAction,
+  loadConfigHistoryAction,
   requestConfigChangesAction,
   withdrawConfigRequestAction,
 } from "@/app/(authenticated)/config-requests/_actions";
@@ -43,15 +45,67 @@ function isNonTerminal(status: ConfigChangeRequest["status"]): boolean {
   return status === "PENDING" || status === "CHANGES_REQUESTED";
 }
 
-/** The proposed change — a delete names its target; create/update render via ConfigDetail. */
+/** Lazy-load state for the target config's applied-version history. */
+type HistoryState =
+  | { status: "idle" | "loading" }
+  | { status: "error"; message: string }
+  | { status: "loaded"; versions: ConfigChangeRequest[] };
+
+/**
+ * The proposed change. For an `update` we show a side-by-side compare of the
+ * current active version (the last applied-history entry) against the proposed
+ * payload, so the checker sees exactly what changes. A `delete` shows the
+ * live config that would be removed; a `create` shows just the proposed
+ * payload (no prior version to compare against).
+ */
 function ProposedChange({
   request,
+  history,
   serviceNames,
 }: {
   request: ConfigChangeRequest;
+  history: HistoryState;
   serviceNames?: Record<string, string>;
 }) {
+  // create — no prior version; render the proposed payload as-is.
+  if (request.operation === "create") {
+    return (
+      <ConfigDetail
+        configType={request.config_type}
+        data={request.payload}
+        serviceNames={serviceNames}
+      />
+    );
+  }
+
+  if (history.status === "loading" || history.status === "idle") {
+    return (
+      <p className="text-sm text-muted-foreground">Loading current config…</p>
+    );
+  }
+
+  const active =
+    history.status === "loaded" && history.versions.length > 0
+      ? history.versions[history.versions.length - 1]
+      : null;
+  const activeVersion = history.status === "loaded" ? history.versions.length : 0;
+
+  // delete — show the live config being removed (fall back to the target id).
   if (request.operation === "delete") {
+    if (active) {
+      return (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-red-700 dark:text-red-300">
+            Config to be removed · Active v{activeVersion}
+          </p>
+          <ConfigDetail
+            configType={request.config_type}
+            data={active.payload}
+            serviceNames={serviceNames}
+          />
+        </div>
+      );
+    }
     return (
       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
         <span className="text-muted-foreground">Target config: </span>
@@ -61,6 +115,20 @@ function ProposedChange({
       </div>
     );
   }
+
+  // update — compare the current active version against the proposed one.
+  if (active) {
+    return (
+      <ConfigCompare
+        configType={request.config_type}
+        left={{ label: `Active · v${activeVersion}`, data: active.payload }}
+        right={{ label: `Proposed · v${activeVersion + 1}`, data: request.payload }}
+        serviceNames={serviceNames}
+      />
+    );
+  }
+
+  // History unavailable — degrade gracefully to the proposed payload alone.
   return (
     <ConfigDetail
       configType={request.config_type}
@@ -197,6 +265,9 @@ export function RequestDetailDrawer({
   // Comment box for request-changes (mandatory comment).
   const [commentMode, setCommentMode] = React.useState(false);
   const [comment, setComment] = React.useState("");
+  // Applied-version history of the target config (update/delete only) — powers
+  // the "current active vs proposed" compare.
+  const [history, setHistory] = React.useState<HistoryState>({ status: "idle" });
 
   // Reset transient editors whenever the drawer opens on a new request.
   React.useEffect(() => {
@@ -204,6 +275,31 @@ export function RequestDetailDrawer({
     setComment("");
     setErrorBanner(null);
   }, [request.id, open]);
+
+  // Load the target config's history for update/delete requests so the checker
+  // can compare against (or view) the current live config. Creates skip this.
+  const { config_type, target_config_id, operation } = request;
+  React.useEffect(() => {
+    if (!open || operation === "create" || !target_config_id) {
+      setHistory({ status: "idle" });
+      return;
+    }
+    let cancelled = false;
+    setHistory({ status: "loading" });
+    loadConfigHistoryAction(tenantId, config_type, target_config_id).then(
+      (result) => {
+        if (cancelled) return;
+        setHistory(
+          result.ok
+            ? { status: "loaded", versions: result.versions }
+            : { status: "error", message: `${result.errorCode}: ${result.message}` },
+        );
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tenantId, config_type, target_config_id, operation, request.id]);
 
   const isMaker = currentAdminId === request.maker_admin_id;
   const isChecker = canApprove && !isMaker;
@@ -270,9 +366,13 @@ export function RequestDetailDrawer({
         <DrawerBody className="space-y-6">
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Proposed change
+              {request.operation === "update" ? "Proposed change (vs active)" : "Proposed change"}
             </h3>
-            <ProposedChange request={request} serviceNames={serviceNames} />
+            <ProposedChange
+              request={request}
+              history={history}
+              serviceNames={serviceNames}
+            />
           </section>
           <VersionHistory request={request} serviceNames={serviceNames} />
           <section>

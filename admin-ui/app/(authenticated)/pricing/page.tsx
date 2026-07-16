@@ -15,6 +15,7 @@ import {
 import { getActiveTenantId } from "@/lib/active-tenant";
 import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
 import { groupPricingConfigs } from "@/lib/config-groups";
+import { changeProposedScopeKeys } from "@/lib/config-scope";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -124,6 +125,11 @@ export default async function PricingPage() {
             canPropose={canPropose}
             serviceNames={Object.fromEntries(
               services.map((s) => [s.code, s.display_name]),
+            )}
+            changeProposedKeys={changeProposedScopeKeys(
+              "pricing",
+              openRequests,
+              configs,
             )}
           />
         )}

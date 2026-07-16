@@ -8,8 +8,10 @@
 import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ConfigStatusPill } from "@/app/(authenticated)/_components/config-status-pill";
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { proposeTaxDeleteAction } from "@/app/(authenticated)/taxes/_actions";
+import { configScopeKey } from "@/lib/config-scope";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -73,12 +75,15 @@ export function TaxTable({
   tenantId,
   instruments,
   canPropose,
+  changeProposedKeys,
 }: {
   configs: TaxConfig[];
   tenantId: string;
   instruments: Instrument[];
   /** platform-admin gate — hides the Edit affordance for other admins. */
   canPropose: boolean;
+  /** Scope keys with an open update/delete request → "change proposed" status. */
+  changeProposedKeys: ReadonlySet<string>;
 }) {
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -108,6 +113,7 @@ export function TaxTable({
             <TableHeaderCell>Fee incl.</TableHeaderCell>
             <TableHeaderCell className="text-right">Commission tax</TableHeaderCell>
             <TableHeaderCell>Comm. incl.</TableHeaderCell>
+            <TableHeaderCell>Status</TableHeaderCell>
             <TableHeaderCell className="w-[120px] text-right"> </TableHeaderCell>
           </TableRow>
         </TableHead>
@@ -134,6 +140,13 @@ export function TaxTable({
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
                 )}
+              </TableCell>
+              <TableCell>
+                <ConfigStatusPill
+                  changeProposed={changeProposedKeys.has(
+                    configScopeKey("tax", cfg as unknown as Record<string, unknown>),
+                  )}
+                />
               </TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-1">

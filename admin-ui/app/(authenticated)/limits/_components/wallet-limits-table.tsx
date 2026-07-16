@@ -9,8 +9,10 @@
 import { Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ConfigStatusPill } from "@/app/(authenticated)/_components/config-status-pill";
 import { ConfigViewButton } from "@/app/(authenticated)/_components/config-view-button";
 import { proposeWalletLimitDeleteAction } from "@/app/(authenticated)/limits/_actions";
+import { configScopeKey } from "@/lib/config-scope";
 import { UserTypeBadge } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -90,6 +92,7 @@ export function WalletLimitsTable({
   tenantId,
   instruments,
   canPropose,
+  changeProposedKeys,
 }: {
   configs: WalletLimitConfig[];
   tenantId: string;
@@ -97,6 +100,8 @@ export function WalletLimitsTable({
   instruments: Instrument[];
   /** platform-admin gate — hides the Edit affordance for other admins. */
   canPropose: boolean;
+  /** Scope keys with an open update/delete request → "change proposed" status. */
+  changeProposedKeys: ReadonlySet<string>;
 }) {
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -126,6 +131,7 @@ export function WalletLimitsTable({
             <TableHeaderCell className="text-right">Max balance</TableHeaderCell>
             <TableHeaderCell>Send caps (count / value)</TableHeaderCell>
             <TableHeaderCell>Receive caps (count / value)</TableHeaderCell>
+            <TableHeaderCell>Status</TableHeaderCell>
             <TableHeaderCell className="w-[120px] text-right"> </TableHeaderCell>
           </TableRow>
         </TableHead>
@@ -148,6 +154,16 @@ export function WalletLimitsTable({
               </TableCell>
               <TableCell className="font-mono text-[11px] text-muted-foreground">
                 {capsSummary(cfg, "receive")}
+              </TableCell>
+              <TableCell>
+                <ConfigStatusPill
+                  changeProposed={changeProposedKeys.has(
+                    configScopeKey(
+                      "wallet_limit",
+                      cfg as unknown as Record<string, unknown>,
+                    ),
+                  )}
+                />
               </TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-1">

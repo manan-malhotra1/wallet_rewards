@@ -18,6 +18,7 @@ import {
 } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
+import { changeProposedScopeKeys } from "@/lib/config-scope";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -147,6 +148,11 @@ export default async function LimitsPage() {
               serviceNames={Object.fromEntries(
                 services.map((s) => [s.code, s.display_name]),
               )}
+              changeProposedKeys={changeProposedScopeKeys(
+                "limit",
+                openRequests,
+                configs,
+              )}
             />
           )}
         </section>
@@ -182,6 +188,11 @@ export default async function LimitsPage() {
               tenantId={activeTenantId}
               instruments={financialInstruments}
               canPropose={canPropose}
+              changeProposedKeys={changeProposedScopeKeys(
+                "wallet_limit",
+                openRequests,
+                walletConfigs,
+              )}
             />
           )}
         </section>

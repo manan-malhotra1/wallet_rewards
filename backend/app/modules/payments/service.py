@@ -168,14 +168,13 @@ async def p2p_transfer(
     # further work — no lock acquired, no ledger touched.
     await require_permission(session, sender_user_id, "p2p")
 
-    # 1b. Fail-closed service gate (Epic 23). When the tenant requires config,
-    # BOTH a pricing and a limit config must resolve for the sender's user_type
-    # or the service is rejected here — before any ledger work. Returns whether
-    # the tenant is fail-closed, which decides if a later missing-pricing error
-    # may be swallowed (legacy fail-open) or must surface.
+    # 1b. Fail-closed service gate (invariant #12). BOTH a pricing and a limit
+    # config must resolve for the sender's user_type or the service is rejected
+    # here — before any ledger work. Unconditional: no tenant flag, no silent
+    # zero-fee fall-through.
     from app.modules.pricing.service import require_pricing_and_limits
 
-    fail_closed = await require_pricing_and_limits(
+    await require_pricing_and_limits(
         session,
         tenant_id=tenant_id,
         service="p2p",
@@ -275,32 +274,24 @@ async def p2p_transfer(
             ip_address=ip_address,
         )
 
-    # 7. Pricing fee calculation (Phase G.3, Pay-PRD-0260 step 3). When the
-    # tenant is fail-closed (Epic 23) the gate above already proved a pricing
-    # config exists, so a missing-band error here is a real gap and must
-    # surface. For legacy (fail-open) tenants we swallow PricingConfigMissing
-    # and treat it as no-fee to stay backward-compatible.
+    # 7. Pricing fee calculation (Phase G.3, Pay-PRD-0260 step 3). The gate above
+    # already proved a pricing config exists for this scope, so a missing band
+    # here is a real gap and must surface as PricingConfigMissing (422) — no
+    # silent zero-fee fall-through (invariant #12).
     from app.modules.pricing.service import (
         calculate_fee,
         get_or_create_system_fee_account,
     )
-    from app.shared.exceptions import PricingConfigMissing
 
-    fee = Decimal("0")
-    try:
-        fee = await calculate_fee(
-            session,
-            tenant_id=tenant_id,
-            user_id=sender_user_id,
-            transaction_type="p2p",
-            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-            currency=currency,
-            amount=amount,
-        )
-    except PricingConfigMissing:
-        if fail_closed:
-            raise
-        fee = Decimal("0")
+    fee = await calculate_fee(
+        session,
+        tenant_id=tenant_id,
+        user_id=sender_user_id,
+        transaction_type="p2p",
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency=currency,
+        amount=amount,
+    )
 
     # 8. Overdraft prevention (Pay-PRD-0220) — must happen BEFORE the
     # ledger write, and must include the fee.

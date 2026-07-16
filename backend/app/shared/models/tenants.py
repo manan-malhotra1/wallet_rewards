@@ -49,10 +49,11 @@ class Tenant(Base):
     keycloak_realm: Mapped[str | None] = mapped_column(String(100), nullable=True)
     base_currency: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
-    # Fail-closed gating (Epic 23): when true, a money path may run only if BOTH
-    # a pricing config AND a limit config resolve for the acting user's type;
-    # otherwise the service is rejected. Default false preserves the legacy
-    # fail-open behaviour for tenants (and tests) that haven't configured yet.
+    # DEPRECATED (invariant #12): no longer gates anything. Fail-closed config
+    # enforcement is now UNCONDITIONAL — every user-facing charge path requires
+    # BOTH a pricing config AND a limit config for the acting user's type, via
+    # `require_pricing_and_limits`, regardless of this flag. Kept as a column
+    # (no migration to drop it) for backward compatibility; do not add new reads.
     require_config_to_transact: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )

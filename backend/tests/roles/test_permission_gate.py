@@ -226,6 +226,34 @@ async def test_p2p_allowed_when_any_role_grants_permission(
     default_user_role: Role,
 ) -> None:
     """User holds multiple roles — any one granting p2p is enough."""
+    # Invariant #12: the pricing+limit gate is unconditional, so this success
+    # path needs both configs seeded (the 403 tests fail earlier, at the role
+    # check, so they need no config). Zero fee — this test asserts only status.
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+
+    await create_pricing_config(
+        db_session,
+        PricingConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("0"),
+        ),
+    )
+    await create_limit_config(
+        db_session,
+        LimitConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
     viewer = Role(tenant_id=test_tenant.id, name="viewer")
     db_session.add(viewer)
     await db_session.flush()

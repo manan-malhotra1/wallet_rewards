@@ -137,14 +137,6 @@ async def pricing_config_exists(
     return result.first() is not None
 
 
-async def _tenant_requires_config(session: AsyncSession, tenant_id: UUID) -> bool:
-    """Return the tenant's `require_config_to_transact` flag (default False)."""
-    result = await session.execute(
-        select(Tenant.require_config_to_transact).where(Tenant.id == tenant_id)
-    )
-    return bool(result.scalar_one_or_none())
-
-
 async def require_pricing_and_limits(
     session: AsyncSession,
     *,
@@ -153,12 +145,15 @@ async def require_pricing_and_limits(
     account_type: str,
     currency: str,
     user_id: UUID,
-) -> bool:
-    """Enforce fail-closed service gating for a money path (Epic 23, Story 23.1).
+) -> None:
+    """Enforce fail-closed service gating for a money path (invariant #12, Epic 23).
 
-    When the tenant's `require_config_to_transact` flag is set, a service may
-    run only if BOTH a pricing config and a limit config resolve for the acting
-    user's type. When the flag is off this is a no-op (legacy fail-open).
+    UNCONDITIONAL: every user-facing charge path runs this gate regardless of
+    any tenant flag. A service may run only if BOTH a pricing config AND a limit
+    config resolve for the acting user's type; if EITHER is missing this raises
+    `ServiceNotConfigured` (422) BEFORE any ledger work — there is no silent
+    zero-fee fall-through (Pay-PRD-0420). The tenant `require_config_to_transact`
+    column no longer gates this and is deprecated.
 
     Args:
         session: Async DB session.
@@ -168,18 +163,10 @@ async def require_pricing_and_limits(
         currency: 3-letter ISO 4217 (case-insensitive).
         user_id: The acting user, whose `user_type` selects the config scope.
 
-    Returns:
-        True if the tenant is fail-closed (config was required and verified),
-        False if the flag is off (gate skipped). Callers use the flag to decide
-        whether downstream config lookups may still fail open.
-
     Raises:
-        ServiceNotConfigured (422): flag on and pricing OR limit config is
-            missing for the resolved user_type.
+        ServiceNotConfigured (422): pricing OR limit config is missing for the
+            resolved user_type.
     """
-    if not await _tenant_requires_config(session, tenant_id):
-        return False
-
     user_type = await resolve_user_type(session, tenant_id, user_id)
 
     if not await pricing_config_exists(
@@ -203,8 +190,6 @@ async def require_pricing_and_limits(
         user_type=user_type,
     ):
         raise ServiceNotConfigured(service, user_type)
-
-    return True
 
 
 # -----------------------------------------------------------------------------
@@ -370,6 +355,9 @@ async def quote_fee(
             amount=amount,
         )
     except PricingConfigMissing:
+        # Exempt from invariant #12's fail-closed rule: this is the READ-ONLY
+        # fee PREVIEW, not a transaction. A missing config previews as zero fee;
+        # the actual charge path (p2p / cash_in / airtime) still fails closed.
         return Decimal("0")
 
 

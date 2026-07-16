@@ -42,6 +42,43 @@ _SUCCESS_MSISDN = "+27825551234"
 _PENDING_MSISDN = "+27820000002"  # simulator: ...0002 -> pending
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _airtime_configs(db_session: AsyncSession, test_tenant: Tenant) -> None:
+    """Autouse: seed a zero-fee airtime pricing + limit config for every test here.
+
+    Invariant #12 makes the pricing+limit gate unconditional, so a recharge can
+    only be created once both configs exist. Every test in this file first
+    creates a recharge via the API, and none is a missing-config negative test,
+    so seeding unconditionally is safe.
+    """
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+    from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET
+
+    await create_pricing_config(
+        db_session,
+        PricingConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="airtime_recharge",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("0"),
+        ),
+    )
+    await create_limit_config(
+        db_session,
+        LimitConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="airtime_recharge",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
+
+
 @pytest_asyncio.fixture
 async def signed_merchant(db_session: AsyncSession, test_tenant: Tenant) -> MerchantProfile:
     """An active airtime merchant with a known Fernet-encrypted callback secret."""

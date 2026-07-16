@@ -124,6 +124,7 @@ async def test_p2p_happy_path_moves_balance(
     idempotency_header: dict[str, str],
 ) -> None:
     """Alice 1000 -> Bob 0; after P2P 250: Alice 750, Bob 250."""
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     alice, alice_wallet = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
@@ -177,6 +178,7 @@ async def test_p2p_rejects_overdraft(
     idempotency_header: dict[str, str],
 ) -> None:
     """Sender with insufficient balance gets 409 — no ledger write."""
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     alice, alice_wallet = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
@@ -215,6 +217,7 @@ async def test_p2p_rejects_self_transfer(
     idempotency_header: dict[str, str],
 ) -> None:
     """Sender == recipient → 422 self_transfer_not_allowed."""
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
     await fund(
         db_session,
@@ -247,6 +250,7 @@ async def test_p2p_rejects_unknown_recipient(
     idempotency_header: dict[str, str],
 ) -> None:
     """Unknown recipient phone → 404 user_not_found."""
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
     await fund(
         db_session,
@@ -279,6 +283,9 @@ async def test_p2p_rejects_sender_without_wallet_in_currency(
     idempotency_header: dict[str, str],
 ) -> None:
     """Sender has a wallet, but not in the requested currency → 404."""
+    # Seed USD config so the gate passes for the requested currency and the
+    # test reaches the wallet lookup it is actually exercising (account_not_found).
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id, currency="USD")
     alice, _ = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111", currency="ZAR"
     )
@@ -312,6 +319,7 @@ async def test_p2p_cross_tenant_recipient_returns_404(
     tenant comes from the session token, so a tenant-A user genuinely cannot
     address a tenant-B recipient even if they share the phone.
     """
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
     await fund(
         db_session,
@@ -413,6 +421,7 @@ async def test_p2p_idempotent_replay(
     test_tenant: Tenant,
 ) -> None:
     """Same Idempotency-Key returns the original transaction; no double-debit."""
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     alice, alice_wallet = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
@@ -467,6 +476,7 @@ async def test_p2p_concurrent_double_spend_blocked(
     The SELECT FOR UPDATE on the sender wallet serialises the operations.
     The second one sees the post-debit balance and gets 409 insufficient_funds.
     """
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
     await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
     await fund(
@@ -521,6 +531,7 @@ async def test_p2p_concurrent_transfers_cannot_exceed_recipient_max_balance(
     wallet, held across the max_balance read + the credit commit, can serialise the
     two receives. Without it both read the pre-credit balance and both pass.
     """
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     sender_a, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 1111")
     sender_b, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 2222")
     _recipient, recipient_wallet = await _make_user_with_wallet(
@@ -595,6 +606,7 @@ async def test_p2p_bidirectional_concurrent_transfers_do_not_deadlock(
     Distinct amounts (100 vs 60) make the net balances prove BOTH transfers
     actually executed, not just one.
     """
+    await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     alice, alice_wallet = await _make_user_with_wallet(
         db_session, test_tenant, phone="+27 82 555 1111"
     )
@@ -659,8 +671,14 @@ async def test_p2p_bidirectional_concurrent_transfers_do_not_deadlock(
 # -----------------------------------------------------------------------------
 
 
-async def _seed_p2p_pricing_and_limit(session: AsyncSession, tenant_id) -> None:
-    """Seed a default (all-user-types) p2p pricing + limit config."""
+async def _seed_p2p_pricing_and_limit(
+    session: AsyncSession, tenant_id, currency: str = "ZAR"
+) -> None:
+    """Seed a default (all-user-types) p2p pricing + limit config.
+
+    Invariant #12 makes the pricing+limit gate unconditional, so every test
+    that actually transacts a p2p must seed both configs for the scope first.
+    """
     from app.modules.limits.schemas import LimitConfigCreateRequest
     from app.modules.limits.service import create_limit_config
     from app.modules.pricing.schemas import PricingConfigCreateRequest
@@ -672,8 +690,10 @@ async def _seed_p2p_pricing_and_limit(session: AsyncSession, tenant_id) -> None:
             tenant_id=tenant_id,
             transaction_type="p2p",
             account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-            currency="ZAR",
-            fixed_fee=Decimal("5"),
+            currency=currency,
+            # Zero fee so balance-asserting tests are unaffected (no fee leg is
+            # added when the fee is 0); the gate only needs a config to EXIST.
+            fixed_fee=Decimal("0"),
         ),
     )
     await create_limit_config(
@@ -682,7 +702,7 @@ async def _seed_p2p_pricing_and_limit(session: AsyncSession, tenant_id) -> None:
             tenant_id=tenant_id,
             transaction_type="p2p",
             account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-            currency="ZAR",
+            currency=currency,
             daily_count_cap=10,
         ),
     )
@@ -824,3 +844,121 @@ async def test_p2p_fails_closed_when_amount_outside_configured_band(
     )
     assert response.status_code == 422, response.text
     assert response.json()["error_code"] == "pricing_config_missing"
+
+
+# -----------------------------------------------------------------------------
+# Invariant #12 — UNCONDITIONAL fail-closed (no tenant flag involved)
+# -----------------------------------------------------------------------------
+
+
+async def _p2p_txn_count(session: AsyncSession, tenant_id) -> int:
+    """Count posted p2p transactions for the tenant (seed 'fund' txns excluded)."""
+    from sqlalchemy import func, select
+
+    from app.shared.models import Transaction
+
+    return await session.scalar(
+        select(func.count())
+        .select_from(Transaction)
+        .where(Transaction.tenant_id == tenant_id, Transaction.transaction_type == "p2p")
+    )
+
+
+@pytest.mark.asyncio
+async def test_invariant12_p2p_fails_closed_without_any_config(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    idempotency_header: dict[str, str],
+) -> None:
+    """No pricing config AND flag NOT set → 422, and NO p2p transaction is written.
+
+    Invariant #12: the gate is unconditional; a missing pricing config fails the
+    charge closed BEFORE any ledger work, with no silent zero-fee.
+    """
+    assert test_tenant.require_config_to_transact is False  # flag plays no role
+    alice, alice_wallet = await _make_user_with_wallet(
+        db_session, test_tenant, phone="+27 82 555 9101"
+    )
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 9102")
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=alice.id,
+        amount=Decimal("1000"),
+        currency="ZAR",
+        idempotency_key="seed-inv12-a",
+    )
+    await db_session.commit()
+
+    alice_auth = await _auth_header_for(alice)
+    response = await async_client.post(
+        "/api/v1/payments/p2p",
+        headers={**alice_auth, **idempotency_header},
+        json={
+            "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 9102"},
+            "amount": "250",
+            "currency": "ZAR",
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "service_not_configured"
+    # No p2p transaction row created, sender balance untouched.
+    assert await _p2p_txn_count(db_session, test_tenant.id) == 0
+    bal, _ = await derive_balance(db_session, alice_wallet.id)
+    assert bal == Decimal("1000")
+
+
+@pytest.mark.asyncio
+async def test_invariant12_p2p_fails_closed_when_pricing_present_but_limit_missing(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    idempotency_header: dict[str, str],
+) -> None:
+    """Pricing present but NO limit config → still 422, no p2p transaction written.
+
+    Invariant #12 requires BOTH configs; a limit gap alone fails the charge closed.
+    """
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+
+    await create_pricing_config(
+        db_session,
+        PricingConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("0"),
+        ),
+    )
+    alice, alice_wallet = await _make_user_with_wallet(
+        db_session, test_tenant, phone="+27 82 555 9201"
+    )
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 9202")
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=alice.id,
+        amount=Decimal("1000"),
+        currency="ZAR",
+        idempotency_key="seed-inv12-b",
+    )
+    await db_session.commit()
+
+    alice_auth = await _auth_header_for(alice)
+    response = await async_client.post(
+        "/api/v1/payments/p2p",
+        headers={**alice_auth, **idempotency_header},
+        json={
+            "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 9202"},
+            "amount": "250",
+            "currency": "ZAR",
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "service_not_configured"
+    assert await _p2p_txn_count(db_session, test_tenant.id) == 0
+    bal, _ = await derive_balance(db_session, alice_wallet.id)
+    assert bal == Decimal("1000")

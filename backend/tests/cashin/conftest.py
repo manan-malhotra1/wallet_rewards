@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.commissions.schemas import CommissionConfigCreateRequest
 from app.modules.commissions.service import create_commission_config
 from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
+from app.modules.limits.schemas import LimitConfigCreateRequest
+from app.modules.limits.service import create_limit_config
 from app.modules.pricing.schemas import PricingConfigCreateRequest
 from app.modules.pricing.service import create_pricing_config
 from app.modules.taxes.schemas import TaxConfigCreateRequest
@@ -175,6 +177,20 @@ async def worked_example_configs(db_session: AsyncSession, test_tenant: Tenant) 
             currency="ZAR",
             fixed_fee=Decimal("2"),
             fee_inclusive=True,
+        ),
+    )
+    # Invariant #12: the cash_in charge path now requires BOTH a pricing AND a
+    # limit config for the scope, unconditionally. Seed a permissive limit so
+    # the worked-example transacting tests reach the ledger (amount 100 well
+    # within a daily count cap of 10; no min/max amount).
+    await create_limit_config(
+        db_session,
+        LimitConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="cash_in",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
         ),
     )
     await create_commission_config(

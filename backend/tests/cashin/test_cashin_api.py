@@ -244,29 +244,26 @@ async def test_cash_in_tenant_isolation(
 
 
 # -----------------------------------------------------------------------------
-# Fail-closed service gating (Epic 23, Story 23.2)
+# Invariant #12 — UNCONDITIONAL fail-closed (no tenant flag involved)
 # -----------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_cash_in_fails_closed_when_flag_on_and_limit_config_missing(
+async def test_cash_in_fails_closed_when_no_config_at_all(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
     agent_float: Account,
     customer_wallet: Account,
-    worked_example_configs: None,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """Flag on + pricing present but NO cash_in limit config → 422, no money moves.
+    """No pricing/limit config (and flag NOT set) → 422, no money moves.
 
-    Closes the M-01 gap: cash_in must honour the same "pricing AND limits"
-    contract as p2p / airtime when the tenant is fail-closed.
+    Invariant #12: the cash_in charge path fails closed unconditionally when a
+    pricing config is missing — before any ledger work.
     """
-    test_tenant.require_config_to_transact = True
-    await db_session.commit()
-
-    before = await derive_balance(db_session, agent_float.id)
+    assert test_tenant.require_config_to_transact is False  # flag plays no role
+    before, _ = await derive_balance(db_session, agent_float.id)
 
     resp = await async_client.post(
         "/api/v1/cashin",
@@ -275,11 +272,58 @@ async def test_cash_in_fails_closed_when_flag_on_and_limit_config_missing(
     )
     assert resp.status_code == 422, resp.text
     assert resp.json()["error_code"] == "service_not_configured"
-    assert await derive_balance(db_session, agent_float.id) == before
+    after, _ = await derive_balance(db_session, agent_float.id)
+    assert after == before
 
 
 @pytest.mark.asyncio
-async def test_cash_in_succeeds_when_flag_on_and_both_configs_present(
+async def test_cash_in_fails_closed_when_pricing_present_but_limit_missing(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    agent_float: Account,
+    customer_wallet: Account,
+    agent_auth_header: dict[str, str],
+) -> None:
+    """Pricing present but NO cash_in limit config → 422, no money moves.
+
+    Invariant #12 requires BOTH configs; a limit gap alone fails the charge
+    closed (this is the M-01 gap: cash_in used to fail closed on missing pricing
+    only). Seeds pricing WITHOUT the limit deliberately, so it cannot use the
+    worked_example_configs fixture (which now seeds both).
+    """
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+    from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET
+
+    await create_pricing_config(
+        db_session,
+        PricingConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="cash_in",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("2"),
+            fee_inclusive=True,
+        ),
+    )
+    await db_session.commit()
+
+    before, _ = await derive_balance(db_session, agent_float.id)
+
+    resp = await async_client.post(
+        "/api/v1/cashin",
+        content=json.dumps(cash_in_body(amount="100")),
+        headers=cash_in_headers(agent_auth_header),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "service_not_configured"
+    after, _ = await derive_balance(db_session, agent_float.id)
+    assert after == before
+
+
+@pytest.mark.asyncio
+async def test_cash_in_succeeds_when_both_configs_present(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
@@ -288,24 +332,7 @@ async def test_cash_in_succeeds_when_flag_on_and_both_configs_present(
     worked_example_configs: None,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """Flag on + pricing AND a cash_in limit config present → cash-in proceeds."""
-    from app.modules.limits.schemas import LimitConfigCreateRequest
-    from app.modules.limits.service import create_limit_config
-    from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET
-
-    test_tenant.require_config_to_transact = True
-    await create_limit_config(
-        db_session,
-        LimitConfigCreateRequest(
-            tenant_id=test_tenant.id,
-            transaction_type="cash_in",
-            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-            currency="ZAR",
-            daily_count_cap=10,
-        ),
-    )
-    await db_session.commit()
-
+    """Pricing AND a cash_in limit config present (via fixture) → cash-in proceeds."""
     resp = await async_client.post(
         "/api/v1/cashin",
         content=json.dumps(cash_in_body(amount="100")),

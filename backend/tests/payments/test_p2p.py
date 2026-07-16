@@ -105,6 +105,40 @@ async def _auth_header_for(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+async def _seed_p2p_config(session: AsyncSession, tenant_id) -> None:
+    """Seed a zero-fee p2p pricing + limit config for ZAR.
+
+    Invariant #12 makes the pricing+limit gate unconditional, so any test that
+    actually transacts a p2p must seed both configs first. Zero fee keeps
+    balance-sensitive assertions unaffected.
+    """
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+
+    await create_pricing_config(
+        session,
+        PricingConfigCreateRequest(
+            tenant_id=tenant_id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("0"),
+        ),
+    )
+    await create_limit_config(
+        session,
+        LimitConfigCreateRequest(
+            tenant_id=tenant_id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
+
+
 async def _seed_rule(session: AsyncSession, tenant: Tenant) -> Rule:
     """Insert a minimal `first_time` rule so reward_events FK is satisfied.
 
@@ -145,6 +179,7 @@ async def test_p2p_response_includes_earned_points_field(
     asserts presence + null-when-no-rules; the next test covers the
     integer-when-rules-fired branch.
     """
+    await _seed_p2p_config(db_session, test_tenant.id)
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7771")
     bob, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7772")
     await fund(
@@ -202,6 +237,7 @@ async def test_p2p_earned_points_reflects_rule_issuance(
     construction; a single seeded row is sufficient since the resolver
     is a SUM aggregate that already collapses to identity for one row.
     """
+    await _seed_p2p_config(db_session, test_tenant.id)
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 8881")
     await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 8882")
     await fund(

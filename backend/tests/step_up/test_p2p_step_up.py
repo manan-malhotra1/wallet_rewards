@@ -6,6 +6,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,6 +77,42 @@ async def _make_tenant_user_with_pin(
     await session.commit()
     await session.refresh(user)
     return user, wallet
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _seed_p2p_config(db_session: AsyncSession, test_tenant: Tenant) -> None:
+    """Autouse: seed a zero-fee p2p pricing + limit config for every test here.
+
+    Invariant #12 makes the pricing+limit gate unconditional, so a p2p can only
+    reach the step-up logic these tests exercise once both configs exist. Zero
+    fee keeps the step-up amounts unaffected. No test in this file is a
+    missing-config negative test, so seeding unconditionally is safe.
+    """
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+
+    await create_pricing_config(
+        db_session,
+        PricingConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("0"),
+        ),
+    )
+    await create_limit_config(
+        db_session,
+        LimitConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="p2p",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
 
 
 async def _seed_p2p_policy(session: AsyncSession, tenant: Tenant, threshold: str = "200") -> None:

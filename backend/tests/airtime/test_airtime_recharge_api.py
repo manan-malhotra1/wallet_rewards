@@ -114,6 +114,43 @@ async def funded_wallet(
 
 
 @pytest_asyncio.fixture
+async def airtime_configs(db_session: AsyncSession, test_tenant: Tenant) -> None:
+    """Seed a zero-fee airtime pricing + limit config for ZAR.
+
+    Invariant #12 makes the pricing+limit gate unconditional, so any test that
+    actually transacts a recharge must seed BOTH configs for the scope first.
+    Zero fee keeps the balance assertions (wallet 500 → 400, holding 100)
+    unaffected. Negative-config tests deliberately DON'T request this fixture.
+    """
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+    from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET
+
+    await create_pricing_config(
+        db_session,
+        PricingConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="airtime_recharge",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("0"),
+        ),
+    )
+    await create_limit_config(
+        db_session,
+        LimitConfigCreateRequest(
+            tenant_id=test_tenant.id,
+            transaction_type="airtime_recharge",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
+
+
+@pytest_asyncio.fixture
 async def unpermitted_auth_header(db_session: AsyncSession, test_tenant: Tenant) -> dict[str, str]:
     """A session for a user with no role — fails the airtime permission check."""
     from app.auth.sessions import create_session
@@ -165,6 +202,7 @@ async def test_recharge_success_debits_user_credits_merchant(
     test_tenant: Tenant,
     airtime_merchant: MerchantProfile,
     funded_wallet: Account,
+    airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
     """A fast (synchronous) success returns 200 COMPLETED and moves money."""
@@ -190,6 +228,7 @@ async def test_recharge_provider_failure_reverses_and_refunds(
     test_tenant: Tenant,
     airtime_merchant: MerchantProfile,
     funded_wallet: Account,
+    airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
     """A provider failure returns 200 REVERSED and refunds the user in full."""
@@ -211,6 +250,7 @@ async def test_recharge_pending_returns_202(
     async_client: AsyncClient,
     airtime_merchant: MerchantProfile,
     funded_wallet: Account,
+    airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
     """A provider 'pending' returns 202 and leaves the recharge PENDING."""
@@ -299,6 +339,7 @@ async def test_recharge_insufficient_funds_rejected(
     async_client: AsyncClient,
     airtime_merchant: MerchantProfile,
     user_wallet: Account,
+    airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
     """An unfunded wallet cannot buy airtime -> 409 insufficient_funds."""
@@ -323,6 +364,7 @@ async def test_recharge_idempotent_replay_returns_same_recharge(
     test_tenant: Tenant,
     airtime_merchant: MerchantProfile,
     funded_wallet: Account,
+    airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
     """Replaying the same Idempotency-Key returns the same recharge, once."""
@@ -358,6 +400,7 @@ async def test_get_recharge_is_tenant_scoped(
     other_tenant: Tenant,
     airtime_merchant: MerchantProfile,
     funded_wallet: Account,
+    airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
     """A recharge created in tenant A is not readable by a tenant B session."""
@@ -401,6 +444,7 @@ async def test_get_recharge_rejects_other_user_same_tenant(
     test_tenant: Tenant,
     airtime_merchant: MerchantProfile,
     funded_wallet: Account,
+    airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
     """A different user in the SAME tenant cannot read alice's recharge (S7 A2)."""
@@ -427,12 +471,12 @@ async def test_get_recharge_rejects_other_user_same_tenant(
 
 
 # -----------------------------------------------------------------------------
-# Fail-closed service gating (Epic 23, Story 23.2)
+# Invariant #12 — UNCONDITIONAL fail-closed (no tenant flag involved)
 # -----------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_recharge_fails_closed_when_flag_on_and_config_missing(
+async def test_recharge_fails_closed_without_any_config(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
@@ -440,9 +484,12 @@ async def test_recharge_fails_closed_when_flag_on_and_config_missing(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Flag on + no pricing/limit config for airtime → 422 service_not_configured."""
-    test_tenant.require_config_to_transact = True
-    await db_session.commit()
+    """No pricing/limit config (flag NOT set) → 422 service_not_configured, no money moves.
+
+    Invariant #12: the airtime charge path fails closed unconditionally when a
+    pricing config is missing — before any reservation is written.
+    """
+    assert test_tenant.require_config_to_transact is False  # flag plays no role
 
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
@@ -456,7 +503,7 @@ async def test_recharge_fails_closed_when_flag_on_and_config_missing(
 
 
 @pytest.mark.asyncio
-async def test_recharge_succeeds_when_flag_on_and_configs_present(
+async def test_recharge_fails_closed_when_pricing_present_but_limit_missing(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
@@ -464,14 +511,14 @@ async def test_recharge_succeeds_when_flag_on_and_configs_present(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Flag on + pricing + limit config for airtime → recharge proceeds."""
-    from app.modules.limits.schemas import LimitConfigCreateRequest
-    from app.modules.limits.service import create_limit_config
+    """Pricing present but NO limit config → still 422, no money moves.
+
+    Invariant #12 requires BOTH configs; a limit gap alone fails the charge closed.
+    """
     from app.modules.pricing.schemas import PricingConfigCreateRequest
     from app.modules.pricing.service import create_pricing_config
     from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET
 
-    test_tenant.require_config_to_transact = True
     await create_pricing_config(
         db_session,
         PricingConfigCreateRequest(
@@ -482,18 +529,29 @@ async def test_recharge_succeeds_when_flag_on_and_configs_present(
             fixed_fee=Decimal("0"),
         ),
     )
-    await create_limit_config(
-        db_session,
-        LimitConfigCreateRequest(
-            tenant_id=test_tenant.id,
-            transaction_type="airtime_recharge",
-            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-            currency="ZAR",
-            daily_count_cap=10,
-        ),
-    )
     await db_session.commit()
 
+    resp = await async_client.post(
+        "/api/v1/airtime/recharge",
+        content=json.dumps(_body()),
+        headers=_headers(alice_auth_header),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "service_not_configured"
+    assert await _balance(db_session, funded_wallet.id) == Decimal("500")
+
+
+@pytest.mark.asyncio
+async def test_recharge_succeeds_when_both_configs_present(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    airtime_merchant: MerchantProfile,
+    funded_wallet: Account,
+    airtime_configs: None,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Pricing + limit config for airtime present → recharge proceeds."""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body()),

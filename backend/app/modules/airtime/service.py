@@ -54,7 +54,6 @@ from app.shared.exceptions import (
     AirtimeRechargeAlreadySettled,
     AirtimeRechargeNotFound,
     InsufficientFunds,
-    PricingConfigMissing,
     SignatureNotConfigured,
     TenantNotFound,
 )
@@ -219,14 +218,12 @@ async def initiate_recharge(
 
     currency = request.currency.upper()
 
-    # Fail-closed service gate (Epic 23) — when the tenant requires config,
-    # BOTH a pricing and a limit config must resolve for the user's type or the
-    # recharge is rejected before any write (and before the wallet / merchant
-    # holding lookups). The returned flag decides whether a later missing-pricing
-    # error may be swallowed (legacy) or must surface.
+    # Fail-closed service gate (invariant #12) — BOTH a pricing and a limit
+    # config must resolve for the user's type or the recharge is rejected before
+    # any write (and before the wallet / merchant holding lookups). Unconditional.
     from app.modules.pricing.service import require_pricing_and_limits
 
-    fail_closed = await require_pricing_and_limits(
+    await require_pricing_and_limits(
         session,
         tenant_id=tenant_id,
         service=AIRTIME_SERVICE_CODE,
@@ -267,9 +264,7 @@ async def initiate_recharge(
             ip_address=ip_address,
         )
 
-    fee = await _resolve_fee(
-        session, tenant_id, user_id, currency, request.amount, fail_closed=fail_closed
-    )
+    fee = await _resolve_fee(session, tenant_id, user_id, currency, request.amount)
 
     # Advisory overdraft early-error (Pay-PRD-0220) — includes the fee. The
     # authoritative check is `post_transaction`'s balance guard (invariant #11),
@@ -362,30 +357,28 @@ async def _resolve_fee(
     user_id: UUID,
     currency: str,
     amount: Decimal,
-    *,
-    fail_closed: bool = False,
 ) -> Decimal:
     """Type-aware fee for the recharge.
 
-    When `fail_closed` (the tenant requires config, Epic 23), a missing pricing
-    config surfaces as an error. Otherwise no pricing config => no fee (legacy).
+    The gate (`require_pricing_and_limits`) has already proven a pricing config
+    exists for this scope, so a missing band here is a real gap (invariant #12,
+    no silent zero-fee): `calculate_fee` raises `PricingConfigMissing` (422)
+    rather than being swallowed.
+
+    Raises:
+        PricingConfigMissing: 422 — no pricing band resolves for this amount.
     """
     from app.modules.pricing.service import calculate_fee
 
-    try:
-        return await calculate_fee(
-            session,
-            tenant_id=tenant_id,
-            user_id=user_id,
-            transaction_type=AIRTIME_SERVICE_CODE,
-            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-            currency=currency,
-            amount=amount,
-        )
-    except PricingConfigMissing:
-        if fail_closed:
-            raise
-        return Decimal("0")
+    return await calculate_fee(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        transaction_type=AIRTIME_SERVICE_CODE,
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency=currency,
+        amount=amount,
+    )
 
 
 # -----------------------------------------------------------------------------

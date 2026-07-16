@@ -20,6 +20,7 @@ import type {
   Instrument,
   Service,
 } from "@/lib/api-types";
+import { groupCommissionConfigs } from "@/lib/config-groups";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -122,7 +123,7 @@ export default async function CommissionsPage() {
           />
         ) : (
           <CommissionTable
-            configs={configs}
+            groups={groupCommissionConfigs(configs)}
             tenantId={activeTenantId}
             services={services}
             instruments={instruments}

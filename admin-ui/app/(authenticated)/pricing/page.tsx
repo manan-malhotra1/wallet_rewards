@@ -14,6 +14,7 @@ import {
 } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
+import { groupPricingConfigs } from "@/lib/config-groups";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -116,7 +117,7 @@ export default async function PricingPage() {
           />
         ) : (
           <PricingTable
-            configs={configs}
+            groups={groupPricingConfigs(configs)}
             tenantId={activeTenantId}
             services={services}
             instruments={instruments}

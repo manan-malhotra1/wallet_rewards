@@ -1,8 +1,9 @@
 /**
- * Pricing table (Epic 24 / Story 24.1). Renders pricing configs incl. the
- * slab band and a fee-inclusive indicator. Deleting proposes a DELETE via
- * the maker-checker pipeline — nothing is removed until a second admin
- * approves.
+ * Pricing table (Epic 24 / Story 24.1; Epic 25 Pass 1). Renders ONE row per
+ * pricing CONFIG (scope), not one per band — the bands of a schedule live
+ * inside the View drawer and the Edit dialog. Deleting proposes a DELETE of the
+ * whole scope via the maker-checker pipeline; nothing is removed until a second
+ * admin approves.
  */
 "use client";
 
@@ -24,9 +25,9 @@ import {
 } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import type { Instrument, PricingConfig, Service } from "@/lib/api-types";
+import type { Instrument, PricingConfigGroup, Service } from "@/lib/api-types";
 import { serviceLabel } from "@/lib/service-label";
-import { formatAmount, formatCap } from "@/lib/utils";
+import { formatAmount } from "@/lib/utils";
 
 import { CreatePricingDialog } from "./create-pricing-dialog";
 
@@ -35,64 +36,28 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   points_account: "Points",
 };
 
-/** Render the slab band as "from–to", "≥from", "≤to", or "all". */
-function bandLabel(from: string | null, to: string | null): string {
-  if (from && to) return `${formatAmount(from)}–${formatAmount(to)}`;
-  if (from) return `≥ ${formatAmount(from)}`;
-  if (to) return `≤ ${formatAmount(to)}`;
+/**
+ * Render one band's range compactly: "0–1,000", "5,000+" (open-ended top), or
+ * "≤ 1,000" (open-ended bottom). Amounts use 2-decimal thousands formatting.
+ */
+function bandRange(from: string | null, to: string | null): string {
+  const f = from ? formatAmount(from) : null;
+  const t = to ? formatAmount(to) : null;
+  if (f && t) return `${f}–${t}`;
+  if (f) return `${f}+`;
+  if (t) return `≤ ${t}`;
   return "all";
 }
 
-/**
- * Per-row Edit affordance — opens the create dialog in edit mode (proposes an
- * `update`). Self-contained: owns its open state so it composes with a tooltip
- * without fighting the dialog's own trigger.
- */
-function EditPricingButton({
-  cfg,
-  tenantId,
-  services,
-  instruments,
-}: {
-  cfg: PricingConfig;
-  tenantId: string;
-  services: Service[];
-  instruments: Instrument[];
-}) {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <>
-      <Tooltip content="Edit">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Edit pricing config"
-          onClick={() => setOpen(true)}
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-      </Tooltip>
-      <CreatePricingDialog
-        tenantId={tenantId}
-        services={services}
-        instruments={instruments}
-        editConfig={cfg}
-        open={open}
-        onOpenChange={setOpen}
-      />
-    </>
-  );
-}
-
 export function PricingTable({
-  configs,
+  groups,
   tenantId,
   services,
   instruments,
   canPropose,
   serviceNames,
 }: {
-  configs: PricingConfig[];
+  groups: PricingConfigGroup[];
   tenantId: string;
   services: Service[];
   instruments: Instrument[];
@@ -104,9 +69,18 @@ export function PricingTable({
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
 
-  const onDelete = async (id: string) => {
-    setPending(id);
-    const result = await proposePricingDeleteAction(id, tenantId);
+  // Delete acts on the whole schedule; the backend removes every band of the
+  // scope keyed off the first band's id.
+  const onDelete = async (group: PricingConfigGroup) => {
+    if (
+      !window.confirm(
+        `Propose deleting this whole schedule (${group.bands.length} band${group.bands.length === 1 ? "" : "s"})?`,
+      )
+    ) {
+      return;
+    }
+    setPending(group.key);
+    const result = await proposePricingDeleteAction(group.bands[0].id, tenantId);
     setPending(null);
     if (result.ok) {
       toast({ title: "Delete proposed — pending approval" });
@@ -124,90 +98,130 @@ export function PricingTable({
       <Table>
         <TableHead>
           <TableRow>
-            <TableHeaderCell>Txn type</TableHeaderCell>
+            <TableHeaderCell>Service</TableHeaderCell>
             <TableHeaderCell>Account</TableHeaderCell>
             <TableHeaderCell>Currency</TableHeaderCell>
             <TableHeaderCell>User type</TableHeaderCell>
-            <TableHeaderCell>Band</TableHeaderCell>
-            <TableHeaderCell className="text-right">Fixed</TableHeaderCell>
-            <TableHeaderCell className="text-right">Variable %</TableHeaderCell>
-            <TableHeaderCell className="text-right">Fee cap</TableHeaderCell>
-            <TableHeaderCell>Fee incl.</TableHeaderCell>
+            <TableHeaderCell>Bands</TableHeaderCell>
             <TableHeaderCell className="w-[120px] text-right"> </TableHeaderCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {configs.map((cfg) => (
-            <TableRow key={cfg.id}>
-              <TableCell className="font-medium">
-                <Badge variant="info">
-                  {serviceLabel(cfg.transaction_type, serviceNames)}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                {ACCOUNT_TYPE_LABEL[cfg.account_type] ?? cfg.account_type}
-              </TableCell>
-              <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
-              <TableCell>
-                {cfg.user_type ? (
-                  <UserTypeBadge type={cfg.user_type} />
-                ) : (
-                  <span className="text-xs text-muted-foreground">All types</span>
-                )}
-              </TableCell>
-              <TableCell className="font-mono text-xs">
-                {bandLabel(cfg.amount_from, cfg.amount_to)}
-              </TableCell>
-              <TableCell className="text-right font-mono">
-                {formatAmount(cfg.fixed_fee, { fractionDigits: 2 })}
-              </TableCell>
-              <TableCell className="text-right font-mono">
-                {(parseFloat(cfg.variable_fee_pct) * 100).toFixed(2)}%
-              </TableCell>
-              <TableCell className="text-right font-mono">
-                {formatCap(cfg.fee_cap)}
-              </TableCell>
-              <TableCell>
-                {cfg.fee_inclusive ? (
-                  <Badge variant="secondary">Incl.</Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center justify-end gap-1">
-                  <ConfigViewButton
-                    configType="pricing"
-                    data={cfg as unknown as Record<string, unknown>}
-                    title={`Pricing · ${serviceLabel(cfg.transaction_type, serviceNames)} · ${cfg.currency}`}
-                    serviceNames={serviceNames}
-                    tenantId={tenantId}
-                    targetConfigId={cfg.id}
-                    canPropose={canPropose}
-                  />
-                  {canPropose && (
-                    <EditPricingButton
-                      cfg={cfg}
-                      tenantId={tenantId}
-                      services={services}
-                      instruments={instruments}
-                    />
+          {groups.map((group) => {
+            const name = serviceLabel(group.transaction_type, serviceNames);
+            const ranges = group.bands
+              .map((b) => bandRange(b.amount_from, b.amount_to))
+              .join(" · ");
+            const count = group.bands.length;
+            return (
+              <TableRow key={group.key}>
+                <TableCell className="font-medium">
+                  <Badge variant="info">{name}</Badge>
+                </TableCell>
+                <TableCell>
+                  {ACCOUNT_TYPE_LABEL[group.account_type] ?? group.account_type}
+                </TableCell>
+                <TableCell className="font-mono text-xs">
+                  {group.currency}
+                </TableCell>
+                <TableCell>
+                  {group.user_type ? (
+                    <UserTypeBadge type={group.user_type} />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      All types
+                    </span>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Propose delete of pricing config"
-                    disabled={pending === cfg.id}
-                    onClick={() => onDelete(cfg.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-medium">
+                      {count} band{count === 1 ? "" : "s"}
+                    </span>
+                    <span
+                      className="max-w-[240px] truncate font-mono text-[11px] text-muted-foreground"
+                      title={ranges}
+                    >
+                      {ranges}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center justify-end gap-1">
+                    <ConfigViewButton
+                      configType="pricing"
+                      data={{ bands: group.bands }}
+                      title={`Pricing · ${name} · ${group.currency}`}
+                      serviceNames={serviceNames}
+                      tenantId={tenantId}
+                      targetConfigId={group.bands[0].id}
+                      canPropose={canPropose}
+                    />
+                    {canPropose && (
+                      <EditPricingButton
+                        group={group}
+                        tenantId={tenantId}
+                        services={services}
+                        instruments={instruments}
+                      />
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Propose delete of pricing schedule"
+                      disabled={pending === group.key}
+                      onClick={() => onDelete(group)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+/**
+ * Per-row Edit affordance — opens the create dialog in edit mode (proposes an
+ * `update`) prefilled with the whole schedule's bands. Self-contained: owns its
+ * open state so it composes with a tooltip without fighting the dialog trigger.
+ */
+function EditPricingButton({
+  group,
+  tenantId,
+  services,
+  instruments,
+}: {
+  group: PricingConfigGroup;
+  tenantId: string;
+  services: Service[];
+  instruments: Instrument[];
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <Tooltip content="Edit">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Edit pricing schedule"
+          onClick={() => setOpen(true)}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      </Tooltip>
+      <CreatePricingDialog
+        tenantId={tenantId}
+        services={services}
+        instruments={instruments}
+        editGroup={group}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
   );
 }

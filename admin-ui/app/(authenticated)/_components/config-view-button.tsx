@@ -93,7 +93,6 @@ function VersionRow({
           )}
           <span className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium text-foreground">{label}</span>
-            {isCurrent && <Badge variant="info">Live</Badge>}
             <OperationBadge operation={version.operation} />
             <span className="text-xs text-muted-foreground">
               {formatTimestamp(version.updated_at)}
@@ -296,15 +295,19 @@ function VersionHistory({
     return <p className="text-sm text-muted-foreground">No prior versions.</p>;
   }
 
-  // Backend returns oldest-first; the last entry is the current live config.
-  // Display newest-first while keeping each version's chronological label.
+  // Backend returns applied versions oldest-first; the last entry is the live
+  // config. Number by approval order — oldest = v1 — so the live version is
+  // "Active · vN". Display newest-first while keeping each version's label.
   const currentIndex = load.versions.length - 1;
   const rows = load.versions
     .map((version, index) => ({
       version,
       index,
       isCurrent: index === currentIndex,
-      label: index === currentIndex ? "Current" : `v${index + 1}`,
+      label:
+        index === currentIndex
+          ? `Active · v${index + 1}`
+          : `v${index + 1}`,
     }))
     .reverse();
 

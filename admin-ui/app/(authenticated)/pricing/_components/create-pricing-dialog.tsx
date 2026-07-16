@@ -10,9 +10,10 @@
  * proposal, the submit button reads "Resubmit", and it revises + resubmits the
  * request instead of proposing a new one.
  *
- * With an `editConfig` (a live pricing row), it opens in EDIT mode (Task 1):
- * pre-filled from that row with the scope fields locked, and submitting
- * PROPOSES an `update` against the row's id. Bands may still be added/removed.
+ * With an `editGroup` (a live pricing config = one scope + all its bands), it
+ * opens in EDIT mode: pre-filled from the whole schedule with the scope fields
+ * locked, and submitting PROPOSES an `update` against the scope (targeting the
+ * first band's id). Bands may still be added/removed.
  */
 "use client";
 
@@ -56,7 +57,7 @@ import { useToast } from "@/components/ui/toast";
 import type {
   ConfigChangeRequest,
   Instrument,
-  PricingConfig,
+  PricingConfigGroup,
   Service,
   UserType,
 } from "@/lib/api-types";
@@ -84,17 +85,18 @@ function str(value: unknown, fallback = ""): string {
   return value === null || value === undefined ? fallback : String(value);
 }
 
-/** Derive the initial scope + bands, from a revise proposal, an edited live row, or fresh defaults. */
+/** Derive the initial scope + bands, from a revise proposal, an edited live schedule, or fresh defaults. */
 function deriveInitial(
   reviseRequest: ConfigChangeRequest | undefined,
-  editConfig: PricingConfig | undefined,
+  editGroup: PricingConfigGroup | undefined,
   services: Service[],
   instruments: Instrument[],
 ): { scope: Scope; bands: BandRow[] } {
-  // Revise takes precedence over edit; a live row is a single-band source.
+  // Revise takes precedence over edit; a live group is a `{ bands: [...] }`
+  // source so every band of the schedule hydrates.
   const source = reviseRequest
     ? reviseRequest.payload
-    : ((editConfig as Record<string, unknown> | undefined) ?? null);
+    : ((editGroup as unknown as Record<string, unknown> | undefined) ?? null);
   if (source) {
     const rows = bandsFromPayload(source);
     const first = rows[0] ?? {};
@@ -151,7 +153,7 @@ export function CreatePricingDialog({
   instruments,
   trigger,
   reviseRequest,
-  editConfig,
+  editGroup,
   open: controlledOpen,
   onOpenChange,
 }: {
@@ -161,8 +163,8 @@ export function CreatePricingDialog({
   /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
   trigger?: React.ReactNode;
   reviseRequest?: ConfigChangeRequest;
-  /** A live pricing row to edit in place (proposes an `update`). */
-  editConfig?: PricingConfig;
+  /** A live pricing config (scope + all bands) to edit in place (proposes an `update`). */
+  editGroup?: PricingConfigGroup;
   /** Controlled open state (edit affordance drives this); uncontrolled otherwise. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -170,14 +172,14 @@ export function CreatePricingDialog({
   const [internalOpen, setInternalOpen] = React.useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
-  const editMode = Boolean(editConfig);
+  const editMode = Boolean(editGroup);
   // Scope (identity) fields lock when editing a live config OR revising a
   // sent-back UPDATE — both target an existing config's values, not its
   // identity. A create revise keeps scope editable.
   const scopeLocked = editMode || reviseRequest?.operation === "update";
   const initial = React.useMemo(
-    () => deriveInitial(reviseRequest, editConfig, services, instruments),
-    [reviseRequest, editConfig, services, instruments],
+    () => deriveInitial(reviseRequest, editGroup, services, instruments),
+    [reviseRequest, editGroup, services, instruments],
   );
   const [scope, setScope] = React.useState<Scope>(initial.scope);
   const [bands, setBands] = React.useState<BandRow[]>(initial.bands);
@@ -231,8 +233,8 @@ export function CreatePricingDialog({
       ? await reviseAndResubmitConfigRequestAction(tenantId, reviseRequest.id, {
           bands: rows,
         })
-      : editConfig
-        ? await proposePricingUpdateAction(tenantId, editConfig.id, {
+      : editGroup
+        ? await proposePricingUpdateAction(tenantId, editGroup.bands[0].id, {
             bands: rows,
           })
         : await proposePricingBandsAction(tenantId, { bands: rows });

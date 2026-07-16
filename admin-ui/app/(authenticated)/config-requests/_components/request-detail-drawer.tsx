@@ -129,7 +129,11 @@ function VersionHistory({
 
   if (request.operation === "delete" || ordered.length === 0) return null;
 
-  const current = ordered.find((r) => r.revision === selected) ?? ordered[ordered.length - 1];
+  const current =
+    ordered.find((r) => r.revision === selected) ?? ordered[ordered.length - 1];
+  // Number by order (oldest = v1); the last entry is the live/current one.
+  const currentOrder = ordered.findIndex((r) => r.revision === current.revision) + 1;
+  const isLatest = current.revision === ordered[ordered.length - 1].revision;
 
   return (
     <section>
@@ -137,7 +141,7 @@ function VersionHistory({
         Versions
       </h3>
       <div className="mb-3 flex flex-wrap gap-1">
-        {ordered.map((rev) => (
+        {ordered.map((rev, index) => (
           <button
             key={rev.revision}
             type="button"
@@ -150,12 +154,13 @@ function VersionHistory({
                 : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
             )}
           >
-            v{rev.revision}
+            v{index + 1}
           </button>
         ))}
       </div>
       <div className="mb-2 text-xs text-muted-foreground">
-        Revision {current.revision} · {formatTimestamp(current.created_at)}
+        {isLatest ? "Active · " : ""}v{currentOrder} ·{" "}
+        {formatTimestamp(current.created_at)}
       </div>
       <ConfigDetail
         configType={request.config_type}

@@ -171,6 +171,11 @@ export function OpenRequestCard({
             {scopeSummary(request, serviceNames)}
           </span>
         )}
+        {/* A brand-new create has no prior applied version — make it obvious the
+            config isn't live yet and only becomes v1 once approved. */}
+        {request.operation === "create" && (
+          <Badge variant="outline">Pending v1 — not yet active</Badge>
+        )}
         <StatusPill status={request.status} />
         <span className="text-muted-foreground">
           maker {request.maker_admin_name ?? shortId(request.maker_admin_id)}

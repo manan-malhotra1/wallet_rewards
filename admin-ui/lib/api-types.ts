@@ -455,6 +455,38 @@ export interface TaxConfig {
   updated_at: string;
 }
 
+/**
+ * A pricing CONFIG grouped by scope (Epic 25 Pass 1). The flat
+ * `listPricingConfigs` rows are grouped by (transaction_type, account_type,
+ * currency, user_type) into one config per scope; its bands are the flat rows
+ * that share that scope, sorted by `amount_from` (nulls last). The table shows
+ * one row per group; bands render inside the View / Edit surfaces.
+ */
+export interface PricingConfigGroup {
+  /** Stable scope key, e.g. `cash_in|financial_wallet|ZAR|all`. */
+  key: string;
+  transaction_type: string;
+  account_type: string;
+  currency: string;
+  user_type: UserType | null;
+  fee_inclusive: boolean;
+  bands: PricingConfig[];
+}
+
+/**
+ * A commission CONFIG grouped by scope (Epic 25 Pass 1). Same shape as
+ * `PricingConfigGroup` but keyed by (transaction_type, currency, user_type) —
+ * commissions carry no account_type / fee-inclusive leg.
+ */
+export interface CommissionConfigGroup {
+  /** Stable scope key, e.g. `cash_in|ZAR|agent`. */
+  key: string;
+  transaction_type: string;
+  currency: string;
+  user_type: UserType | null;
+  bands: CommissionConfig[];
+}
+
 // ---- Epic 24 — maker-checker config changes -----------------------------
 
 /** The config domains that flow through the maker-checker pipeline. */

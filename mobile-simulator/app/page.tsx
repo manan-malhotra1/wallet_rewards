@@ -14,6 +14,7 @@ import { AirtimeForm } from "./_components/airtime-form";
 import { CashInForm } from "./_components/cashin-form";
 import { EventTrigger } from "./_components/event-trigger";
 import { P2PForm } from "./_components/p2p-form";
+import { PartnerApiForm } from "./_components/partner-api-form";
 import { SasaiLogo } from "./_components/sasai-logo";
 import { WalletPane } from "./_components/wallet-pane";
 
@@ -91,6 +92,15 @@ export default async function HomePage() {
             holding account. No action forms. */}
         <WalletPane user="merchant" phone={config.users.merchant.phone} wallet={merchant.wallet} />
       </div>
+
+      {/* Partner external-API panel (fund / withdraw / create user). Targets are
+          the configured simulator users, resolved by phone. */}
+      <PartnerApiForm
+        users={Object.values(config.users).map((u) => ({
+          label: u.label,
+          phone: u.phone,
+        }))}
+      />
 
       <EventTrigger />
     </main>

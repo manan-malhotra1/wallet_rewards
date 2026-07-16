@@ -9,10 +9,14 @@ import { revalidatePath } from "next/cache";
 import {
   buyAirtime,
   cashIn,
+  externalCreateUser,
+  externalFund,
+  externalWithdraw,
   fireEventHttp,
   fireEventKafka,
   sendP2P,
   simulateAirtimeCallback,
+  type ExternalIdentifier,
 } from "@/lib/backend";
 import { config, type UserKey } from "@/lib/config";
 import { formatAmount } from "@/lib/format";
@@ -20,6 +24,18 @@ import { formatAmount } from "@/lib/format";
 export type ActionResult =
   | { ok: true; message: string }
   | { ok: false; message: string; needsPin?: boolean };
+
+/**
+ * Result of a partner external-API action. Carries a friendly `message` plus the
+ * raw HTTP `status` and response `raw` text so the panel can show both the
+ * summary and the exact backend response (incl. a fail-closed 422 body).
+ */
+export type ExternalActionResult = {
+  ok: boolean;
+  message: string;
+  status: number;
+  raw: string;
+};
 
 export async function cashInAction(
   agent: UserKey,
@@ -151,6 +167,150 @@ export async function buyAirtimeAction(
         ? `Provider declined ${msisdn} — REVERSED (fully refunded).`
         : `Accepted for ${msisdn} — PENDING (awaiting provider callback).`;
   return { ok: true, message, rechargeId: body.id, status: body.status, pending };
+}
+
+/**
+ * Turn a backend error response body into a human string `error_code: message`.
+ * The backend wraps errors as `{ detail: { error_code, message } }` (see
+ * backend/app/shared/exceptions). Falls back to the raw text if the shape
+ * differs. Used so the fail-closed pricing/limits-missing 422 is legible.
+ */
+function describeError(status: number, body: string): string {
+  try {
+    const parsed = JSON.parse(body) as {
+      detail?: { error_code?: string; message?: string } | string;
+    };
+    const d = parsed.detail;
+    if (d && typeof d === "object" && d.error_code) {
+      return `${status} ${d.error_code}: ${d.message ?? ""}`.trim();
+    }
+    if (typeof d === "string") return `${status}: ${d}`;
+  } catch {
+    // Not JSON — fall through to raw body.
+  }
+  return `${status}: ${body}`;
+}
+
+/**
+ * Fund a target user's wallet via the partner external-API (API-key + HMAC).
+ * Surfaces any fee/commission/tax breakdown on success and the error_code on a
+ * fail-closed 422 (service_not_configured / pricing_config_missing).
+ */
+export async function externalFundAction(
+  targetPhone: string,
+  amount: string,
+  currency: string,
+  reason?: string,
+): Promise<ExternalActionResult> {
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return { ok: false, message: "Amount must be a positive number.", status: 0, raw: "" };
+  }
+  const res = await externalFund(targetPhone, amount, currency, reason);
+  revalidatePath("/");
+  const message = res.ok
+    ? summariseMoney("Funded", currency, res.body)
+    : describeError(res.status, res.body);
+  return { ok: res.ok, message, status: res.status, raw: res.body };
+}
+
+/**
+ * Withdraw from a target user's wallet via the partner external-API. Requires
+ * EXACTLY ONE of an explicit amount or the withdraw-all flag; validates that
+ * mutual exclusion before calling the backend.
+ */
+export async function externalWithdrawAction(
+  targetPhone: string,
+  currency: string,
+  opts: { amount?: string; withdrawAll?: boolean; reason?: string },
+): Promise<ExternalActionResult> {
+  if (opts.withdrawAll && opts.amount) {
+    return {
+      ok: false,
+      message: "Choose either an amount or Withdraw all — not both.",
+      status: 0,
+      raw: "",
+    };
+  }
+  if (!opts.withdrawAll) {
+    const parsed = Number(opts.amount);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return {
+        ok: false,
+        message: "Enter a positive amount, or toggle Withdraw all.",
+        status: 0,
+        raw: "",
+      };
+    }
+  }
+  const res = await externalWithdraw(targetPhone, currency, opts);
+  revalidatePath("/");
+  const message = res.ok
+    ? summariseMoney("Withdrew", currency, res.body)
+    : describeError(res.status, res.body);
+  return { ok: res.ok, message, status: res.status, raw: res.body };
+}
+
+/**
+ * Create a user from partner-supplied identifiers via the external-API. Reports
+ * created (HTTP 201) vs already-existing (HTTP 200 — the identifier is the
+ * idempotency key) distinctly, and surfaces the error_code on a 422.
+ */
+export async function externalCreateUserAction(
+  identifiers: ExternalIdentifier[],
+): Promise<ExternalActionResult> {
+  const cleaned = identifiers.filter((i) => i.identifier_value.trim() !== "");
+  if (cleaned.length === 0) {
+    return { ok: false, message: "Add at least one identifier.", status: 0, raw: "" };
+  }
+  const res = await externalCreateUser(cleaned);
+  revalidatePath("/");
+  if (!res.ok) {
+    return {
+      ok: false,
+      message: describeError(res.status, res.body),
+      status: res.status,
+      raw: res.body,
+    };
+  }
+  let userId = "?";
+  try {
+    userId = (JSON.parse(res.body) as { id?: string }).id ?? "?";
+  } catch {
+    // Non-JSON success body — keep the placeholder id.
+  }
+  const message =
+    res.status === 201
+      ? `Created user ${userId}.`
+      : `User already exists: ${userId} (matched an existing identifier).`;
+  return { ok: true, message, status: res.status, raw: res.body };
+}
+
+/**
+ * Build a success message from an external fund/withdraw response, appending any
+ * fee/commission/tax fields the backend returned. `verb` is the past-tense
+ * action word (e.g. "Funded"). Falls back to a bare confirmation if the body is
+ * not the expected JSON shape.
+ */
+function summariseMoney(verb: string, currency: string, body: string): string {
+  try {
+    const b = JSON.parse(body) as {
+      amount?: string;
+      fee?: string;
+      commission?: string;
+      tax?: string;
+    };
+    const parts: string[] = [];
+    if (b.fee) parts.push(`fee ${formatAmount(b.fee, currency)}`);
+    if (b.commission)
+      parts.push(`commission ${formatAmount(b.commission, currency)}`);
+    if (b.tax) parts.push(`tax ${formatAmount(b.tax, currency)}`);
+    const amount = b.amount ? formatAmount(b.amount, currency) : "";
+    const base = `${verb} ${currency} ${amount}`.trim();
+    return parts.length > 0 ? `${base} — ${parts.join(", ")}.` : `${base}.`;
+  } catch {
+    return `${verb} — ${body}`;
+  }
 }
 
 export async function simulateAirtimeCallbackAction(

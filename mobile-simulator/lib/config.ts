@@ -54,6 +54,16 @@ export const config = {
   airtimeCallbackSecret:
     process.env.AIRTIME_CALLBACK_SECRET ??
     "dev-airtime-callback-secret-do-not-use-in-prod",
+  // Dev-only: the seeded partner API key used to call the external fund /
+  // withdraw endpoints. These endpoints use API-key + HMAC auth (X-Sasai-Api-Key
+  // + X-Sasai-Signature) rather than the user PIN/bearer flow; the tenant is
+  // derived from the key. Defaults match the dev key provisioned by `make seed`.
+  externalApi: {
+    keyId: process.env.SASAI_API_KEY_ID ?? "sim-dev-key",
+    secret:
+      process.env.SASAI_API_KEY_SECRET ??
+      "dev-external-api-secret-do-not-use-in-prod",
+  },
 } as const;
 
 export type UserKey = "alice" | "bob" | "agent" | "merchant";

@@ -22,3 +22,14 @@ export function signEventBody(rawBody: string, secret: string): string {
     .digest("hex");
   return `t=${ts},v1=${digest}`;
 }
+
+/**
+ * Alias of {@link signEventBody} for the partner external-API paths
+ * (/external/fund, /external/withdraw, /external/users). Identical scheme —
+ * canonical `{ts}.{body}`, HMAC-SHA256 — but signed with the API key's secret
+ * instead of an event source's. Kept as a named alias so call sites read
+ * clearly and the empty-secret error message can be interpreted in context.
+ */
+export function signExternalBody(rawBody: string, secret: string): string {
+  return signEventBody(rawBody, secret);
+}

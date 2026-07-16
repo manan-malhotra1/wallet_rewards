@@ -15,7 +15,7 @@
 import "server-only";
 
 import { config, type UserKey } from "@/lib/config";
-import { signEventBody } from "@/lib/hmac";
+import { signEventBody, signExternalBody } from "@/lib/hmac";
 
 interface Bootstrap {
   tenant_id: string;
@@ -304,6 +304,100 @@ export async function simulateAirtimeCallback(
     },
   );
   return { ok: res.ok, status: res.status, body: await res.text() };
+}
+
+export interface ExternalResult {
+  ok: boolean;
+  status: number;
+  body: string;
+}
+
+/**
+ * POST a body to a partner external-API path with API-key + HMAC auth.
+ *
+ * These endpoints do NOT use the user PIN/bearer flow: the tenant is derived
+ * from the API key, so the body never carries tenant_id. Auth is the pair of
+ * headers `X-Sasai-Api-Key` (the key id) and `X-Sasai-Signature` (HMAC-SHA256
+ * over `{ts}.{rawBody}` with the key's secret). A 422 `service_not_configured`
+ * / `pricing_config_missing` is a valid, expected outcome (fail-closed) until a
+ * fund/withdraw pricing+limits config exists — the caller surfaces it as such.
+ *
+ * Args:
+ *   path: external path under the API root (e.g. "external/fund").
+ *   payload: request body object; serialised verbatim as the signed raw body.
+ *
+ * Returns:
+ *   `{ ok, status, body }` — body is the raw response text (JSON string).
+ */
+async function postExternal(
+  path: string,
+  payload: Record<string, unknown>,
+): Promise<ExternalResult> {
+  // Serialise once: the exact bytes sent MUST be the bytes signed, so we sign
+  // this string and pass the same string as the request body.
+  const rawBody = JSON.stringify(payload);
+  const signature = signExternalBody(rawBody, config.externalApi.secret);
+  const res = await fetch(`${config.backendUrl}/api/v1/${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Sasai-Api-Key": config.externalApi.keyId,
+      "X-Sasai-Signature": signature,
+    },
+    body: rawBody,
+    cache: "no-store",
+  });
+  return { ok: res.ok, status: res.status, body: await res.text() };
+}
+
+export async function externalFund(
+  targetPhone: string,
+  amount: string,
+  currency: string,
+  reason?: string,
+): Promise<ExternalResult> {
+  // Credits the target user's financial_wallet. Identifier resolves an existing
+  // simulator user by phone (the type the seeded users are keyed on).
+  return postExternal("external/fund", {
+    identifier_type: "phone",
+    identifier_value: targetPhone,
+    amount,
+    currency,
+    ...(reason ? { reason } : {}),
+  });
+}
+
+export async function externalWithdraw(
+  targetPhone: string,
+  currency: string,
+  opts: { amount?: string; withdrawAll?: boolean; reason?: string },
+): Promise<ExternalResult> {
+  // Debits the target user's financial_wallet. The backend requires EXACTLY ONE
+  // of `amount` or `withdraw_all: true`; the UI enforces that, and here we only
+  // send whichever was chosen so we never violate the mutual-exclusion.
+  return postExternal("external/withdraw", {
+    identifier_type: "phone",
+    identifier_value: targetPhone,
+    currency,
+    ...(opts.withdrawAll ? { withdraw_all: true } : { amount: opts.amount }),
+    ...(opts.reason ? { reason: opts.reason } : {}),
+  });
+}
+
+/** One partner-supplied identifier for external user creation. */
+export interface ExternalIdentifier {
+  identifier_type: "phone" | "email" | "account_number" | "card_number";
+  identifier_value: string;
+}
+
+export async function externalCreateUser(
+  identifiers: ExternalIdentifier[],
+): Promise<ExternalResult> {
+  // Creates a user from partner-supplied identifiers (no `verified` flag — a
+  // partner can't assert verification). The identifier is the idempotency key:
+  // the backend returns 201 for a new user and 200 (not 409) if an identifier
+  // already maps to an existing one. The caller distinguishes the two by status.
+  return postExternal("external/users", { identifiers });
 }
 
 interface EventInput {

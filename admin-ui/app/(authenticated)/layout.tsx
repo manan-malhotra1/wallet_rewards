@@ -9,10 +9,12 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell/app-shell";
+import { ServiceUnavailable } from "@/components/branding/service-unavailable";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import { listConfigRequests, listTenants } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
+import { isBackendUnreachable } from "@/lib/is-backend-unreachable";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +32,16 @@ export default async function AuthenticatedLayout({
   try {
     tenants = await listTenants();
   } catch (err) {
-    // Backend down or admin lacks tenant-list access — render the shell
-    // with an empty tenant list so the operator can still see an error
-    // banner on the page instead of a hard crash.
+    // Backend fully unreachable (process down, DNS, refused connection) —
+    // render the branded maintenance panel and stop here. Returning instead
+    // of throwing means children never render (no cascade of page-level
+    // fetch throws) AND the Next.js dev error overlay never appears.
+    if (isBackendUnreachable(err)) {
+      return <ServiceUnavailable variant="maintenance" />;
+    }
+    // Backend up but returned an HTTP error (e.g. admin lacks tenant-list
+    // access) — degrade to an empty tenant list so the shell still renders
+    // with an in-page error banner rather than a hard crash.
     if (!(err instanceof ApiError)) throw err;
   }
 

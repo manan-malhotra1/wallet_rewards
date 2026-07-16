@@ -1069,6 +1069,89 @@ groundwork. Depends on Epics 12, 15, 16.
 
 ---
 
+## Epic 18 — N-Eyes Approval for Treasury & Admin Money Movements · **Backlog**
+
+High-value, sensitive money operations must require multiple people to
+approve before they execute — **four-eyes** (maker + 1 checker) or
+**six-eyes** (maker + 2 distinct checkers), configurable. Generalises the
+config-governance maker-checker machinery (Epic 22) from config changes to
+*money operations*. No approver may approve their own request, and in a
+six-eyes flow the two approvers must be distinct.
+
+**In scope (operations that must route through N-eyes approval):**
+- Bank float / bank-mirror **creation**.
+- Bank float / bank-mirror **withdrawal / removal**.
+- **Admin-initiated fund** of a user wallet.
+- **Admin-initiated withdraw** from a user wallet.
+
+**Explicitly OUT of scope:**
+- **External / partner-API** fund & withdraw — programmatic, NOT maker-checker
+  (but they MUST still satisfy invariant #12: pricing + limits config present,
+  fail-closed).
+- System float / account creation via seed/bootstrap.
+
+### Story 18.1 — Approval-policy model + configurable eyes · Backlog
+
+**Description:** Per-tenant (optionally per-operation-type) `required_approvals`
+(1 = four-eyes, 2 = six-eyes) with a sensible default. Reuses/extends the
+`config-approver`-style role for money-op approvers.
+
+**Acceptance criteria:**
+- Policy resolves an integer `required_approvals ∈ {1,2}` per operation type
+- Default documented; unknown/missing policy falls back to four-eyes (1 checker)
+- No self-approval (maker ≠ any approver); in six-eyes the two approvers are distinct
+- Config change to the policy is itself audited
+
+**PRD:** NFR-0160/0250 · builds on Epic 22
+
+### Story 18.2 — Money-operation request + N-approval state machine · Backlog
+
+**Description:** A `money_operation_requests` record (operation_type, payload,
+status, `reviews[]`) that applies the underlying money move only after
+`required_approvals` distinct approvals. Mirrors `config_change_requests`.
+
+**Acceptance criteria:**
+- States: PENDING → (APPROVED once quorum met → APPLIED) | CHANGES_REQUESTED | WITHDRAWN | REJECTED
+- Apply is idempotent and happens in one transaction with the final approval
+- Partial approval (1 of 2) leaves it PENDING with progress recorded
+- Every submit/approve/reject/withdraw writes an `audit_log` row
+
+### Story 18.3 — Route bank float create + remove through approval · Backlog
+
+**Description:** Treasury bank-mirror creation and float removal/withdrawal
+become proposals requiring N-eyes approval before the ledger/account write.
+
+**Acceptance criteria:**
+- Direct treasury create/remove endpoints no longer apply immediately; they propose
+- Applied only after quorum; ledger sum-to-zero + append-only preserved on apply
+- Tests: quorum enforcement, self-approval rejected, idempotent apply
+
+### Story 18.4 — Route admin fund + admin withdraw (user wallets) through approval · Backlog
+
+**Description:** Admin-initiated fund/withdraw of a user wallet becomes a
+maker-checker proposal. (Partner-API fund/withdraw stay direct — Epic 14.)
+
+**Acceptance criteria:**
+- Admin fund/withdraw create PENDING requests, not immediate ledger writes
+- Applied only after quorum; invariant #12 (pricing+limits) still enforced at apply
+- Distinguished from external/partner fund-withdraw (which stay non-maker-checker)
+
+### Story 18.5 — Admin UI: money-operation approval queue + N-eyes progress · Backlog
+
+**Acceptance criteria:**
+- Queue lists pending money operations with operation type, payload summary, maker
+- Shows N-eyes progress ("1 of 2 approvals"); approve/request-changes/withdraw gated by role + not-own-request
+- Side-by-side / detail view of what will move
+
+### Story 18.6 — Audit + full test matrix · Backlog
+
+**Acceptance criteria:**
+- Every state transition audited (actor, before/after, ip)
+- Apply only after N distinct approvals; no double-apply; tenant-isolated
+- Ledger invariants (sum-to-zero, append-only, idempotency) hold on apply
+
+---
+
 ## Summary
 
 | Epic | Status | Stories | Done | Backlog |

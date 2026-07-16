@@ -21,7 +21,7 @@ from app.shared.models import (
     Tenant,
     User,
 )
-from tests.conftest import create_session_token_for_user
+from tests.conftest import create_session_token_for_user, seed_redemption_service_config
 
 
 async def _seed_reward(
@@ -115,6 +115,7 @@ async def test_summary_reflects_lifetime_redeemed(
     """
     await _seed_reward(db_session, test_tenant, test_user, Decimal("200"), key="r1")
 
+    await seed_redemption_service_config(db_session, test_tenant)
     pr = await async_client.post(
         "/api/v1/redemption/providers",
         headers=admin_auth_header,
@@ -160,6 +161,7 @@ async def test_redemption_history_returns_user_redemptions(
 ) -> None:
     """Redemption history is newest-first and tenant-scoped via session."""
     await _seed_reward(db_session, test_tenant, test_user, Decimal("100"), key="h")
+    await seed_redemption_service_config(db_session, test_tenant)
     pr = await async_client.post(
         "/api/v1/redemption/providers",
         headers=admin_auth_header,

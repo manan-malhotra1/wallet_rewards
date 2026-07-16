@@ -21,7 +21,7 @@ from app.shared.models import (
     Tenant,
     User,
 )
-from tests.conftest import create_session_token_for_user
+from tests.conftest import create_session_token_for_user, seed_redemption_service_config
 
 
 async def _credit_and_initiate(
@@ -58,6 +58,11 @@ async def _credit_and_initiate(
         triggering_event_id=seed_key,
         reward_value=credit_amount,
     )
+
+    # Redemption is fail-closed gated (invariant #12): seed its pricing + limit
+    # config so this setup `/initiate` succeeds (the gate is exercised directly
+    # in test_initiate_redemption.py, not here).
+    await seed_redemption_service_config(db_session, tenant)
 
     pr = await async_client.post(
         "/api/v1/redemption/providers",

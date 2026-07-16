@@ -38,12 +38,64 @@ from app.shared.models import (
     ApiKey,
     LedgerEntry,
     LimitConfig,
+    PricingConfig,
     Tenant,
     User,
     WalletLimitConfig,
 )
 
 _SECRET = "ext-treasury-secret-do-not-log"
+
+
+async def _seed_service_configs(
+    session: AsyncSession,
+    tenant: Tenant,
+    *,
+    service: str,
+    with_pricing: bool = True,
+    with_limit: bool = True,
+) -> None:
+    """Seed a zero-fee pricing config and/or a wide limit config for a scope.
+
+    The fail-closed service gate (invariant #12) requires BOTH a pricing and a
+    limit config to resolve for the acting user's type before a money path may
+    run. These `user_type=NULL` defaults satisfy the gate for every user type.
+    `with_pricing` / `with_limit` let a test seed only one side to prove the
+    gate fails closed when the OTHER is missing.
+    """
+    if with_pricing:
+        session.add(
+            PricingConfig(
+                tenant_id=tenant.id,
+                transaction_type=service,
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                fixed_fee=Decimal("0"),
+            )
+        )
+    if with_limit:
+        session.add(
+            LimitConfig(
+                tenant_id=tenant.id,
+                transaction_type=service,
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                min_amount=Decimal("1"),
+                max_amount=Decimal("100000"),
+            )
+        )
+    await session.commit()
+
+
+@pytest_asyncio.fixture
+async def fund_withdraw_configs(db_session: AsyncSession, test_tenant: Tenant) -> None:
+    """Seed pricing + limit configs for both fund and withdraw so the gate passes.
+
+    Requested by every transacting fund/withdraw test; the fail-closed gate
+    (invariant #12) would otherwise reject them 422 before any ledger work.
+    """
+    await _seed_service_configs(db_session, test_tenant, service="fund")
+    await _seed_service_configs(db_session, test_tenant, service="withdraw")
 
 
 @pytest_asyncio.fixture
@@ -132,6 +184,7 @@ async def test_external_fund_credits_user_wallet(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """A signed fund credits the user's wallet in the key's tenant."""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
@@ -167,6 +220,7 @@ async def test_external_fund_idempotent_replay(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """Replaying the same Idempotency-Key funds the wallet exactly once."""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
@@ -221,6 +275,7 @@ async def test_external_withdraw_debits_user_wallet(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """A signed withdraw debits the user's wallet."""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
@@ -247,6 +302,7 @@ async def test_external_withdraw_all_empties_wallet(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """withdraw_all with no amount pulls the full balance."""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
@@ -274,6 +330,7 @@ async def test_external_withdraw_insufficient_funds(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """Withdrawing more than the balance → 409."""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("100"))
@@ -351,6 +408,7 @@ async def test_external_withdraw_idempotent_replay(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """Replaying the same key withdraws exactly once, even though the first
     withdraw is now in the rolling total."""
@@ -389,6 +447,11 @@ async def test_external_withdraw_enforces_type_aware_limit(
 ) -> None:
     """A configured max_amount on the 'withdraw' limit caps the partner."""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
+    # The gate needs a pricing config too; add it (zero-fee) so the request
+    # reaches the limit check and trips AmountAboveMax rather than the gate.
+    await _seed_service_configs(
+        db_session, test_tenant, service="withdraw", with_limit=False
+    )
     db_session.add(
         LimitConfig(
             tenant_id=test_tenant.id,
@@ -421,6 +484,7 @@ async def test_external_reused_key_across_ops_conflicts(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """An Idempotency-Key used for fund cannot be reused for withdraw (S4 M-03)."""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
@@ -502,6 +566,7 @@ async def test_external_withdraw_concurrent_distinct_keys_cannot_overdraft(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """H-01: two concurrent withdraws (DISTINCT keys) for the full balance must
     NOT both commit — exactly one succeeds, the wallet never goes negative, and
@@ -549,6 +614,7 @@ async def test_external_withdraw_all_concurrent_cannot_double_drain(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """H-01 (withdraw_all variant): two concurrent `withdraw_all` calls cannot
     each pull the full balance. withdraw_all needs no balance knowledge, so the
@@ -591,6 +657,7 @@ async def test_external_fund_concurrent_cannot_exceed_max_balance(
     test_tenant: Tenant,
     test_user: User,
     api_key: dict[str, str],
+    fund_withdraw_configs: None,
 ) -> None:
     """M-01: with a max_balance ceiling configured, two concurrent funds that are
     each individually under the cap but jointly over it must NOT both land — the
@@ -629,3 +696,133 @@ async def test_external_fund_concurrent_cannot_exceed_max_balance(
     balance, _ = await derive_balance(db_session, wallet.id)
     assert balance == Decimal("100"), f"max_balance ceiling breached: {balance}"
     assert await _ledger_net_completed(db_session) == Decimal("0")
+
+
+# -----------------------------------------------------------------------------
+# Fail-closed service gate (invariant #12, Epic 23)
+#
+# Every money path must reject 422 `service_not_configured` when EITHER a
+# pricing OR a limit config is missing for the target user's scope, before any
+# ledger work. External fund/withdraw target the user's financial_wallet.
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_external_fund_fails_closed_when_no_config(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    api_key: dict[str, str],
+) -> None:
+    """No fund pricing/limit config → 422 service_not_configured, no credit."""
+    wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
+    raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
+    resp = await async_client.post(
+        "/api/v1/external/fund",
+        content=raw,
+        headers=_sign(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "service_not_configured"
+    # No ledger write happened.
+    assert await derive_balance(db_session, wallet.id) == (Decimal("0"), Decimal("0"))
+
+
+@pytest.mark.asyncio
+async def test_external_fund_fails_closed_when_only_pricing(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    api_key: dict[str, str],
+) -> None:
+    """Pricing present but limit missing → still 422 (BOTH required)."""
+    wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
+    await _seed_service_configs(db_session, test_tenant, service="fund", with_limit=False)
+    raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
+    resp = await async_client.post(
+        "/api/v1/external/fund",
+        content=raw,
+        headers=_sign(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "service_not_configured"
+    assert await derive_balance(db_session, wallet.id) == (Decimal("0"), Decimal("0"))
+
+
+@pytest.mark.asyncio
+async def test_external_fund_succeeds_once_both_configs_exist(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    api_key: dict[str, str],
+) -> None:
+    """With BOTH a pricing and a limit config the fund goes through (201)."""
+    wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
+    await _seed_service_configs(db_session, test_tenant, service="fund")
+    raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
+    resp = await async_client.post(
+        "/api/v1/external/fund",
+        content=raw,
+        headers=_sign(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert resp.status_code == 201, resp.text
+    assert await derive_balance(db_session, wallet.id) == (Decimal("100"), Decimal("0"))
+
+
+@pytest.mark.asyncio
+async def test_external_withdraw_fails_closed_when_no_config(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    api_key: dict[str, str],
+) -> None:
+    """No withdraw pricing/limit config → 422 service_not_configured, no debit."""
+    wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
+    body = {
+        "identifier_type": "phone",
+        "identifier_value": _user_phone(test_user),
+        "amount": "200",
+        "currency": "ZAR",
+    }
+    raw = json.dumps(body).encode()
+    resp = await async_client.post(
+        "/api/v1/external/withdraw",
+        content=raw,
+        headers=_sign(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "service_not_configured"
+    # Balance untouched — the gate fired before any ledger work.
+    assert await derive_balance(db_session, wallet.id) == (Decimal("500"), Decimal("0"))
+
+
+@pytest.mark.asyncio
+async def test_external_withdraw_fails_closed_when_only_limit(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    api_key: dict[str, str],
+) -> None:
+    """Limit present but pricing missing → still 422 (BOTH required)."""
+    wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
+    await _seed_service_configs(db_session, test_tenant, service="withdraw", with_pricing=False)
+    body = {
+        "identifier_type": "phone",
+        "identifier_value": _user_phone(test_user),
+        "amount": "200",
+        "currency": "ZAR",
+    }
+    raw = json.dumps(body).encode()
+    resp = await async_client.post(
+        "/api/v1/external/withdraw",
+        content=raw,
+        headers=_sign(api_key["key_id"], api_key["secret"], raw),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "service_not_configured"
+    assert await derive_balance(db_session, wallet.id) == (Decimal("500"), Decimal("0"))

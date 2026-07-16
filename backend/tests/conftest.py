@@ -471,6 +471,42 @@ async def _redis_per_test(
 # the auth flow itself.
 
 
+async def seed_redemption_service_config(session: AsyncSession, tenant: Tenant) -> None:
+    """Seed a zero-fee pricing + wide limit config for redemption (points scope).
+
+    Redemption is gated by the fail-closed service gate (invariant #12): a
+    redemption may run only when BOTH a pricing and a limit config resolve for
+    the redeeming user's type. Tests that initiate a redemption as SETUP (not to
+    exercise the gate itself) call this so the `/initiate` succeeds. Scoped to
+    the points_account / PTS with `user_type=NULL` so the default covers every
+    user type. Idempotent-safe per test (each test starts with a truncated DB).
+    """
+    from decimal import Decimal
+
+    from app.shared.models import ACCOUNT_TYPE_POINTS, LimitConfig, PricingConfig
+
+    session.add(
+        PricingConfig(
+            tenant_id=tenant.id,
+            transaction_type="redemption",
+            account_type=ACCOUNT_TYPE_POINTS,
+            currency="PTS",
+            fixed_fee=Decimal("0"),
+        )
+    )
+    session.add(
+        LimitConfig(
+            tenant_id=tenant.id,
+            transaction_type="redemption",
+            account_type=ACCOUNT_TYPE_POINTS,
+            currency="PTS",
+            min_amount=Decimal("1"),
+            max_amount=Decimal("1000000"),
+        )
+    )
+    await session.commit()
+
+
 async def create_session_token_for_user(user_id, tenant_id, channel: str = "mobile") -> str:
     """Test helper — directly create a Redis-backed session for a user.
 

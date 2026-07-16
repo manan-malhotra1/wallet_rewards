@@ -89,6 +89,22 @@ async def external_fund(
             new_balance=balance,
         )
 
+    # Fail-closed service gate (invariant #12). Runs AFTER the idempotency
+    # fast-path (a replay of an already-posted fund must still return the
+    # original result) but BEFORE any ledger work: BOTH a pricing and a limit
+    # config must resolve for the target user's type or the fund is rejected
+    # 422 here. Unconditional — no tenant flag, no silent zero-fee fall-through.
+    from app.modules.pricing.service import require_pricing_and_limits
+
+    await require_pricing_and_limits(
+        session,
+        tenant_id=tenant_id,
+        service="fund",
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency=currency,
+        user_id=user_id,
+    )
+
     # No explicit wallet lock here: `fund` funnels through `post_transaction`,
     # whose balance guard (invariant #11) locks the wallet FOR UPDATE and enforces
     # `max_balance` under that lock — the single authoritative check. Two
@@ -174,6 +190,20 @@ async def external_withdraw(
             currency=str(existing.currency),
             new_balance=balance,
         )
+
+    # Fail-closed service gate (invariant #12). AFTER the idempotency fast-path,
+    # BEFORE any ledger work: BOTH a pricing and a limit config must resolve for
+    # the target user's type or the withdraw is rejected 422 here. Unconditional.
+    from app.modules.pricing.service import require_pricing_and_limits
+
+    await require_pricing_and_limits(
+        session,
+        tenant_id=tenant_id,
+        service="withdraw",
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency=currency,
+        user_id=user_id,
+    )
 
     # Resolve the counter account up front so it exists before `post_user_withdraw`
     # posts the balanced legs. No explicit wallet lock here: `post_transaction`'s

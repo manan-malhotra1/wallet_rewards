@@ -23,7 +23,7 @@ from app.shared.models import (
     UserIdentifier,
     UserRole,
 )
-from tests.conftest import create_session_token_for_user
+from tests.conftest import create_session_token_for_user, seed_redemption_service_config
 
 
 async def _seed_reward(
@@ -140,6 +140,9 @@ async def test_points_history_orders_newest_first(
         rule_name="Second",
         event_key="evt-2",
     )
+
+    # Fail-closed gate (invariant #12): seed redemption pricing + limit config.
+    await seed_redemption_service_config(db_session, test_tenant)
 
     # Provider register (admin) + initiate (user).
     pr = await async_client.post(

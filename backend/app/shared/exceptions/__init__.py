@@ -886,12 +886,12 @@ class PricingConfigMissing(AppHTTPException):
 
 
 class ServiceNotConfigured(AppHTTPException):
-    """A fail-closed tenant tried a service lacking pricing OR limit config (Epic 23).
+    """A money path was tried while lacking pricing OR limit config (Epic 23, invariant #12).
 
-    When a tenant sets `require_config_to_transact`, a money path may run only
-    if BOTH a pricing config and a limit config resolve for the acting user's
-    type. This is raised (before any ledger work) when either is missing,
-    naming the service and the resolved user_type.
+    UNCONDITIONAL fail-closed gate: every money path may run only if BOTH a
+    pricing config and a limit config resolve for the acting user's type. This is
+    raised (before any ledger work) when either is missing, naming the service
+    and the resolved user_type.
     """
 
     def __init__(self, service: str, user_type: str) -> None:

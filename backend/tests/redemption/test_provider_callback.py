@@ -34,7 +34,7 @@ from app.shared.models import (
     Tenant,
     User,
 )
-from tests.conftest import create_session_token_for_user
+from tests.conftest import create_session_token_for_user, seed_redemption_service_config
 
 PROVIDER_SECRET = "x" * 64  # 64-char secret (well above the 32-char minimum)
 
@@ -73,6 +73,10 @@ async def _seed_pending_redemption(
         triggering_event_id=seed_key,
         reward_value=credit_amount,
     )
+
+    # Fail-closed gate (invariant #12): seed redemption pricing + limit config
+    # so the setup `/initiate` succeeds.
+    await seed_redemption_service_config(db_session, tenant)
 
     body: dict = {
         "tenant_id": str(tenant.id),

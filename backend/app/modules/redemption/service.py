@@ -285,6 +285,23 @@ async def initiate_redemption(
     if existing is not None:
         return existing
 
+    # Fail-closed service gate (invariant #12). AFTER the idempotency fast-path
+    # (a replay must still return the existing redemption) but BEFORE reserving
+    # any points: BOTH a pricing and a limit config must resolve for the
+    # redeeming user's type or the redemption is rejected 422 here. Redemption is
+    # points-scoped, so the config is scoped to the points_account, not the
+    # financial wallet. Unconditional — no tenant flag, no silent fall-through.
+    from app.modules.pricing.service import require_pricing_and_limits
+
+    await require_pricing_and_limits(
+        session,
+        tenant_id=tenant_id,
+        service="redemption",
+        account_type=ACCOUNT_TYPE_POINTS,
+        currency=user_points.currency,
+        user_id=user_id,
+    )
+
     # Lock the user's points_account so concurrent redemptions serialise. The
     # ledger balance guard is financial_wallet-only, so it does NOT cover this
     # points debit — redemption owns this lock for points-overdraft serialisation.

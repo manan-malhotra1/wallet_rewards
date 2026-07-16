@@ -28,7 +28,7 @@ from app.shared.models import (
     Tenant,
     User,
 )
-from tests.conftest import create_session_token_for_user
+from tests.conftest import create_session_token_for_user, seed_redemption_service_config
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -82,6 +82,9 @@ async def _make_pending_redemption(
     test-only since these aren't exposed via the API.
     """
     await _grant_points(db_session, tenant, user, amount + Decimal("10"), key=seed_key)
+
+    # Fail-closed gate (invariant #12): seed redemption pricing + limit config.
+    await seed_redemption_service_config(db_session, tenant)
 
     provider_resp = await async_client.post(
         "/api/v1/redemption/providers",

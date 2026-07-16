@@ -27,7 +27,7 @@ from app.shared.models import (
     Tenant,
     User,
 )
-from tests.conftest import create_session_token_for_user
+from tests.conftest import create_session_token_for_user, seed_redemption_service_config
 
 
 async def _push_redemption_into_manual_review(
@@ -59,6 +59,9 @@ async def _push_redemption_into_manual_review(
         triggering_event_id=f"seed-mr-{seed_key}",
         reward_value=amount + Decimal("10"),
     )
+
+    # Fail-closed gate (invariant #12): seed redemption pricing + limit config.
+    await seed_redemption_service_config(db_session, tenant)
 
     provider_resp = await async_client.post(
         "/api/v1/redemption/providers",
@@ -208,6 +211,9 @@ async def test_manual_resolve_rejects_non_manual_review(
         triggering_event_id="pending-only",
         reward_value=Decimal("60"),
     )
+
+    # Fail-closed gate (invariant #12): seed redemption pricing + limit config.
+    await seed_redemption_service_config(db_session, test_tenant)
 
     provider_resp = await async_client.post(
         "/api/v1/redemption/providers",

@@ -12,18 +12,72 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.accounts.service import derive_balance
 from app.modules.rewards.service import issue_points_reward
 from app.shared.models import (
+    ACCOUNT_TYPE_POINTS,
     Account,
+    LimitConfig,
+    PricingConfig,
     Rule,
     Tenant,
     User,
 )
 from tests.conftest import create_session_token_for_user
+
+# Redemption is points-scoped: its pricing + limit configs live on the
+# points_account in PTS (invariant #12 fail-closed gate, Epic 23).
+_REDEMPTION_CURRENCY = "PTS"
+
+
+async def _seed_redemption_configs(
+    session: AsyncSession,
+    tenant: Tenant,
+    *,
+    with_pricing: bool = True,
+    with_limit: bool = True,
+) -> None:
+    """Seed a zero-fee pricing config and/or a wide limit config for redemption.
+
+    The fail-closed gate (invariant #12) requires BOTH a pricing and a limit
+    config to resolve for the redeeming user's type before points are reserved.
+    Scoped to the points_account / PTS with `user_type=NULL` so the default
+    covers every user type. `with_pricing` / `with_limit` let a test seed only
+    one side to prove the gate fails closed when the OTHER is missing.
+    """
+    if with_pricing:
+        session.add(
+            PricingConfig(
+                tenant_id=tenant.id,
+                transaction_type="redemption",
+                account_type=ACCOUNT_TYPE_POINTS,
+                currency=_REDEMPTION_CURRENCY,
+                fixed_fee=Decimal("0"),
+            )
+        )
+    if with_limit:
+        session.add(
+            LimitConfig(
+                tenant_id=tenant.id,
+                transaction_type="redemption",
+                account_type=ACCOUNT_TYPE_POINTS,
+                currency=_REDEMPTION_CURRENCY,
+                min_amount=Decimal("1"),
+                max_amount=Decimal("1000000"),
+            )
+        )
+    await session.commit()
+
+
+@pytest_asyncio.fixture
+async def redemption_configs(db_session: AsyncSession, test_tenant: Tenant) -> None:
+    """Seed redemption pricing + limit configs so the fail-closed gate passes."""
+    await _seed_redemption_configs(db_session, test_tenant)
+
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -97,6 +151,7 @@ async def test_initiate_happy_path(
     test_user: User,
     user_points: Account,
     system_points_account: Account,
+    redemption_configs: None,
     idempotency_header: dict[str, str],
 ) -> None:
     """Alice 150 pts → redeem 100 → PENDING redemption, available drops to 50."""
@@ -131,6 +186,7 @@ async def test_initiate_rejects_insufficient_points(
     test_user: User,
     user_points: Account,
     system_points_account: Account,
+    redemption_configs: None,
     idempotency_header: dict[str, str],
 ) -> None:
     """Redeeming more than available → 409 insufficient_funds, no ledger write."""
@@ -185,6 +241,7 @@ async def test_initiate_idempotent_replay(
     test_user: User,
     user_points: Account,
     system_points_account: Account,
+    redemption_configs: None,
 ) -> None:
     """Same Idempotency-Key returns same redemption_id — no double-debit."""
     await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"), seed_key="idem")
@@ -223,6 +280,7 @@ async def test_initiate_concurrent_double_spend_blocked(
     test_user: User,
     user_points: Account,
     system_points_account: Account,
+    redemption_configs: None,
 ) -> None:
     """Two simultaneous full-balance redemptions: only ONE succeeds."""
     await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"), seed_key="race")
@@ -276,3 +334,67 @@ async def test_initiate_cross_tenant_provider_rejects(
     )
     assert response.status_code == 404
     assert response.json()["error_code"] == "provider_not_found"
+
+
+# -----------------------------------------------------------------------------
+# Fail-closed service gate (invariant #12, Epic 23)
+#
+# Redemption must reject 422 `service_not_configured` when EITHER a pricing OR
+# a limit config is missing for the redeeming user's points scope — before any
+# points are reserved.
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_initiate_fails_closed_when_no_config(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_points: Account,
+    system_points_account: Account,
+    idempotency_header: dict[str, str],
+) -> None:
+    """No redemption pricing/limit config → 422, no points reserved."""
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("150"), seed_key="fc")
+    provider_id = await _register_provider(async_client, test_tenant)
+
+    response = await async_client.post(
+        "/api/v1/redemption/initiate",
+        headers={**(await _user_auth_header(test_user)), **idempotency_header},
+        json={"provider_id": provider_id, "points_amount": "100"},
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "service_not_configured"
+
+    # No points reserved — the gate fired before the two-legged PENDING write.
+    balance, reserved = await derive_balance(db_session, user_points.id)
+    assert balance == Decimal("150")
+    assert reserved == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_initiate_fails_closed_when_only_limit(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_points: Account,
+    system_points_account: Account,
+    idempotency_header: dict[str, str],
+) -> None:
+    """Limit present but pricing missing → still 422 (BOTH required)."""
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("150"), seed_key="fcl")
+    await _seed_redemption_configs(db_session, test_tenant, with_pricing=False)
+    provider_id = await _register_provider(async_client, test_tenant)
+
+    response = await async_client.post(
+        "/api/v1/redemption/initiate",
+        headers={**(await _user_auth_header(test_user)), **idempotency_header},
+        json={"provider_id": provider_id, "points_amount": "100"},
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "service_not_configured"
+
+    _, reserved = await derive_balance(db_session, user_points.id)
+    assert reserved == Decimal("0")

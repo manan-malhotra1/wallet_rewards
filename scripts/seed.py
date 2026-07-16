@@ -34,7 +34,7 @@ from decimal import Decimal  # noqa: E402
 from sqlalchemy import select, text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
-from app.auth.secret_box import encrypt_secret  # noqa: E402
+from app.auth.secret_box import decrypt_secret, encrypt_secret  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.modules.payments.service import fund  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
@@ -56,6 +56,7 @@ from app.shared.models import (  # noqa: E402
     USER_TYPE_AGENT,
     USER_TYPE_MERCHANT,
     Account,
+    ApiKey,
     CommissionConfig,
     ExternalEventSource,
     Instrument,
@@ -516,6 +517,49 @@ async def _get_or_create_event_source(
     return source
 
 
+# Dev-only external partner API credential for the mobile-simulator's
+# partner-API panel. Never a real secret; the real one is minted per tenant in
+# production (api_keys service) and shown to the operator exactly once.
+SIM_DEV_API_KEY_ID = "sim-dev-key"
+SIM_DEV_API_KEY_SECRET = "dev-external-api-secret-do-not-use-in-prod"
+
+
+async def _get_or_create_dev_api_key(session: AsyncSession, tenant: Tenant) -> ApiKey:
+    """Idempotently seed the mobile-simulator's dev external-API key.
+
+    The secret is stored Fernet-encrypted via the same `encrypt_secret` path the
+    api_keys service uses — never in the clear. Re-running the seed keeps the
+    secret consistent (rotating the ciphertext to the canonical dev secret if a
+    prior run stored a different one), mirroring the event-source seeding. The
+    plaintext secret is a fixed dev constant printed so the simulator can sign
+    against it; it is NEVER safe for production.
+
+    Returns:
+        The persisted (or existing) ApiKey row.
+    """
+    result = await session.execute(select(ApiKey).where(ApiKey.key_id == SIM_DEV_API_KEY_ID))
+    api_key = result.scalar_one_or_none()
+    if api_key is not None:
+        # Rotate the stored ciphertext back to the canonical dev secret if a
+        # prior run (or manual edit) diverged, so signing stays predictable.
+        if decrypt_secret(api_key.secret_encrypted) != SIM_DEV_API_KEY_SECRET:
+            api_key.secret_encrypted = encrypt_secret(SIM_DEV_API_KEY_SECRET)
+            await session.commit()
+            print(f"  ~ Rotated secret on dev API key: {SIM_DEV_API_KEY_ID}")
+        return api_key
+    api_key = ApiKey(
+        tenant_id=tenant.id,
+        key_id=SIM_DEV_API_KEY_ID,
+        secret_encrypted=encrypt_secret(SIM_DEV_API_KEY_SECRET),
+        label="Mobile simulator (dev only)",
+    )
+    session.add(api_key)
+    await session.commit()
+    await session.refresh(api_key)
+    print(f"  + Created dev API key: {SIM_DEV_API_KEY_ID} (dev only — not for production)")
+    return api_key
+
+
 async def _get_or_create_rule(
     session: AsyncSession,
     tenant: Tenant,
@@ -923,6 +967,10 @@ async def seed() -> None:
             source_key="sasai-bank",
             shared_secret="dev-simulator-secret-do-not-use-in-prod",
         )
+
+        # Dev external-API key so the mobile-simulator's partner-API panel
+        # (fund / withdraw / create-user) can authenticate against a fresh DB.
+        await _get_or_create_dev_api_key(session, tenant)
         await _get_or_create_rule(
             session,
             tenant,

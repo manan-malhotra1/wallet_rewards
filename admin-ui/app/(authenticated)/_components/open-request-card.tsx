@@ -174,7 +174,7 @@ export function OpenRequestCard({
         {/* A brand-new create has no prior applied version — make it obvious the
             config isn't live yet and only becomes v1 once approved. */}
         {request.operation === "create" && (
-          <Badge variant="outline">Pending v1 — not yet active</Badge>
+          <Badge variant="outline">Not yet active — becomes v1 once approved</Badge>
         )}
         <StatusPill status={request.status} />
         <span className="text-muted-foreground">

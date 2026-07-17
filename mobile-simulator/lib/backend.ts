@@ -343,6 +343,10 @@ async function postExternal(
       "Content-Type": "application/json",
       "X-Sasai-Api-Key": config.externalApi.keyId,
       "X-Sasai-Signature": signature,
+      // State-mutating endpoints require an idempotency key (invariant #2).
+      // A fresh key per call; the HMAC covers the body only, so this header
+      // is outside the signed bytes and safe to add here.
+      "Idempotency-Key": `sim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     },
     body: rawBody,
     cache: "no-store",

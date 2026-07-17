@@ -19,6 +19,7 @@ from app.modules.identity.schemas import CreateUserRequest, IdentifierIn
 from app.modules.identity.service import create_user
 from app.shared.exceptions import InvalidReferralCode, SelfReferralNotAllowed
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
@@ -166,3 +167,63 @@ async def test_self_referral_is_rejected(
     )
     with pytest.raises(SelfReferralNotAllowed):
         await _create_user(db_session, test_tenant.id, referral_code="SELFCODE")
+
+
+async def _wallet_balance(session: AsyncSession, user_id) -> Decimal | None:
+    """Return the user's ZAR financial_wallet balance, or None if no wallet."""
+    wallet = (
+        await session.execute(
+            select(Account).where(
+                Account.user_id == user_id,
+                Account.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+            )
+        )
+    ).scalar_one_or_none()
+    if wallet is None:
+        return None
+    balance, _ = await derive_balance(session, wallet.id)
+    return balance
+
+
+@pytest.mark.asyncio
+async def test_signup_cashback_provisions_and_credits_brand_new_referee(
+    db_session: AsyncSession, test_tenant: Tenant
+) -> None:
+    """A signup cashback rule provisions the wallets and pays BOTH sides.
+
+    The headline "join -> 100 ZAR" case: a brand-new referee has no wallet yet,
+    so the referral reward path must provision the financial_wallet for each
+    rewarded side and land the cashback (invariant #11 corollary b — cap-exempt
+    promo credit). Neither user is pre-provisioned here.
+    """
+    referrer = await _create_user(db_session, test_tenant.id)
+    db_session.add(
+        Rule(
+            tenant_id=test_tenant.id,
+            name="join bonus",
+            rule_type="referral",
+            referral_trigger="signup",
+            reward_type="cashback",
+            reward_value=Decimal("50"),  # referrer
+            referee_reward_value=Decimal("100"),  # referee (the new joiner)
+            status="active",
+        )
+    )
+    await db_session.commit()
+
+    # Neither side has a wallet before the referral fires.
+    assert await _wallet_balance(db_session, referrer.id) is None
+
+    code = await _own_code(db_session, referrer.id)
+    referee = await _create_user(db_session, test_tenant.id, referral_code=code)
+
+    referral = (
+        await db_session.execute(select(Referral).where(Referral.referred_user_id == referee.id))
+    ).scalar_one()
+    assert referral.status == "rewarded"
+    assert referral.referrer_rewarded_at is not None
+    assert referral.referee_rewarded_at is not None
+
+    # Both wallets were auto-provisioned and credited from system_cash_inflow.
+    assert await _wallet_balance(db_session, referrer.id) == Decimal("50")
+    assert await _wallet_balance(db_session, referee.id) == Decimal("100")

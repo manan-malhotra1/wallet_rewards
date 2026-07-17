@@ -33,17 +33,65 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.rewards.service import issue_cashback_reward, issue_points_reward
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_POINTS,
     REFERRAL_STATUS_REWARDED,
     REFERRAL_TRIGGER_NTH_TRANSACTION,
     REFERRAL_TRIGGER_SIGNUP,
     REWARD_TYPE_CASHBACK,
     RULE_TYPE_REFERRAL,
     TXN_STATUS_COMPLETED,
+    Account,
     Referral,
     Rule,
     Tenant,
     Transaction,
 )
+
+# Points always accrue in the "PTS" unit account (the platform convention — see
+# scripts/seed.py and pricing.service). Cashback pays in the tenant base currency.
+_POINTS_CURRENCY = "PTS"
+
+
+async def _ensure_user_account(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    account_type: str,
+    currency: str,
+) -> None:
+    """Provision the reward-target account for a user if it doesn't exist yet.
+
+    A brand-new referee (rewarded on `signup`) has no accounts provisioned, so a
+    referee cashback/points reward would otherwise hit `UserFinancialWalletMissing`
+    / `UserPointsAccountMissing`. Since a configured referral reward is an
+    explicit intent to pay this user, we get-or-create the single account the
+    reward lands in (system provisioning — no admin actor / audit). Scoped to the
+    referral reward path only; it does NOT change the strict behaviour of other
+    reward types, which still require a pre-existing account.
+    """
+    existing = (
+        await session.execute(
+            select(Account.id).where(
+                Account.tenant_id == tenant_id,
+                Account.user_id == user_id,
+                Account.account_type == account_type,
+                Account.currency == currency.upper(),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+    session.add(
+        Account(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            account_type=account_type,
+            currency=currency.upper(),
+        )
+    )
+    await session.flush()
 
 
 async def _active_referral_rules(
@@ -83,6 +131,15 @@ async def _reward_one_side(
     financial_wallet in the tenant base currency. Both issuers are idempotent.
     """
     if rule.reward_type == REWARD_TYPE_CASHBACK:
+        # A newly-signed-up referee may not have a wallet yet — provision it so
+        # the promo cashback can land (the "join -> 100 ZAR" case).
+        await _ensure_user_account(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency=base_currency,
+        )
         await issue_cashback_reward(
             session,
             tenant_id=tenant_id,
@@ -93,6 +150,13 @@ async def _reward_one_side(
             triggering_event_id=triggering_event_id,
         )
     else:
+        await _ensure_user_account(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            account_type=ACCOUNT_TYPE_POINTS,
+            currency=_POINTS_CURRENCY,
+        )
         await issue_points_reward(
             session,
             tenant_id=tenant_id,

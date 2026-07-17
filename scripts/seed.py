@@ -835,18 +835,25 @@ async def _get_or_create_cashin_charges(session: AsyncSession, tenant: Tenant) -
     commission config the commission would be 0, so this makes the fee /
     commission / tax breakdown visible in the mobile-simulator.
     """
-    exists = (
-        await session.execute(
-            select(PricingConfig).where(
-                PricingConfig.tenant_id == tenant.id,
-                PricingConfig.transaction_type == "cash_in",
-                PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
-                PricingConfig.currency == "ZAR",
-                PricingConfig.user_type == USER_TYPE_AGENT,
-            )
-        )
-    ).scalar_one_or_none()
-    if exists is None:
+    # Get-or-create each config INDEPENDENTLY. A single guard on the pricing row
+    # is not enough: an operator may clear pricing/limits (via the UI) while the
+    # commission row survives, and re-seeding would then hit the commission
+    # unique index. `.limit(1).first()` also tolerates user-added bands.
+    async def _has(model: type, *conds: object) -> bool:
+        row = (
+            await session.execute(select(model).where(*conds).limit(1))
+        ).scalars().first()
+        return row is not None
+
+    added: list[str] = []
+    if not await _has(
+        PricingConfig,
+        PricingConfig.tenant_id == tenant.id,
+        PricingConfig.transaction_type == "cash_in",
+        PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+        PricingConfig.currency == "ZAR",
+        PricingConfig.user_type == USER_TYPE_AGENT,
+    ):
         session.add(
             PricingConfig(
                 tenant_id=tenant.id,
@@ -857,6 +864,15 @@ async def _get_or_create_cashin_charges(session: AsyncSession, tenant: Tenant) -
                 fixed_fee=Decimal("2"),
             )
         )
+        added.append("R2 fee")
+    if not await _has(
+        LimitConfig,
+        LimitConfig.tenant_id == tenant.id,
+        LimitConfig.transaction_type == "cash_in",
+        LimitConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+        LimitConfig.currency == "ZAR",
+        LimitConfig.user_type == USER_TYPE_AGENT,
+    ):
         session.add(
             LimitConfig(
                 tenant_id=tenant.id,
@@ -868,6 +884,14 @@ async def _get_or_create_cashin_charges(session: AsyncSession, tenant: Tenant) -
                 max_amount=Decimal("5000"),
             )
         )
+        added.append("R5–R5000 limit")
+    if not await _has(
+        CommissionConfig,
+        CommissionConfig.tenant_id == tenant.id,
+        CommissionConfig.transaction_type == "cash_in",
+        CommissionConfig.currency == "ZAR",
+        CommissionConfig.user_type == USER_TYPE_AGENT,
+    ):
         session.add(
             CommissionConfig(
                 tenant_id=tenant.id,
@@ -877,8 +901,10 @@ async def _get_or_create_cashin_charges(session: AsyncSession, tenant: Tenant) -
                 fixed_commission=Decimal("1.50"),
             )
         )
-        await session.commit()
-        print("  + Cash-in charges (agent): R2 fee, R1.50 commission")
+        added.append("R1.50 commission")
+    await session.commit()
+    if added:
+        print(f"  + Cash-in charges (agent): {', '.join(added)}")
 
     tax = (
         await session.execute(

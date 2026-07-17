@@ -10,6 +10,7 @@ import {
   buyAirtime,
   cashIn,
   cashOut,
+  changePin,
   externalCreateUser,
   externalFund,
   externalWithdraw,
@@ -128,6 +129,51 @@ export async function cashOutAction(
   }
   if (res.status === 401 && res.body.includes("invalid_step_up_pin")) {
     return { ok: false, message: "Incorrect PIN. Try again.", needsPin: true };
+  }
+  return { ok: false, message: describeError(res.status, res.body) };
+}
+
+/**
+ * Change the acting subscriber's own PIN (charged self-service) via the user
+ * PIN/bearer flow. Validates that both PINs are present and exactly 4 digits,
+ * calls the backend, and summarises any fee/tax charged on success. Surfaces
+ * wrong current PIN (401), lockout (423), insufficient funds for the fee (409),
+ * and validation / fail-closed 422 (new_pin == current, invalid_pin_format,
+ * service_not_configured) inline via describeError.
+ */
+export async function changePinAction(
+  user: UserKey,
+  currentPin: string,
+  newPin: string,
+  currency = "ZAR",
+): Promise<ActionResult> {
+  const isFourDigits = (pin: string) => /^\d{4}$/.test(pin);
+  if (!isFourDigits(currentPin) || !isFourDigits(newPin)) {
+    return { ok: false, message: "Both PINs must be exactly 4 digits." };
+  }
+  const res = await changePin(user, currentPin, newPin, currency);
+  revalidatePath("/");
+  if (res.ok) {
+    // Surface the fee / tax breakdown from the response (both may be an
+    // explicit zero for a zero-fee config).
+    try {
+      const b = JSON.parse(res.body) as {
+        fee?: string;
+        tax?: string;
+        currency?: string;
+      };
+      const cur = b.currency ?? currency;
+      const parts: string[] = [];
+      if (b.fee) parts.push(`fee ${cur} ${formatAmount(b.fee, cur)}`);
+      if (b.tax) parts.push(`tax ${cur} ${formatAmount(b.tax, cur)}`);
+      return {
+        ok: true,
+        message:
+          parts.length > 0 ? `PIN changed — ${parts.join(", ")}.` : "PIN changed.",
+      };
+    } catch {
+      return { ok: true, message: "PIN changed." };
+    }
   }
   return { ok: false, message: describeError(res.status, res.body) };
 }

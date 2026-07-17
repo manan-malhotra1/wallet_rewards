@@ -282,6 +282,56 @@ export async function cashOut(
   return { ok: res.ok, status: res.status, body: await res.text() };
 }
 
+export async function changePin(
+  user: UserKey,
+  currentPin: string,
+  newPin: string,
+  currency = "ZAR",
+): Promise<{ ok: boolean; status: number; body: string }> {
+  // Charged self-service: the user changes their own PIN via their bearer
+  // session, with `current_pin` gating the change server-side. Unlike
+  // sendP2P/cashOut we must NOT blindly retry a 401 — a wrong current PIN is a
+  // 401 (`invalid_credentials`) that counts toward lockout, so re-sending it
+  // would burn another attempt. Only an expired/unknown session (401
+  // `invalid_session`) is safe to retry after dropping the cached token.
+  // Fresh Idempotency-Key per attempt (backend dedups by (tenant, key)).
+  const newKey = () =>
+    `sim-pinchg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const body = JSON.stringify({
+    current_pin: currentPin,
+    new_pin: newPin,
+    currency,
+  });
+
+  async function once(): Promise<Response> {
+    const token = await loginUser(user);
+    return fetch(`${config.backendUrl}/api/v1/pin/change`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": newKey(),
+      },
+      body,
+      cache: "no-store",
+    });
+  }
+
+  let res = await once();
+  if (res.status === 401) {
+    const text = await res.text();
+    if (text.includes("invalid_session")) {
+      // Expired session only — safe to drop the cache and retry once.
+      sessionCache.delete(config.users[user].phone);
+      res = await once();
+      return { ok: res.ok, status: res.status, body: await res.text() };
+    }
+    // Wrong current PIN / no PIN set — surface without retrying.
+    return { ok: false, status: 401, body: text };
+  }
+  return { ok: res.ok, status: res.status, body: await res.text() };
+}
+
 export interface AirtimeResult {
   ok: boolean;
   status: number;

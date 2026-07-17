@@ -21,11 +21,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from cryptography.fernet import InvalidToken
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.hmac import verify_signature
 from app.auth.principals import AdminPrincipal, UserPrincipal
+from app.auth.secret_box import decrypt_secret, encrypt_secret
 from app.modules.accounts.service import derive_balance, lock_account_for_update
 from app.modules.audit.service import (
     record_audit_for_admin,
@@ -154,7 +156,11 @@ async def register_provider(
         max_retries=request.max_retries,
         retry_interval_secs=request.retry_interval_secs,
         escalate_after_mins=request.escalate_after_mins,
-        shared_secret=request.shared_secret,
+        # Operator supplies plaintext; persist it Fernet-encrypted (Decision
+        # D3). NULL stays NULL — a provider may have no callback secret yet.
+        shared_secret_encrypted=(
+            encrypt_secret(request.shared_secret) if request.shared_secret else None
+        ),
     )
     session.add(provider)
     await session.flush()
@@ -170,7 +176,7 @@ async def register_provider(
             after_state={
                 "name": provider.name,
                 "max_retries": provider.max_retries,
-                "shared_secret_configured": provider.shared_secret is not None,
+                "shared_secret_configured": provider.shared_secret_encrypted is not None,
             },
             ip_address=ip_address,
         )
@@ -637,17 +643,23 @@ async def process_provider_callback(
         )
     ).scalar_one()
 
-    if not provider.shared_secret:
+    if not provider.shared_secret_encrypted:
         # Provider exists but isn't wired for HMAC callbacks; operators must
         # use the admin /confirm + /fail endpoints instead.
         raise SignatureNotConfigured()
+    try:
+        secret = decrypt_secret(provider.shared_secret_encrypted)
+    except InvalidToken as exc:
+        # Stored secret can't be decrypted (e.g. SECRET_KEY rotated) —
+        # unverifiable, so treat as no configured secret rather than a 500.
+        raise SignatureNotConfigured() from exc
 
     # Verify BEFORE doing any further work — fails loud on bad signature.
     # On failure: exception handler returns 401; no parsing leaks happen.
     verify_signature(
         header=signature_header,
         raw_body=raw_body,
-        secret=provider.shared_secret,
+        secret=secret,
     )
 
     # Parse + validate the body only after the signature passes.

@@ -14,12 +14,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from cryptography.fernet import InvalidToken
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.hmac import verify_signature
 from app.auth.principals import AdminPrincipal
+from app.auth.secret_box import decrypt_secret, encrypt_secret
 from app.modules.audit.service import record_audit_for_admin, record_audit_for_system
 from app.modules.events.normaliser import normalise
 from app.modules.events.schemas import (
@@ -88,7 +90,11 @@ async def register_source(
         name=request.name,
         source_key=request.source_key,
         field_mapping=request.field_mapping,
-        shared_secret=request.shared_secret,
+        # Operator supplies plaintext; persist it Fernet-encrypted (Decision
+        # D3). NULL stays NULL — a source may run in unverified test mode.
+        shared_secret_encrypted=(
+            encrypt_secret(request.shared_secret) if request.shared_secret else None
+        ),
     )
     session.add(source)
     try:
@@ -108,7 +114,7 @@ async def register_source(
             after_state={
                 "source_key": source.source_key,
                 "name": source.name,
-                "shared_secret_configured": source.shared_secret is not None,
+                "shared_secret_configured": source.shared_secret_encrypted is not None,
             },
             ip_address=ip_address,
         )
@@ -170,7 +176,7 @@ async def process_external_event(
     Steps (matches the Phase C threat model §2 data flow + Phase F.5 HMAC):
       1. Look up the source by source_key.
       2. Reject if source is missing, inactive, or belongs to another tenant.
-      3. HMAC verify when source.shared_secret is set (Phase F.5).
+      3. HMAC verify when source.shared_secret_encrypted is set (Phase F.5).
       4. Dedup via event_ingestion_log: try INSERT; on conflict return DUPLICATE.
       5. Normalise the event.
       6. Evaluate every active rule that could match.
@@ -210,12 +216,33 @@ async def process_external_event(
             rejection_reason="source_tenant_mismatch",
         )
 
-    # 3. Phase F.5: HMAC verify when source.shared_secret is set.
+    # 3. Phase F.5: HMAC verify when source.shared_secret_encrypted is set.
     #    If the source has no secret configured, HMAC is skipped (e.g. for
     #    trusted internal sources or admin-gated test ingestion). If a
     #    secret IS set but the caller didn't supply raw_body + signature, we
     #    reject — silent skip would be a security regression.
-    if source.shared_secret:
+    if source.shared_secret_encrypted:
+        try:
+            source_secret = decrypt_secret(source.shared_secret_encrypted)
+        except InvalidToken:
+            # Stored secret can't be decrypted (e.g. SECRET_KEY rotated) —
+            # unverifiable. Reject rather than silently skipping verification.
+            await _log_rejected(session, raw, "integrity_check_failed")
+            record_audit_for_system(
+                session,
+                tenant_id=source.tenant_id,
+                actor_id=f"source:{source.source_key}",
+                action="event.rejected.integrity_failed",
+                entity_type="external_event",
+                entity_id=raw.event_id,
+                note="shared secret could not be decrypted",
+            )
+            await session.commit()
+            return IngestResponse(
+                outcome="rejected",
+                event_id=raw.event_id,
+                rejection_reason="integrity_check_failed",
+            )
         if raw_body is None or signature_header is None:
             await _log_rejected(session, raw, "integrity_check_missing")
             record_audit_for_system(
@@ -237,7 +264,7 @@ async def process_external_event(
             verify_signature(
                 header=signature_header,
                 raw_body=raw_body,
-                secret=source.shared_secret,
+                secret=source_secret,
             )
         except AppHTTPException as exc:
             await _log_rejected(session, raw, "integrity_check_failed")

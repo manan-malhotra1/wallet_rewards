@@ -491,10 +491,18 @@ async def _get_or_create_event_source(
     )
     source = result.scalar_one_or_none()
     if source is not None:
-        if shared_secret and source.shared_secret != shared_secret:
+        # Compare against the decrypted value so a re-run with the SAME secret
+        # is a genuine no-op (ciphertext differs on every encrypt, so we can't
+        # compare tokens directly).
+        current = (
+            decrypt_secret(source.shared_secret_encrypted)
+            if source.shared_secret_encrypted
+            else None
+        )
+        if shared_secret and current != shared_secret:
             # Idempotently rotate the secret if the seed re-runs with a
             # different value (e.g. operator regenerated their env).
-            source.shared_secret = shared_secret
+            source.shared_secret_encrypted = encrypt_secret(shared_secret)
             await session.commit()
             await session.refresh(source)
             print(f"  ~ Rotated shared_secret on event source: {name} ({source_key})")
@@ -503,7 +511,7 @@ async def _get_or_create_event_source(
         tenant_id=tenant.id,
         name=name,
         source_key=source_key,
-        shared_secret=shared_secret,
+        shared_secret_encrypted=(encrypt_secret(shared_secret) if shared_secret else None),
     )
     session.add(source)
     await session.commit()

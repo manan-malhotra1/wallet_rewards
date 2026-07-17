@@ -91,7 +91,8 @@ class ProviderCallbackRequest(BaseModel):
     """HMAC-verified provider callback payload (Phase F.5, Pay-PRD-0690/0700).
 
     The provider POSTs this body with an `X-Sasai-Signature` header. The
-    router verifies the signature against `provider.shared_secret` BEFORE
+    router verifies the signature against the provider's decrypted
+    `shared_secret_encrypted` BEFORE
     Pydantic parses this schema — Pydantic-normalised bytes would invalidate
     the HMAC.
     """

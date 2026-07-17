@@ -22,6 +22,7 @@ from app.modules.external import router as external_router
 from app.modules.identity import router as identity_router
 from app.modules.instruments import router as instruments_router
 from app.modules.limits import router as limits_router
+from app.modules.money_operations import router as money_operations_router
 from app.modules.multipliers import router as multipliers_router
 from app.modules.payments import router as payments_router
 from app.modules.pricing import router as pricing_router
@@ -113,6 +114,7 @@ app.include_router(airtime_router)
 app.include_router(cashin_router)
 app.include_router(catalog_router)
 app.include_router(config_requests_router)
+app.include_router(money_operations_router)
 app.include_router(reconciliation_router)
 app.include_router(roles_router)
 app.include_router(tenants_router)

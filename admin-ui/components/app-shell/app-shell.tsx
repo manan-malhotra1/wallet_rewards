@@ -14,6 +14,7 @@ export interface AppShellProps {
   user: TopbarUser;
   pendingReconciliationCount?: number;
   configPendingCount?: number;
+  moneyPendingCount?: number;
   children: React.ReactNode;
 }
 
@@ -23,6 +24,7 @@ export function AppShell({
   user,
   pendingReconciliationCount,
   configPendingCount,
+  moneyPendingCount,
   children,
 }: AppShellProps) {
   return (
@@ -30,6 +32,7 @@ export function AppShell({
       <Sidebar
         pendingCount={pendingReconciliationCount}
         configPendingCount={configPendingCount}
+        moneyPendingCount={moneyPendingCount}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar tenants={tenants} activeTenantId={activeTenantId} user={user} />

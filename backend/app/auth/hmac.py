@@ -2,9 +2,11 @@
 
 Used by:
 - `POST /redemption/{id}/callback` to verify the provider's signature
-  against `redemption_providers.shared_secret`.
+  against `redemption_providers.shared_secret_encrypted` (decrypted at
+  request time).
 - Kafka consumer of `wallet.events.external` to verify the producer's
-  signature against `external_event_sources.shared_secret`.
+  signature against `external_event_sources.shared_secret_encrypted`
+  (decrypted at request time).
 
 Wire format (matches the Phase F.5 threat model):
 
@@ -94,8 +96,9 @@ def verify_signature(
         header: Raw value of the `X-Sasai-Signature` request header.
         raw_body: The exact request body bytes — read BEFORE Pydantic
             parsing or any whitespace-normalising step.
-        secret: The verifier's shared secret (from `provider.shared_secret`
-            or `source.shared_secret`).
+        secret: The verifier's shared secret — the decrypted plaintext of
+            `provider.shared_secret_encrypted` or
+            `source.shared_secret_encrypted`.
         now: Override for tests. Defaults to `time.time()` (UTC seconds).
 
     Raises:

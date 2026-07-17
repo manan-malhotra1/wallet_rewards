@@ -36,9 +36,11 @@ class ExternalEventSource(Base):
     The field_mapping JSONB defines how raw event fields are translated to
     the platform's standard NormalisedEvent schema.
 
-    Phase C adds an OPTIONAL `shared_secret` for HMAC verification. When
-    NULL, events from this source are accepted without verification (test
-    mode). Phase F makes this mandatory.
+    Phase C adds an OPTIONAL `shared_secret_encrypted` for HMAC verification.
+    It is stored Fernet-encrypted at rest (Decision D3) and recovered via
+    `decrypt_secret` for signature verification. When NULL, events from this
+    source are accepted without verification (test mode). Phase F makes this
+    mandatory.
     """
 
     __tablename__ = "external_event_sources"
@@ -60,7 +62,7 @@ class ExternalEventSource(Base):
     field_mapping: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
-    shared_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shared_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     created_at: Mapped[datetime] = created_at_col()
 

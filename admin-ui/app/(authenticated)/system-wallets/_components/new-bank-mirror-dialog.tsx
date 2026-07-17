@@ -70,7 +70,7 @@ export function NewBankMirrorDialog({
     const result = await createBankMirrorAction(tenantId, { name, currency });
     setSubmitting(false);
     if (result.ok) {
-      toast({ title: "Bank mirror created", description: result.message });
+      toast({ title: "Proposed for approval", description: result.message });
       setOpen(false);
       return;
     }

@@ -24,6 +24,20 @@ export type TreasuryActionResult =
   | { ok: true; message: string }
   | { ok: false; errorCode: string; message: string };
 
+/**
+ * Epic 18: treasury moves are now maker-checker proposals, not direct posts.
+ * The success toast reflects that nothing moved yet — it awaits approval.
+ *
+ * @param requiredApprovals N in the N-eyes rule (1 or 2) for this operation.
+ */
+function proposedMessage(requiredApprovals: number): string {
+  const needs =
+    requiredApprovals > 1
+      ? `${requiredApprovals} approvals`
+      : "1 approval";
+  return `Proposed — pending ${needs}. Track it under Money approvals. Nothing has moved yet.`;
+}
+
 export async function fundUserAction(
   payload: FundUserPayload,
 ): Promise<TreasuryActionResult> {
@@ -31,13 +45,11 @@ export async function fundUserAction(
     return { ok: false, errorCode: "missing_reason", message: "Reason is required." };
   }
   try {
-    const res = await fundUser(payload);
+    const op = await fundUser(payload);
+    // Epic 18: no longer executes directly — this proposes a money operation.
     revalidatePath("/system-wallets");
-    revalidatePath("/users");
-    return {
-      ok: true,
-      message: `Funded ${res.currency} ${res.amount}. New balance: ${res.new_balance}.`,
-    };
+    revalidatePath("/money-operations");
+    return { ok: true, message: proposedMessage(op.required_approvals) };
   } catch (err) {
     if (err instanceof ApiError) {
       return { ok: false, errorCode: err.errorCode, message: err.message };
@@ -57,13 +69,10 @@ export async function withdrawFromUserAction(
     return { ok: false, errorCode: "missing_reason", message: "Reason is required." };
   }
   try {
-    const res = await withdrawFromUser(payload);
+    const op = await withdrawFromUser(payload);
     revalidatePath("/system-wallets");
-    revalidatePath("/users");
-    return {
-      ok: true,
-      message: `Withdrew ${res.currency} ${res.amount}. New balance: ${res.new_balance}.`,
-    };
+    revalidatePath("/money-operations");
+    return { ok: true, message: proposedMessage(op.required_approvals) };
   } catch (err) {
     if (err instanceof ApiError) {
       return { ok: false, errorCode: err.errorCode, message: err.message };
@@ -86,13 +95,10 @@ export async function adjustSystemWalletAction(
     return { ok: false, errorCode: "amount_zero", message: "Amount must be non-zero." };
   }
   try {
-    const res = await adjustSystemWallet(payload);
+    const op = await adjustSystemWallet(payload);
     revalidatePath("/system-wallets");
-    const verb = Number(res.amount) > 0 ? "Funded" : "Withdrew";
-    return {
-      ok: true,
-      message: `${verb} ${res.currency} ${res.amount}. New balance: ${res.new_balance}.`,
-    };
+    revalidatePath("/money-operations");
+    return { ok: true, message: proposedMessage(op.required_approvals) };
   } catch (err) {
     if (err instanceof ApiError) {
       return { ok: false, errorCode: err.errorCode, message: err.message };
@@ -114,15 +120,13 @@ export async function createBankMirrorAction(
     return { ok: false, errorCode: "missing_name", message: "Name is required." };
   }
   try {
-    const res = await createBankMirror(tenantId, {
+    const op = await createBankMirror(tenantId, {
       currency: payload.currency.toUpperCase(),
       name: payload.name.trim(),
     });
     revalidatePath("/system-wallets");
-    return {
-      ok: true,
-      message: `Created bank mirror "${res.name ?? res.id}" (${res.currency}).`,
-    };
+    revalidatePath("/money-operations");
+    return { ok: true, message: proposedMessage(op.required_approvals) };
   } catch (err) {
     if (err instanceof ApiError) {
       return { ok: false, errorCode: err.errorCode, message: err.message };

@@ -71,10 +71,12 @@ class RedemptionProvider(Base):
     escalate_after_mins: Mapped[int] = mapped_column(Integer, nullable=False, server_default="60")
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     # HMAC-SHA256 shared secret for verifying provider callback signatures
-    # (Phase F.5, Pay-PRD-0495). NULL = provider has no automated callback;
-    # all transitions must come through the admin `/confirm` + `/fail`
-    # operator overrides.
-    shared_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # (Phase F.5, Pay-PRD-0495). Stored Fernet-encrypted at rest (Decision D3)
+    # — recoverable via `decrypt_secret` because HMAC verification needs the
+    # plaintext key at request time; a one-way hash wouldn't work. NULL =
+    # provider has no automated callback; all transitions must come through
+    # the admin `/confirm` + `/fail` operator overrides.
+    shared_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = created_at_col()
 
 

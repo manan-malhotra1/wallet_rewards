@@ -24,9 +24,11 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.hmac import build_signature_header
+from app.auth.secret_box import decrypt_secret, encrypt_secret
 from app.config import settings
 from app.shared.models import (
     ACCOUNT_TYPE_POINTS,
@@ -41,11 +43,11 @@ from app.shared.models import (
 async def _seed_source_with_secret(
     db_session: AsyncSession, tenant: Tenant, *, secret: str = "shh-test-secret"
 ) -> str:
-    """Insert an ExternalEventSource with `shared_secret` set. Returns source_key.
+    """Insert an ExternalEventSource with a secret set. Returns source_key.
 
     The HMAC enforcement on `process_external_event` only triggers when
-    `shared_secret IS NOT NULL`; the sim-ingest route refuses unsigned
-    requests by design.
+    `shared_secret_encrypted IS NOT NULL`; the sim-ingest route refuses
+    unsigned requests by design. The secret is stored Fernet-encrypted.
     """
     source_key = f"sim-src-{uuid4().hex[:8]}"
     db_session.add(
@@ -53,7 +55,7 @@ async def _seed_source_with_secret(
             tenant_id=tenant.id,
             name="sim-source",
             source_key=source_key,
-            shared_secret=secret,
+            shared_secret_encrypted=encrypt_secret(secret),
         )
     )
     await db_session.commit()
@@ -191,6 +193,30 @@ async def test_sim_ingest_rejects_bad_signature(
     # bad HMAC — not a HTTP error. Confirm the outcome in the body.
     assert response.status_code == 200, response.text
     assert response.json()["outcome"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_event_source_secret_stored_encrypted_not_plaintext(
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+) -> None:
+    """The event-source secret is Fernet ciphertext, not plaintext, at rest.
+
+    A DB leak must not expose the live event-signing key. The column holds
+    ciphertext that decrypts back to the original secret used for HMAC verify.
+    """
+    secret = "event-source-secret-value"
+    source_key = await _seed_source_with_secret(db_session, test_tenant, secret=secret)
+
+    source = (
+        await db_session.execute(
+            select(ExternalEventSource).where(ExternalEventSource.source_key == source_key)
+        )
+    ).scalar_one()
+
+    assert source.shared_secret_encrypted is not None
+    assert source.shared_secret_encrypted != secret
+    assert decrypt_secret(source.shared_secret_encrypted) == secret
 
 
 # -----------------------------------------------------------------------------

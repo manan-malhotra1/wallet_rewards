@@ -1,16 +1,16 @@
-"""Tests for bank-mirror admin endpoints (Epic 26).
+"""Tests for bank-mirror admin endpoints.
 
-  - POST  /api/v1/treasury/bank-mirrors            create a named mirror
-  - PATCH /api/v1/treasury/bank-mirrors/{id}       rename a mirror
+  - POST  /api/v1/treasury/bank-mirrors            PROPOSE a named mirror (Epic 18)
+  - PATCH /api/v1/treasury/bank-mirrors/{id}       rename a mirror (direct — no money)
 
 A bank mirror is an `operator_adjustment` account; several coexist per
-(tenant, currency), each distinguished by name.
+(tenant, currency), each distinguished by name. Creating one now routes through
+money-operation approval; renaming (which moves no money) stays a direct op.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -24,6 +24,7 @@ from app.shared.models import (
     Account,
     Tenant,
 )
+from tests.treasury.conftest import approve_op
 
 
 async def _seed_bank_mirror(
@@ -47,49 +48,76 @@ async def _seed_bank_mirror(
     return mirror
 
 
+async def _propose_create(
+    client: AsyncClient, tenant: Tenant, admin_auth_header: dict[str, str], *, name: str
+):
+    """Propose a create_bank_mirror via the treasury endpoint."""
+    return await client.post(
+        "/api/v1/treasury/bank-mirrors",
+        headers=admin_auth_header,
+        params={"tenant_id": str(tenant.id)},
+        json={"currency": "ZAR", "name": name},
+    )
+
+
 # -----------------------------------------------------------------------------
-# create
+# create (proposes, then applies on approval)
 # -----------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_create_bank_mirror_happy_path(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
+    approver_header: dict[str, str],
 ) -> None:
-    """Creates a named operator_adjustment account with a zero balance."""
-    resp = await async_client.post(
-        "/api/v1/treasury/bank-mirrors",
-        headers=admin_auth_header,
-        params={"tenant_id": str(test_tenant.id)},
-        json={"currency": "ZAR", "name": "Standard Bank"},
+    """Propose+approve creates a named operator_adjustment account."""
+    proposed = await _propose_create(
+        async_client, test_tenant, admin_auth_header, name="Standard Bank"
     )
-    assert resp.status_code == 201, resp.text
-    body = resp.json()
-    assert body["name"] == "Standard Bank"
-    assert body["account_type"] == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT
-    assert body["currency"] == "ZAR"
-    assert Decimal(body["balance"]) == Decimal("0")
+    assert proposed.status_code == 201, proposed.text
+    assert proposed.json()["status"] == "PENDING"
+
+    approved = await approve_op(
+        async_client, str(test_tenant.id), proposed.json()["id"], approver_header
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "APPLIED"
+
+    mirror = (
+        await db_session.execute(
+            select(Account).where(
+                Account.tenant_id == test_tenant.id,
+                Account.account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+                Account.name == "Standard Bank",
+            )
+        )
+    ).scalar_one_or_none()
+    assert mirror is not None
+    assert mirror.currency == "ZAR"
 
 
 @pytest.mark.asyncio
-async def test_create_bank_mirror_duplicate_name_returns_409(
+async def test_create_bank_mirror_duplicate_name_returns_409_at_apply(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
+    approver_header: dict[str, str],
 ) -> None:
-    """A name already used in this (tenant, currency) is rejected 409."""
+    """A name already used in this (tenant, currency) is rejected 409 on approval."""
     await _seed_bank_mirror(db_session, test_tenant, name="Standard Bank")
-    resp = await async_client.post(
-        "/api/v1/treasury/bank-mirrors",
-        headers=admin_auth_header,
-        params={"tenant_id": str(test_tenant.id)},
-        json={"currency": "ZAR", "name": "Standard Bank"},
+    proposed = await _propose_create(
+        async_client, test_tenant, admin_auth_header, name="Standard Bank"
     )
-    assert resp.status_code == 409
-    assert resp.json()["error_code"] == "bank_mirror_name_already_exists"
+    assert proposed.status_code == 201
+    approved = await approve_op(
+        async_client, str(test_tenant.id), proposed.json()["id"], approver_header
+    )
+    assert approved.status_code == 409
+    assert approved.json()["error_code"] == "bank_mirror_name_already_exists"
 
 
 @pytest.mark.asyncio
@@ -98,16 +126,16 @@ async def test_two_mirrors_with_different_names_coexist(
     db_session: AsyncSession,
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
+    approver_header: dict[str, str],
 ) -> None:
     """Two differently-named mirrors coexist for the same currency."""
     for name in ("Standard Bank", "Nedbank"):
-        resp = await async_client.post(
-            "/api/v1/treasury/bank-mirrors",
-            headers=admin_auth_header,
-            params={"tenant_id": str(test_tenant.id)},
-            json={"currency": "ZAR", "name": name},
+        proposed = await _propose_create(async_client, test_tenant, admin_auth_header, name=name)
+        assert proposed.status_code == 201, proposed.text
+        approved = await approve_op(
+            async_client, str(test_tenant.id), proposed.json()["id"], approver_header
         )
-        assert resp.status_code == 201, resp.text
+        assert approved.status_code == 200, approved.text
 
     mirrors = (
         (
@@ -130,7 +158,7 @@ async def test_create_bank_mirror_requires_auth(
     async_client: AsyncClient,
     test_tenant: Tenant,
 ) -> None:
-    """Anonymous create → 401."""
+    """Anonymous create → 401 at propose."""
     resp = await async_client.post(
         "/api/v1/treasury/bank-mirrors",
         params={"tenant_id": str(test_tenant.id)},
@@ -145,7 +173,7 @@ async def test_create_bank_mirror_wrong_role_returns_403(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A token without platform-admin → 403."""
+    """A token without platform-admin → 403 at propose."""
     token = make_admin_token(roles=["support-agent"])
     resp = await async_client.post(
         "/api/v1/treasury/bank-mirrors",
@@ -162,7 +190,7 @@ async def test_create_bank_mirror_blank_name_returns_422(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An empty name fails validation → 422."""
+    """An empty name fails body validation → 422 at propose."""
     resp = await async_client.post(
         "/api/v1/treasury/bank-mirrors",
         headers=admin_auth_header,
@@ -173,7 +201,7 @@ async def test_create_bank_mirror_blank_name_returns_422(
 
 
 # -----------------------------------------------------------------------------
-# rename
+# rename (direct — moves no money, not gated)
 # -----------------------------------------------------------------------------
 
 

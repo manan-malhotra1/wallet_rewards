@@ -13,6 +13,7 @@ import {
   Gauge,
   GitPullRequest,
   KeyRound,
+  Landmark,
   Layers,
   ListChecks,
   Megaphone,
@@ -81,6 +82,7 @@ const CONFIG: NavEntry[] = [
     ],
   },
   { label: "Configuration approvals", href: "/config-requests", icon: GitPullRequest },
+  { label: "Money approvals", href: "/money-operations", icon: Landmark },
   { label: "Redemption", href: "/redemption", icon: CreditCard },
   { label: "Services", href: "/services", icon: Tag },
   { label: "Instruments", href: "/instruments", icon: Ticket },
@@ -206,21 +208,29 @@ function NavGroup({ title, items }: { title: string; items: NavEntry[] }) {
 export function Sidebar({
   pendingCount,
   configPendingCount,
+  moneyPendingCount,
 }: {
   pendingCount?: number;
   configPendingCount?: number;
+  moneyPendingCount?: number;
 }) {
   const operations = OPERATIONS.map((item) =>
     item.href === "/reconciliation" && pendingCount
       ? { ...item, badge: pendingCount }
       : item,
   );
-  // Surface the count of PENDING config change requests awaiting review.
-  const config: NavEntry[] = CONFIG.map((entry) =>
-    !isParent(entry) && entry.href === "/config-requests" && configPendingCount
-      ? { ...entry, badge: configPendingCount }
-      : entry,
-  );
+  // Surface the counts of PENDING config- and money-operation requests
+  // awaiting a second admin's review.
+  const config: NavEntry[] = CONFIG.map((entry) => {
+    if (isParent(entry)) return entry;
+    if (entry.href === "/config-requests" && configPendingCount) {
+      return { ...entry, badge: configPendingCount };
+    }
+    if (entry.href === "/money-operations" && moneyPendingCount) {
+      return { ...entry, badge: moneyPendingCount };
+    }
+    return entry;
+  });
   return (
     <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">

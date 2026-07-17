@@ -1,4 +1,9 @@
-"""Tests for POST /api/v1/treasury/fund-user (admin fund)."""
+"""Tests for POST /api/v1/treasury/fund-user (admin fund).
+
+Epic 18: fund-user now PROPOSES a money operation; the fund posts only after a
+distinct treasury-approver approves it. Body-level validation (amount, reason,
+tenant) still fails at propose time; the max-balance guard fires at apply time.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +22,7 @@ from app.shared.models import (
     User,
     WalletLimitConfig,
 )
+from tests.treasury.conftest import approve_op
 
 
 def _user_phone(user: User) -> str:
@@ -47,11 +53,12 @@ async def test_fund_user_happy_path(
     test_tenant: Tenant,
     test_user: User,
     admin_auth_header: dict[str, str],
+    approver_header: dict[str, str],
 ) -> None:
-    """Funding R 500 lands a fund txn + bumps the user's wallet balance."""
+    """Proposing then approving a R 500 fund credits the user's wallet."""
     wallet = await _seed_user_wallet(db_session, test_tenant, test_user)
 
-    response = await async_client.post(
+    proposed = await async_client.post(
         "/api/v1/treasury/fund-user",
         headers=admin_auth_header,
         json={
@@ -63,13 +70,15 @@ async def test_fund_user_happy_path(
             "reason": "Onboarding gift.",
         },
     )
-    assert response.status_code == 201, response.text
-    body = response.json()
-    assert Decimal(body["new_balance"]) == Decimal("500")
-    assert body["user_id"] == str(test_user.id)
-    assert body["currency"] == "ZAR"
+    assert proposed.status_code == 201, proposed.text
+    assert proposed.json()["status"] == "PENDING"
 
-    # Re-derive directly to be sure the response wasn't lying.
+    approved = await approve_op(
+        async_client, str(test_tenant.id), proposed.json()["id"], approver_header
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "APPLIED"
+
     bal, _ = await derive_balance(db_session, wallet.id)
     assert bal == Decimal("500")
 
@@ -81,7 +90,7 @@ async def test_fund_user_rejects_negative_amount(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Pydantic gt=0 → negative amount → 422."""
+    """Pydantic gt=0 → negative amount → 422 at propose."""
     response = await async_client.post(
         "/api/v1/treasury/fund-user",
         headers=admin_auth_header,
@@ -104,7 +113,7 @@ async def test_fund_user_requires_reason(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Empty `reason` → 422 — the audit row needs context."""
+    """Empty `reason` → 422 — the treasury request body requires it."""
     response = await async_client.post(
         "/api/v1/treasury/fund-user",
         headers=admin_auth_header,
@@ -126,7 +135,7 @@ async def test_fund_user_unknown_tenant_returns_404(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown tenant_id → 404."""
+    """Unknown tenant_id → 404 at propose."""
     response = await async_client.post(
         "/api/v1/treasury/fund-user",
         headers=admin_auth_header,
@@ -149,17 +158,20 @@ async def test_fund_user_rejects_credit_over_max_balance(
     test_tenant: Tenant,
     test_user: User,
     admin_auth_header: dict[str, str],
+    approver_header: dict[str, str],
 ) -> None:
-    """An operator fund that would breach the wallet's max_balance is rejected by
-    the balance guard (invariant #11): fund-user credits a financial_wallet, so it
-    is cap-checked under the wallet lock like every other credit. Nothing lands."""
+    """An over-cap fund is rejected by the balance guard at APPLY time (invariant #11).
+
+    Propose succeeds (PENDING); the max-balance breach surfaces on approval and
+    nothing lands.
+    """
     wallet = await _seed_user_wallet(db_session, test_tenant, test_user)
     db_session.add(
         WalletLimitConfig(tenant_id=test_tenant.id, currency="ZAR", max_balance=Decimal("100"))
     )
     await db_session.commit()
 
-    response = await async_client.post(
+    proposed = await async_client.post(
         "/api/v1/treasury/fund-user",
         headers=admin_auth_header,
         json={
@@ -171,8 +183,13 @@ async def test_fund_user_rejects_credit_over_max_balance(
             "reason": "over-cap fund attempt",
         },
     )
-    assert response.status_code == 409, response.text
-    assert response.json()["error_code"] == "max_balance_exceeded"
+    assert proposed.status_code == 201, proposed.text
+
+    approved = await approve_op(
+        async_client, str(test_tenant.id), proposed.json()["id"], approver_header
+    )
+    assert approved.status_code == 409, approved.text
+    assert approved.json()["error_code"] == "max_balance_exceeded"
 
     bal, _ = await derive_balance(db_session, wallet.id)
     assert bal == Decimal("0")

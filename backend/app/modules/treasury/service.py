@@ -511,6 +511,7 @@ async def fund_user(
     reason: str,
     admin: AdminPrincipal,
     ip_address: str | None = None,
+    idempotency_key: str | None = None,
 ) -> FundUserResponse:
     """Admin tops up a user's wallet — wraps the existing `fund()`.
 
@@ -520,8 +521,12 @@ async def fund_user(
     system_cash_inflow, CREDIT user_wallet) and writes a
     `treasury.fund_user` audit row with the admin's reason.
 
-    Idempotency-Key here is internally generated — admin actions are
-    not naturally idempotent (every "fund again" is a real new fund).
+    Args:
+        idempotency_key: Optional caller-supplied key. Left None for a direct
+            admin fund (each is a genuinely new fund, so a fresh key is
+            generated). The money-operation apply path (Epic 18) passes a
+            DETERMINISTIC key derived from the request id so a re-approval or
+            replay cannot double-post (invariant #2).
 
     Raises:
         TenantNotFound: tenant_id is unknown.
@@ -533,7 +538,7 @@ async def fund_user(
     )
     user_id = identifier_row.user_id
 
-    idempotency_key = f"admin-fund-{uuid4().hex}"
+    idempotency_key = idempotency_key or f"admin-fund-{uuid4().hex}"
     txn = await fund(
         session,
         tenant_id=tenant_id,
@@ -596,6 +601,7 @@ async def withdraw_from_user(
     admin: AdminPrincipal,
     ip_address: str | None = None,
     withdraw_all: bool = False,
+    idempotency_key: str | None = None,
 ) -> WithdrawFromUserResponse:
     """Admin debits a user's wallet and returns the funds to the operator pool.
 
@@ -617,6 +623,9 @@ async def withdraw_from_user(
         reason: Free-text reason, persisted in the audit row.
         admin: Authenticated admin initiating the action.
         ip_address: Caller IP for the audit row.
+        idempotency_key: Optional caller-supplied key; the money-operation apply
+            path passes a deterministic one so replays can't double-post
+            (invariant #2). None → a fresh key per direct admin withdraw.
 
     Returns:
         WithdrawFromUserResponse with the new wallet balance.
@@ -659,7 +668,7 @@ async def withdraw_from_user(
         operator_adjustment=operator_adjustment,
         amount=final_amount,
         currency=currency,
-        idempotency_key=f"admin-withdraw-{uuid4().hex}",
+        idempotency_key=idempotency_key or f"admin-withdraw-{uuid4().hex}",
     )
 
     record_audit_for_admin(
@@ -702,6 +711,7 @@ async def adjust_system_wallet(
     reason: str,
     admin: AdminPrincipal,
     ip_address: str | None = None,
+    idempotency_key: str | None = None,
 ) -> AdjustSystemWalletResponse:
     """Fund (positive amount) or withdraw (negative) a system wallet.
 
@@ -776,7 +786,7 @@ async def adjust_system_wallet(
         session,
         PostTransactionRequest(
             tenant_id=tenant_id,
-            idempotency_key=f"admin-adjust-{uuid4().hex}",
+            idempotency_key=idempotency_key or f"admin-adjust-{uuid4().hex}",
             transaction_type="treasury.adjust",
             currency=target.currency,
             entries=entries,

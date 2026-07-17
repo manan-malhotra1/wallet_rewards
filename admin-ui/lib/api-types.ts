@@ -579,6 +579,72 @@ export interface ConfigChangeRequest {
   revisions?: ConfigRevision[];
 }
 
+// ---- Epic 18 — Money operations (maker-checker for treasury moves) ------
+
+/**
+ * The four treasury money movements that flow through N-eyes maker-checker.
+ * Values mirror the backend `MONEY_OP_*` constants (see
+ * `backend/app/shared/models/money_operations.py`).
+ */
+export type MoneyOperationType =
+  | "fund_user"
+  | "withdraw_user"
+  | "adjust_system_wallet"
+  | "create_bank_mirror";
+
+/** Lifecycle status of a money operation. Mirrors the config-request set. */
+export type MoneyOperationStatus =
+  | "PENDING"
+  | "CHANGES_REQUESTED"
+  | "APPLIED"
+  | "WITHDRAWN";
+
+/**
+ * Action recorded on one review-thread entry. Kept as a permissive union —
+ * the backend owns the canonical verbs; render defensively.
+ */
+export type MoneyOperationReviewAction =
+  | "submitted"
+  | "changes_requested"
+  | "revised"
+  | "resubmitted"
+  | "approved"
+  | "withdrawn";
+
+/** One entry in a money operation's append-only review thread. */
+export interface MoneyOperationReview {
+  id: string;
+  actor_admin_id: string;
+  /** Resolved display name for the actor (null if not yet recorded). */
+  actor_admin_name: string | null;
+  actor_role: string;
+  action: MoneyOperationReviewAction | string;
+  comment: string | null;
+  created_at: string;
+}
+
+/**
+ * A proposed treasury money movement awaiting N distinct checker approvals
+ * (maker-checker). `payload` carries the operation-specific fields; N-eyes
+ * progress is `approvals_count` / `required_approvals`.
+ */
+export interface MoneyOperation {
+  id: string;
+  tenant_id: string;
+  operation: MoneyOperationType;
+  payload: Record<string, unknown>;
+  status: MoneyOperationStatus;
+  maker_admin_id: string;
+  /** Resolved display name for the maker (null if not yet recorded). */
+  maker_admin_name: string | null;
+  required_approvals: number;
+  approvals_count: number;
+  applied_transaction_id: string | null;
+  created_at: string;
+  updated_at: string;
+  reviews: MoneyOperationReview[];
+}
+
 export interface RewardBudget {
   id: string;
   tenant_id: string;

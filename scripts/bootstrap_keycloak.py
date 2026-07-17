@@ -29,31 +29,39 @@ REALM = "wallet-platform"
 ADMIN_UI_SECRET = "dev-admin-ui-secret-local-only"
 BACKEND_SERVICE_SECRET = "dev-backend-service-secret-local-only"
 
-# `config-approver` (Pricing v2 Epic 22) is the four-eyes checker role: it
-# approves / requests-changes on config-change requests, and must be held by a
-# DIFFERENT admin than the maker who proposed the change.
-REALM_ROLES = ["platform-admin", "finance-reviewer", "support-agent", "config-approver"]
+# `config-approver` (Pricing v2 Epic 22) is the four-eyes checker role for
+# config changes; `treasury-approver` (Epic 18) is the equivalent checker for
+# money operations (bank-float create/adjust, admin fund/withdraw). Both must be
+# held by a DIFFERENT admin than the maker who raised the request.
+REALM_ROLES = [
+    "platform-admin",
+    "finance-reviewer",
+    "support-agent",
+    "config-approver",
+    "treasury-approver",
+]
 
 # Local-dev admin users — rotate / remove for any non-local environment.
 # All share one dev password. BOTH admins hold `platform-admin` (propose /
-# maker) AND `config-approver` (four-eyes checker), so either can raise a
-# config request and the OTHER can approve it — matching "any admin can
-# approve any other admin's request". A single admin still cannot approve
-# their OWN request (SelfApprovalForbidden), so two accounts are needed to
-# exercise the maker-checker flow end to end.
+# maker), `config-approver` (config four-eyes checker), AND `treasury-approver`
+# (money-op checker), so either can raise a config- or money-request and the
+# OTHER can approve it — matching "any admin can approve any other admin's
+# request". A single admin still cannot approve their OWN request
+# (SelfApprovalForbidden), so two accounts are needed to exercise the
+# maker-checker flow end to end.
 DEV_ADMIN_PASSWORD = "admin-test-pass"  # noqa: S105 — local-dev only
 DEV_ADMINS = [
     {
         "username": "admin-test",
         "first_name": "Admin",
         "last_name": "Test",
-        "roles": ["platform-admin", "config-approver"],
+        "roles": ["platform-admin", "config-approver", "treasury-approver"],
     },
     {
         "username": "admin-approver",
         "first_name": "Approver",
         "last_name": "Admin",
-        "roles": ["platform-admin", "config-approver"],
+        "roles": ["platform-admin", "config-approver", "treasury-approver"],
     },
 ]
 
@@ -386,8 +394,8 @@ def main() -> None:
     print()
     admin_list = ", ".join(a["username"] for a in DEV_ADMINS)
     print(f" Admin logins (all password '{DEV_ADMIN_PASSWORD}'): {admin_list}")
-    print("   - admin-test      : platform-admin + config-approver (maker & checker)")
-    print("   - admin-approver  : platform-admin + config-approver (maker & checker)")
+    print("   - admin-test      : platform-admin + config-approver + treasury-approver (maker & checker)")
+    print("   - admin-approver  : platform-admin + config-approver + treasury-approver (maker & checker)")
     print()
     print(" Get a test admin JWT (local-dev only):")
     print()

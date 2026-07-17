@@ -101,7 +101,7 @@ export function AdjustSystemWalletDialog({
     });
     setSubmitting(false);
     if (result.ok) {
-      toast({ title: "Adjustment posted", description: result.message });
+      toast({ title: "Proposed for approval", description: result.message });
       setOpen(false);
     } else {
       setError(`${result.errorCode}: ${result.message}`);

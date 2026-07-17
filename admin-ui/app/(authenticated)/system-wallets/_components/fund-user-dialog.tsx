@@ -114,7 +114,7 @@ export function FundUserDialog({
     });
     setSubmitting(false);
     if (result.ok) {
-      toast({ title: "User funded", description: result.message });
+      toast({ title: "Proposed for approval", description: result.message });
       setOpen(false);
     } else {
       setError(`${result.errorCode}: ${result.message}`);

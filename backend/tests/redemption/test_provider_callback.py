@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.hmac import build_signature_header
+from app.auth.secret_box import decrypt_secret
 from app.modules.accounts.service import derive_balance
 from app.modules.rewards.service import issue_points_reward
 from app.shared.models import (
@@ -366,6 +367,48 @@ async def test_callback_replay_after_terminal_returns_409(
     )
     assert second.status_code == 409
     assert second.json()["error_code"] == "redemption_not_pending"
+
+
+@pytest.mark.asyncio
+async def test_provider_secret_stored_encrypted_not_plaintext(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_points: Account,
+    system_points_account: Account,
+) -> None:
+    """The stored secret is Fernet ciphertext, not the plaintext operator input.
+
+    Asserts the DB column never holds the raw secret (a DB leak must not expose
+    the live callback-signing key) while HMAC verification still succeeds end
+    to end against the decrypted value.
+    """
+    redemption_id, provider = await _seed_pending_redemption(
+        async_client,
+        db_session,
+        test_tenant,
+        test_user,
+        credit_amount=Decimal("200"),
+        redeem_amount=Decimal("80"),
+        seed_key="enc",
+    )
+
+    # Column holds ciphertext, not the plaintext the operator submitted.
+    assert provider.shared_secret_encrypted is not None
+    assert provider.shared_secret_encrypted != PROVIDER_SECRET
+    assert decrypt_secret(provider.shared_secret_encrypted) == PROVIDER_SECRET
+
+    # And HMAC verify still works against the encrypted-then-decrypted secret.
+    body = json.dumps({"outcome": "completed"}).encode()
+    signature = build_signature_header(raw_body=body, secret=PROVIDER_SECRET)
+    response = await async_client.post(
+        f"/api/v1/redemption/{redemption_id}/callback",
+        headers={"X-Sasai-Signature": signature, "Content-Type": "application/json"},
+        content=body,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "COMPLETED"
 
 
 @pytest.mark.asyncio

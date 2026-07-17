@@ -14,7 +14,6 @@ import "server-only";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 import type {
-  AdjustSystemWalletResponse,
   AdminPinResetResponse,
   ApiKey,
   ApiKeyCreated,
@@ -27,10 +26,11 @@ import type {
   ConfigRequestStatus,
   ConfigType,
   ExternalEventSource,
-  FundUserResponse,
   Instrument,
   LimitConfig,
   ManualReviewItem,
+  MoneyOperation,
+  MoneyOperationStatus,
   PendingItem,
   PricingConfig,
   RedemptionProvider,
@@ -627,8 +627,12 @@ export interface FundUserPayload {
   reason: string;
 }
 
+/**
+ * PROPOSE a fund (Epic 18 maker-checker). No longer executes directly —
+ * returns a PENDING `MoneyOperation` that posts only after N-eyes approval.
+ */
 export const fundUser = (payload: FundUserPayload) =>
-  apiPost<FundUserResponse>("/api/v1/treasury/fund-user", payload);
+  apiPost<MoneyOperation>("/api/v1/treasury/fund-user", payload);
 
 export interface WithdrawFromUserPayload {
   tenant_id: string;
@@ -641,9 +645,9 @@ export interface WithdrawFromUserPayload {
   bank_mirror_account_id: string;
 }
 
-/** Result type mirrors FundUserResponse (same shape — derived balance after the move). */
+/** PROPOSE a pull-back (Epic 18). Returns a PENDING `MoneyOperation`. */
 export const withdrawFromUser = (payload: WithdrawFromUserPayload) =>
-  apiPost<FundUserResponse>("/api/v1/treasury/withdraw", payload);
+  apiPost<MoneyOperation>("/api/v1/treasury/withdraw", payload);
 
 export interface AdjustSystemWalletPayload {
   tenant_id: string;
@@ -661,12 +665,16 @@ export interface CreateBankMirrorPayload {
   name: string;
 }
 
-/** Create a named bank-mirror account. Duplicate name → 409 bank_mirror_name_already_exists. */
+/**
+ * PROPOSE a named bank-mirror account (Epic 18). Returns a PENDING
+ * `MoneyOperation`; the account is created only after N-eyes approval.
+ * Duplicate-name collision surfaces at approval/apply time.
+ */
 export const createBankMirror = (
   tenant_id: string,
   payload: CreateBankMirrorPayload,
 ) =>
-  apiPost<SystemWallet>("/api/v1/treasury/bank-mirrors", payload, {
+  apiPost<MoneyOperation>("/api/v1/treasury/bank-mirrors", payload, {
     query: { tenant_id },
   });
 
@@ -682,10 +690,76 @@ export const renameBankMirror = (
     { query: { tenant_id } },
   );
 
+/** PROPOSE a signed system-wallet adjust (Epic 18). Returns a PENDING `MoneyOperation`. */
 export const adjustSystemWallet = (payload: AdjustSystemWalletPayload) =>
-  apiPost<AdjustSystemWalletResponse>(
+  apiPost<MoneyOperation>(
     "/api/v1/treasury/adjust-system-wallet",
     payload,
+  );
+
+// ---- Epic 18 — Money operations (maker-checker review verbs) -------------
+
+/** List a tenant's money operations, optionally filtered by lifecycle status. */
+export const listMoneyOperations = (
+  tenant_id: string,
+  status_filter?: MoneyOperationStatus,
+) =>
+  apiGet<MoneyOperation[]>("/api/v1/money-operations", {
+    query: { tenant_id, status_filter },
+  });
+
+/** Fetch a single money operation with its full review thread + progress. */
+export const getMoneyOperation = (id: string, tenant_id: string) =>
+  apiGet<MoneyOperation>(`/api/v1/money-operations/${id}`, {
+    query: { tenant_id },
+  });
+
+/** Approve a money operation (treasury-approver; must differ from the maker). */
+export const approveMoneyOperation = (tenant_id: string, id: string) =>
+  apiPost<MoneyOperation>(
+    `/api/v1/money-operations/${id}/approve`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
+/** Ask the maker to revise (treasury-approver). Comment is mandatory. */
+export const requestMoneyOpChanges = (
+  tenant_id: string,
+  id: string,
+  comment: string,
+) =>
+  apiPost<MoneyOperation>(
+    `/api/v1/money-operations/${id}/request-changes`,
+    { comment },
+    { query: { tenant_id } },
+  );
+
+/** Edit the proposed payload (maker; only while CHANGES_REQUESTED). */
+export const reviseMoneyOperation = (
+  tenant_id: string,
+  id: string,
+  payload: Record<string, unknown>,
+) =>
+  apiPatch<MoneyOperation>(
+    `/api/v1/money-operations/${id}`,
+    { payload },
+    { query: { tenant_id } },
+  );
+
+/** Re-submit a revised operation for approval → fresh round (maker). */
+export const resubmitMoneyOperation = (tenant_id: string, id: string) =>
+  apiPost<MoneyOperation>(
+    `/api/v1/money-operations/${id}/resubmit`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
+/** Withdraw a non-terminal money operation (maker). */
+export const withdrawMoneyOperation = (tenant_id: string, id: string) =>
+  apiPost<MoneyOperation>(
+    `/api/v1/money-operations/${id}/withdraw`,
+    undefined,
+    { query: { tenant_id } },
   );
 
 // ---- Phase H — Segments + Bonus Multipliers ------------------------------

@@ -12,7 +12,11 @@ import { AppShell } from "@/components/app-shell/app-shell";
 import { ServiceUnavailable } from "@/components/branding/service-unavailable";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { listConfigRequests, listTenants } from "@/lib/api-endpoints";
+import {
+  listConfigRequests,
+  listMoneyOperations,
+  listTenants,
+} from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
 import { isBackendUnreachable } from "@/lib/is-backend-unreachable";
 
@@ -51,10 +55,18 @@ export default async function AuthenticatedLayout({
   // Sidebar badge: number of config change requests awaiting review. Best
   // effort — a backend hiccup just drops the badge, never the shell.
   let configPendingCount = 0;
+  let moneyPendingCount = 0;
   if (activeTenantId) {
     try {
       const pending = await listConfigRequests(activeTenantId, "PENDING");
       configPendingCount = pending.length;
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+    }
+    // Epic 18: count of PENDING treasury money operations awaiting approval.
+    try {
+      const pending = await listMoneyOperations(activeTenantId, "PENDING");
+      moneyPendingCount = pending.length;
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
     }
@@ -70,6 +82,7 @@ export default async function AuthenticatedLayout({
         }))}
         activeTenantId={activeTenantId}
         configPendingCount={configPendingCount}
+        moneyPendingCount={moneyPendingCount}
         user={{
           username: session.user.username ?? session.user.email ?? session.user.id,
           email: session.user.email ?? undefined,

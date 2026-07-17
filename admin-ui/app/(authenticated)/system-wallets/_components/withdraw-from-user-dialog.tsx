@@ -129,7 +129,7 @@ export function WithdrawFromUserDialog({
     });
     setSubmitting(false);
     if (result.ok) {
-      toast({ title: "Withdraw posted", description: result.message });
+      toast({ title: "Proposed for approval", description: result.message });
       setOpen(false);
       return;
     }

@@ -17,8 +17,14 @@ from app.auth.principals import AdminPrincipal
 from app.auth.secret_box import encrypt_secret
 from app.modules.api_keys.schemas import ApiKeyCreateRequest
 from app.modules.audit.service import record_audit_for_admin
-from app.shared.exceptions import ApiKeyNotFound, TenantNotFound
-from app.shared.models import API_KEY_STATUS_REVOKED, ApiKey, Tenant
+from app.shared.exceptions import ApiKeyNotFound, MerchantUserRequired, TenantNotFound
+from app.shared.models import (
+    API_KEY_STATUS_REVOKED,
+    MERCHANT_USER_TYPES,
+    ApiKey,
+    Tenant,
+    User,
+)
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -26,6 +32,28 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
     result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
     if result.scalar_one_or_none() is None:
         raise TenantNotFound()
+
+
+async def _assert_merchant_user(
+    session: AsyncSession, tenant_id: UUID, merchant_user_id: UUID
+) -> None:
+    """Validate that merchant_user_id is a merchant-type user in this tenant.
+
+    A merchant-bound key authorises merchant-cashin, so the referenced user must
+    exist in the same tenant AND carry a merchant user type. Unknown-user and
+    wrong-type both collapse to one 422 so key creation never leaks user
+    existence across the admin boundary.
+
+    Raises:
+        MerchantUserRequired: the id is unknown in this tenant, or the user is
+            not a merchant/head-merchant.
+    """
+    result = await session.execute(
+        select(User).where(User.id == merchant_user_id, User.tenant_id == tenant_id)
+    )
+    user = result.scalar_one_or_none()
+    if user is None or user.user_type not in MERCHANT_USER_TYPES:
+        raise MerchantUserRequired()
 
 
 def _generate_credentials() -> tuple[str, str]:
@@ -50,14 +78,20 @@ async def create_api_key(
 
     Raises:
         TenantNotFound: request.tenant_id is unknown.
+        MerchantUserRequired: merchant_user_id is set but not a merchant-type
+            user in this tenant.
     """
     await _assert_tenant_exists(session, request.tenant_id)
+    # Validate the merchant binding BEFORE minting — fail before any write.
+    if request.merchant_user_id is not None:
+        await _assert_merchant_user(session, request.tenant_id, request.merchant_user_id)
     key_id, secret = _generate_credentials()
     api_key = ApiKey(
         tenant_id=request.tenant_id,
         key_id=key_id,
         secret_encrypted=encrypt_secret(secret),
         label=request.label,
+        merchant_user_id=request.merchant_user_id,
     )
     session.add(api_key)
     await session.flush()
@@ -68,7 +102,13 @@ async def create_api_key(
         action="api_key.created",
         entity_type="api_key",
         entity_id=str(api_key.id),
-        after_state={"key_id": key_id, "label": request.label},  # never the secret
+        after_state={  # never the secret; merchant_user_id is not sensitive
+            "key_id": key_id,
+            "label": request.label,
+            "merchant_user_id": (
+                str(request.merchant_user_id) if request.merchant_user_id else None
+            ),
+        },
         ip_address=ip_address,
     )
     return api_key, secret

@@ -725,6 +725,24 @@ class NotAMerchantKey(AppHTTPException):
         )
 
 
+class MerchantUserRequired(AppHTTPException):
+    """The `merchant_user_id` supplied at key creation is not a valid merchant.
+
+    Raised when minting an API key with a `merchant_user_id` that either does
+    not exist in the tenant or resolves to a non-merchant user type. Both cases
+    collapse to one 422 so key creation never leaks user existence across the
+    admin boundary. This is distinct from `NotAMerchantKey` (the auth-time 403
+    for calling merchant-cashin with a non-merchant key).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "merchant_user_required",
+            "merchant_user_id must reference a merchant-type user in this tenant.",
+        )
+
+
 # --- Money controls (Phase G) ----------------------------------------------
 
 

@@ -472,8 +472,10 @@ async def revise_config_request(
         ConfigRequestNotFound (404).
         ConfigRequestForbidden (403): not the original maker.
         ConfigRequestInvalidState (409): not in CHANGES_REQUESTED.
-        AppHTTPException (422): the new payload fails its create schema, or the
-            request is a delete (no payload to edit).
+        ConfigRequestTargetNotFound (404): an update whose target row is gone.
+        AppHTTPException (422): the new payload fails its create schema, carries a
+            band for another tenant, moves an update's scope off its target, or
+            the request is a delete (no payload to edit).
     """
     request = await _load_request(session, request_id, tenant_id, for_update=True)
     if request.status != CONFIG_STATUS_CHANGES_REQUESTED:
@@ -487,10 +489,32 @@ async def revise_config_request(
             422, "config_request_not_editable", "A delete proposal has no payload to revise."
         )
 
-    # Same multi-band handling as propose — validate the (possibly multi-band)
-    # revised payload and re-store it in the same shape propose uses.
-    bands = validate_band_payload(request.config_type, payload)
-    request.payload = _normalise_create_payload(request.config_type, bands)
+    # A revise is the same trust boundary as propose: re-run BOTH guards propose
+    # enforces so a revised payload can't slip past them. `_validate_payload`
+    # validates the (possibly multi-band) payload AND asserts every band's
+    # tenant matches the request scope (422 config_request_tenant_mismatch).
+    normalised, bands = _validate_payload(request.config_type, payload, request.tenant_id)
+    if request.operation == CONFIG_OP_UPDATE:
+        # An update edits a live row: the revised payload's scope must still match
+        # the target the request names, else on approval it would replace a
+        # DIFFERENT scope and leave the named config untouched (same guard propose
+        # runs). Reload the target fresh under the request lock. An update always
+        # carries a target (propose requires it), so it is non-None here.
+        assert request.target_config_id is not None
+        target = await load_config_target(
+            session, request.config_type, request.target_config_id, request.tenant_id
+        )
+        if target is None:
+            raise ConfigRequestTargetNotFound()
+        if config_scope(request.config_type, bands[0]) != config_scope(
+            request.config_type, target
+        ):
+            raise AppHTTPException(
+                422,
+                "config_request_scope_mismatch",
+                "The edit's scope must match the config being edited.",
+            )
+    request.payload = normalised
     request.revision += 1
     _add_review(
         session,

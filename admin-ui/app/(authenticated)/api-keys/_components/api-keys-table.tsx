@@ -17,6 +17,11 @@ import {
 import { useToast } from "@/components/ui/toast";
 import type { ApiKey } from "@/lib/api-types";
 
+/** Short, human-scannable form of an opaque id for a merchant-bound badge. */
+function shortId(id: string): string {
+  return id.length > 8 ? `${id.slice(0, 8)}…` : id;
+}
+
 export function ApiKeysTable({ keys, tenantId }: { keys: ApiKey[]; tenantId: string }) {
   const { toast } = useToast();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -50,6 +55,7 @@ export function ApiKeysTable({ keys, tenantId }: { keys: ApiKey[]; tenantId: str
           <TableRow>
             <TableHeaderCell>Key ID</TableHeaderCell>
             <TableHeaderCell>Label</TableHeaderCell>
+            <TableHeaderCell>Capability</TableHeaderCell>
             <TableHeaderCell>Status</TableHeaderCell>
             <TableHeaderCell>Last used</TableHeaderCell>
             <TableHeaderCell className="w-[40px]"> </TableHeaderCell>
@@ -60,6 +66,15 @@ export function ApiKeysTable({ keys, tenantId }: { keys: ApiKey[]; tenantId: str
             <TableRow key={k.id}>
               <TableCell className="font-mono text-xs">{k.key_id}</TableCell>
               <TableCell>{k.label ?? "—"}</TableCell>
+              <TableCell>
+                {k.merchant_user_id ? (
+                  <Badge title={`Merchant ${k.merchant_user_id}`}>
+                    Merchant · {shortId(k.merchant_user_id)}
+                  </Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Partner</span>
+                )}
+              </TableCell>
               <TableCell>
                 <Badge>{k.status}</Badge>
               </TableCell>

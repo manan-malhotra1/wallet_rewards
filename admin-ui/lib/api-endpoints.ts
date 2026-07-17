@@ -893,6 +893,13 @@ export const deleteMultiplier = (multiplier_id: string, tenant_id: string) =>
 export interface CreateApiKeyPayload {
   tenant_id: string;
   label?: string;
+  /**
+   * Optional merchant user (user_type merchant/head_merchant) to bind the key
+   * to. When set, the minted key can call the external merchant cash-in API.
+   * Omit/null for a standard partner key. Backend 422s `merchant_user_required`
+   * if the id is not a merchant-type user in the tenant.
+   */
+  merchant_user_id?: string | null;
 }
 
 export const listApiKeys = (tenant_id: string) =>

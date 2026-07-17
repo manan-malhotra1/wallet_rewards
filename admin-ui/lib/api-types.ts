@@ -26,6 +26,12 @@ export interface ApiKey {
   status: string;
   last_used_at: string | null;
   created_at: string;
+  /**
+   * When set, the key can call the external merchant cash-in API, funding
+   * consumers from this merchant user's wallet. Null → ordinary partner key
+   * (fund/withdraw only).
+   */
+  merchant_user_id: string | null;
 }
 
 /** Create response — carries the plaintext secret, shown once and never again. */

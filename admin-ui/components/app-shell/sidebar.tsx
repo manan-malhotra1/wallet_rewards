@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Tag,
   Ticket,
+  UserCog,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -83,6 +84,7 @@ const CONFIG: NavEntry[] = [
   },
   { label: "Configuration approvals", href: "/config-requests", icon: GitPullRequest },
   { label: "Money approvals", href: "/money-operations", icon: Landmark },
+  { label: "User approvals", href: "/user-operations", icon: UserCog },
   { label: "Redemption", href: "/redemption", icon: CreditCard },
   { label: "Services", href: "/services", icon: Tag },
   { label: "Instruments", href: "/instruments", icon: Ticket },
@@ -209,10 +211,12 @@ export function Sidebar({
   pendingCount,
   configPendingCount,
   moneyPendingCount,
+  userPendingCount,
 }: {
   pendingCount?: number;
   configPendingCount?: number;
   moneyPendingCount?: number;
+  userPendingCount?: number;
 }) {
   const operations = OPERATIONS.map((item) =>
     item.href === "/reconciliation" && pendingCount
@@ -228,6 +232,9 @@ export function Sidebar({
     }
     if (entry.href === "/money-operations" && moneyPendingCount) {
       return { ...entry, badge: moneyPendingCount };
+    }
+    if (entry.href === "/user-operations" && userPendingCount) {
+      return { ...entry, badge: userPendingCount };
     }
     return entry;
   });

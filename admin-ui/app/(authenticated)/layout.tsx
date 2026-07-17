@@ -16,6 +16,7 @@ import {
   listConfigRequests,
   listMoneyOperations,
   listTenants,
+  listUserOperations,
 } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
 import { isBackendUnreachable } from "@/lib/is-backend-unreachable";
@@ -56,6 +57,7 @@ export default async function AuthenticatedLayout({
   // effort — a backend hiccup just drops the badge, never the shell.
   let configPendingCount = 0;
   let moneyPendingCount = 0;
+  let userPendingCount = 0;
   if (activeTenantId) {
     try {
       const pending = await listConfigRequests(activeTenantId, "PENDING");
@@ -67,6 +69,13 @@ export default async function AuthenticatedLayout({
     try {
       const pending = await listMoneyOperations(activeTenantId, "PENDING");
       moneyPendingCount = pending.length;
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+    }
+    // Epic 3: count of PENDING user create/edit operations awaiting approval.
+    try {
+      const pending = await listUserOperations(activeTenantId, "PENDING");
+      userPendingCount = pending.length;
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
     }
@@ -83,6 +92,7 @@ export default async function AuthenticatedLayout({
         activeTenantId={activeTenantId}
         configPendingCount={configPendingCount}
         moneyPendingCount={moneyPendingCount}
+        userPendingCount={userPendingCount}
         user={{
           username: session.user.username ?? session.user.email ?? session.user.id,
           email: session.user.email ?? undefined,

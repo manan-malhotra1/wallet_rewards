@@ -10,11 +10,15 @@ import { UserPlus, Users } from "lucide-react";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import {
   getUserDetail,
+  listUserOperations,
   listUserTransactions,
   resolveIdentifier,
   type UserTransaction,
 } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
+import type { UserOperation } from "@/lib/api-types";
+
+import type { OpenUpdateRequest } from "./_components/edit-user-drawer";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -29,6 +33,40 @@ export const dynamic = "force-dynamic";
 
 interface UsersPageProps {
   searchParams: Promise<{ type?: string; value?: string }>;
+}
+
+/** Does this update op still block a new edit (awaiting review)? */
+function isOpen(op: UserOperation): boolean {
+  return op.status === "PENDING" || op.status === "CHANGES_REQUESTED";
+}
+
+/**
+ * Find an in-flight update_user request for this user so the detail page can
+ * block a duplicate edit. Best-effort — a backend hiccup just drops the guard.
+ */
+async function findOpenUpdateRequest(
+  tenantId: string,
+  userId: string,
+): Promise<OpenUpdateRequest | null> {
+  let ops: UserOperation[] = [];
+  try {
+    // Both non-terminal statuses count as an open request.
+    const [pending, changes] = await Promise.all([
+      listUserOperations(tenantId, "PENDING"),
+      listUserOperations(tenantId, "CHANGES_REQUESTED"),
+    ]);
+    ops = [...pending, ...changes];
+  } catch (err) {
+    if (err instanceof ApiError) return null;
+    throw err;
+  }
+  const match = ops.find(
+    (op) =>
+      op.operation === "update_user" &&
+      isOpen(op) &&
+      String(op.payload.target_user_id ?? "") === userId,
+  );
+  return match ? { id: match.id, status: match.status } : null;
 }
 
 export default async function UsersPage({ searchParams }: UsersPageProps) {
@@ -49,6 +87,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   let detail: Awaited<ReturnType<typeof getUserDetail>> | null = null;
   let transactions: UserTransaction[] = [];
   let resolvedIdentifierValue: string | null = null;
+  let openUpdate: OpenUpdateRequest | null = null;
   let error: ApiError | null = null;
   if (params.type && params.value) {
     try {
@@ -62,6 +101,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         getUserDetail(activeTenantId, resolved.user_id),
         listUserTransactions(activeTenantId, resolved.user_id),
       ]);
+      openUpdate = await findOpenUpdateRequest(activeTenantId, resolved.user_id);
     } catch (err) {
       if (err instanceof ApiError) error = err;
       else throw err;
@@ -102,6 +142,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
             transactions={transactions}
             resolvedIdentifierValue={resolvedIdentifierValue}
             resolvedIdentifierType={params.type ?? "phone"}
+            openUpdate={openUpdate}
           />
         )}
         {!detail && !error && !params.value && (

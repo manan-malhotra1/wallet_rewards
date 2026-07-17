@@ -47,6 +47,8 @@ import type {
   Tenant,
   User,
   UserDetail,
+  UserOperation,
+  UserOperationStatus,
   UserType,
   WalletLimitConfig,
 } from "@/lib/api-types";
@@ -758,6 +760,87 @@ export const resubmitMoneyOperation = (tenant_id: string, id: string) =>
 export const withdrawMoneyOperation = (tenant_id: string, id: string) =>
   apiPost<MoneyOperation>(
     `/api/v1/money-operations/${id}/withdraw`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
+// ---- Epic 3 — User operations (create/edit user maker-checker) -----------
+
+/**
+ * PROPOSE a user operation (create_user / update_user). Returns a PENDING
+ * `UserOperation`; the user is created/edited only after N-eyes approval.
+ * `tenant_id` is a query param (admins are cross-tenant), matching money ops.
+ */
+export const proposeUserOperation = (
+  tenant_id: string,
+  operation: "create_user" | "update_user",
+  payload: Record<string, unknown>,
+) =>
+  apiPost<UserOperation>(
+    "/api/v1/user-operations",
+    { operation, payload },
+    { query: { tenant_id } },
+  );
+
+/** List a tenant's user operations, optionally filtered by lifecycle status. */
+export const listUserOperations = (
+  tenant_id: string,
+  status_filter?: UserOperationStatus,
+) =>
+  apiGet<UserOperation[]>("/api/v1/user-operations", {
+    query: { tenant_id, status_filter },
+  });
+
+/** Fetch a single user operation with its full review thread + progress. */
+export const getUserOperation = (id: string, tenant_id: string) =>
+  apiGet<UserOperation>(`/api/v1/user-operations/${id}`, {
+    query: { tenant_id },
+  });
+
+/** Approve a user operation (user-approver; must differ from the maker). */
+export const approveUserOperation = (tenant_id: string, id: string) =>
+  apiPost<UserOperation>(
+    `/api/v1/user-operations/${id}/approve`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
+/** Ask the maker to revise (user-approver). Comment is mandatory. */
+export const requestUserOpChanges = (
+  tenant_id: string,
+  id: string,
+  comment: string,
+) =>
+  apiPost<UserOperation>(
+    `/api/v1/user-operations/${id}/request-changes`,
+    { comment },
+    { query: { tenant_id } },
+  );
+
+/** Edit the proposed payload (maker; only while CHANGES_REQUESTED). */
+export const reviseUserOperation = (
+  tenant_id: string,
+  id: string,
+  payload: Record<string, unknown>,
+) =>
+  apiPatch<UserOperation>(
+    `/api/v1/user-operations/${id}`,
+    { payload },
+    { query: { tenant_id } },
+  );
+
+/** Re-submit a revised operation for approval → fresh round (maker). */
+export const resubmitUserOperation = (tenant_id: string, id: string) =>
+  apiPost<UserOperation>(
+    `/api/v1/user-operations/${id}/resubmit`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
+/** Withdraw a non-terminal user operation (maker). */
+export const withdrawUserOperation = (tenant_id: string, id: string) =>
+  apiPost<UserOperation>(
+    `/api/v1/user-operations/${id}/withdraw`,
     undefined,
     { query: { tenant_id } },
   );

@@ -1,17 +1,17 @@
 /**
- * <CreateUserDialog> — admin "Register user" form (Epic 13).
+ * <CreateUserDialog> — admin "Register user" form.
  *
- * Creates a user with one identifier (email or phone), an optional profile,
- * a user_type, and — for agent/merchant types — an optional hierarchy parent.
- * On success it navigates to the new user via the identifier lookup so the
- * operator lands on the detail card. Merchant profile fields arrive in Epic 17.
+ * Epic 3: this no longer creates the user directly. It PROPOSES a create_user
+ * operation (N-eyes maker-checker) — on submit a PENDING request is created and
+ * the maker is told it's awaiting approval. Same form fields as before:
+ * one identifier (email or phone), an optional profile, and a user_type.
  */
 "use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
-import { createUserAction } from "@/app/(authenticated)/users/_actions";
+import { proposeCreateUserAction } from "@/app/(authenticated)/users/_actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,17 +35,12 @@ import {
 import { useToast } from "@/components/ui/toast";
 import type { UserType } from "@/lib/api-types";
 
-import {
-  MERCHANT_TYPES,
-  PARENT_REQUIRED_TYPES,
-  USER_TYPE_OPTIONS,
-} from "./user-type-badge";
+import { MERCHANT_TYPES, USER_TYPE_OPTIONS } from "./user-type-badge";
 
 interface FormState {
   identifierType: "phone" | "email";
   identifierValue: string;
   userType: UserType;
-  parentUserId: string;
   firstName: string;
   lastName: string;
   dateOfBirth: string;
@@ -55,7 +50,6 @@ const EMPTY_FORM: FormState = {
   identifierType: "phone",
   identifierValue: "",
   userType: "consumer",
-  parentUserId: "",
   firstName: "",
   lastName: "",
   dateOfBirth: "",
@@ -85,7 +79,6 @@ export function CreateUserDialog({
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  const showParent = PARENT_REQUIRED_TYPES.includes(form.userType);
   const isMerchant = MERCHANT_TYPES.includes(form.userType);
 
   const onSubmit = async () => {
@@ -107,13 +100,12 @@ export function CreateUserDialog({
         : undefined;
 
     setSubmitting(true);
-    const result = await createUserAction({
-      tenant_id: tenantId,
+    const result = await proposeCreateUserAction({
+      tenantId,
       identifiers: [
         { identifier_type: form.identifierType, identifier_value: identifierValue },
       ],
       user_type: form.userType,
-      parent_user_id: showParent ? str(form.parentUserId) : undefined,
       profile,
     });
     setSubmitting(false);
@@ -122,12 +114,13 @@ export function CreateUserDialog({
       setErrorBanner(`${result.errorCode}: ${result.message}`);
       return;
     }
-    toast({ title: "User registered", description: identifierValue });
+    toast({
+      title: "Create-user request submitted",
+      description: "Awaiting approval — track it under User approvals.",
+    });
     setOpen(false);
-    // Land the operator on the new user's detail via the identifier lookup.
-    router.push(
-      `/users?type=${form.identifierType}&value=${encodeURIComponent(identifierValue)}`,
-    );
+    // The user doesn't exist yet — send the maker to the approvals queue.
+    router.push("/user-operations");
   };
 
   return (
@@ -137,8 +130,8 @@ export function CreateUserDialog({
         <DialogHeader>
           <DialogTitle>Register user</DialogTitle>
           <DialogDescription>
-            Create a user with one identifier and a type. Agents and merchants
-            can optionally hang under a parent.
+            Submits a create-user request for approval — the user is created once
+            a second admin (user approver) approves it.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -175,36 +168,23 @@ export function CreateUserDialog({
             </div>
           </div>
 
-          <div className={showParent ? "grid grid-cols-2 gap-3" : ""}>
-            <div>
-              <Label htmlFor="utype">User type</Label>
-              <Select
-                value={form.userType}
-                onValueChange={(v) => update("userType", v as UserType)}
-              >
-                <SelectTrigger id="utype">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {USER_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {showParent && (
-              <div>
-                <Label htmlFor="parent">Parent user ID (optional)</Label>
-                <Input
-                  id="parent"
-                  value={form.parentUserId}
-                  onChange={(e) => update("parentUserId", e.target.value)}
-                  placeholder="super_agent / head_merchant UUID"
-                />
-              </div>
-            )}
+          <div>
+            <Label htmlFor="utype">User type</Label>
+            <Select
+              value={form.userType}
+              onValueChange={(v) => update("userType", v as UserType)}
+            >
+              <SelectTrigger id="utype">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {USER_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {isMerchant && (
@@ -244,14 +224,14 @@ export function CreateUserDialog({
             </div>
           </div>
 
-          {errorBanner && <ErrorBanner title="Could not register" description={errorBanner} />}
+          {errorBanner && <ErrorBanner title="Could not submit" description={errorBanner} />}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={submitting}>
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={submitting}>
-            {submitting ? "Creating…" : "Register"}
+            {submitting ? "Submitting…" : "Submit for approval"}
           </Button>
         </DialogFooter>
       </DialogContent>

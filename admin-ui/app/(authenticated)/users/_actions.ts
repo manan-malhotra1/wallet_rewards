@@ -10,6 +10,7 @@ import {
   adminResetPin,
   changeUserType,
   createUser,
+  proposeUserOperation,
   type ChangeUserTypePayload,
   type CreateUserPayload,
 } from "@/lib/api-endpoints";
@@ -75,6 +76,82 @@ export async function createUserAction(
       message: err instanceof Error ? err.message : "Unknown error",
     };
   }
+}
+
+export type ProposeActionResult =
+  | { ok: true; operationId: string }
+  | { ok: false; errorCode: string; message: string };
+
+/** The create_user identifier shape (subset the maker-checker schema accepts). */
+export interface ProposeCreateUserInput {
+  tenantId: string;
+  identifiers: {
+    identifier_type: "phone" | "email";
+    identifier_value: string;
+  }[];
+  user_type: string;
+  profile?: {
+    first_name?: string;
+    last_name?: string;
+    date_of_birth?: string;
+  };
+}
+
+/**
+ * Epic 3 — PROPOSE a create_user operation (does NOT create the user directly).
+ * Creates a PENDING user operation that applies only after N-eyes approval.
+ */
+export async function proposeCreateUserAction(
+  input: ProposeCreateUserInput,
+): Promise<ProposeActionResult> {
+  const { tenantId, ...payload } = input;
+  try {
+    const op = await proposeUserOperation(tenantId, "create_user", payload);
+    revalidatePath("/user-operations");
+    return { ok: true, operationId: op.id };
+  } catch (err) {
+    return toProposeResult(err);
+  }
+}
+
+/** The editable fields of an update_user proposal (identifiers are not here). */
+export interface ProposeUpdateUserInput {
+  tenantId: string;
+  target_user_id: string;
+  first_name?: string;
+  last_name?: string;
+  status?: "active" | "suspended";
+  user_type?: string;
+}
+
+/**
+ * Epic 3 — PROPOSE an update_user operation (does NOT edit the user directly).
+ * Only changed editable fields are sent; applies after N-eyes approval.
+ */
+export async function proposeUpdateUserAction(
+  input: ProposeUpdateUserInput,
+): Promise<ProposeActionResult> {
+  const { tenantId, ...payload } = input;
+  try {
+    const op = await proposeUserOperation(tenantId, "update_user", payload);
+    revalidatePath("/user-operations");
+    revalidatePath("/users");
+    return { ok: true, operationId: op.id };
+  } catch (err) {
+    return toProposeResult(err);
+  }
+}
+
+/** Normalise a thrown error into the {ok:false} propose-result shape. */
+function toProposeResult(err: unknown): ProposeActionResult {
+  if (err instanceof ApiError) {
+    return { ok: false, errorCode: err.errorCode, message: err.message };
+  }
+  return {
+    ok: false,
+    errorCode: "internal_error",
+    message: err instanceof Error ? err.message : "Unknown error",
+  };
 }
 
 export type ChangeTypeActionResult =

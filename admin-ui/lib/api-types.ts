@@ -651,6 +651,63 @@ export interface MoneyOperation {
   bank_mirror_name: string | null;
 }
 
+// ---- Epic 3 — User operations (create/edit user maker-checker) -----------
+
+/** The admin user operations that flow through N-eyes maker-checker. */
+export type UserOperationType = "create_user" | "update_user";
+
+/** Lifecycle status of a user operation. Mirrors the money-operation set. */
+export type UserOperationStatus =
+  | "PENDING"
+  | "CHANGES_REQUESTED"
+  | "APPLIED"
+  | "WITHDRAWN";
+
+/**
+ * Action recorded on one review-thread entry. Permissive union — the backend
+ * owns the canonical verbs; render defensively.
+ */
+export type UserOperationReviewAction =
+  | "submitted"
+  | "changes_requested"
+  | "revised"
+  | "resubmitted"
+  | "approved"
+  | "withdrawn";
+
+/** One entry in a user operation's append-only review thread. */
+export interface UserOperationReview {
+  id: string;
+  actor_admin_id: string;
+  /** Resolved display name for the actor (null if not yet recorded). */
+  actor_admin_name: string | null;
+  actor_role: string;
+  action: UserOperationReviewAction | string;
+  comment: string | null;
+  created_at: string;
+}
+
+/** A user-operation request, with its review thread + N-eyes progress. */
+export interface UserOperation {
+  id: string;
+  tenant_id: string;
+  operation: UserOperationType;
+  payload: Record<string, unknown>;
+  status: UserOperationStatus;
+  maker_admin_id: string;
+  /** Resolved display name for the maker (null if not yet recorded). */
+  maker_admin_name: string | null;
+  required_approvals: number;
+  approvals_count: number;
+  /** The user created/edited once the operation applied (null before then). */
+  applied_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  reviews: UserOperationReview[];
+  /** For update_user: the edited user's current display name (null if none). */
+  target_name: string | null;
+}
+
 export interface RewardBudget {
   id: string;
   tenant_id: string;

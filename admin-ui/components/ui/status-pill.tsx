@@ -57,6 +57,12 @@ const STATUS_MAP: Record<
     bg: "bg-muted",
     text: "text-muted-foreground",
   },
+  SUSPENDED: {
+    label: "Suspended",
+    dot: "bg-red-500",
+    bg: "bg-red-500/10 dark:bg-red-500/15",
+    text: "text-red-700 dark:text-red-400",
+  },
   DRAFT: {
     label: "Draft",
     dot: "bg-slate-400",

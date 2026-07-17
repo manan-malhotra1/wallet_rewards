@@ -10,8 +10,11 @@ the same request row and its append-only review thread persist across the loop.
 Modelled 1:1 on `money_operations.py` (MoneyOperationRequest/Review): same
 conventions — uuid_pk, tenant FK, CHECK-constrained enums, created_at/updated_at
 helpers, and an append-only review thread with no `updated_at`. Unlike money
-operations there is no per-operation approval policy table; `required_approvals`
-is resolved by the service (defaults to 1 = four-eyes).
+operations there is no per-operation approval policy table: user ops are
+four-eyes only for now, so `propose_user_operation` always sets
+`required_approvals=1` (one distinct checker). The column + CHECK still allow 2
+(six-eyes) so a future per-tenant policy can raise it without a migration, but
+no API path sets it above 1 yet.
 """
 
 from __future__ import annotations

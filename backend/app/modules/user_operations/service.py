@@ -21,6 +21,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
+import structlog
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +62,8 @@ from app.shared.models import (
     UserOperationRequest,
     UserOperationReview,
 )
+
+log = structlog.get_logger()
 
 # -----------------------------------------------------------------------------
 # Internal helpers
@@ -204,10 +207,27 @@ def _validate_payload(operation: str, payload: dict[str, object]) -> dict[str, o
     try:
         model = schema_cls.model_validate(payload)
     except ValidationError as exc:
+        # The pydantic error string can echo the offending payload values back,
+        # and a create_user payload carries PII (email/phone). Keep the detail
+        # server-side only (structlog masks nothing, so log field names — never
+        # the raw exc — in the response) per NFR-0170/NFR-0240. We surface the
+        # invalid field *names* to the caller, not their values.
+        invalid_fields = sorted({str(err["loc"][0]) for err in exc.errors() if err["loc"]})
+        log.info(
+            "user_operation_payload_invalid",
+            operation=operation,
+            error_count=exc.error_count(),
+            invalid_fields=invalid_fields,
+        )
+        detail = (
+            f"Payload is not a valid {operation} operation"
+            + (f" (check: {', '.join(invalid_fields)})" if invalid_fields else "")
+            + "."
+        )
         raise AppHTTPException(
             422,
             "user_operation_invalid_payload",
-            f"Payload is not a valid {operation} operation: {exc}",
+            detail,
         ) from exc
     return model.model_dump(mode="json")
 
@@ -266,6 +286,9 @@ async def propose_user_operation(
         payload=normalised,
         status=USER_OP_STATUS_PENDING,
         maker_admin_id=admin.id,
+        # User ops are four-eyes only for now (one distinct checker). There is no
+        # per-operation approval policy table yet; the column/CHECK allow 2 so a
+        # future policy can raise it, but no path sets it above 1 today.
         required_approvals=1,
     )
     session.add(request)

@@ -643,6 +643,12 @@ export interface MoneyOperation {
   created_at: string;
   updated_at: string;
   reviews: MoneyOperationReview[];
+  /** Resolved user name for fund_user/withdraw_user (null if unresolvable). */
+  subject_name: string | null;
+  /** Resolved target system-account name for adjust_system_wallet. */
+  account_name: string | null;
+  /** Resolved bank-mirror account name (adjust_system_wallet/withdraw_user). */
+  bank_mirror_name: string | null;
 }
 
 export interface RewardBudget {

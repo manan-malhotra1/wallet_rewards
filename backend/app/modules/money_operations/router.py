@@ -17,6 +17,7 @@ from app.auth import AdminPrincipal
 from app.database import get_async_session
 from app.dependencies import require_admin_role
 from app.modules.admin_profiles import resolve_admin_names
+from app.modules.identity.service import resolve_identifier, resolve_user_names
 from app.modules.money_operations.schemas import (
     MoneyOperationCommentRequest,
     MoneyOperationOut,
@@ -36,7 +37,15 @@ from app.modules.money_operations.service import (
     revise_money_operation,
     withdraw_money_operation,
 )
-from app.shared.models import MoneyOperationRequest, MoneyOperationReview
+from app.shared.exceptions import AppHTTPException
+from app.shared.models import (
+    MONEY_OP_ADJUST_SYSTEM,
+    MONEY_OP_FUND_USER,
+    MONEY_OP_WITHDRAW_USER,
+    Account,
+    MoneyOperationRequest,
+    MoneyOperationReview,
+)
 
 router = APIRouter(prefix="/api/v1/money-operations", tags=["money-operations"])
 
@@ -72,6 +81,60 @@ async def _attach_admin_names(session: AsyncSession, outs: list[MoneyOperationOu
             review.actor_admin_name = names.get(review.actor_admin_id)
 
 
+async def _account_display_name(
+    session: AsyncSession, tenant_id: UUID, account_id: object
+) -> str | None:
+    """Resolve a system-account id to its display name (its `name`, else the
+    account_type). Tenant-scoped, best-effort — None when the id is bad/absent."""
+    try:
+        acct = await session.get(Account, UUID(str(account_id)))
+    except (ValueError, TypeError):
+        return None
+    if acct is None or acct.tenant_id != tenant_id:
+        return None
+    return acct.name or acct.account_type
+
+
+async def _attach_payload_names(session: AsyncSession, outs: list[MoneyOperationOut]) -> None:
+    """Resolve payload subjects to human names so the UI shows people/wallets,
+    not raw identifiers/UUIDs.
+
+    - fund_user / withdraw_user → `subject_name` (the funded/withdrawn user).
+    - adjust_system_wallet → `account_name` (target) + `bank_mirror_name`.
+    - withdraw_user → `bank_mirror_name` (its counter-leg mirror).
+
+    Best-effort: any resolution miss leaves the field None and the UI falls
+    back to the raw payload value. Never raises — display enrichment only.
+    """
+    for out in outs:
+        payload = out.payload
+        if out.operation in (MONEY_OP_FUND_USER, MONEY_OP_WITHDRAW_USER):
+            itype = payload.get("identifier_type")
+            ivalue = payload.get("identifier_value")
+            if itype and ivalue:
+                try:
+                    ident = await resolve_identifier(
+                        session, out.tenant_id, itype, str(ivalue)  # type: ignore[arg-type]
+                    )
+                    names = await resolve_user_names(
+                        session, tenant_id=out.tenant_id, user_ids=[ident.user_id]
+                    )
+                    out.subject_name = names.get(ident.user_id)
+                except AppHTTPException:
+                    # Unknown/unresolvable identifier — leave subject_name None.
+                    pass
+        if out.operation in (MONEY_OP_ADJUST_SYSTEM, MONEY_OP_WITHDRAW_USER):
+            mirror_id = payload.get("bank_mirror_account_id")
+            if mirror_id:
+                out.bank_mirror_name = await _account_display_name(
+                    session, out.tenant_id, mirror_id
+                )
+        if out.operation == MONEY_OP_ADJUST_SYSTEM:
+            account_id = payload.get("account_id")
+            if account_id:
+                out.account_name = await _account_display_name(session, out.tenant_id, account_id)
+
+
 async def serialize_money_operation(
     session: AsyncSession, request: MoneyOperationRequest
 ) -> MoneyOperationOut:
@@ -83,6 +146,7 @@ async def serialize_money_operation(
     reviews = await load_reviews(session, request.id)
     out = _build_out(request, reviews)
     await _attach_admin_names(session, [out])
+    await _attach_payload_names(session, [out])
     return out
 
 
@@ -121,6 +185,7 @@ async def get_operations(
         reviews = await load_reviews(session, request.id)
         outs.append(_build_out(request, reviews))
     await _attach_admin_names(session, outs)
+    await _attach_payload_names(session, outs)
     return outs
 
 

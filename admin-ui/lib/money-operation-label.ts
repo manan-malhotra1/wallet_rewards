@@ -43,11 +43,12 @@ export function moneyOperationSummary(op: MoneyOperation): string {
     case "fund_user": {
       const amount = formatCap(field(p, "amount"));
       const currency = field(p, "currency") ?? "";
-      const target = field(p, "identifier_value") ?? "—";
+      // Prefer the resolved user name; fall back to the raw identifier.
+      const target = op.subject_name ?? field(p, "identifier_value") ?? "—";
       return `${currency} ${amount} → ${target}`.trim();
     }
     case "withdraw_user": {
-      const target = field(p, "identifier_value") ?? "—";
+      const target = op.subject_name ?? field(p, "identifier_value") ?? "—";
       const currency = field(p, "currency") ?? "";
       const amount =
         p.withdraw_all === true ? "all" : formatCap(field(p, "amount"));
@@ -56,8 +57,11 @@ export function moneyOperationSummary(op: MoneyOperation): string {
     case "adjust_system_wallet": {
       const raw = Number(field(p, "amount") ?? 0);
       const signed = `${raw >= 0 ? "+" : "−"}${formatCap(Math.abs(raw))}`;
-      const account = field(p, "account_id");
-      return `${signed} on ${account ? shortId(account) : "wallet"}`;
+      // Prefer resolved wallet names; fall back to shortened UUIDs.
+      const accountId = field(p, "account_id");
+      const account = op.account_name ?? (accountId ? shortId(accountId) : "wallet");
+      const mirror = op.bank_mirror_name;
+      return mirror ? `${signed} on ${account} via ${mirror}` : `${signed} on ${account}`;
     }
     case "create_bank_mirror": {
       const name = field(p, "name") ?? "—";

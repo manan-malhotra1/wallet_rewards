@@ -123,8 +123,31 @@ function FieldValue({
     }
     return <Money amount={String(value)} currency={currency} />;
   }
-  if (fieldKey === "account_id" || fieldKey === "bank_mirror_account_id") {
-    return <span className="font-mono text-xs">{shortId(String(value))}</span>;
+  // The funded/withdrawn user — lead with the resolved name, keep the raw
+  // identifier as a muted secondary line so it's still visible.
+  if (fieldKey === "identifier_value" && op.subject_name) {
+    return (
+      <span className="text-sm text-foreground">
+        {op.subject_name}
+        <span className="ml-2 font-mono text-xs text-muted-foreground">{String(value)}</span>
+      </span>
+    );
+  }
+  // System-account / bank-mirror legs — show the resolved wallet name; fall
+  // back to a shortened UUID only when the name couldn't be resolved.
+  if (fieldKey === "account_id") {
+    return op.account_name ? (
+      <span className="text-sm text-foreground">{op.account_name}</span>
+    ) : (
+      <span className="font-mono text-xs">{shortId(String(value))}</span>
+    );
+  }
+  if (fieldKey === "bank_mirror_account_id") {
+    return op.bank_mirror_name ? (
+      <span className="text-sm text-foreground">{op.bank_mirror_name}</span>
+    ) : (
+      <span className="font-mono text-xs">{shortId(String(value))}</span>
+    );
   }
   if (fieldKey === "withdraw_all") {
     return <span className="text-sm">{value ? "Yes" : "No"}</span>;

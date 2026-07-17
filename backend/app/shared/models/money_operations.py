@@ -176,8 +176,9 @@ class ApprovalPolicy(Base):
 
     Resolution order at propose time: (tenant, operation) → (tenant, NULL default)
     → code default of 1. No rows are required — the service defaults to 1 approval
-    (four-eyes: maker + 1 checker) when no policy row matches. A NULL `operation` row is the tenant-wide
-    default applied to every money operation lacking a more specific row.
+    (four-eyes: maker + 1 checker) when no policy row matches. A NULL `operation`
+    row is the tenant-wide default applied to every money operation lacking a
+    more specific row.
     """
 
     __tablename__ = "approval_policies"

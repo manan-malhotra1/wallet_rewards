@@ -164,3 +164,8 @@ class MoneyOperationOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     reviews: list[MoneyReviewOut] = Field(default_factory=list)
+    # Best-effort resolved display names so the UI shows people/wallets, not
+    # raw identifiers/UUIDs. None when unresolvable (UI falls back to payload).
+    subject_name: str | None = None  # funded/withdrawn user (fund_user/withdraw_user)
+    account_name: str | None = None  # target system account (adjust_system_wallet)
+    bank_mirror_name: str | None = None  # bank-mirror leg (adjust_system_wallet/withdraw_user)

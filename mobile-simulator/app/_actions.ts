@@ -14,6 +14,8 @@ import {
   externalCreateUser,
   externalFund,
   externalWithdraw,
+  login,
+  logout,
   merchantCashin,
   fireEventHttp,
   fireEventKafka,
@@ -27,6 +29,33 @@ import { formatAmount } from "@/lib/format";
 export type ActionResult =
   | { ok: true; message: string }
   | { ok: false; message: string; needsPin?: boolean };
+
+/** Result of a login attempt — a `message` is present only on failure. */
+export type LoginActionResult = { ok: boolean; message?: string };
+
+/**
+ * Log a user in with an operator-entered PIN (validates the 4-digit format,
+ * then delegates to the backend). On success the PIN is held in the server-side
+ * credential store so subsequent actions reuse the session; the browser never
+ * keeps it. Revalidates so the pane re-renders in its logged-in state.
+ */
+export async function loginAction(
+  user: UserKey,
+  pin: string,
+): Promise<LoginActionResult> {
+  if (!/^\d{4}$/.test(pin)) {
+    return { ok: false, message: "Enter your 4-digit PIN." };
+  }
+  const res = await login(user, pin);
+  revalidatePath("/");
+  return res.ok ? { ok: true } : { ok: false, message: res.message };
+}
+
+/** Log a user out: clears their cached token + stored PIN and revalidates. */
+export async function logoutAction(user: UserKey): Promise<void> {
+  await logout(user);
+  revalidatePath("/");
+}
 
 /**
  * Result of a partner external-API action. Carries a friendly `message` plus the

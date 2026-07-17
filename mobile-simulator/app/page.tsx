@@ -8,7 +8,7 @@
  * after a P2P or event fire (which revalidatePath this route).
  */
 import { config, type UserKey } from "@/lib/config";
-import { getMyWallet, type Wallet } from "@/lib/backend";
+import { getMyWallet, isLoggedIn, type Wallet } from "@/lib/backend";
 
 import { AirtimeForm } from "./_components/airtime-form";
 import { CashInForm } from "./_components/cashin-form";
@@ -22,16 +22,27 @@ import { WalletPane } from "./_components/wallet-pane";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Load a user's wallet only when the operator has logged them in — a logged-out
+ * user has no session, so we skip the fetch and let the pane show its login
+ * prompt. `loggedIn` drives the pane's rendering either way.
+ */
 async function loadWalletSafely(user: UserKey): Promise<{
   wallet: Wallet | null;
+  loggedIn: boolean;
   error: string | null;
 }> {
+  const loggedIn = isLoggedIn(user);
+  if (!loggedIn) {
+    return { wallet: null, loggedIn: false, error: null };
+  }
   try {
     const wallet = await getMyWallet(user);
-    return { wallet, error: null };
+    return { wallet, loggedIn: true, error: null };
   } catch (err) {
     return {
       wallet: null,
+      loggedIn: true,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -78,25 +89,45 @@ export default async function HomePage() {
       ) : null}
 
       <div className="grid gap-5 md:grid-cols-2">
-        <WalletPane user="alice" phone={config.users.alice.phone} wallet={alice.wallet}>
+        <WalletPane
+          user="alice"
+          phone={config.users.alice.phone}
+          wallet={alice.wallet}
+          loggedIn={alice.loggedIn}
+        >
           <P2PForm sender="alice" recipient="bob" />
           <AirtimeForm buyer="alice" />
           <CashOutForm subscriber="alice" />
           <ChangePinForm user="alice" />
         </WalletPane>
-        <WalletPane user="bob" phone={config.users.bob.phone} wallet={bob.wallet}>
+        <WalletPane
+          user="bob"
+          phone={config.users.bob.phone}
+          wallet={bob.wallet}
+          loggedIn={bob.loggedIn}
+        >
           <P2PForm sender="bob" recipient="alice" />
           <AirtimeForm buyer="bob" />
           <CashOutForm subscriber="bob" />
           <ChangePinForm user="bob" />
         </WalletPane>
         {/* Agent — cash-in only (funds a customer, earns commission). */}
-        <WalletPane user="agent" phone={config.users.agent.phone} wallet={agent.wallet}>
+        <WalletPane
+          user="agent"
+          phone={config.users.agent.phone}
+          wallet={agent.wallet}
+          loggedIn={agent.loggedIn}
+        >
           <CashInForm agent="agent" />
         </WalletPane>
         {/* Airtime merchant — read-only: shows the recharges run against its
             holding account. No action forms. */}
-        <WalletPane user="merchant" phone={config.users.merchant.phone} wallet={merchant.wallet} />
+        <WalletPane
+          user="merchant"
+          phone={config.users.merchant.phone}
+          wallet={merchant.wallet}
+          loggedIn={merchant.loggedIn}
+        />
       </div>
 
       {/* Partner external-API panel (fund / withdraw / create user). Targets are

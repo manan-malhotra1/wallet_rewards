@@ -20,28 +20,33 @@ function required(name: string): string {
 export const config = {
   backendUrl: process.env.SASAI_BACKEND_URL ?? "http://localhost:8000",
   tenantName: process.env.SASAI_TENANT_NAME ?? "Sasai-ZA",
+  // Each user has a required `phone` (the seeded default) and an OPTIONAL `pin`.
+  // The PIN here is only a convenience hint of the seeded default — operators log
+  // each user in through the UI, and the entered PIN lives in the runtime
+  // credential store (lib/backend.ts), NOT here. Nothing authenticates with this
+  // field; it is safe to leave unset.
   users: {
     alice: {
       label: "Alice",
       phone: required("SASAI_ALICE_PHONE"),
-      pin: required("SASAI_ALICE_PIN"),
+      pin: process.env.SASAI_ALICE_PIN,
     },
     bob: {
       label: "Bob",
       phone: required("SASAI_BOB_PHONE"),
-      pin: required("SASAI_BOB_PIN"),
+      pin: process.env.SASAI_BOB_PIN,
     },
-    // Agent + merchant default to the seeded phones/PINs so existing .env.local
-    // files keep working without edits (scripts/seed.py seeds both with PIN 1234).
+    // Agent + merchant default to the seeded phones so existing .env.local files
+    // keep working without edits (scripts/seed.py seeds both).
     agent: {
       label: "Grace (Agent)",
       phone: process.env.SASAI_AGENT_PHONE ?? "+27825558001",
-      pin: process.env.SASAI_AGENT_PIN ?? "1234",
+      pin: process.env.SASAI_AGENT_PIN,
     },
     merchant: {
       label: "Airtime Merchant",
       phone: process.env.SASAI_MERCHANT_PHONE ?? "+27825559001",
-      pin: process.env.SASAI_MERCHANT_PIN ?? "1234",
+      pin: process.env.SASAI_MERCHANT_PIN,
     },
   },
   eventSource: {

@@ -8,9 +8,16 @@
  *   - bootstrap (tenant_id + user_id-by-phone): fetched once from
  *     /api/v1/events/sim-bootstrap, reused for the process lifetime.
  *   - session tokens: cached per-phone after the first PIN login.
+ *   - credential store: the PIN each user logged in with, keyed by phone.
+ *     Populated by `login`, read by `loginUser` (so the money/step-up paths
+ *     can silently re-login after a session expiry), cleared by `logout`.
  *
- * Session expiry: if a wallet read 401s, we drop the cache and
- * re-login transparently before retrying once.
+ * There is NO hardcoded default PIN: an operator must log a user in through
+ * the UI first. Both maps are module-level, so a server restart logs everyone
+ * out — acceptable for a dev tool.
+ *
+ * Session expiry: if a wallet read 401s, we drop the token cache and
+ * re-login transparently (using the stored PIN) before retrying once.
  */
 import "server-only";
 
@@ -25,6 +32,35 @@ interface Bootstrap {
 
 let bootstrapPromise: Promise<Bootstrap> | null = null;
 const sessionCache = new Map<string, string>();
+const credentialStore = new Map<string, string>();
+
+/**
+ * Thrown when a money/step-up path needs a user's session but the operator has
+ * not logged that user in yet (no stored PIN / token). Carries a friendly
+ * message the server action surfaces verbatim.
+ */
+export class NotLoggedInError extends Error {
+  constructor(public readonly user: UserKey) {
+    super(
+      `${config.users[user].label} is not logged in — enter their PIN and log in first.`,
+    );
+    this.name = "NotLoggedInError";
+  }
+}
+
+/** Whether a user currently has a stored PIN (i.e. the operator logged them in). */
+export function isLoggedIn(user: UserKey): boolean {
+  return credentialStore.has(config.users[user].phone);
+}
+
+/** Typed outcome of a PIN login attempt, mapped from the backend's HTTP status. */
+export type LoginOutcome =
+  | { ok: true }
+  | {
+      ok: false;
+      kind: "invalid_credentials" | "account_locked" | "other";
+      message: string;
+    };
 
 async function getBootstrap(): Promise<Bootstrap> {
   if (!bootstrapPromise) {
@@ -78,9 +114,16 @@ export interface Wallet {
   recent_transactions: WalletTransaction[];
 }
 
-async function _login(phone: string, pin: string): Promise<string> {
-  const cached = sessionCache.get(phone);
-  if (cached) return cached;
+/**
+ * POST phone+PIN to the backend auth endpoint.
+ *
+ * Returns the raw status + parsed token so callers can distinguish 401
+ * (invalid credentials) from 423 (account locked). Does NOT touch any cache.
+ */
+async function postPinLogin(
+  phone: string,
+  pin: string,
+): Promise<{ status: number; token: string | null; body: string }> {
   const { tenant_id } = await getBootstrap();
   const res = await fetch(`${config.backendUrl}/api/v1/identity/auth/pin`, {
     method: "POST",
@@ -88,19 +131,99 @@ async function _login(phone: string, pin: string): Promise<string> {
     body: JSON.stringify({ tenant_id, phone, pin }),
     cache: "no-store",
   });
-  if (!res.ok) {
-    throw new Error(
-      `PIN login failed for ${phone}: ${res.status} ${await res.text()}`,
-    );
+  const body = await res.text();
+  let token: string | null = null;
+  if (res.ok) {
+    try {
+      token = (JSON.parse(body) as { session_token: string }).session_token;
+    } catch {
+      token = null;
+    }
   }
-  const payload: { session_token: string } = await res.json();
-  sessionCache.set(phone, payload.session_token);
-  return payload.session_token;
+  return { status: res.status, token, body };
 }
 
+/**
+ * Return a valid session token for `phone`, logging in with `pin` if none is
+ * cached. Used on the money/step-up paths where the PIN comes from the
+ * credential store. Throws a plain Error if the stored PIN is somehow rejected.
+ */
+async function _login(phone: string, pin: string): Promise<string> {
+  const cached = sessionCache.get(phone);
+  if (cached) return cached;
+  const res = await postPinLogin(phone, pin);
+  if (!res.token) {
+    throw new Error(`PIN login failed for ${phone}: ${res.status} ${res.body}`);
+  }
+  sessionCache.set(phone, res.token);
+  return res.token;
+}
+
+/**
+ * Log a user in with an operator-entered PIN.
+ *
+ * On success, stores the PIN in the credential store and caches the token so
+ * the money/step-up paths work without re-prompting. Returns a typed outcome;
+ * a wrong PIN (401) or lockout (423) is a normal result, not an exception.
+ */
+export async function login(user: UserKey, pin: string): Promise<LoginOutcome> {
+  const phone = config.users[user].phone;
+  const res = await postPinLogin(phone, pin);
+  if (res.token) {
+    credentialStore.set(phone, pin);
+    sessionCache.set(phone, res.token);
+    return { ok: true };
+  }
+  if (res.status === 401) {
+    return {
+      ok: false,
+      kind: "invalid_credentials",
+      message: "Incorrect PIN.",
+    };
+  }
+  if (res.status === 423) {
+    return {
+      ok: false,
+      kind: "account_locked",
+      message: "Account locked — too many failed attempts. Try again later.",
+    };
+  }
+  return { ok: false, kind: "other", message: `${res.status}: ${res.body}` };
+}
+
+/**
+ * Log a user out: drop their cached token + stored PIN, and best-effort
+ * invalidate the session server-side. Idempotent — logging out an
+ * already-logged-out user is a no-op.
+ */
+export async function logout(user: UserKey): Promise<void> {
+  const phone = config.users[user].phone;
+  const token = sessionCache.get(phone);
+  sessionCache.delete(phone);
+  credentialStore.delete(phone);
+  if (!token) return;
+  // Best-effort backend logout; a dev tool tolerates this failing.
+  try {
+    await fetch(`${config.backendUrl}/api/v1/identity/auth/logout`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+  } catch {
+    // Local caches are already cleared — the operator is logged out regardless.
+  }
+}
+
+/**
+ * Return a session token for `user`, sourcing the PIN from the credential store.
+ * Raises NotLoggedInError if the operator has not logged this user in yet —
+ * there is no hardcoded default PIN to fall back on.
+ */
 async function loginUser(user: UserKey): Promise<string> {
-  const u = config.users[user];
-  return _login(u.phone, u.pin);
+  const phone = config.users[user].phone;
+  const pin = credentialStore.get(phone);
+  if (!pin) throw new NotLoggedInError(user);
+  return _login(phone, pin);
 }
 
 async function userIdFor(user: UserKey): Promise<string> {

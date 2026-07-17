@@ -1,8 +1,8 @@
 # Sasai Mobile Simulator
 
 Local-dev tool. Two seeded mobile wallets (Alice + Bob) side-by-side,
-plus a Kafka/HTTP campaign-event trigger panel. No login UI — the
-simulator authenticates as the seeded users in the background.
+plus a Kafka/HTTP campaign-event trigger panel. Each user is logged in
+from its pane by typing the seeded PIN (default `1234`).
 
 ## Setup
 
@@ -53,11 +53,16 @@ both are surfaced verbatim in the panel's response box, not treated as crashes.
 
 ## How the auth works
 
-The simulator's Next.js server holds Alice + Bob's PINs (from
-`.env.local`). On first request it does a silent
-`POST /api/v1/identity/auth/pin` for each user, caches the session
-token in memory, and reuses it. If a session expires (401) the
-simulator drops the cache and re-logs in transparently.
+Each wallet pane has a login control. The operator types the user's PIN and
+clicks **Log in**; the server action calls
+`POST /api/v1/identity/auth/pin`, and on success the Next.js server holds the
+PIN in a module-level credential store and caches the session token — both
+server-side, so the browser never sees either. Subsequent actions (P2P,
+cash-out, step-up, change-PIN) reuse the stored PIN, and an expired session
+(401) is re-logged-in transparently. **Log out** clears the token + stored PIN
+and invalidates the session server-side. There is no hardcoded default login
+PIN; a logged-out pane hides its balances and forms until you log in. Because
+both maps are in memory, restarting the dev server logs everyone out.
 
 ## Production caveat
 

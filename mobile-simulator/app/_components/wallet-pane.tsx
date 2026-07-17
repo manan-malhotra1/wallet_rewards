@@ -12,17 +12,20 @@ import type { Wallet } from "@/lib/backend";
 import type { UserKey } from "@/lib/config";
 import { formatAmount } from "@/lib/format";
 
+import { AuthControl } from "./auth-control";
 import { TransactionList } from "./transaction-list";
 
 export function WalletPane({
   user,
   phone,
   wallet,
+  loggedIn,
   children,
 }: {
   user: UserKey;
   phone: string;
   wallet: Wallet | null;
+  loggedIn: boolean;
   children?: React.ReactNode;
 }) {
   return (
@@ -36,11 +39,17 @@ export function WalletPane({
             <Phone className="h-3 w-3" /> {phone}
           </div>
         </div>
-        <div className="rounded-full bg-[var(--color-brand)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
-          Sasai Wallet
-        </div>
+        <AuthControl user={user} loggedIn={loggedIn} />
       </header>
 
+      {/* Logged-out panes hide balances, activity, and action forms until the
+          operator logs the user in — those all need the user's session. */}
+      {!loggedIn ? (
+        <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-8 text-center text-sm text-[var(--color-fg-muted)]">
+          Log in with this user&apos;s PIN to view balances and activity.
+        </div>
+      ) : (
+        <>
       <section className="grid gap-2">
         {wallet?.accounts.length ? (
           wallet.accounts.map((acct) => (
@@ -75,6 +84,8 @@ export function WalletPane({
       </section>
 
       {children ? <div className="pt-1">{children}</div> : null}
+        </>
+      )}
     </div>
   );
 }

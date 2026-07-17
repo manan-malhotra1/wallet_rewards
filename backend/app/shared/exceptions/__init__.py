@@ -276,6 +276,23 @@ class SelfTransferNotAllowed(AppHTTPException):
         )
 
 
+class RecipientNotAgent(AppHTTPException):
+    """Cash-out target is not an agent (or super-agent).
+
+    A subscriber may only cash out TO an agent — the mirror of agent cash-in.
+    Resolving the identifier to a non-agent recipient is a client error (422),
+    not a "not found": the user exists, they just aren't an eligible cash-out
+    counterparty.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "recipient_not_agent",
+            "Cash-out recipient must be an agent.",
+        )
+
+
 # --- Events & Rules ---------------------------------------------------------
 
 

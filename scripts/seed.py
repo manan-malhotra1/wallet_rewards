@@ -207,6 +207,11 @@ async def _seed_services_catalog(session: AsyncSession, tenant: Tenant) -> None:
             "Cash In",
             "An agent funds a customer's wallet from the agent's e-float and earns a commission.",
         ),
+        (
+            "cashout",
+            "Cash Out",
+            "A subscriber sends money to an agent; the agent earns a commission.",
+        ),
     ]
     for code, display_name, description in baseline:
         result = await session.execute(
@@ -407,7 +412,7 @@ async def _get_or_create_standard_user_role(session: AsyncSession, tenant: Tenan
     # Permissions are idempotent via the unique (role_id, transaction_type) index.
     # `cash_in` is granted here so seeded agents can fund customers; in
     # production a dedicated agent role would carry it (Pricing v2 Epic 21).
-    for txn_type in ("p2p", "fund", "redemption", "airtime_recharge", "cash_in"):
+    for txn_type in ("p2p", "fund", "redemption", "airtime_recharge", "cash_in", "cashout"):
         exists = (
             await session.execute(
                 select(RolePermission).where(
@@ -822,6 +827,51 @@ async def _get_or_create_cashin_charges(session: AsyncSession, tenant: Tenant) -
         print("  + Tax: 15% on fees + commissions (ZAR)")
 
 
+async def _get_or_create_cashout_charges(session: AsyncSession, tenant: Tenant) -> None:
+    """Fail-closed config so subscriber cash-out works out of the box (invariant #12).
+
+    Cash-out is subscriber-initiated, so its pricing + limit configs are scoped
+    to the acting SUBSCRIBER (left at the NULL-user_type default so any consumer
+    resolves them). A zero fee is seeded EXPLICITLY — invariant #12 forbids a
+    silent zero-fee fall-through, so the row must exist rather than being an
+    implicit default. Idempotent. Commission/tax are optional and reuse the
+    tenant's existing (cash-in-seeded) tax config.
+    """
+    exists = (
+        await session.execute(
+            select(PricingConfig).where(
+                PricingConfig.tenant_id == tenant.id,
+                PricingConfig.transaction_type == "cashout",
+                PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                PricingConfig.currency == "ZAR",
+                PricingConfig.user_type.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        session.add(
+            PricingConfig(
+                tenant_id=tenant.id,
+                transaction_type="cashout",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                fixed_fee=Decimal("0"),  # explicit zero fee (not an implicit default)
+            )
+        )
+        session.add(
+            LimitConfig(
+                tenant_id=tenant.id,
+                transaction_type="cashout",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                min_amount=Decimal("5"),
+                max_amount=Decimal("5000"),
+            )
+        )
+        await session.commit()
+        print("  + Cash-out charges (subscriber): R0 fee, R5–R5000 limit")
+
+
 async def seed() -> None:
     """Populate the local dev database with the canonical test data."""
     print("Seeding local development database...")
@@ -964,6 +1014,9 @@ async def seed() -> None:
 
         # Cash-in charges so an agent cash-in shows a fee + commission + tax.
         await _get_or_create_cashin_charges(session, tenant)
+
+        # Cash-out config so a subscriber cash-out works out of the box.
+        await _get_or_create_cashout_charges(session, tenant)
 
         # Phase C — sample external source + reward rules. The shared
         # secret is deterministic in dev so the mobile-simulator's env

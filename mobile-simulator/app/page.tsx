@@ -12,6 +12,7 @@ import { getMyWallet, type Wallet } from "@/lib/backend";
 
 import { AirtimeForm } from "./_components/airtime-form";
 import { CashInForm } from "./_components/cashin-form";
+import { CashOutForm } from "./_components/cashout-form";
 import { EventTrigger } from "./_components/event-trigger";
 import { P2PForm } from "./_components/p2p-form";
 import { PartnerApiForm } from "./_components/partner-api-form";
@@ -79,10 +80,12 @@ export default async function HomePage() {
         <WalletPane user="alice" phone={config.users.alice.phone} wallet={alice.wallet}>
           <P2PForm sender="alice" recipient="bob" />
           <AirtimeForm buyer="alice" />
+          <CashOutForm subscriber="alice" />
         </WalletPane>
         <WalletPane user="bob" phone={config.users.bob.phone} wallet={bob.wallet}>
           <P2PForm sender="bob" recipient="alice" />
           <AirtimeForm buyer="bob" />
+          <CashOutForm subscriber="bob" />
         </WalletPane>
         {/* Agent — cash-in only (funds a customer, earns commission). */}
         <WalletPane user="agent" phone={config.users.agent.phone} wallet={agent.wallet}>

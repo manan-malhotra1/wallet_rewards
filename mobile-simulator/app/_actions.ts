@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import {
   buyAirtime,
   cashIn,
+  cashOut,
   externalCreateUser,
   externalFund,
   externalWithdraw,
@@ -76,6 +77,58 @@ export async function cashInAction(
     return { ok: false, message: "Incorrect PIN. Try again.", needsPin: true };
   }
   return { ok: false, message: `${res.status}: ${res.body}` };
+}
+
+/**
+ * Subscriber sends money to the agent (cash-out) via the user PIN/bearer flow.
+ * Validates the amount, calls the backend, and surfaces any fee/commission/tax
+ * breakdown on success. Handles the step-up 401 (needsPin re-prompt) exactly
+ * like cashInAction, and renders a fail-closed 422 (service_not_configured)
+ * legibly via describeError.
+ */
+export async function cashOutAction(
+  subscriber: UserKey,
+  amount: string,
+  pin?: string,
+): Promise<ActionResult> {
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return { ok: false, message: "Amount must be a positive number." };
+  }
+  const res = await cashOut(subscriber, config.users.agent.phone, amount, pin);
+  revalidatePath("/");
+  if (res.ok) {
+    // Surface the fee / commission / tax breakdown from the response (mirrors
+    // cashin). Fields are optional — cash-out may not carry commission/tax.
+    try {
+      const b = JSON.parse(res.body) as {
+        amount?: string;
+        fee?: string;
+        commission?: string;
+        tax?: string;
+      };
+      const parts: string[] = [];
+      if (b.fee) parts.push(`fee R ${formatAmount(b.fee, "ZAR")}`);
+      if (b.commission)
+        parts.push(`commission R ${formatAmount(b.commission, "ZAR")}`);
+      if (b.tax) parts.push(`tax R ${formatAmount(b.tax, "ZAR")}`);
+      const amt = b.amount ?? amount;
+      const base = `Cashed out R ${formatAmount(amt, "ZAR")} to ${config.users.agent.label}`;
+      return {
+        ok: true,
+        message: parts.length > 0 ? `${base} — ${parts.join(", ")}.` : `${base}.`,
+      };
+    } catch {
+      return { ok: true, message: `Cashed out R ${formatAmount(amount, "ZAR")}.` };
+    }
+  }
+  if (res.status === 401 && res.body.includes("step_up_required")) {
+    return { ok: false, message: res.body, needsPin: true };
+  }
+  if (res.status === 401 && res.body.includes("invalid_step_up_pin")) {
+    return { ok: false, message: "Incorrect PIN. Try again.", needsPin: true };
+  }
+  return { ok: false, message: describeError(res.status, res.body) };
 }
 
 export async function sendP2PAction(

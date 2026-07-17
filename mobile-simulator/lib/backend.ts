@@ -233,6 +233,55 @@ export async function cashIn(
   return { ok: res.ok, status: res.status, body: await res.text() };
 }
 
+export async function cashOut(
+  subscriber: UserKey,
+  agentPhone: string,
+  amount: string,
+  pin?: string,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  // Subscriber sends money to the agent (cash-out): the subscriber is debited
+  // (amount + fee), the agent credited. Uses the subscriber's PIN/bearer flow —
+  // same step-up + expired-session retry handling as sendP2P/cashIn. The body is
+  // flat (identifier_type/identifier_value at top level), unlike cashIn's nested
+  // `customer` object.
+  const newKey = () =>
+    `sim-cashout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const body = (): string =>
+    JSON.stringify({
+      identifier_type: "phone",
+      identifier_value: agentPhone,
+      amount,
+      currency: "ZAR",
+      ...(pin ? { pin } : {}),
+    });
+
+  async function once(): Promise<Response> {
+    const token = await loginUser(subscriber);
+    return fetch(`${config.backendUrl}/api/v1/cashout`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": newKey(),
+      },
+      body: body(),
+      cache: "no-store",
+    });
+  }
+
+  let res = await once();
+  if (res.status === 401) {
+    const text = await res.text();
+    if (!text.includes("step_up_required") && !text.includes("invalid_step_up_pin")) {
+      sessionCache.delete(config.users[subscriber].phone);
+      res = await once();
+      return { ok: res.ok, status: res.status, body: await res.text() };
+    }
+    return { ok: false, status: 401, body: text };
+  }
+  return { ok: res.ok, status: res.status, body: await res.text() };
+}
+
 export interface AirtimeResult {
   ok: boolean;
   status: number;

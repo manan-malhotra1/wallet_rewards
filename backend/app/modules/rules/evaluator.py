@@ -10,9 +10,10 @@ Supported rule types:
   - value_based (Epic 10)
   - campaign    (Epic 10) — first_time semantics, date-gated
   - streak      (Epic 10) — N consecutive periods (day/week)
+  - composite   (Epic 10 / WAL-75) — AND/OR over rule_conditions, each a
+                count of qualifying transactions (Pay-PRD-0619)
 
 Deferred (rules persist but never fire yet):
-  - composite (needs sub-condition evaluation across rule_conditions)
   - referral  (needs user_referrals relationship)
 
 Idempotency is delegated to the rewards layer via the unique index on
@@ -28,7 +29,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,11 +37,15 @@ from app.modules.events.schemas import NormalisedEvent
 from app.shared.models import (
     PROGRESS_STATUS_COMPLETED,
     RULE_TYPE_CAMPAIGN,
+    RULE_TYPE_COMPOSITE,
     RULE_TYPE_FIRST_TIME,
     RULE_TYPE_MILESTONE,
     RULE_TYPE_STREAK,
     RULE_TYPE_VALUE_BASED,
+    TXN_STATUS_COMPLETED,
     Rule,
+    RuleCondition,
+    Transaction,
     UserRuleProgress,
 )
 
@@ -52,6 +57,7 @@ SUPPORTED_RULE_TYPES = (
     RULE_TYPE_VALUE_BASED,
     RULE_TYPE_CAMPAIGN,
     RULE_TYPE_STREAK,
+    RULE_TYPE_COMPOSITE,
 )
 
 
@@ -101,11 +107,18 @@ async def evaluate_active_rules_for_event(
         if progress.status == PROGRESS_STATUS_COMPLETED:
             continue
 
-        # min_amount filter (value-based condition, Pay-PRD-0618).
+        # min_amount filter (value-based condition, Pay-PRD-0618). Composite
+        # rules leave rule.min_amount NULL — their per-condition min_amount is
+        # applied inside the counting query — so this filter is a no-op for them.
         if rule.min_amount is not None and event.amount < Decimal(rule.min_amount):
             continue
 
-        firing = _evaluate(rule, progress, event)
+        # Composite rules need DB access (per-condition counting), so they
+        # take the async path; every other type is a pure single-event decision.
+        if rule.rule_type == RULE_TYPE_COMPOSITE:
+            firing = await _evaluate_composite(session, rule, progress, event)
+        else:
+            firing = _evaluate(rule, progress, event)
         if firing is not None:
             firings.append(firing)
 
@@ -113,18 +126,33 @@ async def evaluate_active_rules_for_event(
 
 
 async def _find_candidate_rules(session: AsyncSession, event: NormalisedEvent) -> list[Rule]:
-    """Return all active rules in the event's tenant whose transaction_type matches.
+    """Return all active rules in the event's tenant that this event can trigger.
 
-    All currently-supported rule types are flat single-event rules with a
-    `transaction_type` field. Composite (multi-condition) rules don't fit
-    this query and are filtered out here.
+    Two shapes match:
+      - Flat rules (first_time / milestone / value_based / campaign / streak)
+        carry `Rule.transaction_type` directly; they match when it equals the
+        event's transaction_type.
+      - Composite rules leave `Rule.transaction_type` NULL and carry their
+        transaction_types on `rule_conditions`. A composite rule is a
+        candidate when ANY of its conditions matches the event's
+        transaction_type (subquery on rule_conditions).
     """
+    # rule_ids of composite rules that have a condition matching this event.
+    composite_match = select(RuleCondition.rule_id).where(
+        RuleCondition.transaction_type == event.transaction_type
+    )
     result = await session.execute(
         select(Rule).where(
             Rule.tenant_id == event.tenant_id,
             Rule.status == "active",
-            Rule.transaction_type == event.transaction_type,
             Rule.rule_type.in_(SUPPORTED_RULE_TYPES),
+            or_(
+                Rule.transaction_type == event.transaction_type,
+                and_(
+                    Rule.rule_type == RULE_TYPE_COMPOSITE,
+                    Rule.id.in_(composite_match),
+                ),
+            ),
         )
     )
     return list(result.scalars().all())
@@ -356,6 +384,139 @@ def _evaluate_streak(
     progress.last_triggered_at = event.timestamp
     if rule.resets_after_trigger:
         progress.current_streak = 0
+
+    if (
+        rule.stop_after_n_triggers is not None
+        and progress.trigger_count >= rule.stop_after_n_triggers
+    ):
+        progress.status = PROGRESS_STATUS_COMPLETED
+
+    return RuleFiring(rule=rule, reward_value=Decimal(rule.reward_value))
+
+
+# -----------------------------------------------------------------------------
+# Epic 10 / WAL-75 — composite (AND/OR over rule_conditions)
+# -----------------------------------------------------------------------------
+
+
+async def _count_qualifying_transactions(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    condition: RuleCondition,
+    window_start: datetime | None,
+) -> int:
+    """Count the user's COMPLETED transactions that satisfy one sub-condition.
+
+    A transaction qualifies when it is COMPLETED, belongs to this user +
+    tenant, matches `condition.transaction_type`, meets `condition.min_amount`
+    (when set), and — when `window_start` is set — was created at or after it.
+    The `transactions` table is the durable, source-agnostic record of a
+    user's activity, so counting from it keeps composite rules consistent
+    however the driving event arrived.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope (NFR-0220).
+        user_id: The acting user.
+        condition: The sub-condition whose transaction_type / min_amount gate
+            the count.
+        window_start: Lower bound on `created_at` for the current counting
+            window; None means count over the user's lifetime.
+
+    Returns:
+        The number of qualifying transactions.
+    """
+    stmt = select(func.count(Transaction.id)).where(
+        Transaction.tenant_id == tenant_id,
+        Transaction.initiated_by == user_id,
+        Transaction.transaction_type == condition.transaction_type,
+        Transaction.status == TXN_STATUS_COMPLETED,
+    )
+    if condition.min_amount is not None:
+        stmt = stmt.where(Transaction.amount >= condition.min_amount)
+    if window_start is not None:
+        stmt = stmt.where(Transaction.created_at >= window_start)
+    return int((await session.execute(stmt)).scalar_one())
+
+
+async def _evaluate_composite(
+    session: AsyncSession,
+    rule: Rule,
+    progress: UserRuleProgress,
+    event: NormalisedEvent,
+) -> RuleFiring | None:
+    """Composite rule — combine sub-conditions with AND/OR (Pay-PRD-0619).
+
+    Each sub-condition is "satisfied" when the user's count of qualifying
+    transactions of its transaction_type (>= its min_amount when set) reaches
+    its count_threshold, counted within the current window (`window_start`).
+    AND fires when EVERY condition is satisfied; OR when ANY is.
+
+    Window / reset semantics: a fresh progress row counts over the user's
+    lifetime (`window_start` NULL). When the rule fires and
+    `resets_after_trigger` is True, `window_start` advances to the triggering
+    event's timestamp — the per-condition counting window restarts, so only
+    later transactions count toward the next fire. When `resets_after_trigger`
+    is False the rule is one-shot: it fires once and does not re-fire (guarded
+    below), matching "don't reset, don't repeat".
+
+    Idempotency: replays of the same event never reach here (the ingestion log
+    dedupes first), and `issue_points_reward` is guarded by the unique index
+    on `reward_events(user_id, rule_id, triggering_event_id)` regardless.
+
+    Returns:
+        A RuleFiring when the operator condition is met; None otherwise.
+
+    Side effects:
+        Mutates `progress` (trigger_count, timestamps, window_start, status)
+        on fire. The caller commits.
+    """
+    # One-shot guard: a non-resetting composite that has already fired must
+    # not re-fire on every subsequent matching event (its window never moves,
+    # so its counts would stay above threshold forever).
+    if not rule.resets_after_trigger and progress.trigger_count > 0:
+        return None
+
+    conditions = list(
+        (
+            await session.execute(
+                select(RuleCondition).where(RuleCondition.rule_id == rule.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Defence-in-depth: schema validation guarantees >= 2 conditions and a
+    # valid operator at create time.
+    if len(conditions) < 2 or rule.composite_operator not in ("AND", "OR"):
+        return None
+
+    satisfied_flags = [
+        await _count_qualifying_transactions(
+            session,
+            tenant_id=event.tenant_id,
+            user_id=event.user_id,
+            condition=cond,
+            window_start=progress.window_start,
+        )
+        >= cond.count_threshold
+        for cond in conditions
+    ]
+
+    operator_met = (
+        all(satisfied_flags) if rule.composite_operator == "AND" else any(satisfied_flags)
+    )
+    if not operator_met:
+        return None
+
+    # Fire.
+    progress.trigger_count += 1
+    progress.last_triggered_at = event.timestamp
+    progress.last_qualifying_event_at = event.timestamp
+    if rule.resets_after_trigger:
+        progress.window_start = event.timestamp
 
     if (
         rule.stop_after_n_triggers is not None

@@ -21,14 +21,28 @@ RuleType = Literal[
 RewardType = Literal["points", "cashback"]
 TimeWindow = Literal["lifetime", "calendar_month", "rolling_7d"]
 StreakUnit = Literal["day", "week"]
+CompositeOperator = Literal["AND", "OR"]
+
+
+class RuleConditionInput(BaseModel):
+    """One sub-condition of a composite rule (Pay-PRD-0619).
+
+    A composite rule combines >= 2 of these with its `composite_operator`.
+    Each names a transaction_type and the count of qualifying transactions
+    (each >= `min_amount` when set) that satisfies it.
+    """
+
+    transaction_type: str = Field(min_length=1, max_length=50)
+    count_threshold: int = Field(ge=1)
+    min_amount: Decimal | None = Field(default=None, ge=Decimal("0"))
+    sort_order: int = Field(default=0, ge=0)
 
 
 class RuleCreateRequest(BaseModel):
     """Rule creation payload — Phase C (first_time, milestone) +
-    Epic 10 expansion (value_based, campaign, streak).
+    Epic 10 expansion (value_based, campaign, streak, composite).
 
-    The 3 remaining rule types (composite, referral) still persist OK
-    but their evaluator branches are deferred to follow-up commits.
+    Only the `referral` rule type still persists without an evaluator branch.
     """
 
     tenant_id: UUID
@@ -45,6 +59,9 @@ class RuleCreateRequest(BaseModel):
     # Epic 10 — campaign date gates.
     campaign_start_date: date | None = None
     campaign_end_date: date | None = None
+    # Epic 10 / WAL-75 — composite operator + sub-conditions.
+    composite_operator: CompositeOperator | None = None
+    conditions: list[RuleConditionInput] | None = None
 
     reward_type: RewardType
     reward_value: Decimal = Field(gt=Decimal("0"))
@@ -90,6 +107,18 @@ class RuleCreateRequest(BaseModel):
                 raise ValueError("campaign_start_date must be on or before campaign_end_date")
             if not self.transaction_type:
                 raise ValueError("campaign rules require a transaction_type")
+        if self.rule_type == "composite":
+            if self.composite_operator is None:
+                raise ValueError("composite rules require composite_operator ('AND' or 'OR')")
+            if self.conditions is None or len(self.conditions) < 2:
+                raise ValueError("composite rules require at least 2 conditions")
+        else:
+            # Composite-only fields must not leak onto other rule types — they
+            # carry their trigger config on the rule row, not on sub-conditions.
+            if self.composite_operator is not None:
+                raise ValueError(f"{self.rule_type} rules must not specify composite_operator")
+            if self.conditions:
+                raise ValueError(f"{self.rule_type} rules must not specify conditions")
         return self
 
 
@@ -109,6 +138,7 @@ class RuleOut(BaseModel):
     streak_unit_window: str | None = None
     campaign_start_date: date | None = None
     campaign_end_date: date | None = None
+    composite_operator: str | None = None
     reward_type: str
     reward_value: Decimal
     stop_after_n_triggers: int | None

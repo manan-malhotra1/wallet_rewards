@@ -18,7 +18,7 @@ from app.modules.rules.schemas import (
     RuleUpdateRequest,
 )
 from app.shared.exceptions import RuleNotFound, TenantNotFound
-from app.shared.models import RewardBudget, RewardEvent, Rule, Tenant
+from app.shared.models import RewardBudget, RewardEvent, Rule, RuleCondition, Tenant
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -69,12 +69,28 @@ async def create_rule(
         streak_unit_window=request.streak_unit_window,
         campaign_start_date=request.campaign_start_date,
         campaign_end_date=request.campaign_end_date,
+        # Epic 10 / WAL-75 — composite operator; conditions persisted below.
+        composite_operator=request.composite_operator,
         reward_type=request.reward_type,
         reward_value=request.reward_value,
         stop_after_n_triggers=request.stop_after_n_triggers,
         resets_after_trigger=request.resets_after_trigger,
     )
     session.add(rule)
+    await session.flush()
+
+    # Persist composite sub-conditions (validated: >= 2 when rule_type is
+    # composite, empty otherwise). rule.id is available after the flush above.
+    for condition in request.conditions or []:
+        session.add(
+            RuleCondition(
+                rule_id=rule.id,
+                transaction_type=condition.transaction_type,
+                count_threshold=condition.count_threshold,
+                min_amount=condition.min_amount,
+                sort_order=condition.sort_order,
+            )
+        )
     await session.flush()
 
     if admin is not None:

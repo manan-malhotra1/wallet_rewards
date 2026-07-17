@@ -378,7 +378,7 @@ def make_admin_token(private_key_pem: bytes) -> Callable[..., str]:
         roles: list[str] | None = None,
         sub: str = "00000000-0000-4000-8000-000000000001",
         username: str = "admin-test",
-        exp_seconds: int = 60,
+        exp_seconds: int = 900,
         iss_override: str | None = None,
         alg: str = "RS256",
         kid: str | None = TEST_KID,

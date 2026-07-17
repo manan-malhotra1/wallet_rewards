@@ -37,6 +37,7 @@ from app.modules.step_up import router as step_up_router
 from app.modules.taxes import router as taxes_router
 from app.modules.tenants import router as tenants_router
 from app.modules.treasury import router as treasury_router
+from app.modules.user_operations import router as user_operations_router
 from app.shared.exceptions import AppHTTPException
 
 # Tag descriptions surfaced in /docs and the exported partner spec (Epic 14 S6).
@@ -117,6 +118,7 @@ app.include_router(cashout_router)
 app.include_router(catalog_router)
 app.include_router(config_requests_router)
 app.include_router(money_operations_router)
+app.include_router(user_operations_router)
 app.include_router(reconciliation_router)
 app.include_router(roles_router)
 app.include_router(tenants_router)

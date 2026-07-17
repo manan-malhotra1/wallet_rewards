@@ -464,6 +464,112 @@ async def change_user_type(
     return await _reload_user(session, user.id)
 
 
+async def admin_update_user(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    status: str | None = None,
+    user_type: str | None = None,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> User:
+    """Apply admin edits to an existing user's editable fields, audit-logged.
+
+    Editable fields: profile first/last name, account status, and user_type.
+    Identifiers are NOT editable here (out of scope). Any argument left None is
+    left unchanged — the caller (the user-operation apply path) passes only the
+    fields the maker proposed. A user_type change re-validates the D4 hierarchy
+    against the user's EXISTING parent.
+
+    Tenant-scoped: a user in another tenant returns 404 (no existence leak).
+    Does NOT use its own commit boundary lightly — it commits once, together
+    with any request-state transition the caller staged before invoking it
+    (so the maker-checker APPLIED transition and this edit land atomically).
+
+    Args:
+        session: Async DB session (committed here).
+        user_id: Target user.
+        tenant_id: Caller's tenant; the user must belong to it.
+        first_name / last_name: New profile names, or None to leave unchanged.
+        status: New account status ('active' / 'suspended'), or None.
+        user_type: New user type, or None to leave unchanged.
+        admin: Authenticated admin — the audit actor.
+        ip_address: Caller IP recorded on the audit row.
+
+    Returns:
+        The user with identifiers loaded (maps to `UserOut`).
+
+    Raises:
+        UserNotFound: 404 — unknown user or a user in another tenant.
+        InvalidUserTypeParent: 422 — new user_type incompatible with the user's
+            existing parent (Decision D4).
+
+    Side effects:
+        Updates users / user_profiles rows and writes one `user.updated` audit
+        row with before/after state.
+    """
+    from app.modules.audit.service import record_audit_for_admin
+
+    result = await session.execute(
+        select(User).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise UserNotFound()
+
+    if user_type is not None:
+        await _validate_type_hierarchy(
+            session,
+            tenant_id=tenant_id,
+            user_type=user_type,
+            parent_user_id=user.parent_user_id,
+        )
+
+    profile_q = await session.execute(select(UserProfile).where(UserProfile.user_id == user.id))
+    profile = profile_q.scalar_one_or_none()
+    if profile is None and (first_name is not None or last_name is not None):
+        profile = UserProfile(user_id=user.id)
+        session.add(profile)
+
+    before = {
+        "first_name": profile.first_name if profile else None,
+        "last_name": profile.last_name if profile else None,
+        "status": user.status,
+        "user_type": user.user_type,
+    }
+    if first_name is not None and profile is not None:
+        profile.first_name = first_name
+    if last_name is not None and profile is not None:
+        profile.last_name = last_name
+    if status is not None:
+        user.status = status
+    if user_type is not None:
+        user.user_type = user_type
+    after = {
+        "first_name": profile.first_name if profile else None,
+        "last_name": profile.last_name if profile else None,
+        "status": user.status,
+        "user_type": user.user_type,
+    }
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="user.updated",
+        entity_type="user",
+        entity_id=str(user.id),
+        before_state=before,
+        after_state=after,
+        ip_address=ip_address,
+    )
+    await session.commit()
+    return await _reload_user(session, user.id)
+
+
 async def get_user_detail(
     session: AsyncSession, *, user_id: UUID, tenant_id: UUID
 ) -> dict[str, Any]:

@@ -1087,6 +1087,57 @@ class MoneyOperationDuplicateApprover(AppHTTPException):
         )
 
 
+# --- User-operation maker-checker (admin create/edit user) -----------------
+
+
+class UserOperationNotFound(AppHTTPException):
+    """No user-operation request with that id in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "user_operation_not_found", "User operation not found.")
+
+
+class UserOperationInvalidState(AppHTTPException):
+    """The user-operation request isn't in a state that permits this action.
+
+    E.g. approving a non-PENDING request, revising one that isn't in
+    CHANGES_REQUESTED, or acting on an APPLIED/WITHDRAWN (terminal) request. The
+    message names the current status.
+    """
+
+    def __init__(self, current_status: str) -> None:
+        super().__init__(
+            409,
+            "user_operation_invalid_state",
+            f"User operation is in status {current_status}; this action is not permitted.",
+        )
+
+
+class UserOperationForbidden(AppHTTPException):
+    """The admin isn't allowed to act on this request (e.g. not the maker)."""
+
+    def __init__(
+        self, detail: str = "You are not permitted to act on this user operation."
+    ) -> None:
+        super().__init__(403, "user_operation_forbidden", detail)
+
+
+class UserOperationDuplicateApprover(AppHTTPException):
+    """This admin already recorded an approval in the current approval round.
+
+    N-eyes needs DISTINCT checkers: the same admin cannot supply two of the
+    required approvals. Resubmitting a request resets the round, so a fresh
+    approval by the same admin after a resubmit is permitted.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "user_operation_duplicate_approver",
+            "This admin already approved this request.",
+        )
+
+
 # --- Step-up PIN ----------------------------------------------------------
 
 

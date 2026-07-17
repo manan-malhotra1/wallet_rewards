@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,6 +77,8 @@ from app.shared.models import (
     UserProfile,
 )
 from app.shared.utils.normalize import normalize_identifier
+
+log = structlog.get_logger()
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -353,12 +356,26 @@ async def create_user(
     # NFR-0130: reward issuance writes to the ledger and must happen AFTER the
     # create transaction commits, never inside it. Fire any active signup-trigger
     # referral rule now that the referral row is durable.
+    #
+    # Fail-SAFE: the user + referral are already committed. A reward-issuance
+    # failure here (misconfigured rule, missing account we couldn't provision,
+    # etc.) must NEVER turn a successful signup into an error. Swallow + log; the
+    # referral stays PENDING and is reconcilable later (the reward_events unique
+    # index makes a retry idempotent — no double-pay).
     if referral is not None:
         from app.modules.rules.referral_evaluator import evaluate_referral_on_signup
 
-        await evaluate_referral_on_signup(
-            session, tenant_id=request.tenant_id, referral=referral
-        )
+        try:
+            await evaluate_referral_on_signup(
+                session, tenant_id=request.tenant_id, referral=referral
+            )
+        except Exception:
+            await session.rollback()
+            log.warning(
+                "referral_signup_reward_failed",
+                referral_id=str(referral.id),
+                tenant_id=str(request.tenant_id),
+            )
 
     return await _reload_user(session, user.id)
 

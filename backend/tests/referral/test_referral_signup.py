@@ -227,3 +227,40 @@ async def test_signup_cashback_provisions_and_credits_brand_new_referee(
     # Both wallets were auto-provisioned and credited from system_cash_inflow.
     assert await _wallet_balance(db_session, referrer.id) == Decimal("50")
     assert await _wallet_balance(db_session, referee.id) == Decimal("100")
+
+
+@pytest.mark.asyncio
+async def test_signup_succeeds_even_if_reward_issuance_fails(
+    db_session: AsyncSession, test_tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reward-issuance failure must NOT fail an already-committed signup.
+
+    The user + referral commit before rewards fire (NFR-0130), so a failure in
+    evaluate_referral_on_signup is swallowed + logged: the signup still returns
+    the user and the referral stays PENDING for later reconciliation.
+    """
+    referrer = await _create_user(db_session, test_tenant.id)
+    code = await _own_code(db_session, referrer.id)
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("reward backend down")
+
+    monkeypatch.setattr(
+        "app.modules.rules.referral_evaluator.evaluate_referral_on_signup", _boom
+    )
+
+    referee = await _create_user(db_session, test_tenant.id, referral_code=code)
+
+    # Signup succeeded — the user exists.
+    assert referee.id is not None
+    persisted = (
+        await db_session.execute(select(User).where(User.id == referee.id))
+    ).scalar_one()
+    assert persisted.id == referee.id
+
+    # The referral is durable but left PENDING (unrewarded), reconcilable later.
+    referral = (
+        await db_session.execute(select(Referral).where(Referral.referred_user_id == referee.id))
+    ).scalar_one()
+    assert referral.status == "pending"
+    assert referral.referrer_rewarded_at is None

@@ -81,6 +81,9 @@ from app.shared.models import (  # noqa: E402
 TENANT_NAME = "Sasai-ZA"
 TENANT_CURRENCY = "ZAR"
 
+# The merchant_cashin funding merchant (bound to the dev API key below).
+CASHIN_MERCHANT_PHONE = "+27825557001"
+
 USERS_TO_SEED = [
     {
         "phone": "+27825550001",
@@ -103,6 +106,17 @@ USERS_TO_SEED = [
         "last_name": "Dube",
         "opening_balance_zar": Decimal("5000"),
         "user_type": USER_TYPE_AGENT,
+    },
+    # A funded MERCHANT (user_type='merchant') whose wallet is the funding
+    # source for merchant_cashin. The dev API key is bound to this user so the
+    # simulator's Partner-APIs panel can call the endpoint. Large opening
+    # balance so many demo cash-ins can run before it runs dry.
+    {
+        "phone": CASHIN_MERCHANT_PHONE,
+        "first_name": "Cash-in",
+        "last_name": "Merchant",
+        "opening_balance_zar": Decimal("100000"),
+        "user_type": USER_TYPE_MERCHANT,
     },
 ]
 
@@ -537,7 +551,9 @@ SIM_DEV_API_KEY_ID = "sim-dev-key"
 SIM_DEV_API_KEY_SECRET = "dev-external-api-secret-do-not-use-in-prod"
 
 
-async def _get_or_create_dev_api_key(session: AsyncSession, tenant: Tenant) -> ApiKey:
+async def _get_or_create_dev_api_key(
+    session: AsyncSession, tenant: Tenant, *, merchant_user_id: str | None = None
+) -> ApiKey:
     """Idempotently seed the mobile-simulator's dev external-API key.
 
     The secret is stored Fernet-encrypted via the same `encrypt_secret` path the
@@ -547,30 +563,87 @@ async def _get_or_create_dev_api_key(session: AsyncSession, tenant: Tenant) -> A
     plaintext secret is a fixed dev constant printed so the simulator can sign
     against it; it is NEVER safe for production.
 
+    When `merchant_user_id` is given, the key is bound to that merchant so the
+    simulator can call `merchant-cashin`. fund/withdraw ignore the binding.
+
     Returns:
         The persisted (or existing) ApiKey row.
     """
     result = await session.execute(select(ApiKey).where(ApiKey.key_id == SIM_DEV_API_KEY_ID))
     api_key = result.scalar_one_or_none()
     if api_key is not None:
+        changed = False
         # Rotate the stored ciphertext back to the canonical dev secret if a
         # prior run (or manual edit) diverged, so signing stays predictable.
         if decrypt_secret(api_key.secret_encrypted) != SIM_DEV_API_KEY_SECRET:
             api_key.secret_encrypted = encrypt_secret(SIM_DEV_API_KEY_SECRET)
-            await session.commit()
+            changed = True
             print(f"  ~ Rotated secret on dev API key: {SIM_DEV_API_KEY_ID}")
+        # Backfill the merchant binding on an already-seeded key.
+        if merchant_user_id is not None and str(api_key.merchant_user_id) != merchant_user_id:
+            api_key.merchant_user_id = merchant_user_id  # type: ignore[assignment]
+            changed = True
+            print(f"  ~ Bound dev API key to cash-in merchant: {merchant_user_id}")
+        if changed:
+            await session.commit()
         return api_key
     api_key = ApiKey(
         tenant_id=tenant.id,
         key_id=SIM_DEV_API_KEY_ID,
         secret_encrypted=encrypt_secret(SIM_DEV_API_KEY_SECRET),
         label="Mobile simulator (dev only)",
+        merchant_user_id=merchant_user_id,  # type: ignore[arg-type]
     )
     session.add(api_key)
     await session.commit()
     await session.refresh(api_key)
     print(f"  + Created dev API key: {SIM_DEV_API_KEY_ID} (dev only — not for production)")
+    if merchant_user_id is not None:
+        print(f"    bound to cash-in merchant: {merchant_user_id}")
     return api_key
+
+
+async def _get_or_create_merchant_cashin_charges(session: AsyncSession, tenant: Tenant) -> None:
+    """Seed a zero-fee merchant_cashin pricing + limit config (invariant #12).
+
+    The fail-closed gate resolves on the MERCHANT's user_type; a `user_type=NULL`
+    default satisfies it for the seeded merchant. The zero fee is an EXPLICIT
+    configured row (invariant #12 forbids a silent zero-fee fall-through), so
+    merchant-cashin works out of the box. Idempotent.
+    """
+    exists = (
+        await session.execute(
+            select(PricingConfig).where(
+                PricingConfig.tenant_id == tenant.id,
+                PricingConfig.transaction_type == "merchant_cashin",
+                PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                PricingConfig.currency == "ZAR",
+                PricingConfig.user_type.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        session.add(
+            PricingConfig(
+                tenant_id=tenant.id,
+                transaction_type="merchant_cashin",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                fixed_fee=Decimal("0"),  # explicit zero fee (not an implicit default)
+            )
+        )
+        session.add(
+            LimitConfig(
+                tenant_id=tenant.id,
+                transaction_type="merchant_cashin",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                min_amount=Decimal("1"),
+                max_amount=Decimal("50000"),
+            )
+        )
+        await session.commit()
+        print("  + Merchant cash-in charges: R0 fee, R1–R50000 limit (default)")
 
 
 async def _get_or_create_rule(
@@ -1029,9 +1102,27 @@ async def seed() -> None:
             shared_secret="dev-simulator-secret-do-not-use-in-prod",
         )
 
+        # Merchant cash-in config so merchant-cashin works out of the box.
+        await _get_or_create_merchant_cashin_charges(session, tenant)
+
+        # Resolve the funding merchant (seeded above) so the dev API key can be
+        # bound to it — that binding is what authorises merchant-cashin.
+        cashin_merchant_id = (
+            await session.execute(
+                select(UserIdentifier.user_id).where(
+                    UserIdentifier.tenant_id == tenant.id,
+                    UserIdentifier.identifier_type == "phone",
+                    UserIdentifier.identifier_value == CASHIN_MERCHANT_PHONE,
+                )
+            )
+        ).scalar_one()
+
         # Dev external-API key so the mobile-simulator's partner-API panel
-        # (fund / withdraw / create-user) can authenticate against a fresh DB.
-        await _get_or_create_dev_api_key(session, tenant)
+        # (fund / withdraw / create-user / merchant-cashin) can authenticate
+        # against a fresh DB. Bound to the cash-in merchant above.
+        await _get_or_create_dev_api_key(
+            session, tenant, merchant_user_id=str(cashin_merchant_id)
+        )
         await _get_or_create_rule(
             session,
             tenant,

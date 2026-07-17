@@ -23,8 +23,10 @@ from app.modules.external.schemas import (
     ExternalCreateUserRequest,
     ExternalFundRequest,
     ExternalWithdrawRequest,
+    MerchantCashinRequest,
+    MerchantCashinResponse,
 )
-from app.modules.external.service import external_fund, external_withdraw
+from app.modules.external.service import external_fund, external_withdraw, merchant_cashin
 from app.modules.identity.schemas import CreateUserRequest, IdentifierIn, UserOut
 from app.modules.identity.service import create_user, resolve_identifier
 from app.modules.treasury.schemas import FundUserResponse, WithdrawFromUserResponse
@@ -180,5 +182,40 @@ async def withdraw_external(
     `Idempotency-Key`.
     """
     return await external_withdraw(
+        session, principal=principal, request=payload, idempotency_key=idempotency_key
+    )
+
+
+_MERCHANT_CASHIN_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"description": "Missing or invalid API key / signature."},
+    403: {"description": "The API key is not bound to a merchant."},
+    404: {"description": "The consumer identifier or a wallet doesn't resolve in the tenant."},
+    409: {"description": "The merchant's wallet has insufficient funds."},
+    422: {"description": "Validation error, a limit exceeded, or the service isn't configured."},
+    429: {"description": "Per-key rate limit exceeded."},
+}
+
+
+@router.post(
+    "/merchant-cashin",
+    response_model=MerchantCashinResponse,
+    status_code=201,
+    summary="Merchant funds a consumer from its own wallet",
+    responses=_MERCHANT_CASHIN_RESPONSES,
+)
+async def merchant_cashin_external(
+    payload: MerchantCashinRequest,
+    principal: ApiKeyPrincipal = Depends(require_api_key),
+    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=255),
+    session: AsyncSession = Depends(get_async_session),
+) -> MerchantCashinResponse:
+    """Fund a consumer from the merchant's own wallet (merchant-bound key).
+
+    The merchant is the key's `merchant_user_id` (never the body); the consumer
+    is resolved by identifier. Fee/commission/tax are borne by the merchant. The
+    required `Idempotency-Key` is the ledger key — a retry returns the original
+    result without double-moving money.
+    """
+    return await merchant_cashin(
         session, principal=principal, request=payload, idempotency_key=idempotency_key
     )

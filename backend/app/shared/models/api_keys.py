@@ -45,6 +45,12 @@ class ApiKey(Base):
     secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     # Optional human label so operators can tell keys apart in the admin UI.
     label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # When set, this key acts as that merchant — its wallet is the funding
+    # source for merchant_cashin. NULL for ordinary partner keys (fund/withdraw
+    # ignore this column), so those keys are unaffected.
+    merchant_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=API_KEY_STATUS_ACTIVE
     )

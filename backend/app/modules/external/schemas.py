@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Self
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -71,6 +72,38 @@ class ExternalFundRequest(BaseModel):
     amount: Decimal = Field(gt=Decimal("0"), max_digits=20, decimal_places=6)
     currency: str = Field(min_length=2, max_length=10)
     reason: str | None = Field(default=None, max_length=500)
+
+
+class MerchantCashinRequest(BaseModel):
+    """Partner-facing merchant cash-in payload — merchant funds a consumer.
+
+    A merchant-bound API key credits the resolved consumer's wallet from the
+    MERCHANT's own wallet (the merchant is identified by the key, never the
+    body). No `tenant_id` / `merchant` field — both come from the key.
+    `extra='forbid'` rejects any unexpected field (BOPLA hardening).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The CONSUMER recipient, resolved by identifier within the key's tenant.
+    identifier_type: IdentifierType
+    identifier_value: str = Field(min_length=1, max_length=255)
+    # Bounded to the ledger's Numeric(20, 6) storage precision.
+    amount: Decimal = Field(gt=Decimal("0"), max_digits=20, decimal_places=6)
+    currency: str = Field(min_length=2, max_length=10)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class MerchantCashinResponse(BaseModel):
+    """Result of a merchant cash-in — both wallet balances after the move."""
+
+    transaction_id: UUID
+    merchant_user_id: UUID
+    consumer_user_id: UUID
+    amount: Decimal
+    currency: str
+    merchant_new_balance: Decimal
+    consumer_new_balance: Decimal
 
 
 class ExternalWithdrawRequest(BaseModel):

@@ -34,10 +34,16 @@ from app.shared.models import API_KEY_STATUS_ACTIVE, ApiKey
 
 @dataclass(frozen=True)
 class ApiKeyPrincipal:
-    """The authenticated external caller — which tenant, via which key."""
+    """The authenticated external caller — which tenant, via which key.
+
+    `merchant_user_id` is set only for a merchant-bound key: it names the user
+    whose wallet is the funding source for `merchant_cashin`. It is NULL for an
+    ordinary partner key (fund/withdraw never read it).
+    """
 
     tenant_id: UUID
     key_id: str
+    merchant_user_id: UUID | None = None
 
 
 async def verify_api_key_request(
@@ -88,7 +94,11 @@ async def verify_api_key_request(
     verify_signature(header=signature_header, raw_body=raw_body, secret=secret, now=now)
 
     api_key.last_used_at = datetime.now(UTC)
-    return ApiKeyPrincipal(tenant_id=api_key.tenant_id, key_id=api_key.key_id)
+    return ApiKeyPrincipal(
+        tenant_id=api_key.tenant_id,
+        key_id=api_key.key_id,
+        merchant_user_id=api_key.merchant_user_id,
+    )
 
 
 async def require_api_key(

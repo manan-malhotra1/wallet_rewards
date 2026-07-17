@@ -709,6 +709,22 @@ class ApiKeyNotFound(AppHTTPException):
         super().__init__(404, "api_key_not_found", "API key not found.")
 
 
+class NotAMerchantKey(AppHTTPException):
+    """The authenticated API key is not bound to a merchant (merchant_cashin).
+
+    `merchant_cashin` funds a consumer from the merchant's own wallet, so the
+    calling key must carry `merchant_user_id`. An ordinary partner key (used for
+    fund/withdraw) cannot initiate it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            403,
+            "not_a_merchant_key",
+            "This API key is not authorised to initiate a merchant cash-in.",
+        )
+
+
 # --- Money controls (Phase G) ----------------------------------------------
 
 

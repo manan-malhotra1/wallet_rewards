@@ -17,14 +17,16 @@ from pydantic import BaseModel, ConfigDict, Field
 class ChangePinRequest(BaseModel):
     """Change-PIN payload (auth-gated; the acting user comes from the session).
 
-    Both PINs are 4-12 chars; the numeric-format check happens in the service
-    (`_validate_pin_format`) so the error surfaces as the standard
-    `invalid_pin_format` 422. `current_pin` gates the change exactly like login
-    (verified against the stored hash, with lockout on repeated misses).
+    Both PINs are 4-6 digits — the platform-wide PIN bound (matches
+    `identity.schemas`), so a PIN set here is always typable at login. The
+    numeric-format check happens in the service (`_validate_pin_format`) so the
+    error surfaces as the standard `invalid_pin_format` 422. `current_pin` gates
+    the change exactly like login (verified against the stored hash, with
+    lockout on repeated misses).
     """
 
-    current_pin: str = Field(min_length=4, max_length=12)
-    new_pin: str = Field(min_length=4, max_length=12)
+    current_pin: str = Field(min_length=4, max_length=6)
+    new_pin: str = Field(min_length=4, max_length=6)
     currency: str = Field(default="ZAR", min_length=3, max_length=3)
 
 

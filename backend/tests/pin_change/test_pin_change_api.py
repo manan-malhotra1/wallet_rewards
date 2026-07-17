@@ -449,3 +449,112 @@ async def test_change_pin_insufficient_funds_for_fee(
         await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id))
     ).scalars().all()
     assert rows == []
+
+
+async def _provision_tenant_user(
+    session: AsyncSession, tenant: Tenant
+) -> tuple[User, dict[str, str]]:
+    """Create a ZAR consumer with the known current PIN + a session token, plus
+    an explicit zero-fee change_pin pricing + limit config for `tenant`.
+
+    Returns (user, auth_header). Zero-fee needs no wallet (no ledger legs).
+    """
+    from app.auth.hashing import hash_pin
+    from app.auth.sessions import create_session
+    from app.modules.limits.schemas import LimitConfigCreateRequest
+    from app.modules.limits.service import create_limit_config
+    from app.modules.pricing.schemas import PricingConfigCreateRequest
+    from app.modules.pricing.service import create_pricing_config
+    from app.shared.models import (
+        ACCOUNT_TYPE_FINANCIAL_WALLET,
+        USER_TYPE_CONSUMER,
+        UserIdentifier,
+    )
+
+    user = User(tenant_id=tenant.id, user_type=USER_TYPE_CONSUMER, pin_hash=hash_pin(CURRENT_PIN))
+    session.add(user)
+    await session.flush()
+    session.add(
+        UserIdentifier(
+            user_id=user.id,
+            tenant_id=tenant.id,
+            identifier_type="phone",
+            identifier_value=f"+27 82 555 {tenant.id.hex[:4]}",
+            verified=True,
+        )
+    )
+    await create_pricing_config(
+        session,
+        PricingConfigCreateRequest(
+            tenant_id=tenant.id,
+            transaction_type="change_pin",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            fixed_fee=Decimal("0"),
+            fee_inclusive=False,
+        ),
+    )
+    await create_limit_config(
+        session,
+        LimitConfigCreateRequest(
+            tenant_id=tenant.id,
+            transaction_type="change_pin",
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+            daily_count_cap=10,
+        ),
+    )
+    await session.commit()
+    token = await create_session(user.id, tenant.id, "mobile")
+    return user, {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.asyncio
+async def test_change_pin_is_tenant_isolated(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    other_tenant: Tenant,
+) -> None:
+    """The same Idempotency-Key changes PINs independently across tenants.
+
+    The idempotency guard is `(tenant_id, idempotency_key)`, so a key used by a
+    tenant-A user must not collide with — or leak the result of — a same-key
+    request from a tenant-B user. Both succeed; each writes its own PinChange
+    row scoped to its tenant.
+    """
+    other_tenant.base_currency = "ZAR"  # align with the ZAR change_pin configs
+    db_session.add(other_tenant)
+    await db_session.commit()
+
+    user_a, auth_a = await _provision_tenant_user(db_session, test_tenant)
+    user_b, auth_b = await _provision_tenant_user(db_session, other_tenant)
+
+    shared_key = "pinchg-cross-tenant"
+    resp_a = await async_client.post(
+        "/api/v1/pin/change",
+        content=json.dumps(change_pin_body()),
+        headers=change_pin_headers(auth_a, idem=shared_key),
+    )
+    resp_b = await async_client.post(
+        "/api/v1/pin/change",
+        content=json.dumps(change_pin_body()),
+        headers=change_pin_headers(auth_b, idem=shared_key),
+    )
+    assert resp_a.status_code == 200, resp_a.text
+    assert resp_b.status_code == 200, resp_b.text
+
+    # Two independent rows — one per tenant — despite the shared key.
+    row_a = (
+        await db_session.execute(select(PinChange).where(PinChange.tenant_id == test_tenant.id))
+    ).scalars().all()
+    row_b = (
+        await db_session.execute(select(PinChange).where(PinChange.tenant_id == other_tenant.id))
+    ).scalars().all()
+    assert len(row_a) == 1 and row_a[0].user_id == user_a.id
+    assert len(row_b) == 1 and row_b[0].user_id == user_b.id
+
+    # Both users actually got the new PIN.
+    for user in (user_a, user_b):
+        pin_hash = await _reload_pin_hash(db_session, user.id)
+        assert pin_hash is not None and verify_pin(NEW_PIN, pin_hash) is True

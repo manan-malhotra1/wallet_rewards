@@ -313,6 +313,11 @@ async def change_pin(
     session.add(pin_change)
     await session.flush()
 
+    # Stage the audit BEFORE the charge so it rides post_transaction's guarded
+    # commit (NFR-0250): a crash must never leave a charged/applied change with
+    # no audit row. Carries the charge breakdown only — never a PIN/hash.
+    _record_pin_change_audit(session, principal, pin_change, ip_address=ip_address)
+
     # 8. Charge only when there is money to move. A zero fee (and zero tax) emits
     # NO legs — post_transaction needs >= 2 balanced entries — so the change
     # commits on its own below. Assemble via the shared matrix so the
@@ -365,7 +370,8 @@ async def change_pin(
         if balance - reserved < _net_debit(assembled.entries, wallet.id):
             raise InsufficientFunds()
 
-        # Commits pin_hash + PinChange + the fee transaction together.
+        # Commits pin_hash + PinChange + the staged audit + the fee transaction
+        # together (one guarded commit — invariant #11).
         txn = await post_transaction(
             session,
             PostTransactionRequest(
@@ -383,11 +389,12 @@ async def change_pin(
         # Cosmetic backfill of the applied transaction id (a 2nd commit is fine,
         # mirroring the money-operations applied-id pattern).
         pin_change.transaction_id = txn.id
+        await session.commit()
+        await session.refresh(pin_change)
+        return pin_change
 
-    # 9. Audit (NFR-0250) + final commit. For a zero-fee change this is the ONLY
-    # commit (pin_hash + PinChange + audit); for a charged change it also lands
-    # the transaction_id backfill.
-    _record_pin_change_audit(session, principal, pin_change, ip_address=ip_address)
+    # 9. Zero-fee change: no ledger legs, so commit pin_hash + PinChange + the
+    # staged audit here (the only commit — fully atomic).
     await session.commit()
     await session.refresh(pin_change)
     return pin_change

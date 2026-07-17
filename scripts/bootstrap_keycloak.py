@@ -35,19 +35,19 @@ BACKEND_SERVICE_SECRET = "dev-backend-service-secret-local-only"
 REALM_ROLES = ["platform-admin", "finance-reviewer", "support-agent", "config-approver"]
 
 # Local-dev admin users — rotate / remove for any non-local environment.
-# All share one dev password. `admin-approver` holds `config-approver` (the
-# four-eyes checker) IN ADDITION to `platform-admin`, so it can view the
-# config-request queue (platform-admin) AND approve requests raised by a
-# DIFFERENT admin (config-approver). A single admin still cannot approve their
-# own request (SelfApprovalForbidden), so two accounts are needed to exercise
-# the maker-checker flow end to end.
+# All share one dev password. BOTH admins hold `platform-admin` (propose /
+# maker) AND `config-approver` (four-eyes checker), so either can raise a
+# config request and the OTHER can approve it — matching "any admin can
+# approve any other admin's request". A single admin still cannot approve
+# their OWN request (SelfApprovalForbidden), so two accounts are needed to
+# exercise the maker-checker flow end to end.
 DEV_ADMIN_PASSWORD = "admin-test-pass"  # noqa: S105 — local-dev only
 DEV_ADMINS = [
     {
         "username": "admin-test",
         "first_name": "Admin",
         "last_name": "Test",
-        "roles": ["platform-admin"],
+        "roles": ["platform-admin", "config-approver"],
     },
     {
         "username": "admin-approver",
@@ -386,8 +386,8 @@ def main() -> None:
     print()
     admin_list = ", ".join(a["username"] for a in DEV_ADMINS)
     print(f" Admin logins (all password '{DEV_ADMIN_PASSWORD}'): {admin_list}")
-    print("   - admin-test      : platform-admin (maker)")
-    print("   - admin-approver  : platform-admin + config-approver (checker)")
+    print("   - admin-test      : platform-admin + config-approver (maker & checker)")
+    print("   - admin-approver  : platform-admin + config-approver (maker & checker)")
     print()
     print(" Get a test admin JWT (local-dev only):")
     print()

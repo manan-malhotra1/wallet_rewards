@@ -151,6 +151,7 @@ from app.shared.models.money_operations import (
     MoneyOperationReview,
 )
 from app.shared.models.multipliers import BonusMultiplier
+from app.shared.models.pin_change import PIN_CHANGE_STATUS_COMPLETED, PinChange
 from app.shared.models.pricing import PricingConfig
 from app.shared.models.redemption import (
     REDEMPTION_STATUS_COMPLETED,
@@ -330,6 +331,7 @@ __all__ = [
     "MONEY_REVIEW_ROLE_CHECKER",
     "MONEY_REVIEW_ROLE_MAKER",
     "PARENT_TYPE_BY_CHILD",
+    "PIN_CHANGE_STATUS_COMPLETED",
     "PROGRESS_STATUS_ACTIVE",
     "PROGRESS_STATUS_COMPLETED",
     "PROGRESS_STATUS_DEACTIVATED",
@@ -426,6 +428,8 @@ __all__ = [
     "MoneyOperationRequest",
     "MoneyOperationReview",
     "OtpRequest",
+    # Change-PIN (charged self-service)
+    "PinChange",
     "PricingConfig",
     "Redemption",
     # Redemption

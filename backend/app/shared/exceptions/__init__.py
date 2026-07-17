@@ -576,6 +576,22 @@ class InvalidCredentials(AppHTTPException):
         super().__init__(401, "invalid_credentials", "Phone or PIN is incorrect.")
 
 
+class NewPinSameAsCurrent(AppHTTPException):
+    """Change-PIN was asked to set the new PIN equal to the current one.
+
+    A no-op that would still charge a fee — rejected before any charge or
+    ledger work. Deliberately does NOT confirm the current PIN was correct
+    (this is checked earlier); it only reports that the values are identical.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "new_pin_same_as_current",
+            "New PIN must differ from the current PIN.",
+        )
+
+
 class AccountLocked(AppHTTPException):
     """Too many failed PIN attempts. Locked for `retry_after` seconds (NFR-0190)."""
 

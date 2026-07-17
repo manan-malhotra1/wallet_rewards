@@ -26,6 +26,7 @@ from app.modules.limits import router as limits_router
 from app.modules.money_operations import router as money_operations_router
 from app.modules.multipliers import router as multipliers_router
 from app.modules.payments import router as payments_router
+from app.modules.pin_change import router as pin_change_router
 from app.modules.pricing import router as pricing_router
 from app.modules.reconciliation import router as reconciliation_router
 from app.modules.redemption import router as redemption_router
@@ -115,6 +116,7 @@ app.include_router(redemption_router)
 app.include_router(airtime_router)
 app.include_router(cashin_router)
 app.include_router(cashout_router)
+app.include_router(pin_change_router)
 app.include_router(catalog_router)
 app.include_router(config_requests_router)
 app.include_router(money_operations_router)

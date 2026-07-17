@@ -226,6 +226,11 @@ async def _seed_services_catalog(session: AsyncSession, tenant: Tenant) -> None:
             "Cash Out",
             "A subscriber sends money to an agent; the agent earns a commission.",
         ),
+        (
+            "change_pin",
+            "Change PIN",
+            "A user changes their own PIN; a charged self-service operation.",
+        ),
     ]
     for code, display_name, description in baseline:
         result = await session.execute(
@@ -971,6 +976,52 @@ async def _get_or_create_cashout_charges(session: AsyncSession, tenant: Tenant) 
         print("  + Cash-out charges (subscriber): R0 fee, R5–R5000 limit")
 
 
+async def _get_or_create_change_pin_charges(session: AsyncSession, tenant: Tenant) -> None:
+    """Fail-closed config so change-PIN works out of the box (invariant #12).
+
+    Change-PIN is a charged self-service operation, so it needs BOTH a pricing
+    AND a limit config to resolve for the acting user or the gate rejects it.
+    A zero fee is seeded EXPLICITLY (invariant #12 forbids a silent zero-fee
+    fall-through). The limit config is left cap-free — its only job is to satisfy
+    the fail-closed gate; change-PIN has no principal to bound, and the resolved
+    FEE (zero here) is what `check_limits` measures. Both rows are at the
+    NULL-user_type default so any user type resolves them. Idempotent.
+    """
+    exists = (
+        await session.execute(
+            select(PricingConfig).where(
+                PricingConfig.tenant_id == tenant.id,
+                PricingConfig.transaction_type == "change_pin",
+                PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                PricingConfig.currency == "ZAR",
+                PricingConfig.user_type.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        session.add(
+            PricingConfig(
+                tenant_id=tenant.id,
+                transaction_type="change_pin",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                fixed_fee=Decimal("0"),  # explicit zero fee (not an implicit default)
+            )
+        )
+        session.add(
+            LimitConfig(
+                tenant_id=tenant.id,
+                transaction_type="change_pin",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                # No caps — an explicitly-configured limitless row that satisfies
+                # the fail-closed gate without bounding the (zero) fee.
+            )
+        )
+        await session.commit()
+        print("  + Change-PIN charges: R0 fee, limitless (gate-only) limit")
+
+
 async def seed() -> None:
     """Populate the local dev database with the canonical test data."""
     print("Seeding local development database...")
@@ -1116,6 +1167,7 @@ async def seed() -> None:
 
         # Cash-out config so a subscriber cash-out works out of the box.
         await _get_or_create_cashout_charges(session, tenant)
+        await _get_or_create_change_pin_charges(session, tenant)
 
         # Phase C — sample external source + reward rules. The shared
         # secret is deterministic in dev so the mobile-simulator's env

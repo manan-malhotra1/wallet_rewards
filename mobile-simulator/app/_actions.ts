@@ -13,6 +13,7 @@ import {
   externalCreateUser,
   externalFund,
   externalWithdraw,
+  merchantCashin,
   fireEventHttp,
   fireEventKafka,
   sendP2P,
@@ -300,6 +301,31 @@ export async function externalWithdrawAction(
   revalidatePath("/");
   const message = res.ok
     ? summariseMoney("Withdrew", currency, res.body)
+    : describeError(res.status, res.body);
+  return { ok: res.ok, message, status: res.status, raw: res.body };
+}
+
+/**
+ * Merchant cash-in via the partner external-API: debit the merchant's own wallet
+ * (resolved from the API key) and credit the CONSUMER target by phone. Surfaces
+ * any fee/commission/tax breakdown on success and the error_code on a fail-closed
+ * 422 (service_not_configured), a 409 (insufficient_funds), or a 403
+ * (not_a_merchant_key) via describeError.
+ */
+export async function merchantCashinAction(
+  targetPhone: string,
+  amount: string,
+  currency: string,
+  reason?: string,
+): Promise<ExternalActionResult> {
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return { ok: false, message: "Amount must be a positive number.", status: 0, raw: "" };
+  }
+  const res = await merchantCashin(targetPhone, amount, currency, reason);
+  revalidatePath("/");
+  const message = res.ok
+    ? summariseMoney("Cashed in", currency, res.body)
     : describeError(res.status, res.body);
   return { ok: res.ok, message, status: res.status, raw: res.body };
 }

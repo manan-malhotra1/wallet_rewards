@@ -3,9 +3,10 @@
  * API-key + HMAC auth (X-Sasai-Api-Key + X-Sasai-Signature) rather than the
  * user PIN/bearer flow. Three sub-forms in one card:
  *
- *   • Fund     — POST /external/fund     (credit a user's financial wallet)
- *   • Withdraw — POST /external/withdraw (debit; exactly one of amount / all)
- *   • Create   — POST /external/users    (create/idempotent-match a user)
+ *   • Fund     — POST /external/fund            (credit a user's financial wallet)
+ *   • Withdraw — POST /external/withdraw        (debit; exactly one of amount / all)
+ *   • Cash-in  — POST /external/merchant-cashin (debit merchant, credit consumer)
+ *   • Create   — POST /external/users           (create/idempotent-match a user)
  *
  * Client component: it holds transient form state and renders the raw status +
  * response after each fire. Secrets never reach the browser — the server
@@ -15,7 +16,14 @@
  */
 "use client";
 
-import { ArrowDownToLine, ArrowUpFromLine, Plus, UserPlus, X } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Plus,
+  Store,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -23,6 +31,7 @@ import {
   externalCreateUserAction,
   externalFundAction,
   externalWithdrawAction,
+  merchantCashinAction,
   type ExternalActionResult,
 } from "@/app/_actions";
 import type { ExternalIdentifier } from "@/lib/backend";
@@ -226,6 +235,81 @@ function WithdrawForm({ users }: { users: TargetUser[] }) {
   );
 }
 
+function MerchantCashinForm({ users }: { users: TargetUser[] }) {
+  const [phone, setPhone] = usePersistedState(
+    "sim.ext.mcashin.phone",
+    users[0]?.phone ?? "",
+  );
+  const [amount, setAmount] = usePersistedState("sim.ext.mcashin.amount", "100");
+  const [currency, setCurrency] = usePersistedState(
+    "sim.ext.mcashin.currency",
+    "ZAR",
+  );
+  const [reason, setReason] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [result, setResult] = React.useState<ExternalActionResult | null>(null);
+  const router = useRouter();
+
+  async function action() {
+    setBusy(true);
+    const r = await merchantCashinAction(phone, amount, currency, reason || undefined);
+    setBusy(false);
+    setResult(r);
+    router.refresh();
+  }
+
+  return (
+    <div className="border-t border-[var(--color-border)] pt-4">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-muted)]">
+        <Store className="h-3.5 w-3.5" /> Merchant cash-in (funds a consumer from
+        the merchant&apos;s wallet)
+      </div>
+      <form action={action} className="flex flex-wrap items-center gap-2">
+        <select
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          className={inputClass}
+        >
+          {users.map((u) => (
+            <option key={u.phone} value={u.phone}>
+              {u.label} ({u.phone})
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          step="0.01"
+          min="0.01"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className={`${inputClass} w-24 tabular-nums`}
+        />
+        <input
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+          className={`${inputClass} w-20`}
+          aria-label="Currency"
+        />
+        <input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="reason (optional)"
+          className={`${inputClass} min-w-40 flex-1`}
+        />
+        <button
+          type="submit"
+          disabled={busy}
+          className="flex items-center gap-1.5 rounded-md bg-[var(--color-brand)] px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:opacity-50"
+        >
+          <Store className="h-4 w-4" />
+          {busy ? "Cashing in…" : "Cash in"}
+        </button>
+      </form>
+      {result ? <ResultBox result={result} /> : null}
+    </div>
+  );
+}
+
 function CreateUserForm() {
   const [rows, setRows] = React.useState<ExternalIdentifier[]>([
     { identifier_type: "phone", identifier_value: "" },
@@ -338,6 +422,7 @@ export function PartnerApiForm({ users }: { users: TargetUser[] }) {
       <div className="flex flex-col gap-4">
         <FundForm users={users} />
         <WithdrawForm users={users} />
+        <MerchantCashinForm users={users} />
         <CreateUserForm />
       </div>
     </section>

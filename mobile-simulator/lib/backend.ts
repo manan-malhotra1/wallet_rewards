@@ -437,6 +437,26 @@ export async function externalWithdraw(
   });
 }
 
+export async function merchantCashin(
+  targetPhone: string,
+  amount: string,
+  currency: string,
+  reason?: string,
+): Promise<ExternalResult> {
+  // Debits the merchant's own wallet (resolved from the API key, which is bound
+  // to a funded merchant) and credits the CONSUMER recipient. The consumer is
+  // targeted by phone — the identifier type the seeded users are keyed on. A
+  // fail-closed 422 (service_not_configured), a 409 (insufficient_funds, merchant
+  // underfunded), or a 403 (not_a_merchant_key) are all valid, expected outcomes.
+  return postExternal("external/merchant-cashin", {
+    identifier_type: "phone",
+    identifier_value: targetPhone,
+    amount,
+    currency,
+    ...(reason ? { reason } : {}),
+  });
+}
+
 /** One partner-supplied identifier for external user creation. */
 export interface ExternalIdentifier {
   identifier_type: "phone" | "email" | "account_number" | "card_number";

@@ -21,6 +21,7 @@ import type {
   BonusMultiplier,
   BudgetConsumption,
   CommissionConfig,
+  CompositeOperator,
   ConfigChangeRequest,
   ConfigOperation,
   ConfigRequestStatus,
@@ -34,8 +35,10 @@ import type {
   PendingItem,
   PricingConfig,
   RedemptionProvider,
+  ReferralTrigger,
   RewardBudget,
   Rule,
+  RuleCondition,
   RulePerformance,
   Segment,
   Service,
@@ -252,7 +255,9 @@ export interface CreateRulePayload {
   name: string;
   description?: string;
   rule_type: Rule["rule_type"];
-  transaction_type: string;
+  // Optional: composite rules carry no top-level transaction_type (it
+  // lives on each sub-condition); referral rules don't use it either.
+  transaction_type?: string;
   count_threshold?: number;
   min_amount?: string;
   time_window?: string;
@@ -261,6 +266,13 @@ export interface CreateRulePayload {
   streak_unit_window?: "day" | "week";
   campaign_start_date?: string; // YYYY-MM-DD
   campaign_end_date?: string;
+  // Epic 10 / WAL-75 — composite operator + >=2 sub-conditions.
+  composite_operator?: CompositeOperator;
+  conditions?: RuleCondition[];
+  // Epic 10 / WAL-77 — referral trigger + optional referee reward.
+  referral_trigger?: ReferralTrigger;
+  referral_trigger_n?: number;
+  referee_reward_value?: string;
   reward_type: Rule["reward_type"];
   reward_value: string;
   stop_after_n_triggers?: number;

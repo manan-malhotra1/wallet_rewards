@@ -12,7 +12,7 @@
  */
 "use client";
 
-import { Coins, PiggyBank } from "lucide-react";
+import { Coins, PiggyBank, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 
 import { createCampaignWithBudgetAction } from "@/app/(authenticated)/campaigns/_actions";
@@ -40,7 +40,19 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
-import type { Rule, Service } from "@/lib/api-types";
+import type {
+  CompositeOperator,
+  ReferralTrigger,
+  Rule,
+  Service,
+} from "@/lib/api-types";
+
+/** One editable composite sub-condition row (strings while in the form). */
+interface ConditionRow {
+  transaction_type: string;
+  count_threshold: string;
+  min_amount: string;
+}
 
 const RULE_TYPES: { value: Rule["rule_type"]; label: string; help: string }[] = [
   { value: "milestone", label: "Milestone", help: "User completes N qualifying txns" },
@@ -137,6 +149,13 @@ interface FormState {
   streak_unit_window: "day" | "week";
   campaign_start_date: string;
   campaign_end_date: string;
+  // Epic 10 / WAL-75 — composite operator + sub-conditions.
+  composite_operator: CompositeOperator;
+  conditions: ConditionRow[];
+  // Epic 10 / WAL-77 — referral trigger + optional referee reward.
+  referral_trigger: ReferralTrigger;
+  referral_trigger_n: string;
+  referee_reward_value: string;
   reward_type: Rule["reward_type"];
   reward_value: string;
   stop_after_n_triggers: string;
@@ -160,6 +179,14 @@ const INITIAL: FormState = {
   streak_unit_window: "day",
   campaign_start_date: "",
   campaign_end_date: "",
+  composite_operator: "AND",
+  conditions: [
+    { transaction_type: "", count_threshold: "", min_amount: "" },
+    { transaction_type: "", count_threshold: "", min_amount: "" },
+  ],
+  referral_trigger: "signup",
+  referral_trigger_n: "",
+  referee_reward_value: "",
   reward_type: "points",
   reward_value: "",
   stop_after_n_triggers: "",
@@ -202,6 +229,22 @@ function summarise(form: FormState): string {
     const end = form.campaign_end_date || "(end)";
     return `Between ${start} and ${end}, a user's first ${form.transaction_type} ${reward}.`;
   }
+  if (form.rule_type === "composite") {
+    const parts = form.conditions
+      .map((c) => `${c.count_threshold || "N"}× ${c.transaction_type || "(txn)"}`)
+      .join(` ${form.composite_operator} `);
+    return `When a user meets ${parts || "(conditions)"}, ${reward}.`;
+  }
+  if (form.rule_type === "referral") {
+    const trigger =
+      form.referral_trigger === "signup"
+        ? "a referred user signs up"
+        : `a referred user completes their ${form.referral_trigger_n || "N"}th txn`;
+    const referee = form.referee_reward_value
+      ? ` New joiner gets ${form.referee_reward_value} ${form.reward_type}.`
+      : "";
+    return `When ${trigger}, referrer gets ${reward}.${referee}`;
+  }
   return `Campaign type: ${form.rule_type}. ${reward}.`;
 }
 
@@ -214,6 +257,95 @@ function summariseBudget(form: FormState): string {
   return `Cap ${cap} ${unit} per ${WINDOW_LABEL[form.budget_window_type]}.`;
 }
 
+/** Repeatable editor for a composite rule's >= 2 sub-conditions (WAL-75). */
+function ConditionsEditor({
+  conditions,
+  services,
+  onChange,
+}: {
+  conditions: ConditionRow[];
+  services: Service[];
+  onChange: (next: ConditionRow[]) => void;
+}) {
+  const setRow = (i: number, patch: Partial<ConditionRow>) =>
+    onChange(conditions.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  const addRow = () =>
+    onChange([
+      ...conditions,
+      { transaction_type: services[0]?.code ?? "", count_threshold: "", min_amount: "" },
+    ]);
+  const removeRow = (i: number) =>
+    onChange(conditions.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="space-y-2">
+      <Label>Conditions (all rows joined by the operator above)</Label>
+      {conditions.map((row, i) => (
+        <div key={i} className="grid grid-cols-[1fr_5rem_6rem_auto] items-end gap-2">
+          <div>
+            {i === 0 && (
+              <span className="text-[11px] text-muted-foreground">Service</span>
+            )}
+            <Select
+              value={row.transaction_type}
+              onValueChange={(v) => setRow(i, { transaction_type: v })}
+              disabled={services.length === 0}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Choose a service…" />
+              </SelectTrigger>
+              <SelectContent>
+                {services.map((s) => (
+                  <SelectItem key={s.id} value={s.code}>
+                    {s.display_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            {i === 0 && (
+              <span className="text-[11px] text-muted-foreground">Count</span>
+            )}
+            <Input
+              type="number"
+              min="1"
+              value={row.count_threshold}
+              onChange={(e) => setRow(i, { count_threshold: e.target.value })}
+              placeholder="3"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            {i === 0 && (
+              <span className="text-[11px] text-muted-foreground">Min amt</span>
+            )}
+            <Input
+              value={row.min_amount}
+              onChange={(e) => setRow(i, { min_amount: e.target.value })}
+              placeholder="opt."
+              className="mt-1"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => removeRow(i)}
+            disabled={conditions.length <= 2}
+            aria-label="Remove condition"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm" onClick={addRow}>
+        <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Add condition
+      </Button>
+    </div>
+  );
+}
+
 export function CreateCampaignDialog({
   tenantId,
   services,
@@ -223,9 +355,14 @@ export function CreateCampaignDialog({
   services: Service[];
   trigger: React.ReactNode;
 }) {
+  const defaultTxn = services[0]?.code ?? INITIAL.transaction_type;
   const initialWithService: FormState = {
     ...INITIAL,
-    transaction_type: services[0]?.code ?? INITIAL.transaction_type,
+    transaction_type: defaultTxn,
+    conditions: INITIAL.conditions.map((c) => ({
+      ...c,
+      transaction_type: defaultTxn,
+    })),
   };
   const [open, setOpen] = React.useState(false);
   const [step, setStep] = React.useState<1 | 2>(1);
@@ -263,6 +400,27 @@ export function CreateCampaignDialog({
       setErrorBanner("Name and reward value are required.");
       return;
     }
+    // Client-side guardrails mirroring the backend validator; the backend
+    // stays the source of truth and its 422s still surface below.
+    if (form.rule_type === "composite") {
+      const valid = form.conditions.filter(
+        (c) => c.transaction_type && Number(c.count_threshold) >= 1,
+      );
+      if (valid.length < 2) {
+        setErrorBanner(
+          "Composite rules need at least 2 conditions, each with a service and a count ≥ 1.",
+        );
+        return;
+      }
+    }
+    if (
+      form.rule_type === "referral" &&
+      form.referral_trigger === "nth_transaction" &&
+      Number(form.referral_trigger_n) < 1
+    ) {
+      setErrorBanner("Nth-transaction referrals require N ≥ 1.");
+      return;
+    }
     if (form.budget_enabled) {
       const cap = parseFloat(form.budget_cap_amount);
       if (!Number.isFinite(cap) || cap <= 0) {
@@ -277,7 +435,12 @@ export function CreateCampaignDialog({
         name: form.name,
         description: form.description || undefined,
         rule_type: form.rule_type,
-        transaction_type: form.transaction_type,
+        // Composite carries its service per-condition; referral has no single
+        // service. Both keep the rule-level transaction_type null.
+        transaction_type:
+          form.rule_type === "composite" || form.rule_type === "referral"
+            ? undefined
+            : form.transaction_type,
         count_threshold: form.count_threshold
           ? Number(form.count_threshold)
           : undefined,
@@ -295,6 +458,33 @@ export function CreateCampaignDialog({
           form.rule_type === "campaign" ? form.campaign_start_date : undefined,
         campaign_end_date:
           form.rule_type === "campaign" ? form.campaign_end_date : undefined,
+        // WAL-75 — composite operator + sub-conditions (only valid rows).
+        composite_operator:
+          form.rule_type === "composite" ? form.composite_operator : undefined,
+        conditions:
+          form.rule_type === "composite"
+            ? form.conditions
+                .filter((c) => c.transaction_type && c.count_threshold)
+                .map((c, i) => ({
+                  transaction_type: c.transaction_type,
+                  count_threshold: Number(c.count_threshold),
+                  min_amount: c.min_amount || undefined,
+                  sort_order: i,
+                }))
+            : undefined,
+        // WAL-77 — referral trigger + optional referee (new-joiner) reward.
+        referral_trigger:
+          form.rule_type === "referral" ? form.referral_trigger : undefined,
+        referral_trigger_n:
+          form.rule_type === "referral" &&
+          form.referral_trigger === "nth_transaction" &&
+          form.referral_trigger_n
+            ? Number(form.referral_trigger_n)
+            : undefined,
+        referee_reward_value:
+          form.rule_type === "referral" && form.referee_reward_value
+            ? form.referee_reward_value
+            : undefined,
         reward_type: form.reward_type,
         reward_value: form.reward_value,
         stop_after_n_triggers: form.stop_after_n_triggers
@@ -389,30 +579,34 @@ export function CreateCampaignDialog({
                   className="mt-1"
                 />
               </div>
-              <div>
-                <Label htmlFor="txn-type">Service</Label>
-                <Select
-                  value={form.transaction_type}
-                  onValueChange={(v) => update("transaction_type", v)}
-                  disabled={services.length === 0}
-                >
-                  <SelectTrigger id="txn-type" className="mt-1">
-                    <SelectValue placeholder="Choose a service…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {services.map((s) => (
-                      <SelectItem key={s.id} value={s.code}>
-                        {s.display_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {services.length === 0 && (
-                  <p className="mt-1 text-[11px] text-[--color-text-3]">
-                    No active services — create one in /services first.
-                  </p>
-                )}
-              </div>
+              {/* Composite carries its service per-condition; referral is
+                  triggered by signup / nth-txn, not a single service. */}
+              {form.rule_type !== "composite" && form.rule_type !== "referral" && (
+                <div>
+                  <Label htmlFor="txn-type">Service</Label>
+                  <Select
+                    value={form.transaction_type}
+                    onValueChange={(v) => update("transaction_type", v)}
+                    disabled={services.length === 0}
+                  >
+                    <SelectTrigger id="txn-type" className="mt-1">
+                      <SelectValue placeholder="Choose a service…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {services.map((s) => (
+                        <SelectItem key={s.id} value={s.code}>
+                          {s.display_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {services.length === 0 && (
+                    <p className="mt-1 text-[11px] text-[--color-text-3]">
+                      No active services — create one in /services first.
+                    </p>
+                  )}
+                </div>
+              )}
               {form.rule_type === "milestone" && (
                 <div>
                   <Label htmlFor="count">Count threshold</Label>
@@ -486,6 +680,93 @@ export function CreateCampaignDialog({
                       }
                       className="mt-1"
                     />
+                  </div>
+                </>
+              )}
+              {form.rule_type === "composite" && (
+                <div className="col-span-2 space-y-3">
+                  <div className="w-40">
+                    <Label htmlFor="composite-op">Operator</Label>
+                    <div className="mt-1">
+                      <Select
+                        value={form.composite_operator}
+                        onValueChange={(v) =>
+                          update("composite_operator", v as CompositeOperator)
+                        }
+                      >
+                        <SelectTrigger id="composite-op">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="AND">AND — all must be met</SelectItem>
+                          <SelectItem value="OR">OR — any one is enough</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <ConditionsEditor
+                    conditions={form.conditions}
+                    services={services}
+                    onChange={(next) => update("conditions", next)}
+                  />
+                </div>
+              )}
+              {form.rule_type === "referral" && (
+                <>
+                  <div>
+                    <Label htmlFor="ref-trigger">Trigger</Label>
+                    <div className="mt-1">
+                      <Select
+                        value={form.referral_trigger}
+                        onValueChange={(v) =>
+                          update("referral_trigger", v as ReferralTrigger)
+                        }
+                      >
+                        <SelectTrigger id="ref-trigger">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="signup">On signup</SelectItem>
+                          <SelectItem value="nth_transaction">
+                            On Nth transaction
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {form.referral_trigger === "nth_transaction" && (
+                    <div>
+                      <Label htmlFor="ref-n">Nth transaction (N)</Label>
+                      <Input
+                        id="ref-n"
+                        type="number"
+                        min="1"
+                        value={form.referral_trigger_n}
+                        onChange={(e) =>
+                          update("referral_trigger_n", e.target.value)
+                        }
+                        placeholder="1"
+                        className="mt-1"
+                      />
+                    </div>
+                  )}
+                  <div className="col-span-2">
+                    <Label htmlFor="referee-reward">
+                      New-joiner reward (optional)
+                    </Label>
+                    <Input
+                      id="referee-reward"
+                      value={form.referee_reward_value}
+                      onChange={(e) =>
+                        update("referee_reward_value", e.target.value)
+                      }
+                      placeholder="Reward for the referred user (same reward type)"
+                      className="mt-1"
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      The referrer reward is set below. Cashback pays in the
+                      tenant base currency.
+                    </p>
                   </div>
                 </>
               )}

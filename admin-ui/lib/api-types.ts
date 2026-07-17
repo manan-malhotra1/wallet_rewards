@@ -138,6 +138,20 @@ export interface BalanceResponse {
   currency: string;
 }
 
+/** Composite operator joining a composite rule's sub-conditions (WAL-75). */
+export type CompositeOperator = "AND" | "OR";
+
+/** When a referral rule fires — on signup, or on the referee's Nth txn (WAL-77). */
+export type ReferralTrigger = "signup" | "nth_transaction";
+
+/** One sub-condition of a composite rule: a qualifying-txn count (WAL-75). */
+export interface RuleCondition {
+  transaction_type: string;
+  count_threshold: number;
+  min_amount?: string | null;
+  sort_order?: number;
+}
+
 export interface Rule {
   id: string;
   tenant_id: string;
@@ -151,7 +165,7 @@ export interface Rule {
     | "composite"
     | "campaign"
     | "referral";
-  transaction_type: string;
+  transaction_type: string | null;
   count_threshold: number | null;
   min_amount: string | null;
   time_window: string | null;
@@ -161,6 +175,14 @@ export interface Rule {
   streak_unit_window: "day" | "week" | null;
   campaign_start_date: string | null;
   campaign_end_date: string | null;
+  // Epic 10 / WAL-75 — composite operator + sub-conditions.
+  composite_operator?: CompositeOperator | null;
+  conditions?: RuleCondition[] | null;
+  // Epic 10 / WAL-77 — referral trigger + optional referee (new-joiner)
+  // reward. The referrer reward reuses reward_type/reward_value.
+  referral_trigger?: ReferralTrigger | null;
+  referral_trigger_n?: number | null;
+  referee_reward_value?: string | null;
   reward_type: "points" | "cashback";
   reward_value: string;
   stop_after_n_triggers: number | null;

@@ -50,10 +50,24 @@ export function describeTrigger(rule: Rule): string {
       const end = rule.campaign_end_date ?? "(end)";
       return `Between ${start} and ${end}, on a user's first qualifying ${txn}, ${reward}.`;
     }
-    case "composite":
-      return `Composite rule (AND/OR over sub-conditions) — ${reward}.`;
-    case "referral":
-      return `Referral rule — referrer ${reward} on referred user's first action.`;
+    case "composite": {
+      const op = rule.composite_operator ?? "AND";
+      const parts = (rule.conditions ?? []).map(
+        (c) => `${c.count_threshold}× ${c.transaction_type}`,
+      );
+      const joined = parts.length ? parts.join(` ${op} `) : "multiple conditions";
+      return `Composite (${joined}) — ${reward}.`;
+    }
+    case "referral": {
+      const trigger =
+        rule.referral_trigger === "nth_transaction"
+          ? `the referred user's ${rule.referral_trigger_n ?? "N"}th txn`
+          : "the referred user's signup";
+      const referee = rule.referee_reward_value
+        ? ` Referee gets ${rule.referee_reward_value} ${rule.reward_type}.`
+        : "";
+      return `Referral — on ${trigger}, referrer ${reward}.${referee}`;
+    }
     default:
       return `${rule.rule_type} rule — ${reward}.`;
   }

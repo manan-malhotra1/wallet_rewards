@@ -22,6 +22,7 @@ RewardType = Literal["points", "cashback"]
 TimeWindow = Literal["lifetime", "calendar_month", "rolling_7d"]
 StreakUnit = Literal["day", "week"]
 CompositeOperator = Literal["AND", "OR"]
+ReferralTrigger = Literal["signup", "nth_transaction"]
 
 
 class RuleConditionInput(BaseModel):
@@ -62,6 +63,11 @@ class RuleCreateRequest(BaseModel):
     # Epic 10 / WAL-75 — composite operator + sub-conditions.
     composite_operator: CompositeOperator | None = None
     conditions: list[RuleConditionInput] | None = None
+    # Epic 10 / WAL-77 — referral trigger + optional referee reward. The
+    # referrer reward reuses reward_value/reward_type below.
+    referral_trigger: ReferralTrigger | None = None
+    referral_trigger_n: int | None = Field(default=None, ge=1)
+    referee_reward_value: Decimal | None = Field(default=None, ge=Decimal("0"))
 
     reward_type: RewardType
     reward_value: Decimal = Field(gt=Decimal("0"))
@@ -119,6 +125,28 @@ class RuleCreateRequest(BaseModel):
                 raise ValueError(f"{self.rule_type} rules must not specify composite_operator")
             if self.conditions:
                 raise ValueError(f"{self.rule_type} rules must not specify conditions")
+        if self.rule_type == "referral":
+            # A referral rule MUST declare when it fires; 'nth_transaction' also
+            # needs the N. The referrer reward is reward_value; the referee
+            # reward (optional) is referee_reward_value, same reward_type.
+            if self.referral_trigger is None:
+                raise ValueError(
+                    "referral rules require referral_trigger ('signup' or 'nth_transaction')"
+                )
+            if self.referral_trigger == "nth_transaction" and (
+                self.referral_trigger_n is None or self.referral_trigger_n < 1
+            ):
+                raise ValueError(
+                    "nth_transaction referral rules require referral_trigger_n >= 1"
+                )
+        else:
+            # Referral-only fields must not leak onto other rule types.
+            if self.referral_trigger is not None:
+                raise ValueError(f"{self.rule_type} rules must not specify referral_trigger")
+            if self.referral_trigger_n is not None:
+                raise ValueError(f"{self.rule_type} rules must not specify referral_trigger_n")
+            if self.referee_reward_value is not None:
+                raise ValueError(f"{self.rule_type} rules must not specify referee_reward_value")
         return self
 
 
@@ -139,6 +167,9 @@ class RuleOut(BaseModel):
     campaign_start_date: date | None = None
     campaign_end_date: date | None = None
     composite_operator: str | None = None
+    referral_trigger: str | None = None
+    referral_trigger_n: int | None = None
+    referee_reward_value: Decimal | None = None
     reward_type: str
     reward_value: Decimal
     stop_after_n_triggers: int | None

@@ -365,6 +365,42 @@ class SystemPointsIssuanceMissing(AppHTTPException):
         )
 
 
+class UserFinancialWalletMissing(AppHTTPException):
+    """User has no financial_wallet in this currency — cannot issue cashback rewards."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "user_financial_wallet_missing",
+            "Recipient user does not have a wallet in this currency.",
+        )
+
+
+# --- Referrals (Epic 10 / WAL-77) -------------------------------------------
+
+
+class InvalidReferralCode(AppHTTPException):
+    """The referral code quoted at signup does not resolve in this tenant."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "invalid_referral_code",
+            "The referral code is not valid.",
+        )
+
+
+class SelfReferralNotAllowed(AppHTTPException):
+    """A user cannot refer themselves (the code resolves to the same user)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "self_referral_not_allowed",
+            "You cannot use your own referral code.",
+        )
+
+
 # --- Redemption -------------------------------------------------------------
 
 

@@ -13,8 +13,10 @@ Supported rule types:
   - composite   (Epic 10 / WAL-75) — AND/OR over rule_conditions, each a
                 count of qualifying transactions (Pay-PRD-0619)
 
-Deferred (rules persist but never fire yet):
-  - referral  (needs user_referrals relationship)
+Referral rules (Epic 10 / WAL-77) are NOT driven from here — they fire via the
+explicit entry points in `referral_evaluator.py` (signup + nth_transaction),
+because their trigger is a signup / referee-activity event, not a generic
+transaction event on the acting user.
 
 Idempotency is delegated to the rewards layer via the unique index on
 `reward_events(user_id, rule_id, triggering_event_id)` — the evaluator

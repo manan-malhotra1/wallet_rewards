@@ -164,6 +164,17 @@ from app.shared.models.redemption import (
     Redemption,
     RedemptionProvider,
 )
+from app.shared.models.referrals import (
+    REFERRAL_STATUS_PENDING,
+    REFERRAL_STATUS_REWARDED,
+    REFERRAL_STATUS_VOID,
+    REFERRAL_STATUSES,
+    REFERRAL_TRIGGER_NTH_TRANSACTION,
+    REFERRAL_TRIGGER_SIGNUP,
+    REFERRAL_TRIGGERS,
+    Referral,
+    ReferralCode,
+)
 from app.shared.models.rewards import RewardEvent
 from app.shared.models.roles import (
     ROLE_STATUS_ACTIVE,
@@ -342,6 +353,13 @@ __all__ = [
     "REDEMPTION_STATUS_PROCESSING",
     "REDEMPTION_STATUS_REVERSED",
     "REDEMPTION_TERMINAL_STATUSES",
+    "REFERRAL_STATUSES",
+    "REFERRAL_STATUS_PENDING",
+    "REFERRAL_STATUS_REWARDED",
+    "REFERRAL_STATUS_VOID",
+    "REFERRAL_TRIGGERS",
+    "REFERRAL_TRIGGER_NTH_TRANSACTION",
+    "REFERRAL_TRIGGER_SIGNUP",
     "REVIEW_ACTION_APPROVED",
     "REVIEW_ACTION_CHANGES_REQUESTED",
     "REVIEW_ACTION_RESUBMITTED",
@@ -434,6 +452,9 @@ __all__ = [
     "Redemption",
     # Redemption
     "RedemptionProvider",
+    # Referrals (Epic 10 / WAL-77)
+    "Referral",
+    "ReferralCode",
     # Money controls (Phase G)
     "RewardBudget",
     # Rewards

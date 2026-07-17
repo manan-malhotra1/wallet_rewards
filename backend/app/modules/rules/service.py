@@ -71,6 +71,10 @@ async def create_rule(
         campaign_end_date=request.campaign_end_date,
         # Epic 10 / WAL-75 — composite operator; conditions persisted below.
         composite_operator=request.composite_operator,
+        # Epic 10 / WAL-77 — referral trigger + optional referee reward.
+        referral_trigger=request.referral_trigger,
+        referral_trigger_n=request.referral_trigger_n,
+        referee_reward_value=request.referee_reward_value,
         reward_type=request.reward_type,
         reward_value=request.reward_value,
         stop_after_n_triggers=request.stop_after_n_triggers,

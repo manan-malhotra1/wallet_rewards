@@ -51,6 +51,10 @@ class CreateUserRequest(BaseModel):
     # compatibility is enforced in the service layer.
     user_type: UserType = "consumer"
     parent_user_id: UUID | None = None
+    # Optional referrer's code (Epic 10 / WAL-77). When supplied and valid, a
+    # `referrals` row is created and any active signup-trigger referral rule
+    # fires. Absent / null → organic signup, no referral.
+    referral_code: str | None = Field(default=None, min_length=1, max_length=16)
 
 
 class ChangeUserTypeRequest(BaseModel):

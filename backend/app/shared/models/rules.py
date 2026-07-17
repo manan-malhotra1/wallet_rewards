@@ -89,6 +89,10 @@ class Rule(Base):
             "composite_operator IS NULL OR composite_operator IN ('AND', 'OR')",
             name="ck_rules_composite_operator",
         ),
+        CheckConstraint(
+            "referral_trigger IS NULL OR referral_trigger IN ('signup', 'nth_transaction')",
+            name="ck_rules_referral_trigger",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -123,6 +127,15 @@ class Rule(Base):
 
     # Composite (deferred — schema only)
     composite_operator: Mapped[str | None] = mapped_column(String(5), nullable=True)
+
+    # Referral (Epic 10 / WAL-77, Pay-PRD-0622). `referral_trigger` decides WHEN
+    # the reward fires; `referral_trigger_n` is the Nth qualifying transaction
+    # for the 'nth_transaction' trigger. The referrer reward reuses
+    # `reward_value` + `reward_type`; the optional referee reward uses
+    # `referee_reward_value` with the SAME reward_type / currency.
+    referral_trigger: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    referral_trigger_n: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    referee_reward_value: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
 
     # Segment binding — FK to segments.id (constraint added in migration 0014).
     segment_id: Mapped[uuid.UUID | None] = mapped_column(

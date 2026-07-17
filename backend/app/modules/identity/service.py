@@ -53,18 +53,23 @@ from app.shared.exceptions import (
     InvalidCredentials,
     InvalidOtp,
     InvalidPinFormat,
+    InvalidReferralCode,
     InvalidRegistrationToken,
     InvalidUserTypeParent,
     OtpRateLimited,
     PinAlreadySet,
     PinNotSet,
+    SelfReferralNotAllowed,
     TenantNotFound,
     UserNotFound,
 )
 from app.shared.models import (
     PARENT_TYPE_BY_CHILD,
+    REFERRAL_STATUS_PENDING,
     AuthAttempt,
     OtpRequest,
+    Referral,
+    ReferralCode,
     Tenant,
     User,
     UserIdentifier,
@@ -136,6 +141,81 @@ async def _validate_type_hierarchy(
         raise InvalidUserTypeParent()
 
 
+# Referral-code alphabet — unambiguous (no 0/O/1/I) so codes are easy to read
+# and dictate. 8 chars over 32 symbols is ~10^12 space; collisions are rare and
+# handled by the pre-check + the (tenant, code) unique constraint.
+_REFERRAL_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+_REFERRAL_CODE_LENGTH = 8
+
+
+def _generate_referral_code_value() -> str:
+    """Return one random referral code. Split out so tests can monkeypatch it."""
+    import secrets
+
+    return "".join(secrets.choice(_REFERRAL_CODE_ALPHABET) for _ in range(_REFERRAL_CODE_LENGTH))
+
+
+async def _create_unique_referral_code(
+    session: AsyncSession, *, tenant_id: UUID, user_id: UUID
+) -> ReferralCode:
+    """Create the user's own unique referral code within the tenant.
+
+    Pre-checks a fresh candidate against existing codes and retries on the rare
+    collision; the (tenant, code) unique constraint is the final structural
+    guard. The row is flushed so a self-referral check in the same transaction
+    can resolve it.
+
+    Raises:
+        RuntimeError: could not find a free code after several attempts
+            (astronomically unlikely — signals a broken RNG or exhausted space).
+    """
+    for _ in range(10):
+        candidate = _generate_referral_code_value()
+        clash = await session.execute(
+            select(ReferralCode.id).where(
+                ReferralCode.tenant_id == tenant_id,
+                ReferralCode.code == candidate,
+            )
+        )
+        if clash.scalar_one_or_none() is None:
+            code = ReferralCode(tenant_id=tenant_id, user_id=user_id, code=candidate)
+            session.add(code)
+            await session.flush()
+            return code
+    raise RuntimeError("Could not generate a unique referral code.")
+
+
+async def _resolve_referrer(
+    session: AsyncSession, *, tenant_id: UUID, code: str, new_user_id: UUID
+) -> ReferralCode:
+    """Resolve a quoted referral code to its owner in the tenant.
+
+    Args:
+        tenant_id: Tenant scope — codes never resolve across tenants.
+        code: The code the new user quoted at signup.
+        new_user_id: The user being created; used to reject self-referral.
+
+    Returns:
+        The owning ReferralCode row (the referrer).
+
+    Raises:
+        InvalidReferralCode: 422 — no such code in this tenant.
+        SelfReferralNotAllowed: 422 — the code belongs to the new user.
+    """
+    result = await session.execute(
+        select(ReferralCode).where(
+            ReferralCode.tenant_id == tenant_id,
+            ReferralCode.code == code,
+        )
+    )
+    referrer_code = result.scalar_one_or_none()
+    if referrer_code is None:
+        raise InvalidReferralCode()
+    if referrer_code.user_id == new_user_id:
+        raise SelfReferralNotAllowed()
+    return referrer_code
+
+
 async def create_user(
     session: AsyncSession,
     request: CreateUserRequest,
@@ -204,6 +284,29 @@ async def create_user(
     if request.profile is not None:
         session.add(_profile_for(user.id, request.profile))
 
+    # Every user gets their own shareable referral code (flushed so a
+    # self-referral quoting it in this same request resolves).
+    await _create_unique_referral_code(session, tenant_id=request.tenant_id, user_id=user.id)
+
+    # Attribution: a quoted code creates a pending referral (referred -> referrer).
+    # Validation (unknown / self) raises 422 before any commit.
+    referral: Referral | None = None
+    if request.referral_code:
+        referrer_code = await _resolve_referrer(
+            session,
+            tenant_id=request.tenant_id,
+            code=request.referral_code,
+            new_user_id=user.id,
+        )
+        referral = Referral(
+            tenant_id=request.tenant_id,
+            referrer_user_id=referrer_code.user_id,
+            referred_user_id=user.id,
+            code=request.referral_code,
+            status=REFERRAL_STATUS_PENDING,
+        )
+        session.add(referral)
+
     try:
         await session.flush()
     except IntegrityError as exc:
@@ -246,6 +349,17 @@ async def create_user(
         )
 
     await session.commit()
+
+    # NFR-0130: reward issuance writes to the ledger and must happen AFTER the
+    # create transaction commits, never inside it. Fire any active signup-trigger
+    # referral rule now that the referral row is durable.
+    if referral is not None:
+        from app.modules.rules.referral_evaluator import evaluate_referral_on_signup
+
+        await evaluate_referral_on_signup(
+            session, tenant_id=request.tenant_id, referral=referral
+        )
+
     return await _reload_user(session, user.id)
 
 

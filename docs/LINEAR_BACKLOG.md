@@ -1186,3 +1186,72 @@ The **user-types initiative** (Epics 12–17) adds five user types
 pricing and limits, admin + external user creation, and the first merchant
 vertical (airtime). New items import via `docs/LINEAR_BACKLOG_user_types.csv`;
 design in `docs/superpowers/specs/2026-07-03-user-types-design.md`.
+
+---
+
+## Epic 27 — Post-Registration Identifier Linking (account / card) · **Backlog**
+
+Registration (admin UI + partner API) deliberately requires a **contactable**
+identifier (phone/email) — needed for OTP, notifications, and as the login/
+resolve key. `account_number` and `card_number` are valid `IdentifierType`s in
+the model but are NOT registration fields, for good reasons:
+- **account_number** is usually system-assigned or an external account that must
+  be **verified** (micro-deposit / partner confirmation) before it is trusted.
+- **card_number** is **PCI-scoped**: full PANs are never stored, only a
+  **tokenised reference** (see `.claude/rules/compliance-fintech.md`). A raw card
+  number can never be a plain identifier.
+
+Today identifiers can only be set at **create time**, and only the partner API
+accepts the full list (admin UI offers phone/email only). There is no "add an
+identifier to an existing user" capability.
+
+### Story 27.1 — Add-identifier endpoint (existing user) · Backlog
+`POST /api/v1/identity/users/{id}/identifiers` (admin) + partner-API equivalent.
+Adds an identifier to an existing user. `account_number` is stored `verified=false`.
+Enforces the existing `(tenant, identifier_type, identifier_value)` uniqueness
+(409 on collision). Audited `user.identifier_added`.
+**Acceptance:** happy path, duplicate → 409, tenant isolation, auth/role gating,
+audit row; card_number rejected here (see 27.3).
+
+### Story 27.2 — Admin UI "Add identifier" action · Backlog
+An "Add identifier" action on the user-detail page (type = phone / email /
+account_number), calling 27.1. Optionally allow `account_number` in the
+registration dialog too. Show `verified` state per identifier (already surfaced).
+
+### Story 27.3 — account_number verification flow · Backlog
+Flip a stored `account_number` from `verified=false` → `verified=true` via a
+verification step (micro-deposit / partner confirmation). Design TBD.
+
+### Story 27.4 — card_number tokenisation (PCI) · Backlog — Phase 2
+Card identifiers must go through PSP/issuer **tokenisation**; store only the
+token reference, never the PAN, `verified=true` on success. Blocked on the PSP
+integration. Until then card_number is NOT accepted by any create/add path.
+
+---
+
+## Epic 28 — Instrument Creation Provisions System Wallets · **Backlog**
+
+Adding a new instrument (currency) via Instrument Management backfills a **user**
+wallet for every existing user, but does NOT create the **system** wallets for
+that currency. Today those are created lazily (`get_or_create_system_*`) on the
+first transaction, and only ZAR/PTS get them up-front (seed). So a freshly-added
+currency has user wallets but no system wallets until something transacts — they
+don't appear on the System Wallets page and it's inconsistent with ZAR.
+
+### Story 28.1 — Provision system accounts on `create_instrument` · Backlog
+When an instrument is created, also get-or-create the canonical system accounts
+for that currency, keyed on `account_type` (idempotent, tenant-scoped, in the
+same transaction as the instrument insert):
+- **financial_wallet** currency → `system_cash_inflow`, `system_fee_collected`,
+  `operator_adjustment` (bank mirror), `commission`, `tax_service_collected`,
+  `tax_commission_collected`.
+- **points_account** currency → `system_points_issuance`.
+
+**Acceptance:**
+- Creating a new financial instrument provisions all 6 system accounts for that
+  currency; a points instrument provisions `system_points_issuance`.
+- Idempotent: re-running / an already-provisioned currency adds nothing.
+- The lazy `get_or_create_system_*` helpers still work (no double-create).
+- Audited on the `instrument.created` row (system accounts count).
+- Tests: financial vs points sets; idempotency; the new currency shows on the
+  System Wallets surface with zero balances.

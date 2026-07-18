@@ -24,7 +24,13 @@ from app.shared.exceptions import (
     InstrumentCodeAlreadyExists,
     InstrumentNotFound,
 )
-from app.shared.models import Account, Instrument, User
+from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_POINTS,
+    Account,
+    Instrument,
+    User,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -89,7 +95,8 @@ async def create_instrument(
 
     Side effects:
         Writes an `instrument.created` audit_log row, committed atomically with
-        the insert (NFR-0250). May add 0..N Account rows when backfilling.
+        the insert (NFR-0250). Always provisions the currency's SYSTEM accounts
+        (Epic 28). May add 0..N user Account rows when backfilling.
     """
     instrument = Instrument(
         tenant_id=payload.tenant_id,
@@ -107,6 +114,16 @@ async def create_instrument(
         if "uq_instruments_tenant_code_alive" in str(exc.orig).lower():
             raise InstrumentCodeAlreadyExists(payload.code) from exc
         raise
+
+    # Epic 28 S28.1: eagerly provision the currency's SYSTEM accounts so it
+    # shows up complete on the System Wallets page instead of waiting for the
+    # first transaction to lazily create them. Same transaction as the insert.
+    system_count = await _provision_system_accounts(
+        session,
+        tenant_id=payload.tenant_id,
+        account_type=payload.account_type,
+        currency=payload.code,
+    )
 
     backfilled_count = 0
     if payload.assign_to_existing_users:
@@ -131,6 +148,7 @@ async def create_instrument(
             "account_type": instrument.account_type,
             "status": instrument.status,
             "backfilled_accounts": backfilled_count,
+            "system_accounts": system_count,
         },
         ip_address=ip_address,
     )
@@ -142,8 +160,77 @@ async def create_instrument(
         instrument_id=str(instrument.id),
         code=instrument.code,
         backfilled_accounts=backfilled_count,
+        system_accounts=system_count,
     )
     return instrument
+
+
+async def _provision_system_accounts(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    account_type: str,
+    currency: str,
+) -> int:
+    """Provision the currency's SYSTEM accounts on instrument create (Epic 28).
+
+    Reuses the existing get-or-create helpers on the money / rewards services,
+    so it is idempotent by construction: re-creating an instrument for an
+    already-provisioned currency (or one the lazy path already touched) adds
+    nothing and never errors.
+
+    Local imports avoid an import-time cycle — the money modules already reach
+    into instrument-adjacent code lazily.
+
+    Args:
+        tenant_id: Tenant scope.
+        account_type: The instrument's account_type (financial_wallet vs
+            points_account). Determines which system set is provisioned.
+        currency: The new instrument's code (ISO 4217 or a points code).
+
+    Returns:
+        Number of system accounts provisioned for this currency.
+
+    Side effects:
+        Adds 0..N Account rows in the caller's transaction (before its commit).
+    """
+    if account_type == ACCOUNT_TYPE_FINANCIAL_WALLET:
+        from app.modules.payments.service import get_or_create_system_cash_inflow
+        from app.modules.pricing.service import (
+            get_or_create_system_commission,
+            get_or_create_system_fee_account,
+            get_or_create_system_tax_commission,
+            get_or_create_system_tax_service,
+        )
+
+        # The 5 core money system accounts every financial currency needs.
+        # DELIBERATELY EXCLUDES `operator_adjustment`: that is a treasury
+        # artifact — a NAMED "Primary" bank mirror created via the Epic 18
+        # bank-float flow (treasury.service.get_or_create_operator_adjustment),
+        # not a generic per-currency base account. Auto-creating an unnamed one
+        # here would collide with the named mirror's unique constraint.
+        await get_or_create_system_cash_inflow(session, tenant_id, currency)
+        await get_or_create_system_fee_account(
+            session, tenant_id=tenant_id, currency=currency
+        )
+        await get_or_create_system_commission(
+            session, tenant_id=tenant_id, currency=currency
+        )
+        await get_or_create_system_tax_service(
+            session, tenant_id=tenant_id, currency=currency
+        )
+        await get_or_create_system_tax_commission(
+            session, tenant_id=tenant_id, currency=currency
+        )
+        return 5
+
+    if account_type == ACCOUNT_TYPE_POINTS:
+        from app.modules.rewards.service import get_or_create_system_points_issuance
+
+        await get_or_create_system_points_issuance(session, tenant_id, currency)
+        return 1
+
+    return 0
 
 
 async def _backfill_user_accounts(

@@ -25,7 +25,6 @@ from app.modules.ledger import (
     post_transaction,
 )
 from app.shared.exceptions import (
-    SystemPointsIssuanceMissing,
     UserFinancialWalletMissing,
     UserPointsAccountMissing,
 )
@@ -62,18 +61,49 @@ async def _find_user_points_account(
     return account
 
 
-async def _find_system_points_issuance(session: AsyncSession, tenant_id: UUID) -> Account:
-    """Return the tenant's master system_points_issuance account, or raise."""
-    result = await session.execute(
-        select(Account).where(
-            Account.tenant_id == tenant_id,
-            Account.account_type == ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
-            Account.user_id.is_(None),
-        )
+async def get_or_create_system_points_issuance(
+    session: AsyncSession, tenant_id: UUID, currency: str
+) -> Account:
+    """Return the per-(tenant, currency) master system_points_issuance account.
+
+    The single source of truth for locating (and lazily creating) the DEBIT
+    master that funds every points reward. Reused both by `issue_points_reward`
+    and by the instrument-create provisioning path (Epic 28) so a new points
+    currency shows up complete on the System Wallets page.
+
+    Args:
+        session: Async DB session.
+        tenant_id: Tenant scope.
+        currency: Points currency (e.g. 'PTS'). Case-insensitive.
+
+    Returns:
+        The existing or newly-inserted (flushed, not committed) Account.
+
+    Concurrency-safe: a first-ever race on the INSERT hits the
+    `uq_accounts_system_scoped` unique index; the loser rolls back and re-reads
+    the winner's row rather than surfacing a raw IntegrityError.
+    """
+    currency = currency.upper()
+    stmt = select(Account).where(
+        Account.tenant_id == tenant_id,
+        Account.account_type == ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+        Account.currency == currency,
+        Account.user_id.is_(None),
     )
-    account = result.scalar_one_or_none()
-    if account is None:
-        raise SystemPointsIssuanceMissing()
+    account = (await session.execute(stmt)).scalar_one_or_none()
+    if account is not None:
+        return account
+    account = Account(
+        tenant_id=tenant_id,
+        account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+        currency=currency,
+    )
+    session.add(account)
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        return (await session.execute(stmt)).scalar_one()
     return account
 
 
@@ -123,7 +153,6 @@ async def issue_points_reward(
 
     Raises:
         UserPointsAccountMissing: 422 — user has no points_account.
-        SystemPointsIssuanceMissing: 500 — tenant misconfigured.
     """
     # Fast-path: already issued — return existing row.
     existing = await _find_existing_reward_event(session, user_id, rule.id, triggering_event_id)
@@ -131,7 +160,9 @@ async def issue_points_reward(
         return existing
 
     user_points = await _find_user_points_account(session, tenant_id, user_id)
-    system_issuance = await _find_system_points_issuance(session, tenant_id)
+    system_issuance = await get_or_create_system_points_issuance(
+        session, tenant_id, user_points.currency
+    )
 
     # Epic 10 / WAL-78: apply any matching bonus multiplier BEFORE the
     # budget check + ledger write. The multiplied amount is what the

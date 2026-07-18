@@ -1243,9 +1243,10 @@ When an instrument is created, also get-or-create the canonical system accounts
 for that currency, keyed on `account_type` (idempotent, tenant-scoped, in the
 same transaction as the instrument insert):
 - **financial_wallet** currency → `system_cash_inflow`, `system_fee_collected`,
-  `operator_adjustment` (bank mirror), `commission`, `tax_service_collected`,
-  `tax_commission_collected`.
+  `commission`, `tax_service_collected`, `tax_commission_collected` (5).
 - **points_account** currency → `system_points_issuance`.
+- EXCLUDES `operator_adjustment` (bank mirror) — a treasury artifact created via
+  the Epic 18 bank-float flow, not a generic per-currency base account.
 
 **Acceptance:**
 - Creating a new financial instrument provisions all 6 system accounts for that

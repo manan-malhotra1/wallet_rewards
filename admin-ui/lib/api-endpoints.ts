@@ -15,6 +15,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 import type {
   AdminPinResetResponse,
+  AdminUnlockResponse,
   ApiKey,
   ApiKeyCreated,
   AuditEntry,
@@ -605,6 +606,17 @@ export const deleteStepUpPolicy = (policy_id: string, tenant_id: string) =>
 export const adminResetPin = (user_id: string, tenant_id: string) =>
   apiPost<AdminPinResetResponse>(
     `/api/v1/identity/users/${user_id}/pin/reset`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
+/**
+ * Release a user's PIN lockout WITHOUT changing their PIN (platform-admin).
+ * Distinct from adminResetPin, which changes the PIN and also unlocks.
+ */
+export const unlockUser = (user_id: string, tenant_id: string) =>
+  apiPost<AdminUnlockResponse>(
+    `/api/v1/identity/users/${user_id}/unlock`,
     undefined,
     { query: { tenant_id } },
   );

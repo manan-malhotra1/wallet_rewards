@@ -9,6 +9,7 @@ import { ApiError } from "@/lib/api";
 import {
   adminResetPin,
   proposeUserOperation,
+  unlockUser,
 } from "@/lib/api-endpoints";
 
 export type PinResetActionResult =
@@ -34,6 +35,35 @@ export async function resetUserPinAction(
       deliveredVia: res.delivered_via,
       newPin: res.new_pin,
     };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, errorCode: err.errorCode, message: err.message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+export type UnlockActionResult =
+  | { ok: true; wasLocked: boolean }
+  | { ok: false; errorCode: string; message: string };
+
+/**
+ * Release a user's PIN lockout (platform-admin). Does NOT change the PIN
+ * — distinct from resetUserPinAction. Revalidates /users so the "Locked"
+ * pill disappears once the lockout is cleared.
+ */
+export async function unlockUserAction(
+  userId: string,
+  tenantId: string,
+): Promise<UnlockActionResult> {
+  try {
+    const res = await unlockUser(userId, tenantId);
+    revalidatePath("/users");
+    return { ok: true, wasLocked: res.was_locked };
   } catch (err) {
     if (err instanceof ApiError) {
       return { ok: false, errorCode: err.errorCode, message: err.message };

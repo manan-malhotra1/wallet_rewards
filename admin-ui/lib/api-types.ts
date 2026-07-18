@@ -113,6 +113,10 @@ export interface UserDetail {
   identifiers: UserIdentifier[];
   profile: UserProfile | null;
   accounts: UserAccount[];
+  /** True while the user is PIN-locked (5 failed attempts → 30-min auto-expiring lock). */
+  is_locked: boolean;
+  /** Remaining lockout TTL in seconds; null when not locked. */
+  unlocks_in_seconds: number | null;
 }
 
 export interface UserIdentifier {
@@ -226,6 +230,12 @@ export interface AdminPinResetResponse {
   user_id: string;
   delivered_via: "inline" | "sms";
   new_pin: string | null;
+}
+
+/** Admin-triggered PIN-lockout release response (does not change the PIN). */
+export interface AdminUnlockResponse {
+  user_id: string;
+  was_locked: boolean;
 }
 
 /** A static user cohort (Epic 10 / WAL-79). */

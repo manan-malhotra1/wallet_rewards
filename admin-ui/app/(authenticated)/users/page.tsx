@@ -7,6 +7,7 @@
  */
 import { UserPlus, Users } from "lucide-react";
 
+import { auth } from "@/auth";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import {
   getUserDetail,
@@ -71,6 +72,11 @@ async function findOpenUpdateRequest(
 
 export default async function UsersPage({ searchParams }: UsersPageProps) {
   const params = await searchParams;
+  const session = await auth();
+  // Only platform-admins may release a PIN lockout; the backend also 403s,
+  // this just hides the Unlock affordance for other admins.
+  const canManageLockout =
+    session?.user?.roles?.includes("platform-admin") ?? false;
   const activeTenantId = await getActiveTenantId();
   if (!activeTenantId) {
     return (
@@ -143,6 +149,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
             resolvedIdentifierValue={resolvedIdentifierValue}
             resolvedIdentifierType={params.type ?? "phone"}
             openUpdate={openUpdate}
+            canManageLockout={canManageLockout}
           />
         )}
         {!detail && !error && !params.value && (

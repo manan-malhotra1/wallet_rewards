@@ -34,7 +34,9 @@ import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
 import { EditUserDrawer, type OpenUpdateRequest } from "./edit-user-drawer";
+import { LockoutBadge } from "./lockout-badge";
 import { ResetPinButton } from "./reset-pin-button";
+import { UnlockButton } from "./unlock-button";
 import { UserTypeBadge } from "./user-type-badge";
 
 const SYSTEM_COUNTERPARTY_LABEL: Record<string, string> = {
@@ -133,6 +135,8 @@ export interface UserDetailCardProps {
   resolvedIdentifierType: string;
   /** An update request already awaiting review, so Edit can surface it. */
   openUpdate: OpenUpdateRequest | null;
+  /** True for platform-admins — gates the Unlock affordance (backend also 403s). */
+  canManageLockout: boolean;
 }
 
 export function UserDetailCard({
@@ -141,6 +145,7 @@ export function UserDetailCard({
   resolvedIdentifierValue,
   resolvedIdentifierType,
   openUpdate,
+  canManageLockout,
 }: UserDetailCardProps) {
   const name = fullName(detail);
   const primaryIdentifier =
@@ -172,6 +177,9 @@ export function UserDetailCard({
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <UserTypeBadge type={detail.user_type} />
                 <StatusPill status={detail.status.toUpperCase()} variant="full" />
+                {detail.is_locked && (
+                  <LockoutBadge unlocksInSeconds={detail.unlocks_in_seconds} />
+                )}
               </div>
               <p className="mt-2 font-mono text-sm text-white/80">
                 {primaryIdentifier}
@@ -192,6 +200,9 @@ export function UserDetailCard({
               openUpdate={openUpdate}
             />
             <ResetPinButton userId={detail.id} tenantId={detail.tenant_id} />
+            {detail.is_locked && canManageLockout && (
+              <UnlockButton userId={detail.id} tenantId={detail.tenant_id} />
+            )}
           </div>
         </div>
       </div>

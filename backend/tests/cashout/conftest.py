@@ -242,6 +242,31 @@ async def worked_example_configs(db_session: AsyncSession, test_tenant: Tenant) 
     )
 
 
+async def seed_cashout_step_up_policy(
+    session: AsyncSession, tenant: Tenant, *, threshold: str = "100000000"
+) -> None:
+    """Seed a cashout step-up policy with a threshold ABOVE the test amount.
+
+    Step-up is FAIL-CLOSED: without a cashout policy the subscriber would be
+    prompted for a PIN on any amount, turning the money-flow tests into 401s.
+    A high threshold takes the below-threshold path so no PIN is required and
+    the balance / overdraft / idempotency assertions stay intact. Kept out of
+    `worked_example_configs` deliberately — the dedicated step-up tests seed
+    their own R50-threshold policy and would collide on the unique index.
+    """
+    from app.shared.models import StepUpPolicy
+
+    session.add(
+        StepUpPolicy(
+            tenant_id=tenant.id,
+            transaction_type="cashout",
+            currency="ZAR",
+            threshold_amount=Decimal(threshold),
+        )
+    )
+    await session.commit()
+
+
 def cash_out_body(amount: str = "100", phone: str = AGENT_PHONE) -> dict:
     """A cash-out request body targeting the agent by phone."""
     return {

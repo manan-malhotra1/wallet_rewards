@@ -32,6 +32,7 @@ from tests.cashout.conftest import (
     SUBSCRIBER_PIN,
     cash_out_body,
     cash_out_headers,
+    seed_cashout_step_up_policy,
 )
 
 
@@ -64,6 +65,7 @@ async def test_cash_out_happy_path_matches_worked_example(
     subscriber_auth_header: dict[str, str],
 ) -> None:
     """Full E2E: subscriber debited principal+fee, agent credited, legs balance."""
+    await seed_cashout_step_up_policy(db_session, test_tenant)
     resp = await async_client.post(
         "/api/v1/cashout",
         content=json.dumps(cash_out_body(amount="100")),
@@ -229,12 +231,15 @@ async def test_cash_out_to_self_422(
 async def test_cash_out_idempotent_replay(
     async_client: AsyncClient,
     db_session: AsyncSession,
+    test_tenant: Tenant,
     subscriber_wallet: Account,
     agent_wallet: Account,
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
     """Same Idempotency-Key returns the original txn; money moves only once."""
+    # Fail-closed step-up: seed a high-threshold policy so R100 needs no PIN.
+    await seed_cashout_step_up_policy(db_session, test_tenant)
     headers = cash_out_headers(subscriber_auth_header, idem="cashout-replay-1")
     first = await async_client.post(
         "/api/v1/cashout", content=json.dumps(cash_out_body(amount="100")), headers=headers
@@ -254,12 +259,17 @@ async def test_cash_out_idempotent_replay(
 @pytest.mark.asyncio
 async def test_cash_out_overdraft_on_subscriber_409(
     async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
     subscriber_wallet: Account,
     agent_wallet: Account,
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
     """An amount beyond the subscriber's R500 wallet -> 409 insufficient funds."""
+    # High-threshold policy so the amount takes the below-threshold (no-PIN)
+    # path and reaches the overdraft check rather than a step-up 401.
+    await seed_cashout_step_up_policy(db_session, test_tenant)
     resp = await async_client.post(
         "/api/v1/cashout",
         content=json.dumps(cash_out_body(amount="100000")),

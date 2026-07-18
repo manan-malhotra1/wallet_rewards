@@ -231,6 +231,11 @@ async def _seed_services_catalog(session: AsyncSession, tenant: Tenant) -> None:
             "Change PIN",
             "A user changes their own PIN; a charged self-service operation.",
         ),
+        (
+            "merchant_cashin",
+            "Merchant Cash-In",
+            "An external partner merchant funds a consumer's wallet via API.",
+        ),
     ]
     for code, display_name, description in baseline:
         result = await session.execute(
@@ -648,7 +653,7 @@ async def _get_or_create_merchant_cashin_charges(session: AsyncSession, tenant: 
             )
         )
         await session.commit()
-        print("  + Merchant cash-in charges: R0 fee, R1–R50000 limit (default)")
+        print("  + Merchant cash-in charges: R0 fee, R1-R50000 limit (default)")
 
 
 async def _get_or_create_rule(
@@ -889,7 +894,7 @@ async def _get_or_create_cashin_charges(session: AsyncSession, tenant: Tenant) -
                 max_amount=Decimal("5000"),
             )
         )
-        added.append("R5–R5000 limit")
+        added.append("R5-R5000 limit")
     if not await _has(
         CommissionConfig,
         CommissionConfig.tenant_id == tenant.id,
@@ -973,7 +978,7 @@ async def _get_or_create_cashout_charges(session: AsyncSession, tenant: Tenant) 
             )
         )
         await session.commit()
-        print("  + Cash-out charges (subscriber): R0 fee, R5–R5000 limit")
+        print("  + Cash-out charges (subscriber): R0 fee, R5-R5000 limit")
 
 
 async def _get_or_create_change_pin_charges(session: AsyncSession, tenant: Tenant) -> None:
@@ -1056,6 +1061,19 @@ async def seed() -> None:
             currency="PTS",
             threshold_amount=Decimal("500"),
         )
+        # enforce_step_up is FAIL-CLOSED: a guarded money path with NO policy
+        # requires a PIN for any amount. Seed EXPLICIT policies for the other
+        # guarded services so dev stays usable (PIN only above ZAR 200), and so
+        # the "explicit config, never implicit" rule holds for security config
+        # the same way it does for pricing/limits (invariant #12).
+        for _service_code in ("cashout", "cash_in", "airtime_recharge"):
+            await _get_or_create_step_up_policy(
+                session,
+                tenant,
+                transaction_type=_service_code,
+                currency="ZAR",
+                threshold_amount=Decimal("200"),
+            )
 
         # System-owned accounts for the tenant. We pre-create every system
         # wallet that platform activity would otherwise materialise lazily, so

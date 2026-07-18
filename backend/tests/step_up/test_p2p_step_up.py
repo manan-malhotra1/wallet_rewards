@@ -280,10 +280,15 @@ async def test_p2p_above_threshold_with_correct_pin_succeeds(
 
 
 @pytest.mark.asyncio
-async def test_p2p_no_policy_means_no_step_up(
+async def test_p2p_no_policy_requires_pin_fail_closed(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """With no policy row, even a huge amount goes through without a PIN."""
+    """FAIL-CLOSED: with NO policy for the scope, a P2P without a PIN → 401.
+
+    Step-up flipped from fail-OPEN to fail-CLOSED: a missing policy no longer
+    waves the caller through — it now requires a PIN for ANY amount. Previously
+    this same request (no policy, no PIN) returned 201.
+    """
     alice, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 9999")
     _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 0000")
     await fund(
@@ -294,7 +299,7 @@ async def test_p2p_no_policy_means_no_step_up(
         currency="ZAR",
         idempotency_key="seed-step-4",
     )
-    # NO step-up policy seeded.
+    # NO step-up policy seeded — fail-closed makes this require a PIN.
 
     response = await async_client.post(
         "/api/v1/payments/p2p",
@@ -308,4 +313,45 @@ async def test_p2p_no_policy_means_no_step_up(
             "currency": "ZAR",
         },
     )
+    assert response.status_code == 401, response.text
+    assert response.json()["error_code"] == "step_up_required"
+
+
+@pytest.mark.asyncio
+async def test_p2p_no_policy_with_correct_pin_succeeds(
+    async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
+) -> None:
+    """FAIL-CLOSED companion: no policy + the correct PIN → 201.
+
+    A missing policy demands a PIN (fail-closed), but a valid PIN still lets the
+    transfer through — proving the control gates rather than blocks outright.
+    """
+    alice, _ = await _make_tenant_user_with_pin(
+        db_session, test_tenant, phone="+27 82 555 9997", pin="1234"
+    )
+    bob, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 9998")
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=alice.id,
+        amount=Decimal("10000"),
+        currency="ZAR",
+        idempotency_key="seed-step-5",
+    )
+    # NO step-up policy seeded — the PIN is what carries the request.
+
+    response = await async_client.post(
+        "/api/v1/payments/p2p",
+        headers={**(await _auth_header(alice)), **_idem()},
+        json={
+            "recipient": {
+                "identifier_type": "phone",
+                "identifier_value": "+27 82 555 9998",
+            },
+            "amount": "9000",
+            "currency": "ZAR",
+            "pin": "1234",
+        },
+    )
     assert response.status_code == 201, response.text
+    assert response.json()["recipient_user_id"] == str(bob.id)

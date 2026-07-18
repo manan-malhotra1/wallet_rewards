@@ -77,6 +77,22 @@ async def _airtime_configs(db_session: AsyncSession, test_tenant: Tenant) -> Non
             daily_count_cap=10,
         ),
     )
+    # Step-up is FAIL-CLOSED: every test here first creates a recharge through
+    # the initiate endpoint, which enforces step-up. Without an airtime_recharge
+    # policy that would demand a PIN on any amount. Seed a policy whose threshold
+    # sits far above the recharge amounts so the below-threshold path skips the
+    # PIN and the callback flow under test is reached.
+    from app.shared.models import StepUpPolicy
+
+    db_session.add(
+        StepUpPolicy(
+            tenant_id=test_tenant.id,
+            transaction_type="airtime_recharge",
+            currency="ZAR",
+            threshold_amount=Decimal("100000000"),
+        )
+    )
+    await db_session.commit()
 
 
 @pytest_asyncio.fixture

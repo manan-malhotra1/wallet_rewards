@@ -213,6 +213,22 @@ async def worked_example_configs(db_session: AsyncSession, test_tenant: Tenant) 
             commission_tax_inclusive=True,
         ),
     )
+    # Step-up is FAIL-CLOSED: with no cash_in policy the agent would be prompted
+    # for a PIN on any amount, turning these money-flow tests into 401s. Seed a
+    # policy with a threshold far above every amount they move so the
+    # below-threshold path is taken and no PIN is required. No cash_in step-up
+    # test exists to collide with this row.
+    from app.shared.models import StepUpPolicy
+
+    db_session.add(
+        StepUpPolicy(
+            tenant_id=test_tenant.id,
+            transaction_type="cash_in",
+            currency="ZAR",
+            threshold_amount=Decimal("100000000"),
+        )
+    )
+    await db_session.commit()
 
 
 def cash_in_body(amount: str = "100", phone: str = "+27 82 555 7000") -> dict:

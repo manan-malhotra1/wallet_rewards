@@ -60,10 +60,13 @@ async def enforce_step_up(
 ) -> None:
     """Enforce a PIN step-up on a user-initiated transaction.
 
-    Sequence:
+    Sequence (FAIL-CLOSED — secure by default):
       1. Look up the policy for (principal.tenant_id, txn_type, currency).
-      2. No policy OR amount <= threshold → no-op (return).
-      3. Above threshold + no PIN supplied → raise StepUpRequired.
+      2. ONLY skip the PIN when a policy EXISTS and amount <= its threshold.
+         A missing policy does NOT skip step-up — it requires a PIN (a missing
+         security config must never silently weaken the control, mirroring the
+         invariant-#12 fail-closed stance for pricing/limits).
+      3. PIN required + none supplied → raise StepUpRequired.
       4. PIN supplied → bcrypt-verify against `users.pin_hash`. Wrong
          PIN bumps the lockout counter (shared with login) and raises
          InvalidStepUpPin.
@@ -95,12 +98,14 @@ async def enforce_step_up(
         )
     )
     policy = policy_q.scalar_one_or_none()
-    if policy is None:
-        return  # No policy → no step-up. Current behaviour preserved.
+    # FAIL-CLOSED: only a configured policy whose threshold the amount does not
+    # exceed lets the session token stand alone. No policy → PIN required.
+    if policy is not None and amount <= Decimal(str(policy.threshold_amount)):
+        return  # Below the configured threshold → session token is sufficient.
 
-    threshold = Decimal(str(policy.threshold_amount))
-    if amount <= threshold:
-        return  # Below threshold → session token is sufficient.
+    # `threshold` is only meaningful for the StepUpRequired hint; with no policy
+    # there is no threshold, so report 0 ("any amount requires a PIN").
+    threshold = Decimal(str(policy.threshold_amount)) if policy is not None else Decimal("0")
 
     if pin is None:
         raise StepUpRequired(

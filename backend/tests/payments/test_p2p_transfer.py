@@ -21,6 +21,7 @@ from app.modules.payments.service import fund
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     Account,
+    StepUpPolicy,
     Tenant,
     User,
     UserIdentifier,
@@ -706,6 +707,19 @@ async def _seed_p2p_pricing_and_limit(
             daily_count_cap=10,
         ),
     )
+    # Step-up is FAIL-CLOSED: a missing p2p policy would now require a PIN for
+    # ANY amount, turning these money-flow tests into 401s. Seed a policy with a
+    # threshold far above every amount they move so the below-threshold path is
+    # taken and no PIN is needed — the transfer assertions stay intact.
+    session.add(
+        StepUpPolicy(
+            tenant_id=tenant_id,
+            transaction_type="p2p",
+            currency=currency,
+            threshold_amount=Decimal("100000000"),
+        )
+    )
+    await session.commit()
 
 
 @pytest.mark.asyncio
@@ -819,6 +833,17 @@ async def test_p2p_fails_closed_when_amount_outside_configured_band(
             currency="ZAR",
             daily_count_cap=10,
         ),
+    )
+    # Step-up runs before per-amount fee resolution; seed a policy with a
+    # threshold above the R250 amount so step-up no-ops and the test reaches
+    # the pricing_config_missing branch it is asserting (not a 401 step-up).
+    db_session.add(
+        StepUpPolicy(
+            tenant_id=test_tenant.id,
+            transaction_type="p2p",
+            currency="ZAR",
+            threshold_amount=Decimal("100000000"),
+        )
     )
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7021")
     await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7022")

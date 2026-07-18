@@ -137,6 +137,20 @@ async def _seed_p2p_config(session: AsyncSession, tenant_id) -> None:
             daily_count_cap=10,
         ),
     )
+    # Step-up is FAIL-CLOSED: a missing p2p policy would require a PIN for any
+    # amount. Seed a policy with a threshold above these tests' amounts so the
+    # below-threshold path skips the PIN and the earned_points plumbing runs.
+    from app.shared.models import StepUpPolicy
+
+    session.add(
+        StepUpPolicy(
+            tenant_id=tenant_id,
+            transaction_type="p2p",
+            currency="ZAR",
+            threshold_amount=Decimal("100000000"),
+        )
+    )
+    await session.commit()
 
 
 async def _seed_rule(session: AsyncSession, tenant: Tenant) -> Rule:

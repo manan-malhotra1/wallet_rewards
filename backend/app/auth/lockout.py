@@ -65,5 +65,21 @@ async def register_failure(user_id: UUID) -> int:
 
 
 async def reset_failures(user_id: UUID) -> None:
-    """Clear the failed-attempt counter after a successful auth."""
+    """Clear the failed-attempt counter after a successful auth.
+
+    NOTE: this clears ONLY the rolling counter, not an ACTIVE lockout. A user
+    who is already locked stays locked until the TTL expires (they can't auth to
+    trigger this anyway). To fully release an active lockout use `clear_lockout`.
+    """
+    await redis_client.delete(FAILS_KEY.format(user_id=user_id))
+
+
+async def clear_lockout(user_id: UUID) -> None:
+    """Fully release a user: delete BOTH the active lockout key and the counter.
+
+    This is the admin/override unlock — unlike `reset_failures` (counter only),
+    it removes the `lockout:<user_id>` key so a currently-locked user can auth
+    again immediately, without waiting out the 30-minute TTL.
+    """
+    await redis_client.delete(LOCKOUT_KEY.format(user_id=user_id))
     await redis_client.delete(FAILS_KEY.format(user_id=user_id))

@@ -23,6 +23,7 @@ from app.database import get_async_session
 from app.dependencies import get_current_user, require_admin_role
 from app.modules.identity.schemas import (
     AdminPinResetResponse,
+    AdminUnlockResponse,
     AuthStartRequest,
     AuthStartResponse,
     ChangeUserTypeRequest,
@@ -44,6 +45,7 @@ from app.modules.identity.schemas import (
 )
 from app.modules.identity.service import (
     admin_reset_pin,
+    admin_unlock_user,
     auth_start_lookup,
     authenticate_pin,
     change_user_type,
@@ -206,6 +208,30 @@ async def post_admin_pin_reset(
         ip_address=fastapi_request.client.host if fastapi_request.client else None,
     )
     return AdminPinResetResponse.model_validate(payload)
+
+
+@router.post("/users/{user_id}/unlock", response_model=AdminUnlockResponse)
+async def post_admin_unlock(
+    user_id: UUID,
+    tenant_id: UUID,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> AdminUnlockResponse:
+    """Release a user's PIN lockout WITHOUT changing their PIN (NFR-0190).
+
+    Clears the Redis lockout + failure counter so a user locked by failed PIN
+    attempts can retry immediately, keeping their existing PIN. Writes an
+    `admin.user_unlocked` audit row. Tenant-scoped — cross-tenant returns 404.
+    """
+    payload = await admin_unlock_user(
+        session,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
+    return AdminUnlockResponse.model_validate(payload)
 
 
 # =============================================================================

@@ -151,6 +151,20 @@ class UserDetailOut(BaseModel):
     identifiers: list[IdentifierOut]
     profile: UserProfileOut | None
     accounts: list[UserAccountOut]
+    # PIN-lockout state (Redis-backed, NFR-0190) — lets the UI show a "Locked"
+    # pill + countdown and offer an Unlock action. `unlocks_in_seconds` is the
+    # remaining lockout TTL, null when the user isn't locked.
+    is_locked: bool = False
+    unlocks_in_seconds: int | None = None
+
+
+class AdminUnlockResponse(BaseModel):
+    """Result of an admin unlock — releases a PIN lockout without a PIN change."""
+
+    user_id: UUID
+    # The lock state BEFORE the clear, so the UI can tell the operator whether
+    # the user was actually locked (vs. an idempotent no-op unlock).
+    was_locked: bool
 
 
 class WalletTransactionOut(BaseModel):

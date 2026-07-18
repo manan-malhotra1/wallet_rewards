@@ -766,6 +766,11 @@ async def get_user_detail(
         )
         parent_name = parent_names.get(user.parent_user_id)
 
+    # PIN-lockout state (Redis, not a DB column) — surfaced so the admin UI can
+    # show a "Locked" pill + countdown and offer an Unlock action (NFR-0190).
+    locked = await is_locked(user.id)
+    unlocks_in = await lockout_seconds_remaining(user.id) if locked else None
+
     return {
         "id": user.id,
         "tenant_id": user.tenant_id,
@@ -777,6 +782,8 @@ async def get_user_detail(
         "identifiers": user.identifiers,
         "profile": profile,
         "accounts": account_payload,
+        "is_locked": locked,
+        "unlocks_in_seconds": unlocks_in,
     }
 
 
@@ -1062,7 +1069,7 @@ async def admin_reset_pin(
     import secrets
 
     from app.auth import hashing
-    from app.auth.lockout import reset_failures
+    from app.auth.lockout import clear_lockout
     from app.modules.audit.service import record_audit_for_admin
 
     user_q = await session.execute(
@@ -1077,9 +1084,10 @@ async def admin_reset_pin(
     new_pin = f"{secrets.randbelow(10_000):04d}"
     user.pin_hash = hashing.hash_pin(new_pin)
 
-    # A reset clears the lockout state — otherwise a previously-locked
-    # user still couldn't log in with the new PIN until the window expires.
-    await reset_failures(user_id)
+    # A reset FULLY unlocks the user — clear the active lockout key AND the
+    # counter (reset_failures alone only cleared the counter, so a locked user
+    # stayed locked until the TTL expired despite the new PIN — a real bug).
+    await clear_lockout(user_id)
 
     record_audit_for_admin(
         session,
@@ -1094,6 +1102,62 @@ async def admin_reset_pin(
     await session.commit()
 
     return {"user_id": user_id, "delivered_via": "inline", "new_pin": new_pin}
+
+
+async def admin_unlock_user(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Release a user's PIN lockout WITHOUT changing their PIN (admin override).
+
+    Unlike `admin_reset_pin`, this keeps the user's existing PIN — it only
+    clears the Redis lockout key + failure counter so a user locked by failed
+    attempts can retry immediately. Writes an `admin.user_unlocked` audit row.
+
+    Args:
+        user_id: Target user.
+        tenant_id: Caller's tenant; the user must belong to it.
+        admin: Authenticated admin principal (audit actor).
+        ip_address: Caller IP for audit.
+
+    Returns:
+        {"user_id", "was_locked"} — `was_locked` reflects the lock state before
+        the clear, so the UI can tell the operator whether anything changed.
+
+    Raises:
+        UserNotFound: user unknown or belongs to another tenant.
+
+    Side effects:
+        Deletes the Redis lockout + counter keys; writes one audit row.
+    """
+    from app.auth.lockout import clear_lockout, is_locked
+    from app.modules.audit.service import record_audit_for_admin
+
+    user_q = await session.execute(
+        select(User.id).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    if user_q.scalar_one_or_none() is None:
+        raise UserNotFound()
+
+    was_locked = await is_locked(user_id)
+    await clear_lockout(user_id)
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="admin.user_unlocked",
+        entity_type="user",
+        entity_id=str(user_id),
+        after_state={"was_locked": was_locked},
+        ip_address=ip_address,
+    )
+    await session.commit()
+    return {"user_id": user_id, "was_locked": was_locked}
 
 
 async def resolve_identifier(

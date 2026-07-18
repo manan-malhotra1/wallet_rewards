@@ -271,6 +271,45 @@ class InsufficientFunds(AppHTTPException):
         )
 
 
+class InsufficientFloat(AppHTTPException):
+    """A float-sourced funding would drive the operator cash float below zero.
+
+    The cash float (`system_cash_inflow`) is a POSITIVE balance that must be
+    topped up from the bank (via `treasury.adjust_system_wallet`) BEFORE it can
+    fund users. Any net DEBIT of the float that would overdraw it is rejected at
+    `post_transaction`'s balance guard (invariant #11) BEFORE any ledger write.
+
+    Distinct from `InsufficientFunds` (a user financial_wallet overdraft): this
+    tells the operator to replenish the float, not the user to top up.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "insufficient_float",
+            "Operator cash float is insufficient — top up the float from the bank first.",
+        )
+
+
+class FundingTemporarilyUnavailable(AppHTTPException):
+    """Partner-facing masked error for an operator-side funding shortfall.
+
+    The `insufficient_float` message is operator-internal (it names the float and
+    tells the operator to replenish from the bank). Exposing it to an external
+    API partner would leak the operator's liquidity state + remediation for a
+    condition entirely outside the partner's control (security review, Low). The
+    external funding path maps `InsufficientFloat` to this generic, retryable
+    503 instead; the specific error stays on the admin/treasury surfaces.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            503,
+            "funding_temporarily_unavailable",
+            "Funding is temporarily unavailable. Please retry later.",
+        )
+
+
 class NothingToWithdraw(AppHTTPException):
     """A withdraw_all was requested but the wallet has no available balance."""
 

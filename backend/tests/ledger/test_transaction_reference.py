@@ -12,8 +12,10 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +26,7 @@ from app.modules.ledger import (
     post_transaction,
 )
 from app.shared.models import (
-    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
@@ -34,6 +36,34 @@ from app.shared.models import (
 
 # `S_` + 14-digit timestamp + at least 6 digits of running number.
 _REFERENCE_RE = re.compile(r"^S_\d{14}\d{6,}$")
+
+
+# These tests assert exact per-tenant reference SEQUENCE values (first txn = 1)
+# and exact transaction counts, so they need a tenant with NO pre-existing
+# transactions. The conftest `test_tenant`/`other_tenant` pre-fund the cash float
+# (one txn), which would shift the sequence. Shadow those fixtures locally with
+# un-prefunded tenants; `_system_pair` below posts between two UNGUARDED system
+# accounts (no float), so no float pre-fund is needed.
+
+
+@pytest_asyncio.fixture
+async def test_tenant(db_session: AsyncSession) -> Tenant:
+    """Un-prefunded tenant (no cash-float top-up) so the reference sequence starts at 1."""
+    tenant = Tenant(name=f"ref-{uuid4().hex[:8]}", business_type="both", base_currency="ZAR")
+    db_session.add(tenant)
+    await db_session.commit()
+    await db_session.refresh(tenant)
+    return tenant
+
+
+@pytest_asyncio.fixture
+async def other_tenant(db_session: AsyncSession) -> Tenant:
+    """A second un-prefunded tenant for the independent-sequence test."""
+    tenant = Tenant(name=f"ref-other-{uuid4().hex[:8]}", business_type="both", base_currency="USD")
+    db_session.add(tenant)
+    await db_session.commit()
+    await db_session.refresh(tenant)
+    return tenant
 
 
 def _balanced(
@@ -47,16 +77,22 @@ def _balanced(
 
 
 async def _system_pair(session: AsyncSession, tenant: Tenant) -> tuple[Account, Account]:
-    """Create two system accounts (no owner) so the balance guard skips them."""
+    """Two UNGUARDED system accounts (no owner) for a balanced pair.
+
+    Neither is a `financial_wallet` nor the cash float (`system_cash_inflow`), so
+    the balance guard skips both — these reference tests don't touch the float and
+    don't depend on any float pre-fund.
+    """
     src = Account(
         tenant_id=tenant.id,
-        account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+        account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
         currency="ZAR",
     )
     dst = Account(
         tenant_id=tenant.id,
-        account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+        account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
         currency="ZAR",
+        name="ref-mirror",
     )
     session.add_all([src, dst])
     await session.commit()

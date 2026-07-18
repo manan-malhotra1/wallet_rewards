@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.shared.exceptions import (
     AccountNotFound,
     DuplicateIdempotencyKey,
+    InsufficientFloat,
     InsufficientFunds,
     MaxBalanceExceeded,
     RecipientMaxBalanceExceeded,
@@ -34,6 +35,7 @@ from app.shared.exceptions import (
 )
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     ENTRY_STATUS_COMPLETED,
@@ -42,6 +44,18 @@ from app.shared.models import (
     Account,
     LedgerEntry,
     Transaction,
+)
+
+# Account types whose net DEBIT is gated by the overdraft floor under the
+# FOR UPDATE lock (invariant #11). `financial_wallet` is the user wallet;
+# `system_cash_inflow` is the operator cash float, which must be pre-funded from
+# the bank and may NOT go negative (no float overdraft). Both are locked and
+# serialised at this choke point. Only `financial_wallet` additionally carries
+# the max_balance CEILING (the float has no user_id, so the credit branch below
+# skips it). Other system / pool accounts (operator_adjustment bank mirrors,
+# merchant collection, points) are unguarded — no floor, no cap.
+_OVERDRAFT_GUARDED_ACCOUNT_TYPES = frozenset(
+    {ACCOUNT_TYPE_FINANCIAL_WALLET, ACCOUNT_TYPE_SYSTEM_CASH_INFLOW}
 )
 
 
@@ -262,22 +276,30 @@ async def _enforce_balance_guard(
     request: PostTransactionRequest,
     accounts: dict[UUID, Account],
 ) -> None:
-    """Lock every user-wallet leg and enforce overdraft + max_balance under it.
+    """Lock every guarded leg and enforce overdraft + max_balance under it.
 
     Balance is ``SUM(ledger_entries)``, so no single row self-serialises
     concurrent writers; a check-then-write on the derived balance races two
     transactions past a cap or into overdraft. This is the single choke point
     (invariant #11) where a ``FOR UPDATE`` lock gates that check:
 
-      * net debit  -> reject (InsufficientFunds) if it would overdraw available.
+      * net debit  -> reject if it would overdraw available. The rejection is
+        ``InsufficientFloat`` when the overdrawn account is the operator cash
+        float (``system_cash_inflow``) — it must be pre-funded from the bank and
+        may not go negative — and ``InsufficientFunds`` for a user wallet.
       * net credit -> reject (MaxBalanceExceeded) if it would breach max_balance,
         UNLESS ``is_reversal`` (a refund restores funds and may never be blocked)
         or ``skip_receive_cap`` (an earned payout such as an agent commission
         credit must land regardless of the agent's own cap — Story 20.3).
 
-    Only ``financial_wallet`` accounts carry these semantics; system, merchant
-    *collection* (e.g. ``airtime_merchant_holding``) and points accounts have no
-    cap and are skipped untouched.
+    Guarded accounts are ``financial_wallet`` (user wallet) and
+    ``system_cash_inflow`` (the cash float): both get the overdraft floor. Only
+    ``financial_wallet`` also carries the max_balance CEILING — the float has no
+    ``user_id`` so the credit branch below skips it, and a credit to the float
+    (a top-up) is never blocked. Other system / pool accounts
+    (``operator_adjustment`` bank mirrors, merchant *collection* such as
+    ``airtime_merchant_holding``, points) have neither floor nor cap and are
+    skipped untouched.
 
     Locks are taken in account-id order and BEFORE any balance read, so two
     multi-wallet transactions (e.g. p2p, which locks both legs) can never
@@ -285,7 +307,8 @@ async def _enforce_balance_guard(
     ``post_transaction`` — never across an external call (NFR-0130).
 
     Raises:
-        InsufficientFunds (409): a debit would overdraw a wallet.
+        InsufficientFunds (409): a debit would overdraw a user wallet.
+        InsufficientFloat (409): a debit would overdraw the operator cash float.
         MaxBalanceExceeded (409): a credit would breach the owner's ceiling.
         RecipientMaxBalanceExceeded (409): ditto, but the initiator is a different
             user (p2p) — detail-free so the recipient's balance never leaks.
@@ -304,7 +327,8 @@ async def _enforce_balance_guard(
     guarded = sorted(
         account_id
         for account_id, delta in deltas.items()
-        if delta != 0 and accounts[account_id].account_type == ACCOUNT_TYPE_FINANCIAL_WALLET
+        if delta != 0
+        and accounts[account_id].account_type in _OVERDRAFT_GUARDED_ACCOUNT_TYPES
     )
     if not guarded:
         return
@@ -320,7 +344,13 @@ async def _enforce_balance_guard(
         balance, reserved = await derive_balance(session, account_id)
         if delta < 0:
             # Overdraft: available (balance - reserved) must absorb the net debit.
+            # This applies to the cash float too (no float overdraft) — the float
+            # must be pre-funded from the bank before it can fund users. The error
+            # differs so the operator learns to replenish the float rather than
+            # the user being told to top up.
             if balance - reserved + delta < 0:
+                if account.account_type == ACCOUNT_TYPE_SYSTEM_CASH_INFLOW:
+                    raise InsufficientFloat()
                 raise InsufficientFunds()
         elif (
             not request.is_reversal and not request.skip_receive_cap and account.user_id is not None

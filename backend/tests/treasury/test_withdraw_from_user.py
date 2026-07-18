@@ -25,7 +25,6 @@ from app.modules.ledger.service import (
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
-    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     Account,
     Tenant,
     User,
@@ -76,15 +75,14 @@ async def _seed_user_wallet_with_balance(
         currency="ZAR",
     )
     session.add(wallet)
-    inflow = Account(
-        tenant_id=tenant.id,
-        account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-        currency="ZAR",
-    )
-    session.add(inflow)
     await session.commit()
     await session.refresh(wallet)
-    await session.refresh(inflow)
+    # Reuse the tenant's pre-funded cash float (get-or-create) rather than
+    # constructing a second system_cash_inflow row (would violate the unique
+    # index) — its positive balance absorbs the bootstrap DEBIT below.
+    from app.modules.payments.service import get_or_create_system_cash_inflow
+
+    inflow = await get_or_create_system_cash_inflow(session, tenant.id, "ZAR")
 
     await post_transaction(
         session,

@@ -27,7 +27,6 @@ from app.shared.exceptions import (
     WalletReceiveLimitExceeded,
 )
 from app.shared.models import (
-    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     ENTRY_STATUS_COMPLETED,
@@ -44,16 +43,14 @@ ANCHOR = datetime(2026, 6, 15, 12, 0, 0, tzinfo=UTC)
 
 
 async def _make_sink(session: AsyncSession, tenant_id) -> Account:
-    """A system account to carry the DEBIT side of seeded receives."""
-    sink = Account(
-        tenant_id=tenant_id,
-        account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-        currency="ZAR",
-    )
-    session.add(sink)
-    await session.commit()
-    await session.refresh(sink)
-    return sink
+    """A system account to carry the DEBIT side of seeded receives.
+
+    Uses get-or-create so it reuses the tenant's pre-funded cash float rather than
+    constructing a second system_cash_inflow row (unique index).
+    """
+    from app.modules.payments.service import get_or_create_system_cash_inflow
+
+    return await get_or_create_system_cash_inflow(session, tenant_id, "ZAR")
 
 
 async def _seed_config(session: AsyncSession, tenant_id, **caps) -> None:

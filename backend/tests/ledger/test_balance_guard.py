@@ -20,7 +20,6 @@ from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_
 from app.shared.exceptions import InsufficientFunds, MaxBalanceExceeded
 from app.shared.models import (
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
-    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     Account,
@@ -31,16 +30,17 @@ from app.shared.models import (
 
 
 async def _zar_inflow(session: AsyncSession, tenant: Tenant) -> Account:
-    """A ZAR system_cash_inflow counter account (non-wallet — the guard skips it)."""
-    account = Account(
-        tenant_id=tenant.id,
-        account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-        currency="ZAR",
-    )
-    session.add(account)
-    await session.commit()
-    await session.refresh(account)
-    return account
+    """The ZAR system_cash_inflow counter account.
+
+    Uses get-or-create so it lands on the `test_tenant` fixture's pre-funded
+    float row rather than colliding with it (the float now carries a
+    no-overdraft floor and is pre-funded in the fixture). Its large positive
+    balance means the DEBIT legs below are absorbed by the float, so these tests
+    still exercise the user-wallet cap / overdraft, not the float floor.
+    """
+    from app.modules.payments.service import get_or_create_system_cash_inflow
+
+    return await get_or_create_system_cash_inflow(session, tenant.id, "ZAR")
 
 
 async def _set_zar_cap(session: AsyncSession, tenant: Tenant, cap: str) -> None:

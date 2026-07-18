@@ -34,12 +34,16 @@ from decimal import Decimal  # noqa: E402
 from sqlalchemy import select, text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
+from app.auth.principals import AdminPrincipal  # noqa: E402
 from app.auth.secret_box import decrypt_secret, encrypt_secret  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.modules.payments.service import fund  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
 from app.modules.redemption.service import register_provider  # noqa: E402
-from app.modules.treasury.service import BANK_MIRROR_PRIMARY_NAME  # noqa: E402
+from app.modules.treasury.service import (  # noqa: E402
+    BANK_MIRROR_PRIMARY_NAME,
+    adjust_system_wallet,
+)
 from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
     ACCOUNT_TYPE_COMMISSION,
@@ -1027,6 +1031,72 @@ async def _get_or_create_change_pin_charges(session: AsyncSession, tenant: Tenan
         print("  + Change-PIN charges: R0 fee, limitless (gate-only) limit")
 
 
+# System principal used as the audit actor for seed-time treasury operations.
+_SEED_ADMIN = AdminPrincipal(id="seed-script", username="seed", roles=frozenset())
+
+
+async def _prefund_operator_float(session: AsyncSession, tenant: Tenant) -> None:
+    """Top the operator cash float up from the bank mirror before any user fund.
+
+    The cash float (`system_cash_inflow`) carries a no-overdraft floor at the
+    ledger choke point (invariant #11): every seeded user fund DEBITs it, so it
+    must first hold at least the sum of all opening balances. We inject that sum
+    plus generous headroom (airtime / demo funding) via `adjust_system_wallet`
+    (DEBIT operator_adjustment / CREDIT float). Idempotent: a deterministic
+    idempotency_key means a re-seed never double-injects. Requires the ZAR float
+    and the "Primary" bank mirror to already exist (seeded just above).
+    """
+    total_openings = Decimal("0")
+    for spec in USERS_TO_SEED:
+        total_openings += Decimal(str(spec["opening_balance_zar"]))
+    amount = total_openings + Decimal("1000000")  # headroom for other seeded funding
+
+    float_account = (
+        await session.execute(
+            select(Account).where(
+                Account.tenant_id == tenant.id,
+                Account.account_type == ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+                Account.currency == "ZAR",
+                Account.user_id.is_(None),
+            )
+        )
+    ).scalar_one()
+    mirror = (
+        await session.execute(
+            select(Account).where(
+                Account.tenant_id == tenant.id,
+                Account.account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+                Account.currency == "ZAR",
+                Account.user_id.is_(None),
+                Account.name == BANK_MIRROR_PRIMARY_NAME,
+            )
+        )
+    ).scalar_one()
+
+    key = "seed-float-topup"
+    existing = (
+        await session.execute(
+            select(Transaction).where(
+                Transaction.tenant_id == tenant.id,
+                Transaction.idempotency_key == key,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+    await adjust_system_wallet(
+        session,
+        tenant_id=tenant.id,
+        account_id=float_account.id,
+        amount=amount,
+        bank_mirror_account_id=mirror.id,
+        reason="Seed: pre-fund operator cash float from the bank.",
+        admin=_SEED_ADMIN,
+        idempotency_key=key,
+    )
+    print(f"  + Float top-up: R {amount} ZAR injected from bank mirror")
+
+
 async def seed() -> None:
     """Populate the local dev database with the canonical test data."""
     print("Seeding local development database...")
@@ -1115,6 +1185,12 @@ async def seed() -> None:
                 label=label,
                 name=name,
             )
+
+        # Pre-fund the operator cash float from the bank BEFORE any user fund.
+        # The float (`system_cash_inflow`) now carries a no-overdraft floor at the
+        # ledger choke point (invariant #11): every user fund below DEBITs it, so
+        # it must be topped up first or the first fund would 409 `insufficient_float`.
+        await _prefund_operator_float(session, tenant)
 
         # Users + their wallets + opening balances.
         for spec in USERS_TO_SEED:

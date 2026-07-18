@@ -56,6 +56,8 @@ from app.modules.treasury.service import (
 from app.shared.exceptions import (
     AccountNotFound,
     DuplicateIdempotencyKey,
+    FundingTemporarilyUnavailable,
+    InsufficientFloat,
     InsufficientFunds,
     NotAMerchantKey,
     SelfTransferNotAllowed,
@@ -152,14 +154,21 @@ async def external_fund(
         currency=currency,
         amount=request.amount,
     )
-    txn = await fund(
-        session,
-        tenant_id=tenant_id,
-        user_id=user_id,
-        amount=request.amount,
-        currency=currency,
-        idempotency_key=idempotency_key,
-    )
+    try:
+        txn = await fund(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            amount=request.amount,
+            currency=currency,
+            idempotency_key=idempotency_key,
+        )
+    except InsufficientFloat as exc:
+        # Don't leak the operator's liquidity state / "top up from the bank"
+        # remediation to a third-party partner — it's outside their control
+        # (security review). Surface a generic retryable 503 instead; the
+        # specific insufficient_float stays on the admin/treasury surfaces.
+        raise FundingTemporarilyUnavailable() from exc
     record_audit_for_system(
         session,
         tenant_id=tenant_id,

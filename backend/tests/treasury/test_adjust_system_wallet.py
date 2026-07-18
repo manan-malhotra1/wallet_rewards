@@ -12,6 +12,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,22 @@ from app.shared.models import (
     Tenant,
 )
 from tests.treasury.conftest import approve_op
+
+
+@pytest_asyncio.fixture
+async def test_tenant(db_session: AsyncSession) -> Tenant:
+    """Un-prefunded tenant (no cash-float top-up) so these tests can create the
+    float target themselves and assert its EXACT post-adjust balance.
+
+    Shadows the conftest `test_tenant` (which pre-funds the ZAR float) for this
+    module only — the pre-fund would both collide with `_seed_system_cash_inflow`
+    (unique float row) and skew the target's balance assertions.
+    """
+    tenant = Tenant(name=f"adjust-{uuid4().hex[:8]}", business_type="both", base_currency="ZAR")
+    db_session.add(tenant)
+    await db_session.commit()
+    await db_session.refresh(tenant)
+    return tenant
 
 
 async def _seed_system_cash_inflow(

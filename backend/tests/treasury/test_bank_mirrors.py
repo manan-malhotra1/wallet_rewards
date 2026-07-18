@@ -14,6 +14,7 @@ from collections.abc import Callable
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +26,21 @@ from app.shared.models import (
     Tenant,
 )
 from tests.treasury.conftest import approve_op
+
+
+@pytest_asyncio.fixture
+async def test_tenant(db_session: AsyncSession) -> Tenant:
+    """Un-prefunded tenant so mirror-list assertions see ONLY test-created mirrors.
+
+    Shadows the conftest `test_tenant` (which pre-funds the ZAR float using a
+    dedicated seed bank mirror) for this module only — otherwise the seed mirror
+    would leak into exact mirror-set assertions here.
+    """
+    tenant = Tenant(name=f"mirrors-{uuid4().hex[:8]}", business_type="both", base_currency="ZAR")
+    db_session.add(tenant)
+    await db_session.commit()
+    await db_session.refresh(tenant)
+    return tenant
 
 
 async def _seed_bank_mirror(

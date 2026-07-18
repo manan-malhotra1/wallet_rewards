@@ -57,7 +57,9 @@ External calls MUST NOT happen inside an open DB transaction (NFR-0130, Pay-PRD-
 
 ## 6. Overdraft prevention
 
-A transaction that would make `available_balance` (= `balance` − `reserved`) go negative MUST be rejected BEFORE any ledger entry is created. The check is the responsibility of the payment orchestrator, evaluated after role + limits + pricing (in that order).
+A transaction that would make `available_balance` (= `balance` − `reserved`) go negative MUST be rejected BEFORE any ledger entry is created. The authoritative check lives in `post_transaction`'s balance guard (invariant #11), which locks the guarded account `FOR UPDATE` and re-checks under that lock (endpoint-level checks are advisory early rejections).
+
+**Float floor.** The same overdraft floor now also applies to the **operator cash float** (`system_cash_inflow`): it is a POSITIVE balance that must be pre-funded from the bank (CREDIT float / DEBIT `operator_adjustment` bank mirror, e.g. via `treasury.adjust_system_wallet`) before it can fund users. A net DEBIT of the float that would drive it below zero is rejected with a distinct `InsufficientFloat` (409, `insufficient_float`) — `InsufficientFunds` stays reserved for a user `financial_wallet` overdraft. Every float-sourced funding is affected: admin `fund` / `fund_user`, external partner fund, and any reward (e.g. referral cashback) that debits the float. A fund REVERSAL credits the float back, so it is a net credit and never floored. The float has no `max_balance` ceiling. Other system / pool accounts (bank mirrors, merchant collection, points) remain unfloored.
 
 ## 7. Reward double-issuance prevention
 

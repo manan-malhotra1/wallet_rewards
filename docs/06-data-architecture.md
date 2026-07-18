@@ -125,15 +125,27 @@ Without this account type, the seed cannot post opening balances to user wallets
 that preserves the sum-to-zero invariant (NFR-0100). The future top-up endpoint
 (Pay-PRD-0320) uses the same account.
 
-**Invariant** (per currency, per tenant):
-
-```
-system_cash_inflow.balance + SUM(all financial_wallet balances of that currency) == 0
-```
-
 Each tenant has one `system_cash_inflow` account **per currency** (so a multi-currency
 tenant has multiple — one for ZAR, one for KES, etc.). Phase B seeds it lazily on first
 top-up.
+
+**Amendment — no-overdraft float floor (2026-07-18).** The float is now a **POSITIVE**
+balance carrying a non-negative overdraft floor enforced at the ledger choke point
+(`post_transaction`, invariant #11). It must be pre-funded from the bank — CREDIT
+`system_cash_inflow` / DEBIT an `operator_adjustment` bank mirror (e.g. via
+`treasury.adjust_system_wallet`) — before it can fund users. A net DEBIT that would drive
+it below zero is rejected with `InsufficientFloat` (409). The old convention where the
+float trended negative (mirroring `system_points_issuance`) is **replaced**:
+
+```
+# OLD (pre-2026-07-18): system_cash_inflow.balance + SUM(financial_wallets, that ccy) == 0
+# NOW: system_cash_inflow.balance == bank_injected − user_funded ≥ 0
+```
+
+The counter-leg for the bank injection is the `operator_adjustment` bank mirror (which
+trends negative as cash leaves the bank), so system-wide sum-to-zero (NFR-0100) still
+holds across the float + mirror + wallets. The seed pre-funds the float from the bank
+mirror before posting any user opening balance.
 
 ---
 

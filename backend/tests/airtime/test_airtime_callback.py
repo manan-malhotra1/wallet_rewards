@@ -24,7 +24,6 @@ from app.modules.accounts.service import derive_balance
 from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
 from app.shared.models import (
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
-    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     MERCHANT_CATEGORY_AIRTIME,
@@ -121,13 +120,12 @@ async def funded_wallet(
     db_session: AsyncSession, test_tenant: Tenant, user_wallet: Account
 ) -> Account:
     """test_user's ZAR wallet, funded with R500."""
-    inflow = Account(
-        tenant_id=test_tenant.id,
-        account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-        currency="ZAR",
-    )
-    db_session.add(inflow)
-    await db_session.flush()
+    # Reuse the tenant's pre-funded cash float (get-or-create) — a second
+    # system_cash_inflow row would violate the unique index, and its positive
+    # balance absorbs the bootstrap DEBIT below (the float has a no-overdraft floor).
+    from app.modules.payments.service import get_or_create_system_cash_inflow
+
+    inflow = await get_or_create_system_cash_inflow(db_session, test_tenant.id, "ZAR")
     await post_transaction(
         db_session,
         PostTransactionRequest(

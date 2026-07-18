@@ -18,6 +18,7 @@ from app.modules.accounts.service import derive_balance
 from app.shared.models import Tenant, User
 from tests.money_operations.conftest import (
     approve,
+    seed_float,
     seed_user_wallet,
     txn_count,
     user_phone,
@@ -67,6 +68,8 @@ async def test_treasury_fund_user_executes_after_approval(
 ) -> None:
     """The proposal created via the treasury endpoint applies once approved."""
     wallet = await seed_user_wallet(db_session, test_tenant, test_user)
+    # The approved fund_user DEBITs the cash float; pre-fund it (no-overdraft floor).
+    await seed_float(db_session, test_tenant, Decimal("1000"))
     proposed = await async_client.post(
         "/api/v1/treasury/fund-user",
         headers=maker_header,

@@ -20,6 +20,7 @@ from tests.money_operations.conftest import (
     approve,
     propose,
     seed_bank_mirror,
+    seed_float,
     seed_system_wallet,
     seed_user_wallet,
     txn_count,
@@ -38,6 +39,8 @@ async def test_fund_user_applies_on_approval(
 ) -> None:
     """A distinct checker approving a fund → APPLIED, wallet credited, txn linked."""
     wallet = await seed_user_wallet(db_session, test_tenant, test_user)
+    # fund_user DEBITs the cash float on apply; pre-fund it (no-overdraft floor).
+    await seed_float(db_session, test_tenant, Decimal("1000"))
     proposed = await propose(
         async_client,
         test_tenant,
@@ -226,6 +229,8 @@ async def test_second_approve_after_applied_is_409_no_double_post(
     state check together prevent a double execution.
     """
     wallet = await seed_user_wallet(db_session, test_tenant, test_user)
+    # fund_user DEBITs the cash float on apply; pre-fund it (no-overdraft floor).
+    await seed_float(db_session, test_tenant, Decimal("1000"))
     proposed = await propose(
         async_client,
         test_tenant,
@@ -250,7 +255,8 @@ async def test_second_approve_after_applied_is_409_no_double_post(
 
     balance, _ = await derive_balance(db_session, wallet.id)
     assert balance == Decimal("100")  # funded exactly once
-    assert await txn_count(db_session, test_tenant) == 1
+    # One float top-up (seed) + exactly one fund — the re-approve posted nothing.
+    assert await txn_count(db_session, test_tenant) == 2
 
 
 @pytest.mark.asyncio

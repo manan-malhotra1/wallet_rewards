@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import AsyncIterator, Callable
+from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
@@ -150,9 +151,76 @@ async def async_client() -> AsyncIterator[AsyncClient]:
 # -----------------------------------------------------------------------------
 
 
+# Dedicated bank-mirror name for the test float pre-fund. Uniquely named so it
+# never collides with test-created mirrors ("Primary", "Standard Bank", ...).
+TEST_FLOAT_SEED_MIRROR_NAME = "__test_float_seed__"
+
+
+async def prefund_float(
+    session: AsyncSession,
+    tenant_id: Any,
+    *,
+    currency: str = "ZAR",
+    amount: Decimal = Decimal("1000000000"),
+) -> None:
+    """Inject a large operator cash float from the bank so fund-via-float tests pass.
+
+    The cash float (`system_cash_inflow`) now carries a no-overdraft floor at the
+    ledger choke point (`post_transaction`, invariant #11): any user-funding
+    DEBITs the float, so with a zero float every fund would 409 `insufficient_float`.
+    This mirrors `treasury.adjust_system_wallet` (DEBIT operator_adjustment /
+    CREDIT system_cash_inflow) minus the admin/audit envelope, topping the float
+    up ONCE per tenant so the ~20 money tests that fund via the float keep passing
+    without per-file edits.
+
+    The inflow is fetched via `get_or_create_system_cash_inflow`, so the many test
+    helpers that query-then-reuse the inflow land on this same (now positive) row
+    rather than colliding. The counter-leg mirror is uniquely named so it never
+    clashes with test-created mirrors. Floor-specific tests must use a FRESH,
+    un-prefunded tenant (do not call this) so they actually exercise the floor.
+    """
+    from app.modules.ledger import (
+        LedgerEntryRequest,
+        PostTransactionRequest,
+        post_transaction,
+    )
+    from app.modules.payments.service import get_or_create_system_cash_inflow
+    from app.shared.models import ACCOUNT_TYPE_OPERATOR_ADJUSTMENT
+
+    currency = currency.upper()
+    inflow = await get_or_create_system_cash_inflow(session, tenant_id, currency)
+    mirror = Account(
+        tenant_id=tenant_id,
+        account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+        currency=currency,
+        name=TEST_FLOAT_SEED_MIRROR_NAME,
+    )
+    session.add(mirror)
+    await session.commit()
+    await session.refresh(mirror)
+    await post_transaction(
+        session,
+        PostTransactionRequest(
+            tenant_id=tenant_id,
+            idempotency_key=f"__test_float_seed__-{currency}",
+            transaction_type="treasury.adjust",
+            currency=currency,
+            amount=amount,
+            entries=[
+                LedgerEntryRequest(account_id=mirror.id, entry_type="DEBIT", amount=amount),
+                LedgerEntryRequest(account_id=inflow.id, entry_type="CREDIT", amount=amount),
+            ],
+        ),
+    )
+
+
 @pytest_asyncio.fixture
 async def test_tenant(db_session: AsyncSession) -> Tenant:
-    """A fresh tenant with full business-type (wallet + rewards) in ZAR per test."""
+    """A fresh tenant with full business-type (wallet + rewards) in ZAR per test.
+
+    The ZAR cash float is pre-funded so tests that fund a wallet via the float
+    don't trip the no-overdraft float floor (invariant #11). See `prefund_float`.
+    """
     tenant = Tenant(
         name=f"test-tenant-{uuid4().hex[:8]}",
         business_type="both",
@@ -161,12 +229,17 @@ async def test_tenant(db_session: AsyncSession) -> Tenant:
     db_session.add(tenant)
     await db_session.commit()
     await db_session.refresh(tenant)
+    await prefund_float(db_session, tenant.id, currency="ZAR")
     return tenant
 
 
 @pytest_asyncio.fixture
 async def other_tenant(db_session: AsyncSession) -> Tenant:
-    """A second tenant used to verify cross-tenant isolation."""
+    """A second tenant used to verify cross-tenant isolation.
+
+    Its ZAR cash float is pre-funded too (see `prefund_float`) so the rare
+    cross-tenant fund-via-float test doesn't trip the float floor.
+    """
     tenant = Tenant(
         name=f"other-tenant-{uuid4().hex[:8]}",
         business_type="both",
@@ -175,6 +248,7 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
     db_session.add(tenant)
     await db_session.commit()
     await db_session.refresh(tenant)
+    await prefund_float(db_session, tenant.id, currency="ZAR")
     return tenant
 
 

@@ -149,14 +149,9 @@ async def test_signup_cashback_credits_wallets_from_system_inflow(
     await db_session.commit()
     referral = await _pending_referral(db_session, test_tenant, referrer, referee)
 
-    await evaluate_referral_on_signup(db_session, tenant_id=test_tenant.id, referral=referral)
-
-    ref_bal, _ = await derive_balance(db_session, referrer_w.id)
-    ree_bal, _ = await derive_balance(db_session, referee_w.id)
-    assert ref_bal == Decimal("50")
-    assert ree_bal == Decimal("100")
-
-    # Funding master was auto-created and debited the full 150.
+    # The cash float carries a no-overdraft floor now (invariant #11), so cashback
+    # can only draw from a pre-funded float. `test_tenant` pre-funds it; capture the
+    # balance so we can assert the cashback drew EXACTLY 150 regardless of the seed.
     inflow = (
         await db_session.execute(
             select(Account).where(
@@ -166,8 +161,18 @@ async def test_signup_cashback_credits_wallets_from_system_inflow(
             )
         )
     ).scalar_one()
+    float_before, _ = await derive_balance(db_session, inflow.id)
+
+    await evaluate_referral_on_signup(db_session, tenant_id=test_tenant.id, referral=referral)
+
+    ref_bal, _ = await derive_balance(db_session, referrer_w.id)
+    ree_bal, _ = await derive_balance(db_session, referee_w.id)
+    assert ref_bal == Decimal("50")
+    assert ree_bal == Decimal("100")
+
+    # The float (funding master) was debited the full 150 (50 + 100).
     inflow_bal, _ = await derive_balance(db_session, inflow.id)
-    assert inflow_bal == Decimal("-150")
+    assert inflow_bal == float_before - Decimal("150")
 
 
 @pytest.mark.asyncio

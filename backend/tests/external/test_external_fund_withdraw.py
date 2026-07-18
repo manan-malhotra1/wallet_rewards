@@ -30,7 +30,6 @@ from app.modules.ledger.service import (
 )
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
-    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     ENTRY_STATUS_COMPLETED,
@@ -141,11 +140,12 @@ async def _seed_wallet(
     await session.commit()
     await session.refresh(wallet)
     if balance > 0:
-        inflow = Account(
-            tenant_id=tenant.id, account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW, currency="ZAR"
-        )
-        session.add(inflow)
-        await session.flush()
+        # Reuse the tenant's pre-funded cash float (get-or-create) instead of a
+        # second system_cash_inflow row (unique index) — its positive balance
+        # absorbs the bootstrap DEBIT below (the float now has a no-overdraft floor).
+        from app.modules.payments.service import get_or_create_system_cash_inflow
+
+        inflow = await get_or_create_system_cash_inflow(session, tenant.id, "ZAR")
         await post_transaction(
             session,
             PostTransactionRequest(

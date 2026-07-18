@@ -39,6 +39,24 @@ CHECKER_SUB = "22222222-2222-4000-8000-000000000002"
 CHECKER2_SUB = "33333333-3333-4000-8000-000000000003"
 
 
+@pytest_asyncio.fixture
+async def test_tenant(db_session: AsyncSession) -> Tenant:
+    """Un-prefunded tenant (no cash-float top-up) for this module.
+
+    These maker-checker tests assert exact `txn_count`/`account_count` (e.g. "0
+    until approved") and exact post-apply system-wallet balances. The conftest
+    `test_tenant` pre-funds the ZAR float (one txn + two accounts), which would
+    skew every one of those counts and collide with `seed_system_wallet`'s inflow.
+    Tests whose applied operation DEBITs the float (e.g. a `fund_user`) top the
+    float up explicitly via `seed_float`.
+    """
+    tenant = Tenant(name=f"money-op-{uuid4().hex[:8]}", business_type="both", base_currency="ZAR")
+    db_session.add(tenant)
+    await db_session.commit()
+    await db_session.refresh(tenant)
+    return tenant
+
+
 def _header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
@@ -108,7 +126,14 @@ def user_phone(user: User) -> str:
 async def seed_user_wallet(
     session: AsyncSession, tenant: Tenant, user: User, *, balance: Decimal = Decimal("0")
 ) -> Account:
-    """Give the user a ZAR financial wallet, optionally pre-funded via the ledger."""
+    """Give the user a ZAR financial wallet, optionally pre-funded via the ledger.
+
+    The opening balance is bootstrapped from a bank mirror (`operator_adjustment`,
+    an UNGUARDED counter-leg) rather than the cash float — the float now carries a
+    no-overdraft floor (invariant #11) and this module's tenant leaves it empty, so
+    a DEBIT of the float here would trip the floor. Debiting the mirror instead
+    moves the same money without touching the float.
+    """
     wallet = Account(
         tenant_id=tenant.id,
         user_id=user.id,
@@ -116,14 +141,17 @@ async def seed_user_wallet(
         currency="ZAR",
     )
     session.add(wallet)
-    inflow = Account(
-        tenant_id=tenant.id, account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW, currency="ZAR"
-    )
-    session.add(inflow)
     await session.commit()
     await session.refresh(wallet)
-    await session.refresh(inflow)
     if balance > 0:
+        mirror = Account(
+            tenant_id=tenant.id,
+            account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+            currency="ZAR",
+            name=f"bootstrap-{uuid4().hex[:8]}",
+        )
+        session.add(mirror)
+        await session.flush()
         await post_transaction(
             session,
             PostTransactionRequest(
@@ -133,13 +161,46 @@ async def seed_user_wallet(
                 currency="ZAR",
                 amount=balance,
                 entries=[
-                    LedgerEntryRequest(account_id=inflow.id, entry_type="DEBIT", amount=balance),
+                    LedgerEntryRequest(account_id=mirror.id, entry_type="DEBIT", amount=balance),
                     LedgerEntryRequest(account_id=wallet.id, entry_type="CREDIT", amount=balance),
                 ],
             ),
         )
         await session.commit()
     return wallet
+
+
+async def seed_float(session: AsyncSession, tenant: Tenant, amount: Decimal) -> None:
+    """Top the tenant's ZAR cash float up from a bank mirror (DEBIT mirror / CREDIT
+    float), so an operation that DEBITs the float (e.g. an approved `fund_user`)
+    can draw from it without tripping the no-overdraft floor (invariant #11)."""
+    from app.modules.payments.service import get_or_create_system_cash_inflow
+
+    inflow = await get_or_create_system_cash_inflow(session, tenant.id, "ZAR")
+    mirror = Account(
+        tenant_id=tenant.id,
+        account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+        currency="ZAR",
+        name=f"float-seed-{uuid4().hex[:8]}",
+    )
+    session.add(mirror)
+    await session.commit()
+    await session.refresh(inflow)
+    await session.refresh(mirror)
+    await post_transaction(
+        session,
+        PostTransactionRequest(
+            tenant_id=tenant.id,
+            idempotency_key=f"float-seed-{uuid4().hex}",
+            transaction_type="treasury.adjust",
+            currency="ZAR",
+            amount=amount,
+            entries=[
+                LedgerEntryRequest(account_id=mirror.id, entry_type="DEBIT", amount=amount),
+                LedgerEntryRequest(account_id=inflow.id, entry_type="CREDIT", amount=amount),
+            ],
+        ),
+    )
 
 
 async def seed_bank_mirror(

@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.principals import UserPrincipal
 from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_user
-from app.modules.identity.service import resolve_identifier
+from app.modules.identity.service import assert_user_can_transact, resolve_identifier
 from app.modules.ledger import (
     LedgerEntryRequest,
     PostTransactionRequest,
@@ -167,6 +167,17 @@ async def p2p_transfer(
     # Sender must hold an active role permitting "p2p". Fails BEFORE any
     # further work — no lock acquired, no ledger touched.
     await require_permission(session, sender_user_id, "p2p")
+
+    # 1a. Admin access-lock (migration 0045). The SENDER must be `active` — a
+    # txn_locked / suspended / closed sender is blocked before any charge or
+    # ledger work. The recipient is passive and is NOT guarded. p2p has no early
+    # idempotency fast-path (post_transaction enforces the key), so this is the
+    # first money-specific gate. ACCEPTED deviation from Pay-PRD-0200: a replay of
+    # an already-completed p2p by a sender who was locked in the interim returns
+    # 403 rather than the original transaction. This is intentional — a locked
+    # account must not transact, and there is no double-spend (the key still dedups
+    # while active); we prefer refusing the locked replay over silently 200-ing it.
+    await assert_user_can_transact(session, tenant_id=tenant_id, user_id=sender_user_id)
 
     # 1b. Fail-closed service gate (invariant #12). BOTH a pricing and a limit
     # config must resolve for the sender's user_type or the service is rejected

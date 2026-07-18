@@ -173,6 +173,14 @@ async def cash_out(
     if existing is not None:
         return existing, await _resolve_agent_from_txn(session, existing, subscriber_user_id)
 
+    # 1a. Admin access-lock (migration 0045). The SUBSCRIBER (initiator) must be
+    # `active`; a txn_locked / suspended / closed subscriber is blocked here —
+    # after the idempotency fast-path (a replay still returns the original txn)
+    # and before any charge/ledger work. The agent is a passive recipient.
+    from app.modules.identity.service import assert_user_can_transact
+
+    await assert_user_can_transact(session, tenant_id=tenant_id, user_id=subscriber_user_id)
+
     # 2. Resolve the agent recipient (tenant-scoped), reject self, enforce type.
     agent_row = await resolve_identifier(
         session, tenant_id, request.identifier_type, request.identifier_value

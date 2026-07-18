@@ -101,6 +101,21 @@ export interface UserAccount {
   available_balance: string;
 }
 
+/**
+ * Admin-imposed access restriction level (distinct from the automatic PIN
+ * lockout `is_locked`). `login_locked` = user cannot log in (session killed);
+ * `transactions_locked` = user can log in but cannot transact; `closed` is a
+ * terminal state reflected in the status pill.
+ */
+export type AccessLevel =
+  | "active"
+  | "login_locked"
+  | "transactions_locked"
+  | "closed";
+
+/** The three access levels an admin can set via setUserAccess (not `closed`). */
+export type SettableAccessLevel = "active" | "login_locked" | "transactions_locked";
+
 export interface UserDetail {
   id: string;
   tenant_id: string;
@@ -117,6 +132,15 @@ export interface UserDetail {
   is_locked: boolean;
   /** Remaining lockout TTL in seconds; null when not locked. */
   unlocks_in_seconds: number | null;
+  /** Admin-imposed access restriction; separate from the automatic PIN lockout. */
+  access_level: AccessLevel;
+}
+
+/** Response from the admin set-access endpoint. */
+export interface AdminAccessResponse {
+  user_id: string;
+  status: string;
+  level: AccessLevel;
 }
 
 export interface UserIdentifier {

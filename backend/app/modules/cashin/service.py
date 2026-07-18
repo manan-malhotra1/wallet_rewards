@@ -143,6 +143,14 @@ async def cash_in(
     if existing is not None:
         return existing, await _resolve_customer_from_txn(session, existing, agent_user_id)
 
+    # 1a. Admin access-lock (migration 0045). The initiating AGENT must be
+    # `active`; a txn_locked / suspended / closed agent is blocked here — after
+    # the idempotency fast-path (replays still return the original txn) and
+    # before any charge/ledger work. The customer being funded is passive.
+    from app.modules.identity.service import assert_user_can_transact
+
+    await assert_user_can_transact(session, tenant_id=tenant_id, user_id=agent_user_id)
+
     # 2. Resolve the customer (tenant-scoped) and reject self cash-in.
     customer_row = await resolve_identifier(
         session, tenant_id, request.customer.identifier_type, request.customer.identifier_value

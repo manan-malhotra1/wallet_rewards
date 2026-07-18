@@ -33,6 +33,8 @@ import type { UserTransaction } from "@/lib/api-endpoints";
 import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
+import { AccessLevelPill } from "./access-level-pill";
+import { AccessLockControl } from "./access-lock-control";
 import { EditUserDrawer, type OpenUpdateRequest } from "./edit-user-drawer";
 import { LockoutBadge } from "./lockout-badge";
 import { ResetPinButton } from "./reset-pin-button";
@@ -180,6 +182,7 @@ export function UserDetailCard({
                 {detail.is_locked && (
                   <LockoutBadge unlocksInSeconds={detail.unlocks_in_seconds} />
                 )}
+                <AccessLevelPill level={detail.access_level} />
               </div>
               <p className="mt-2 font-mono text-sm text-white/80">
                 {primaryIdentifier}
@@ -202,6 +205,13 @@ export function UserDetailCard({
             <ResetPinButton userId={detail.id} tenantId={detail.tenant_id} />
             {detail.is_locked && canManageLockout && (
               <UnlockButton userId={detail.id} tenantId={detail.tenant_id} />
+            )}
+            {canManageLockout && (
+              <AccessLockControl
+                userId={detail.id}
+                tenantId={detail.tenant_id}
+                level={detail.access_level}
+              />
             )}
           </div>
         </div>

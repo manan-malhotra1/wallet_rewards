@@ -232,11 +232,17 @@ async def change_pin(
     if existing is not None:
         return existing
 
+    # 1a. Admin access-lock (migration 0045). The acting user must be `active`; a
+    # txn_locked / suspended / closed user is blocked here — after the
+    # idempotency fast-path (a replay still returns the original PinChange) and
+    # before any PIN verification or charge/ledger work.
+    from app.modules.identity.service import assert_user_can_transact
+
+    await assert_user_can_transact(session, tenant_id=tenant_id, user_id=user_id)
+
     # 2. Load the user (tenant-scoped) and verify the CURRENT pin with lockout.
     user = (
-        await session.execute(
-            select(User).where(User.id == user_id, User.tenant_id == tenant_id)
-        )
+        await session.execute(select(User).where(User.id == user_id, User.tenant_id == tenant_id))
     ).scalar_one_or_none()
     if user is None:
         raise UserNotFound()

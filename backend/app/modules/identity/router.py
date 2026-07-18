@@ -22,6 +22,8 @@ from app.auth.tokens import extract_bearer_token
 from app.database import get_async_session
 from app.dependencies import get_current_user, require_admin_role
 from app.modules.identity.schemas import (
+    AccessLevelRequest,
+    AccessLevelResponse,
     AdminPinResetResponse,
     AdminUnlockResponse,
     AuthStartRequest,
@@ -56,6 +58,7 @@ from app.modules.identity.service import (
     resolve_identifier,
     send_otp,
     set_pin,
+    set_user_access_level,
     verify_otp,
 )
 
@@ -232,6 +235,34 @@ async def post_admin_unlock(
         ip_address=fastapi_request.client.host if fastapi_request.client else None,
     )
     return AdminUnlockResponse.model_validate(payload)
+
+
+@router.post("/users/{user_id}/access", response_model=AccessLevelResponse)
+async def post_user_access(
+    user_id: UUID,
+    tenant_id: UUID,
+    request: AccessLevelRequest,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> AccessLevelResponse:
+    """Immediately set a user's admin access level — login / transactions lock.
+
+    Immediate (NOT maker-checker) and audited. `login_locked` suspends the
+    account AND kills its live sessions now; `transactions_locked` still permits
+    login/read but blocks every user-initiated money path; `active` unlocks.
+    Distinct from `/unlock` (the Redis PIN-lockout release). Requires
+    `platform-admin`. Tenant-scoped — a user in another tenant returns 404.
+    """
+    payload = await set_user_access_level(
+        session,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        level=request.level,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
+    return AccessLevelResponse.model_validate(payload)
 
 
 # =============================================================================

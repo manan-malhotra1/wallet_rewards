@@ -27,6 +27,10 @@ from app.redis_client import redis_client
 
 SESSION_PREFIX = "session:"
 REGTOKEN_PREFIX = "regtoken:"
+# Per-user reverse index: a Redis SET of the user's live session tokens. Lets an
+# admin access-lock revoke EVERY session for a user in one shot
+# (`invalidate_user_sessions`) — without it, sessions have no per-user handle.
+USER_SESSIONS_PREFIX = "user_sessions:"
 
 
 async def create_session(user_id: UUID, tenant_id: UUID, channel: str = "mobile") -> str:
@@ -52,6 +56,13 @@ async def create_session(user_id: UUID, tenant_id: UUID, channel: str = "mobile"
         json.dumps(payload),
         ex=settings.SESSION_TTL_SECONDS,
     )
+    # Add the token to the per-user index so an access-lock can revoke it. The
+    # set's TTL is refreshed to SESSION_TTL on every new session so a purely
+    # idle-then-abandoned index eventually expires; individual tokens still
+    # carry their own sliding TTL.
+    user_set_key = USER_SESSIONS_PREFIX + str(user_id)
+    await redis_client.sadd(user_set_key, token)
+    await redis_client.expire(user_set_key, settings.SESSION_TTL_SECONDS)
     return token
 
 
@@ -69,14 +80,55 @@ async def read_session(token: str, *, refresh_ttl: bool = True) -> dict[str, Any
     raw = await redis_client.get(SESSION_PREFIX + token)
     if raw is None:
         return None
+    payload = cast("dict[str, Any]", json.loads(raw))
     if refresh_ttl:
         await redis_client.expire(SESSION_PREFIX + token, settings.SESSION_TTL_SECONDS)
-    return cast("dict[str, Any]", json.loads(raw))
+        # Slide the per-user index set in lockstep with the session key. Without
+        # this a long-lived (sliding) session outlives its index entry, so an
+        # access-lock's invalidate_user_sessions would find an empty set and fail
+        # to kill exactly the active sessions it most needs to (code-review BLOCKER).
+        await redis_client.expire(
+            USER_SESSIONS_PREFIX + payload["user_id"], settings.SESSION_TTL_SECONDS
+        )
+    return payload
 
 
 async def invalidate_session(token: str) -> None:
-    """Delete a session — used by /auth/logout. Safe if token is unknown."""
+    """Delete a session — used by /auth/logout. Safe if token is unknown.
+
+    Also removes the token from its owner's per-user index so the reverse index
+    stays consistent (no dangling tokens for `invalidate_user_sessions` to chase).
+    We read the payload first to learn the user_id; an unknown token is a no-op.
+    """
+    raw = await redis_client.get(SESSION_PREFIX + token)
     await redis_client.delete(SESSION_PREFIX + token)
+    if raw is not None:
+        payload = json.loads(raw)
+        user_id = payload.get("user_id")
+        if user_id:
+            await redis_client.srem(USER_SESSIONS_PREFIX + user_id, token)
+
+
+async def invalidate_user_sessions(user_id: UUID) -> int:
+    """Revoke EVERY live session for a user — the admin login-lock hammer.
+
+    Reads the per-user index, deletes each `session:<token>` key, then deletes
+    the index set itself. Idempotent and safe when the user has no sessions.
+
+    Args:
+        user_id: The user whose sessions are being killed.
+
+    Returns:
+        The number of session tokens that were in the index (best-effort count
+        of sessions revoked). Zero when the user had no live sessions.
+    """
+    user_set_key = USER_SESSIONS_PREFIX + str(user_id)
+    # decode_responses=True on the client → members are str (see redis_client.py).
+    tokens = cast("set[str]", await redis_client.smembers(user_set_key))
+    if tokens:
+        await redis_client.delete(*(SESSION_PREFIX + t for t in tokens))
+    await redis_client.delete(user_set_key)
+    return len(tokens)
 
 
 # -----------------------------------------------------------------------------

@@ -69,6 +69,42 @@ class InvalidUserTypeParent(AppHTTPException):
         )
 
 
+# --- Admin access-lock (user.status enforcement, migration 0045) ------------
+
+
+class AccountSuspended(AppHTTPException):
+    """Login refused because the account is login-locked (status suspended/closed).
+
+    Raised by `authenticate_pin` BEFORE PIN verification: a locked account should
+    never reach credential checking. Deliberately generic — the same message
+    covers `suspended` and `closed` so the caller learns nothing beyond "locked".
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            403,
+            "account_suspended",
+            "This account is locked. Contact support.",
+        )
+
+
+class TransactionsBlocked(AppHTTPException):
+    """A user-initiated money path was attempted on a non-active account.
+
+    Raised by `assert_user_can_transact` at the top of every user-initiated money
+    path (P2P send, cash-out, cash-in, airtime, redemption, change-PIN) when the
+    acting user's status is not `active` (txn_locked, suspended, or closed). The
+    receiving side of a transfer is passive and is NOT blocked.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            403,
+            "transactions_blocked",
+            "Transactions are locked on this account.",
+        )
+
+
 # --- Tenants ----------------------------------------------------------------
 
 

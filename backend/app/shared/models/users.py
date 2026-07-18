@@ -28,6 +28,25 @@ from sqlalchemy.orm import Mapped, Mapper, mapped_column, relationship
 
 from app.shared.models.base import Base, created_at_col, updated_at_col, uuid_pk
 
+# User status constants (admin access-lock, migration 0045) — keep in sync with
+# the `ck_users_status` CHECK below. `status` is ENFORCED, not cosmetic:
+#   - active     → normal.
+#   - suspended  → login-locked: cannot authenticate; existing session killed.
+#   - txn_locked → can log in / read, but every user-initiated money path is
+#                  blocked.
+#   - closed     → terminal; treated like suspended for login/txn enforcement.
+USER_STATUS_ACTIVE = "active"
+USER_STATUS_SUSPENDED = "suspended"
+USER_STATUS_CLOSED = "closed"
+USER_STATUS_TXN_LOCKED = "txn_locked"
+
+USER_STATUSES = (
+    USER_STATUS_ACTIVE,
+    USER_STATUS_SUSPENDED,
+    USER_STATUS_CLOSED,
+    USER_STATUS_TXN_LOCKED,
+)
+
 # User type constants (user-types foundation, Epic 12) — keep in sync with the
 # CHECK constraint on `users.user_type` below and migration 0021.
 USER_TYPE_CONSUMER = "consumer"
@@ -69,7 +88,7 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('active', 'suspended', 'closed')",
+            "status IN ('active', 'suspended', 'closed', 'txn_locked')",
             name="ck_users_status",
         ),
         CheckConstraint(
@@ -83,7 +102,9 @@ class User(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
     )
-    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=USER_STATUS_ACTIVE
+    )
     # bcrypt hash; never the plain PIN. NULL until user sets PIN (Phase 2).
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # First-class user type (Epic 12). VARCHAR + CHECK per repo DB conventions

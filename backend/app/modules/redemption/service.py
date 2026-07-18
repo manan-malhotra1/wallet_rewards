@@ -291,6 +291,14 @@ async def initiate_redemption(
     if existing is not None:
         return existing
 
+    # Admin access-lock (migration 0045). The REDEEMING user must be `active`; a
+    # txn_locked / suspended / closed user is blocked here — after the
+    # idempotency fast-path (a replay still returns the existing redemption) and
+    # before reserving any points.
+    from app.modules.identity.service import assert_user_can_transact
+
+    await assert_user_can_transact(session, tenant_id=tenant_id, user_id=user_id)
+
     # Fail-closed service gate (invariant #12). AFTER the idempotency fast-path
     # (a replay must still return the existing redemption) but BEFORE reserving
     # any points: BOTH a pricing and a limit config must resolve for the

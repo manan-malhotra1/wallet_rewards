@@ -9,8 +9,10 @@ import { ApiError } from "@/lib/api";
 import {
   adminResetPin,
   proposeUserOperation,
+  setUserAccess,
   unlockUser,
 } from "@/lib/api-endpoints";
+import type { AccessLevel, SettableAccessLevel } from "@/lib/api-types";
 
 export type PinResetActionResult =
   | { ok: true; deliveredVia: "inline" | "sms"; newPin: string | null }
@@ -64,6 +66,37 @@ export async function unlockUserAction(
     const res = await unlockUser(userId, tenantId);
     revalidatePath("/users");
     return { ok: true, wasLocked: res.was_locked };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, errorCode: err.errorCode, message: err.message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+export type SetAccessActionResult =
+  | { ok: true; level: AccessLevel }
+  | { ok: false; errorCode: string; message: string };
+
+/**
+ * Set a user's admin-imposed access level (platform-admin) — login lock,
+ * transaction lock, or restore. Immediate. Revalidates /users so the
+ * access-level pill and control reflect the new state. Distinct from the
+ * PIN-lockout unlockUserAction.
+ */
+export async function setUserAccessAction(
+  userId: string,
+  tenantId: string,
+  level: SettableAccessLevel,
+): Promise<SetAccessActionResult> {
+  try {
+    const res = await setUserAccess(userId, tenantId, level);
+    revalidatePath("/users");
+    return { ok: true, level: res.level };
   } catch (err) {
     if (err instanceof ApiError) {
       return { ok: false, errorCode: err.errorCode, message: err.message };

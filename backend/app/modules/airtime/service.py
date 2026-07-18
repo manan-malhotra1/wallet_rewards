@@ -216,6 +216,14 @@ async def initiate_recharge(
     if existing is not None:
         return existing, merchant
 
+    # Admin access-lock (migration 0045). The BUYER (initiator) must be `active`;
+    # a txn_locked / suspended / closed buyer is blocked here — after the
+    # idempotency fast-path (replays still return the original recharge) and
+    # before any charge/ledger work.
+    from app.modules.identity.service import assert_user_can_transact
+
+    await assert_user_can_transact(session, tenant_id=tenant_id, user_id=user_id)
+
     currency = request.currency.upper()
 
     # Fail-closed service gate (invariant #12) — BOTH a pricing and a limit

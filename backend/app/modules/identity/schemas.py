@@ -141,6 +141,10 @@ class UserDetailOut(BaseModel):
     id: UUID
     tenant_id: UUID
     status: str
+    # Admin access-lock level derived from status (migration 0045): active →
+    # active, suspended → login_locked, txn_locked → transactions_locked,
+    # closed → closed. Lets the UI render the current lock state.
+    access_level: str
     user_type: str
     parent_user_id: UUID | None
     # Resolved display name of the parent user (agent/merchant hierarchy) so the
@@ -156,6 +160,29 @@ class UserDetailOut(BaseModel):
     # remaining lockout TTL, null when the user isn't locked.
     is_locked: bool = False
     unlocks_in_seconds: int | None = None
+
+
+AccessLevel = Literal["active", "login_locked", "transactions_locked"]
+
+
+class AccessLevelRequest(BaseModel):
+    """Body for `POST /identity/users/{user_id}/access` (admin access-lock).
+
+    `level` is the operator-facing access level; the service maps it to
+    `user.status`. `transactions_locked` still permits login/read but blocks
+    every user-initiated money path; `login_locked` also kills live sessions.
+    `closed` is terminal and is NOT settable here.
+    """
+
+    level: AccessLevel
+
+
+class AccessLevelResponse(BaseModel):
+    """Result of an access-level change — the applied level + resulting status."""
+
+    user_id: UUID
+    status: str
+    level: AccessLevel
 
 
 class AdminUnlockResponse(BaseModel):

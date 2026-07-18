@@ -31,6 +31,7 @@ from app.auth.sessions import (
     consume_registration_token,
     create_registration_token,
     create_session,
+    invalidate_user_sessions,
 )
 from app.config import settings
 from app.modules.identity.schemas import (
@@ -50,6 +51,7 @@ from app.modules.identity.schemas import (
 )
 from app.shared.exceptions import (
     AccountLocked,
+    AccountSuspended,
     IdentifierAlreadyInUse,
     InvalidCredentials,
     InvalidOtp,
@@ -62,11 +64,16 @@ from app.shared.exceptions import (
     PinNotSet,
     SelfReferralNotAllowed,
     TenantNotFound,
+    TransactionsBlocked,
     UserNotFound,
 )
 from app.shared.models import (
     PARENT_TYPE_BY_CHILD,
     REFERRAL_STATUS_PENDING,
+    USER_STATUS_ACTIVE,
+    USER_STATUS_CLOSED,
+    USER_STATUS_SUSPENDED,
+    USER_STATUS_TXN_LOCKED,
     AuthAttempt,
     OtpRequest,
     Referral,
@@ -94,6 +101,54 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
     result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
     if result.scalar_one_or_none() is None:
         raise TenantNotFound()
+
+
+# Admin access-lock (migration 0045). An access LEVEL is the operator-facing
+# concept; it maps 1:1 onto a `user.status`. `closed` is terminal and has no
+# level an admin can set here — it only appears when READING an already-closed
+# user (surfaced as its own "closed" access_level).
+ACCESS_LEVEL_TO_STATUS = {
+    "active": USER_STATUS_ACTIVE,
+    "login_locked": USER_STATUS_SUSPENDED,
+    "transactions_locked": USER_STATUS_TXN_LOCKED,
+}
+STATUS_TO_ACCESS_LEVEL = {
+    USER_STATUS_ACTIVE: "active",
+    USER_STATUS_SUSPENDED: "login_locked",
+    USER_STATUS_TXN_LOCKED: "transactions_locked",
+    USER_STATUS_CLOSED: "closed",
+}
+
+
+async def assert_user_can_transact(
+    session: AsyncSession, *, tenant_id: UUID, user_id: UUID
+) -> None:
+    """Block a user-initiated money path unless the acting user is `active`.
+
+    Shared guard called at the TOP of every user-initiated money path (after the
+    idempotency fast-path, before charge/ledger work). It loads the initiating
+    user tenant-scoped and rejects when their status is anything other than
+    `active` — `txn_locked`, `suspended`, and `closed` all block. The RECEIVING
+    side of a transfer is passive and must NOT be guarded (see money-path call
+    sites); only the initiator is checked.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope — a user in another tenant is treated as unknown.
+        user_id: The user INITIATING the money movement.
+
+    Raises:
+        UserNotFound: 404 — unknown user, or a user in another tenant.
+        TransactionsBlocked: 403 — the account's status is not `active`.
+    """
+    result = await session.execute(
+        select(User.status).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    status = result.scalar_one_or_none()
+    if status is None:
+        raise UserNotFound()
+    if status != USER_STATUS_ACTIVE:
+        raise TransactionsBlocked()
 
 
 async def _validate_type_hierarchy(
@@ -775,6 +830,9 @@ async def get_user_detail(
         "id": user.id,
         "tenant_id": user.tenant_id,
         "status": user.status,
+        # Admin access-lock level derived from status (migration 0045) so the UI
+        # can render the current lock state without re-deriving the mapping.
+        "access_level": STATUS_TO_ACCESS_LEVEL.get(user.status, user.status),
         "user_type": user.user_type,
         "parent_user_id": user.parent_user_id,
         "parent_name": parent_name,
@@ -1160,6 +1218,79 @@ async def admin_unlock_user(
     return {"user_id": user_id, "was_locked": was_locked}
 
 
+async def set_user_access_level(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    level: str,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Immediately set a user's admin access level (login / transactions lock).
+
+    Not maker-checker — this is an immediate, audited platform-admin override
+    (see the separate `/unlock` route for the Redis PIN-lockout release, which
+    this does NOT touch). Maps `level` to `user.status`, persists it, and when
+    the new level is `login_locked` (status suspended) kills every live session
+    for the user so the lock takes effect NOW rather than at token expiry.
+
+    Args:
+        session: Async DB session (committed here).
+        user_id: Target user.
+        tenant_id: Caller's tenant; the user must belong to it.
+        level: One of `active` / `login_locked` / `transactions_locked`.
+        admin: Authenticated platform-admin (audit actor).
+        ip_address: Caller IP recorded on the audit row.
+
+    Returns:
+        `{"user_id", "status", "level"}` reflecting the applied state.
+
+    Raises:
+        UserNotFound: 404 — unknown user or a user in another tenant.
+
+    Side effects:
+        Updates `users.status`; on `login_locked` revokes all Redis sessions for
+        the user; writes one `admin.user_access_changed` audit row with the
+        before/after status and the count of sessions killed.
+    """
+    from app.modules.audit.service import record_audit_for_admin
+
+    new_status = ACCESS_LEVEL_TO_STATUS[level]
+
+    result = await session.execute(
+        select(User).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise UserNotFound()
+
+    before_status = user.status
+    user.status = new_status
+
+    # Kill sessions BEFORE commit is fine — Redis is separate from the DB txn and
+    # a login-lock must take effect immediately (invariant: locked user's live
+    # session dies now). Only login_locked needs this; txn_locked can still read.
+    sessions_killed = 0
+    if level == "login_locked":
+        sessions_killed = await invalidate_user_sessions(user_id)
+
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="admin.user_access_changed",
+        entity_type="user",
+        entity_id=str(user_id),
+        before_state={"status": before_status},
+        after_state={"status": new_status, "sessions_killed": sessions_killed},
+        ip_address=ip_address,
+    )
+    await session.commit()
+
+    return {"user_id": user_id, "status": new_status, "level": level}
+
+
 async def resolve_identifier(
     session: AsyncSession,
     tenant_id: UUID,
@@ -1420,6 +1551,13 @@ async def authenticate_pin(
     user = await _find_user_by_phone(session, request.tenant_id, request.phone)
     if user is None:
         raise InvalidCredentials()
+
+    # Admin login-lock (migration 0045). A `suspended` or `closed` account may
+    # NOT authenticate — reject before PIN verification so a locked account never
+    # reaches credential checking. `txn_locked` and `active` may log in (a
+    # txn_locked user can still read; their money paths are blocked separately).
+    if user.status in (USER_STATUS_SUSPENDED, USER_STATUS_CLOSED):
+        raise AccountSuspended()
 
     # Check lockout BEFORE comparing PIN — otherwise a locked-out attacker
     # who happens to guess the right PIN could still get in.

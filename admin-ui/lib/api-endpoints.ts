@@ -14,6 +14,7 @@ import "server-only";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 import type {
+  AdminAccessResponse,
   AdminPinResetResponse,
   AdminUnlockResponse,
   ApiKey,
@@ -43,6 +44,7 @@ import type {
   RulePerformance,
   Segment,
   Service,
+  SettableAccessLevel,
   StepUpPolicy,
   SweepOutcome,
   SystemWallet,
@@ -618,6 +620,22 @@ export const unlockUser = (user_id: string, tenant_id: string) =>
   apiPost<AdminUnlockResponse>(
     `/api/v1/identity/users/${user_id}/unlock`,
     undefined,
+    { query: { tenant_id } },
+  );
+
+/**
+ * Set a user's admin-imposed access level (platform-admin). `login_locked`
+ * kills the user's session; `transactions_locked` blocks transacting;
+ * `active` restores full access. Distinct from the PIN lockout above.
+ */
+export const setUserAccess = (
+  user_id: string,
+  tenant_id: string,
+  level: SettableAccessLevel,
+) =>
+  apiPost<AdminAccessResponse>(
+    `/api/v1/identity/users/${user_id}/access`,
+    { level },
     { query: { tenant_id } },
   );
 

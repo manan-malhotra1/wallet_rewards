@@ -41,6 +41,7 @@ import { LockoutBadge } from "./lockout-badge";
 import { ResetPinButton } from "./reset-pin-button";
 import { UnlockButton } from "./unlock-button";
 import { UserTypeBadge } from "./user-type-badge";
+import { WalletBalances } from "./wallet-balances";
 
 const SYSTEM_COUNTERPARTY_LABEL: Record<string, string> = {
   withdraw: "Operator float",
@@ -159,7 +160,6 @@ export function UserDetailCard({
   const pointsAccount = detail.accounts.find(
     (a) => a.account_type === "points_account",
   );
-  const primaryWallet = financialWallets[0];
   // The backend exposes status lowercased ("active"/"suspended").
   const editStatus: "active" | "suspended" =
     detail.status === "suspended" ? "suspended" : "active";
@@ -220,20 +220,8 @@ export function UserDetailCard({
 
       {/* KPI band */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Wallet balance">
-          {primaryWallet ? (
-            <Money
-              amount={primaryWallet.available_balance}
-              currency={primaryWallet.currency}
-            />
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-          {financialWallets.length > 1 && (
-            <span className="ml-1 text-xs font-normal text-muted-foreground">
-              +{financialWallets.length - 1} more
-            </span>
-          )}
+        <StatCard label={financialWallets.length > 1 ? "Wallet balances" : "Wallet balance"}>
+          <WalletBalances wallets={financialWallets} />
         </StatCard>
         <StatCard label="Points">
           {pointsAccount ? (

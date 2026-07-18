@@ -7,12 +7,17 @@ import { revalidatePath } from "next/cache";
 
 import { ApiError } from "@/lib/api";
 import {
+  addUserIdentifier,
   adminResetPin,
   proposeUserOperation,
   setUserAccess,
   unlockUser,
 } from "@/lib/api-endpoints";
-import type { AccessLevel, SettableAccessLevel } from "@/lib/api-types";
+import type {
+  AccessLevel,
+  AddableIdentifierType,
+  SettableAccessLevel,
+} from "@/lib/api-types";
 
 export type PinResetActionResult =
   | { ok: true; deliveredVia: "inline" | "sms"; newPin: string | null }
@@ -100,6 +105,40 @@ export async function setUserAccessAction(
   } catch (err) {
     if (err instanceof ApiError) {
       return { ok: false, errorCode: err.errorCode, message: err.message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+export type AddIdentifierActionResult =
+  | { ok: true; verified: boolean }
+  | { ok: false; errorCode: string; message: string };
+
+/**
+ * Epic 27, Story 27.2 — add an identifier to an existing user (platform-admin).
+ * Admin-added identifiers land unverified (not OTP-proven). Revalidates /users
+ * so the new row appears; surfaces a 409 duplicate with a friendly message.
+ */
+export async function addIdentifierAction(
+  userId: string,
+  tenantId: string,
+  input: { identifier_type: AddableIdentifierType; identifier_value: string },
+): Promise<AddIdentifierActionResult> {
+  try {
+    const res = await addUserIdentifier(userId, tenantId, input);
+    revalidatePath("/users");
+    return { ok: true, verified: res.verified };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      const message =
+        err.errorCode === "identifier_already_in_use"
+          ? "That identifier is already registered."
+          : err.message;
+      return { ok: false, errorCode: err.errorCode, message };
     }
     return {
       ok: false,

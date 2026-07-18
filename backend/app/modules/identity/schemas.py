@@ -27,6 +27,19 @@ class IdentifierIn(BaseModel):
     verified: bool = False
 
 
+class AddIdentifierRequest(BaseModel):
+    """Body for `POST /identity/users/{user_id}/identifiers` (Epic 27, Story 27.1).
+
+    Adds a post-registration identifier to an EXISTING user. `card_number` is
+    deliberately EXCLUDED from the accepted types: a raw PAN must never be
+    stored (PCI scope — only a tokenised reference in Phase 2). A `card_number`
+    body therefore 422s at validation, which is the intended rejection.
+    """
+
+    identifier_type: Literal["phone", "email", "account_number"]
+    identifier_value: str = Field(min_length=1, max_length=255)
+
+
 class UserProfileIn(BaseModel):
     """Optional profile data provided at registration."""
 

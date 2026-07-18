@@ -14,6 +14,7 @@ import "server-only";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 import type {
+  AddUserIdentifierPayload,
   AdminAccessResponse,
   AdminPinResetResponse,
   AdminUnlockResponse,
@@ -53,6 +54,7 @@ import type {
   Tenant,
   User,
   UserDetail,
+  UserIdentifier,
   UserOperation,
   UserOperationStatus,
   UserType,
@@ -246,6 +248,22 @@ export const listUserTransactions = (
   apiGet<UserTransaction[]>(
     `/api/v1/identity/users/${user_id}/transactions`,
     { query: { tenant_id, limit } },
+  );
+
+/**
+ * Add an identifier to an existing user (Epic 27, Story 27.2). Admin-added
+ * identifiers are stored unverified (not OTP-proven). Backend 409s
+ * `identifier_already_in_use` on a duplicate. card_number is not accepted.
+ */
+export const addUserIdentifier = (
+  user_id: string,
+  tenant_id: string,
+  payload: AddUserIdentifierPayload,
+) =>
+  apiPost<UserIdentifier>(
+    `/api/v1/identity/users/${user_id}/identifiers`,
+    payload,
+    { query: { tenant_id } },
   );
 
 // ---- Rules ---------------------------------------------------------------

@@ -1291,6 +1291,105 @@ async def set_user_access_level(
     return {"user_id": user_id, "status": new_status, "level": level}
 
 
+async def add_user_identifier(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    identifier_type: str,
+    identifier_value: str,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> UserIdentifier:
+    """Add a post-registration identifier to an existing user (Epic 27, Story 27.1).
+
+    Registration requires a contactable identifier; account_number is added
+    afterwards through this admin path. The identifier is stored with
+    `verified=False` — an admin-added identifier is NOT OTP/verification-proven
+    (account_number gets its own verification flow in Story 27.3). `card_number`
+    never reaches here: the request schema's Literal excludes it so a raw PAN is
+    rejected at validation (PCI — only a tokenised ref, Phase 2).
+
+    The value is normalised with the SAME helper `create_user` uses, so the
+    canonical form is what hits the `(tenant, type, value)` unique constraint and
+    every future lookup. On collision we catch the IntegrityError and re-raise a
+    clean 409 (mirrors `create_user`).
+
+    Args:
+        session: Async DB session (committed here on success).
+        user_id: Target user; must belong to `tenant_id`.
+        tenant_id: Caller's tenant; a user in another tenant is treated as unknown.
+        identifier_type: One of phone / email / account_number (card excluded).
+        identifier_value: The raw value; normalised before persistence.
+        admin: Authenticated platform-admin — the audit actor.
+        ip_address: Caller IP recorded on the audit row.
+
+    Returns:
+        The newly-created UserIdentifier row (maps to `IdentifierOut`).
+
+    Raises:
+        UserNotFound: 404 — unknown user or a user in another tenant.
+        IdentifierAlreadyInUse: 409 — the (tenant, type, value) tuple already
+            maps to a user in this tenant (Pay-PRD-0070).
+
+    Side effects:
+        Inserts one `user_identifiers` row and writes one `user.identifier_added`
+        audit row. The raw identifier value is NEVER written to the audit
+        after_state (NFR-0170 / NFR-0240) — the type is enough.
+    """
+    from app.modules.audit.service import record_audit_for_admin
+
+    # Tenant-scoped existence check — a user in another tenant returns 404 with
+    # no existence leak (NFR-0220), before we touch the identifiers table.
+    result = await session.execute(
+        select(User.id).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise UserNotFound()
+
+    # Normalise BEFORE persistence so the canonical form is what hits the unique
+    # constraint + every future lookup (identical to create_user).
+    canonical = normalize_identifier(identifier_type, identifier_value)
+    session.add(
+        UserIdentifier(
+            user_id=user_id,
+            tenant_id=tenant_id,
+            identifier_type=identifier_type,
+            identifier_value=canonical,
+            verified=False,
+        )
+    )
+
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        # The (tenant, type, value) unique constraint is the only collision we
+        # expect — roll back cleanly and surface a 409 (mirrors create_user).
+        await session.rollback()
+        raise IdentifierAlreadyInUse(identifier_type) from exc
+
+    # NFR-0170 / NFR-0240: audit the fact + type, NEVER the raw value (PII).
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="user.identifier_added",
+        entity_type="user",
+        entity_id=str(user_id),
+        after_state={"identifier_type": identifier_type, "verified": False},
+        ip_address=ip_address,
+    )
+
+    await session.commit()
+
+    # Re-select AFTER commit so the returned row is a fresh, non-expired instance
+    # (mirrors `_reload_user` — attributes are safe to read for the response).
+    added = await _find_identifier(session, tenant_id, identifier_type, canonical)
+    if added is None:  # pragma: no cover - flush above guarantees the row exists
+        raise UserNotFound()
+    return added
+
+
 async def resolve_identifier(
     session: AsyncSession,
     tenant_id: UUID,

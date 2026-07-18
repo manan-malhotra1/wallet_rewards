@@ -149,6 +149,19 @@ export interface UserIdentifier {
   verified: boolean;
 }
 
+/**
+ * Identifier types an admin may add to an existing user (Epic 27, Story 27.2).
+ * `card_number` is intentionally excluded — raw PANs require PSP tokenisation
+ * (Phase 2) and are never accepted here.
+ */
+export type AddableIdentifierType = "phone" | "email" | "account_number";
+
+/** Request body for adding an identifier to a user (Epic 27, Story 27.2). */
+export interface AddUserIdentifierPayload {
+  identifier_type: AddableIdentifierType;
+  identifier_value: string;
+}
+
 export interface Account {
   id: string;
   tenant_id: string;

@@ -24,12 +24,14 @@ from app.dependencies import get_current_user, require_admin_role
 from app.modules.identity.schemas import (
     AccessLevelRequest,
     AccessLevelResponse,
+    AddIdentifierRequest,
     AdminPinResetResponse,
     AdminUnlockResponse,
     AuthStartRequest,
     AuthStartResponse,
     ChangeUserTypeRequest,
     CreateUserRequest,
+    IdentifierOut,
     IdentifierType,
     LogoutResponse,
     OtpSendRequest,
@@ -46,6 +48,7 @@ from app.modules.identity.schemas import (
     WalletTransactionOut,
 )
 from app.modules.identity.service import (
+    add_user_identifier,
     admin_reset_pin,
     admin_unlock_user,
     auth_start_lookup,
@@ -91,6 +94,39 @@ async def post_user(
         ip_address=fastapi_request.client.host if fastapi_request.client else None,
     )
     return UserOut.model_validate(user)
+
+
+@router.post(
+    "/users/{user_id}/identifiers",
+    response_model=IdentifierOut,
+    status_code=201,
+)
+async def post_user_identifier(
+    user_id: UUID,
+    tenant_id: UUID,
+    request: AddIdentifierRequest,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> IdentifierOut:
+    """Add a post-registration identifier to an existing user (Epic 27, Story 27.1).
+
+    Admin-only. The new identifier is stored `verified=false` (an admin-added
+    identifier is not verification-proven — account_number gets its own flow in
+    Story 27.3). `card_number` is excluded from the request schema, so a raw PAN
+    is rejected at validation (422). Tenant-scoped: a user in another tenant
+    returns 404. A value already in use in the tenant returns 409.
+    """
+    identifier = await add_user_identifier(
+        session,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        identifier_type=request.identifier_type,
+        identifier_value=request.identifier_value,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
+    return IdentifierOut.model_validate(identifier)
 
 
 @router.get(

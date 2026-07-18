@@ -35,6 +35,7 @@ import { formatTimestamp, shortId } from "@/lib/utils";
 
 import { AccessLevelPill } from "./access-level-pill";
 import { AccessLockControl } from "./access-lock-control";
+import { AddIdentifierDialog } from "./add-identifier-dialog";
 import { EditUserDrawer, type OpenUpdateRequest } from "./edit-user-drawer";
 import { LockoutBadge } from "./lockout-badge";
 import { ResetPinButton } from "./reset-pin-button";
@@ -291,9 +292,17 @@ export function UserDetailCard({
           </p>
         )}
         <div className="mt-4">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Identifiers
-          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Identifiers
+            </p>
+            {canManageLockout && (
+              <AddIdentifierDialog
+                userId={detail.id}
+                tenantId={detail.tenant_id}
+              />
+            )}
+          </div>
           {detail.identifiers.length === 0 ? (
             <p className="text-sm text-muted-foreground">No identifiers.</p>
           ) : (

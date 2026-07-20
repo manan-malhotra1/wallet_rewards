@@ -339,6 +339,29 @@ async def create_user(
             )
         )
 
+    # Flush the identifiers NOW — before the referral-code / profile / referral
+    # rows below, because `_create_unique_referral_code` flushes internally. If a
+    # duplicate identifier (unique on (tenant, type, value)) only tripped that
+    # later flush, the IntegrityError would escape UNCAUGHT as a raw 500 instead
+    # of the clean 409 below. Guarding the identifier flush here is the single
+    # collision we expect on create.
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        # Pinpoint the colliding identifier (normalise to match the stored
+        # canonical form) for a precise message; fall back to the first.
+        for ident in request.identifiers:
+            existing = await _find_identifier(
+                session,
+                request.tenant_id,
+                ident.identifier_type,
+                normalize_identifier(ident.identifier_type, ident.identifier_value),
+            )
+            if existing is not None:
+                raise IdentifierAlreadyInUse(ident.identifier_type) from exc
+        raise IdentifierAlreadyInUse(request.identifiers[0].identifier_type) from exc
+
     if request.profile is not None:
         session.add(_profile_for(user.id, request.profile))
 
@@ -365,26 +388,7 @@ async def create_user(
         )
         session.add(referral)
 
-    try:
-        await session.flush()
-    except IntegrityError as exc:
-        # The unique constraint on (tenant_id, identifier_type, identifier_value)
-        # is the only collision we expect here.
-        await session.rollback()
-        # We don't know which identifier collided without parsing the error —
-        # the error message tells the API consumer enough.
-        # Find the first colliding identifier for a clearer message.
-        for ident in request.identifiers:
-            existing = await _find_identifier(
-                session,
-                request.tenant_id,
-                ident.identifier_type,
-                ident.identifier_value,
-            )
-            if existing is not None:
-                raise IdentifierAlreadyInUse(ident.identifier_type) from exc
-        # Fallback if we cannot pinpoint.
-        raise IdentifierAlreadyInUse(request.identifiers[0].identifier_type) from exc
+    await session.flush()
 
     # NFR-0250: admin-initiated user creation is an audit event. Self-registration
     # via the OTP flow does NOT call this function (it has its own audit hook

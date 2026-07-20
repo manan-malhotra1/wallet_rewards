@@ -378,9 +378,13 @@ export interface AuditEntry {
   tenant_id: string | null;
   actor_id: string;
   actor_type: "user" | "admin" | "system";
+  /** Resolved actor display name; "System" for system actors, null when unresolvable. */
+  actor_name: string | null;
   action: string;
   entity_type: string;
   entity_id: string;
+  /** Affected user's display name when entity_type === "user"; null otherwise. */
+  entity_name: string | null;
   before_state: Record<string, unknown> | null;
   after_state: Record<string, unknown> | null;
   ip_address: string | null;

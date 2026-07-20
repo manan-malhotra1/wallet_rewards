@@ -19,6 +19,7 @@ from uuid import UUID
 from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.admin_profiles.service import resolve_admin_names
 from app.modules.identity.service import resolve_user_names
 from app.modules.reconciliation.schemas import (
     AuditEntry,
@@ -40,6 +41,7 @@ from app.shared.models import (
     ACTION_RECON_SWEPT,
     ACTOR_ADMIN,
     ACTOR_SYSTEM,
+    ACTOR_USER,
     ENTRY_STATUS_COMPLETED,
     ENTRY_STATUS_REVERSED,
     REDEMPTION_STATUS_COMPLETED,
@@ -423,5 +425,87 @@ async def query_audit_log(
         stmt = stmt.where(AuditLog.entity_id == entity_id)
     stmt = stmt.order_by(desc(AuditLog.created_at)).limit(limit)
 
-    rows = (await session.execute(stmt)).scalars().all()
-    return [AuditEntry.model_validate(r) for r in rows]
+    rows = list((await session.execute(stmt)).scalars().all())
+    return await _enrich_audit_entries(session, tenant_id=tenant_id, rows=rows)
+
+
+def _parse_user_id(raw: str) -> UUID | None:
+    """Best-effort parse of an id string into a UUID, else None.
+
+    Audit `actor_id` / `entity_id` are free-form strings: only user references
+    are UUIDs. A malformed value (e.g. a non-user entity_id) must never raise.
+    """
+    try:
+        return UUID(raw)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _friendly_system_name(actor_id: str) -> str:
+    """Friendly label for a system actor — 'API key' for apikey refs, else 'System'."""
+    if actor_id.startswith("apikey:"):
+        return "API key"
+    return "System"
+
+
+async def _enrich_audit_entries(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    rows: list[AuditLog],
+) -> list[AuditEntry]:
+    """Attach resolved `actor_name` / `entity_name` to a page of audit rows.
+
+    Read-side only — the stored rows are never mutated. Resolution is batched:
+    all admin subs resolve in ONE `resolve_admin_names` call and all user ids
+    (actor-side and entity-side combined) in ONE `resolve_user_names` call, so
+    there is no per-row query regardless of page size.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope — user names never resolve across tenants.
+        rows: The page of audit_log rows to enrich.
+
+    Returns:
+        AuditEntry models with `actor_name` / `entity_name` populated where
+        resolvable, None otherwise (the UI falls back to the raw id).
+    """
+    # Collect the ids to resolve across the whole page, once per kind.
+    admin_subs = {r.actor_id for r in rows if r.actor_type == ACTOR_ADMIN and r.actor_id}
+    user_ids: set[UUID] = set()
+    for r in rows:
+        if r.actor_type == ACTOR_USER:
+            parsed = _parse_user_id(r.actor_id)
+            if parsed is not None:
+                user_ids.add(parsed)
+        if r.entity_type == "user":
+            parsed = _parse_user_id(r.entity_id)
+            if parsed is not None:
+                user_ids.add(parsed)
+
+    admin_names = await resolve_admin_names(session, admin_subs)
+    user_names = await resolve_user_names(session, tenant_id=tenant_id, user_ids=user_ids)
+
+    def _actor_name(r: AuditLog) -> str | None:
+        if r.actor_type == ACTOR_ADMIN:
+            return admin_names.get(r.actor_id)
+        if r.actor_type == ACTOR_USER:
+            parsed = _parse_user_id(r.actor_id)
+            return user_names.get(parsed) if parsed is not None else None
+        if r.actor_type == ACTOR_SYSTEM:
+            return _friendly_system_name(r.actor_id)
+        return None
+
+    def _entity_name(r: AuditLog) -> str | None:
+        if r.entity_type != "user":
+            return None
+        parsed = _parse_user_id(r.entity_id)
+        return user_names.get(parsed) if parsed is not None else None
+
+    entries: list[AuditEntry] = []
+    for r in rows:
+        entry = AuditEntry.model_validate(r)
+        entry.actor_name = _actor_name(r)
+        entry.entity_name = _entity_name(r)
+        entries.append(entry)
+    return entries

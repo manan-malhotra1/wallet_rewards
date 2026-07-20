@@ -91,9 +91,16 @@ class AuditEntry(BaseModel):
     tenant_id: UUID | None
     actor_id: str
     actor_type: str
+    # Resolved human name for the actor (admin display name, user display name,
+    # or a friendly "System" / "API key" label). None when unresolvable — the
+    # UI falls back to `actor_id`. Read-side enrichment only; never stored.
+    actor_name: str | None = None
     action: str
     entity_type: str
     entity_id: str
+    # Resolved display name of the affected entity when `entity_type == 'user'`.
+    # None for other entity types (the UI falls back to `entity_id`).
+    entity_name: str | None = None
     before_state: dict[str, Any] | None
     after_state: dict[str, Any] | None
     ip_address: str | None

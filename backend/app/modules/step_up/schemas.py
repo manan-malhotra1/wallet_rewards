@@ -17,6 +17,19 @@ from pydantic import BaseModel, ConfigDict, Field
 # admin can configure a step-up policy for it via config maker-checker.
 TransactionType = Literal["p2p", "redemption", "cashout", "cash_in", "airtime_recharge"]
 
+# Runtime tuple mirror of the TransactionType Literal (a Literal cannot be built
+# from a runtime tuple). Downstream consumers — the seed, and any code that must
+# iterate the guarded set — import THIS so they can never drift ahead of / behind
+# the schema; `tests/config_requests/test_step_up_type_coverage.py` asserts the
+# tuple and the Literal stay identical.
+STEP_UP_TRANSACTION_TYPES: tuple[str, ...] = (
+    "p2p",
+    "redemption",
+    "cashout",
+    "cash_in",
+    "airtime_recharge",
+)
+
 
 class StepUpPolicyCreateRequest(BaseModel):
     """Admin create payload for a new step-up policy."""

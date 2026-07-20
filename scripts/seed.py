@@ -40,6 +40,7 @@ from app.database import SessionLocal  # noqa: E402
 from app.modules.payments.service import fund  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
 from app.modules.redemption.service import register_provider  # noqa: E402
+from app.modules.step_up.schemas import STEP_UP_TRANSACTION_TYPES  # noqa: E402
 from app.modules.treasury.service import (  # noqa: E402
     BANK_MIRROR_PRIMARY_NAME,
     adjust_system_wallet,
@@ -1117,32 +1118,21 @@ async def seed() -> None:
         standard_role = await _get_or_create_standard_user_role(session, tenant)
 
         # Step-up PIN policies — make the prompt path discoverable in dev.
-        await _get_or_create_step_up_policy(
-            session,
-            tenant,
-            transaction_type="p2p",
-            currency="ZAR",
-            threshold_amount=Decimal("200"),
-        )
-        await _get_or_create_step_up_policy(
-            session,
-            tenant,
-            transaction_type="redemption",
-            currency="PTS",
-            threshold_amount=Decimal("500"),
-        )
         # enforce_step_up is FAIL-CLOSED: a guarded money path with NO policy
-        # requires a PIN for any amount. Seed EXPLICIT policies for the other
-        # guarded services so dev stays usable (PIN only above ZAR 200), and so
-        # the "explicit config, never implicit" rule holds for security config
-        # the same way it does for pricing/limits (invariant #12).
-        for _service_code in ("cashout", "cash_in", "airtime_recharge"):
+        # requires a PIN for any amount, so we seed an EXPLICIT policy for EVERY
+        # guarded transaction type ("explicit config, never implicit" — invariant
+        # #12). Iterating STEP_UP_TRANSACTION_TYPES (the schema's own set) means
+        # the seed can NEVER provision a policy the config schema would reject —
+        # add a type there and it's seeded here automatically. Currency + default
+        # threshold are derived from the type (redemption is points, rest fiat).
+        for _txn_type in STEP_UP_TRANSACTION_TYPES:
+            _is_points = _txn_type == "redemption"
             await _get_or_create_step_up_policy(
                 session,
                 tenant,
-                transaction_type=_service_code,
-                currency="ZAR",
-                threshold_amount=Decimal("200"),
+                transaction_type=_txn_type,
+                currency="PTS" if _is_points else "ZAR",
+                threshold_amount=Decimal("500") if _is_points else Decimal("200"),
             )
 
         # System-owned accounts for the tenant. We pre-create every system

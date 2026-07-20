@@ -438,3 +438,97 @@ async def test_step_up_update_non_p2p_type_no_scope_mismatch(
         )
     ).scalar_one()
     assert Decimal(str(refreshed.threshold_amount)) == Decimal("201")
+
+
+# --- Type-coverage guards (regression for the scope_mismatch / narrow-Literal bug) ---
+# These pin the cross-module contract that the fail-closed step-up work + the
+# maker-checker work drifted apart on: the schema must accept EVERY guarded
+# transaction type, and every such type must round-trip create+edit through the
+# maker-checker. Parametrising over STEP_UP_TRANSACTION_TYPES (the schema's own
+# set, which the seed also iterates) means adding a guarded type is covered
+# automatically.
+from typing import get_args  # noqa: E402
+
+from app.modules.step_up.schemas import (  # noqa: E402
+    STEP_UP_TRANSACTION_TYPES,
+    TransactionType,
+)
+
+
+def test_step_up_literal_matches_guarded_set() -> None:
+    """The TransactionType Literal and its runtime tuple mirror must be identical.
+
+    The seed iterates STEP_UP_TRANSACTION_TYPES, so if it ever diverged from the
+    Literal the seed could provision a policy the maker-checker schema rejects
+    (the original bug). This is a pure-Python contract check — no DB.
+    """
+    assert set(get_args(TransactionType)) == set(STEP_UP_TRANSACTION_TYPES)
+
+
+@pytest.mark.parametrize("txn_type", STEP_UP_TRANSACTION_TYPES)
+@pytest.mark.asyncio
+async def test_every_guarded_type_creates_and_edits_via_maker_checker(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    make_admin_token: Callable[..., str],
+    txn_type: str,
+) -> None:
+    """EVERY guarded txn type can be created AND its threshold edited via approval.
+
+    Would have caught the reported bug: a non-p2p type (cashout/cash_in/airtime)
+    that the schema rejected on create, or that scope-mismatched on edit.
+    """
+    currency = "PTS" if txn_type == "redemption" else "ZAR"
+
+    create = await _propose(
+        async_client,
+        test_tenant,
+        {
+            "config_type": "step_up",
+            "operation": "create",
+            "payload": _step_up_payload(
+                test_tenant, transaction_type=txn_type, currency=currency, threshold="200"
+            ),
+        },
+        _maker(make_admin_token),
+    )
+    assert create.status_code == 201, create.text
+    await _approve(async_client, test_tenant, create.json()["id"], _checker(make_admin_token))
+    live = (
+        await db_session.execute(
+            select(StepUpPolicy).where(
+                StepUpPolicy.tenant_id == test_tenant.id,
+                StepUpPolicy.transaction_type == txn_type,
+            )
+        )
+    ).scalar_one()
+
+    update = await _propose(
+        async_client,
+        test_tenant,
+        {
+            "config_type": "step_up",
+            "operation": "update",
+            "target_config_id": str(live.id),
+            "payload": _step_up_payload(
+                test_tenant, transaction_type=txn_type, currency=currency, threshold="205"
+            ),
+        },
+        _maker(make_admin_token),
+    )
+    assert update.status_code == 201, update.text  # not 422 scope_mismatch
+    approved = await _approve(
+        async_client, test_tenant, update.json()["id"], _checker(make_admin_token)
+    )
+    assert approved.status_code == 200, approved.text
+
+    refreshed = (
+        await db_session.execute(
+            select(StepUpPolicy).where(
+                StepUpPolicy.tenant_id == test_tenant.id,
+                StepUpPolicy.transaction_type == txn_type,
+            )
+        )
+    ).scalar_one()
+    assert Decimal(str(refreshed.threshold_amount)) == Decimal("205")

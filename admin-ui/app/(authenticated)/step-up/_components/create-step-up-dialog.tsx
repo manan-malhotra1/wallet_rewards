@@ -1,14 +1,23 @@
 /**
- * <CreateStepUpDialog> — admin form for POST /step-up/policies.
+ * Create-step-up dialog — a step-up PIN policy is keyed per (tenant,
+ * transaction_type, currency): transactions above `threshold_amount` require
+ * the user to re-enter their PIN. PROPOSES a create through the maker-checker
+ * pipeline (config_type "step_up").
  *
- * Single threshold field: transactions above this value require the
- * user to re-enter their PIN.
+ * With a `reviseRequest`, it opens in revise mode (pre-filled from the proposal;
+ * revises + resubmits). With an `editPolicy` (a live policy row), it opens in
+ * EDIT mode: pre-filled with the scope fields locked, and submitting PROPOSES an
+ * `update` against the row's id.
  */
 "use client";
 
 import * as React from "react";
 
-import { createStepUpPolicyAction } from "@/app/(authenticated)/step-up/_actions";
+import { reviseAndResubmitConfigRequestAction } from "@/app/(authenticated)/config-requests/_actions";
+import {
+  proposeStepUpChangeAction,
+  proposeStepUpUpdateAction,
+} from "@/app/(authenticated)/step-up/_actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import type { ConfigChangeRequest, StepUpPolicy } from "@/lib/api-types";
 
 type TxnType = "p2p" | "redemption";
 
@@ -45,28 +55,85 @@ const INITIAL: FormState = {
   threshold_amount: "200",
 };
 
+function str(value: unknown, fallback = ""): string {
+  return value === null || value === undefined ? fallback : String(value);
+}
+
+/** Derive the initial form from a revise proposal, an edited live policy, or defaults. */
+function initialForm(
+  reviseRequest?: ConfigChangeRequest,
+  editPolicy?: StepUpPolicy,
+): FormState {
+  // Revise takes precedence over edit.
+  const source = reviseRequest
+    ? reviseRequest.payload
+    : ((editPolicy as unknown as Record<string, unknown> | undefined) ?? null);
+  if (source) {
+    const txn = str(source.transaction_type, "p2p");
+    return {
+      transaction_type: txn === "redemption" ? "redemption" : "p2p",
+      currency: str(source.currency, "ZAR"),
+      threshold_amount: str(source.threshold_amount, "0"),
+    };
+  }
+  return INITIAL;
+}
+
 export function CreateStepUpDialog({
   tenantId,
   trigger,
+  reviseRequest,
+  editPolicy,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   tenantId: string;
-  trigger: React.ReactNode;
+  /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
+  trigger?: React.ReactNode;
+  reviseRequest?: ConfigChangeRequest;
+  /** A live step-up policy to edit in place (proposes an `update`). */
+  editPolicy?: StepUpPolicy;
+  /** Controlled open state (edit affordance drives this); uncontrolled otherwise. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>(INITIAL);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  const editMode = Boolean(editPolicy);
+  // Scope (transaction_type + currency) locks when editing a live policy OR
+  // revising a sent-back UPDATE — both target an existing policy's values, not
+  // its identity. A create revise keeps scope editable.
+  const scopeLocked = editMode || reviseRequest?.operation === "update";
+  const [form, setForm] = React.useState<FormState>(() =>
+    initialForm(reviseRequest, editPolicy),
+  );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
   const { toast } = useToast();
 
   React.useEffect(() => {
     if (!open) {
-      setForm(INITIAL);
+      setForm(initialForm(reviseRequest, editPolicy));
       setErrorBanner(null);
     }
-  }, [open]);
+  }, [open, reviseRequest, editPolicy]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  // Currency defaults sensibly per txn type — redemption is always points.
+  // Only auto-correct while the scope is editable (a locked scope is fixed).
+  React.useEffect(() => {
+    if (scopeLocked) return;
+    if (form.transaction_type === "redemption" && form.currency !== "PTS") {
+      update("currency", "PTS");
+    }
+    if (form.transaction_type === "p2p" && form.currency === "PTS") {
+      update("currency", "ZAR");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.transaction_type, scopeLocked]);
 
   const onSubmit = async () => {
     setErrorBanner(null);
@@ -75,42 +142,51 @@ export function CreateStepUpDialog({
       setErrorBanner("Threshold must be a non-negative number.");
       return;
     }
-    setSubmitting(true);
-    const result = await createStepUpPolicyAction({
+    const payload = {
       tenant_id: tenantId,
       transaction_type: form.transaction_type,
       currency: form.currency.toUpperCase(),
       threshold_amount: form.threshold_amount,
-    });
+    };
+    setSubmitting(true);
+    const result = reviseRequest
+      ? await reviseAndResubmitConfigRequestAction(
+          tenantId,
+          reviseRequest.id,
+          payload,
+        )
+      : editPolicy
+        ? await proposeStepUpUpdateAction(tenantId, editPolicy.id, payload)
+        : await proposeStepUpChangeAction(payload);
     setSubmitting(false);
-    if (result.ok) {
-      toast({ title: "Policy created" });
-      setOpen(false);
-    } else {
+    if (!result.ok) {
       setErrorBanner(`${result.errorCode}: ${result.message}`);
+      return;
     }
+    toast({
+      title: reviseRequest
+        ? "Resubmitted for approval"
+        : "Change proposed — pending approval",
+      description: `${form.transaction_type} · ${form.currency.toUpperCase()}`,
+    });
+    setOpen(false);
   };
-
-  // Currency defaults sensibly per txn type — redemption is always points.
-  React.useEffect(() => {
-    if (form.transaction_type === "redemption" && form.currency !== "PTS") {
-      update("currency", "PTS");
-    }
-    if (form.transaction_type === "p2p" && form.currency === "PTS") {
-      update("currency", "ZAR");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.transaction_type]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>New step-up policy</DialogTitle>
+          <DialogTitle>
+            {reviseRequest
+              ? "Revise step-up policy"
+              : editMode
+                ? "Edit step-up policy"
+                : "New step-up policy"}
+          </DialogTitle>
           <DialogDescription>
-            Transactions exceeding the threshold below will require the user
-            to re-enter their PIN before processing.
+            Transactions exceeding the threshold below will require the user to
+            re-enter their PIN. Goes live after a second admin approves.
           </DialogDescription>
         </DialogHeader>
 
@@ -120,6 +196,7 @@ export function CreateStepUpDialog({
             <Select
               value={form.transaction_type}
               onValueChange={(v) => update("transaction_type", v as TxnType)}
+              disabled={scopeLocked}
             >
               <SelectTrigger className="mt-1">
                 <SelectValue />
@@ -138,6 +215,7 @@ export function CreateStepUpDialog({
                 value={form.currency}
                 onChange={(e) => update("currency", e.target.value)}
                 maxLength={3}
+                disabled={scopeLocked}
                 className="mt-1 uppercase"
               />
             </div>
@@ -155,7 +233,7 @@ export function CreateStepUpDialog({
             </div>
           </div>
           {errorBanner && (
-            <ErrorBanner title="Couldn't create" description={errorBanner} />
+            <ErrorBanner title="Couldn't propose" description={errorBanner} />
           )}
         </div>
 
@@ -164,7 +242,13 @@ export function CreateStepUpDialog({
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={submitting}>
-            {submitting ? "Saving…" : "Create policy"}
+            {submitting
+              ? reviseRequest
+                ? "Resubmitting…"
+                : "Proposing…"
+              : reviseRequest
+                ? "Resubmit"
+                : "Propose change"}
           </Button>
         </DialogFooter>
       </DialogContent>

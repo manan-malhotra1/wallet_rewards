@@ -53,31 +53,41 @@ export default async function AuthenticatedLayout({
   const activeTenantId =
     (await getActiveTenantId()) ?? tenants[0]?.id ?? null;
 
-  // Sidebar badge: number of config change requests awaiting review. Best
-  // effort — a backend hiccup just drops the badge, never the shell.
-  let configPendingCount = 0;
-  let moneyPendingCount = 0;
-  let userPendingCount = 0;
+  // Sidebar "Approvals" badge: total PENDING requests awaiting review across
+  // the queues this admin can see. A platform-admin sees every queue; everyone
+  // else sees only queues matching an approver role they hold — so the badge
+  // never advertises work the admin can't act on. Best effort: a backend hiccup
+  // on any queue just drops that queue's contribution, never the shell.
+  const roles = session.user.roles ?? [];
+  const isPlatformAdmin = roles.includes("platform-admin");
+  const canSee = (role: string) => isPlatformAdmin || roles.includes(role);
+  let approvalsPendingCount = 0;
   if (activeTenantId) {
-    try {
-      const pending = await listConfigRequests(activeTenantId, "PENDING");
-      configPendingCount = pending.length;
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
+    if (canSee("config-approver")) {
+      try {
+        const pending = await listConfigRequests(activeTenantId, "PENDING");
+        approvalsPendingCount += pending.length;
+      } catch (err) {
+        if (!(err instanceof ApiError)) throw err;
+      }
     }
-    // Epic 18: count of PENDING treasury money operations awaiting approval.
-    try {
-      const pending = await listMoneyOperations(activeTenantId, "PENDING");
-      moneyPendingCount = pending.length;
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
+    // Epic 18: PENDING treasury money operations awaiting approval.
+    if (canSee("treasury-approver")) {
+      try {
+        const pending = await listMoneyOperations(activeTenantId, "PENDING");
+        approvalsPendingCount += pending.length;
+      } catch (err) {
+        if (!(err instanceof ApiError)) throw err;
+      }
     }
-    // Epic 3: count of PENDING user create/edit operations awaiting approval.
-    try {
-      const pending = await listUserOperations(activeTenantId, "PENDING");
-      userPendingCount = pending.length;
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
+    // Epic 3: PENDING user create/edit operations awaiting approval.
+    if (canSee("user-approver")) {
+      try {
+        const pending = await listUserOperations(activeTenantId, "PENDING");
+        approvalsPendingCount += pending.length;
+      } catch (err) {
+        if (!(err instanceof ApiError)) throw err;
+      }
     }
   }
 
@@ -90,9 +100,7 @@ export default async function AuthenticatedLayout({
           baseCurrency: t.base_currency ?? "—",
         }))}
         activeTenantId={activeTenantId}
-        configPendingCount={configPendingCount}
-        moneyPendingCount={moneyPendingCount}
-        userPendingCount={userPendingCount}
+        approvalsPendingCount={approvalsPendingCount}
         user={{
           username: session.user.username ?? session.user.email ?? session.user.id,
           email: session.user.email ?? undefined,

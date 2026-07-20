@@ -26,7 +26,8 @@ export type MoneyOperationActionResult =
 
 /** Surfaces whose data may change once an operation applies. */
 function revalidateAll() {
-  revalidatePath("/money-operations");
+  // The money queue now lives under the unified /approvals page.
+  revalidatePath("/approvals");
   revalidatePath("/system-wallets");
 }
 

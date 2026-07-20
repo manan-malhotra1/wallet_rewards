@@ -26,7 +26,8 @@ export type UserOperationActionResult =
 
 /** Surfaces whose data may change once a user operation applies. */
 function revalidateAll() {
-  revalidatePath("/user-operations");
+  // The user queue now lives under the unified /approvals page.
+  revalidatePath("/approvals");
   revalidatePath("/users");
 }
 

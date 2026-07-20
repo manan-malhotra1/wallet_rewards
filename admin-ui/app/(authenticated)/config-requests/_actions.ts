@@ -36,10 +36,11 @@ export type ConfigUpdateActionResult =
   | { ok: false; errorCode: string; message: string };
 
 /** Config pages whose data may change once a request is applied. */
-const CONFIG_PATHS = ["/pricing", "/commissions", "/taxes", "/limits"];
+const CONFIG_PATHS = ["/pricing", "/commissions", "/taxes", "/limits", "/step-up"];
 
 function revalidateAll() {
-  revalidatePath("/config-requests");
+  // The config queue now lives under the unified /approvals page.
+  revalidatePath("/approvals");
   for (const path of CONFIG_PATHS) revalidatePath(path);
 }
 

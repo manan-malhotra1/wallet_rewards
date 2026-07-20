@@ -13,6 +13,7 @@ const CONFIG_TYPE_LABEL: Record<ConfigType, string> = {
   tax: "Tax",
   limit: "Transaction limit",
   wallet_limit: "Wallet limit",
+  step_up: "Step-up PIN policy",
 };
 
 /**

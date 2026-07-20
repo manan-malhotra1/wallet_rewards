@@ -574,7 +574,8 @@ export type ConfigType =
   | "limit"
   | "wallet_limit"
   | "commission"
-  | "tax";
+  | "tax"
+  | "step_up";
 
 /**
  * The mutation a change request proposes. An `update` re-proposes a live

@@ -13,7 +13,6 @@ import {
   Gauge,
   GitPullRequest,
   KeyRound,
-  Landmark,
   Layers,
   ListChecks,
   Megaphone,
@@ -25,7 +24,6 @@ import {
   ShieldCheck,
   Tag,
   Ticket,
-  UserCog,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -82,9 +80,7 @@ const CONFIG: NavEntry[] = [
       { label: "Taxes", href: "/taxes", icon: Receipt },
     ],
   },
-  { label: "Configuration approvals", href: "/config-requests", icon: GitPullRequest },
-  { label: "Money approvals", href: "/money-operations", icon: Landmark },
-  { label: "User approvals", href: "/user-operations", icon: UserCog },
+  { label: "Approvals", href: "/approvals", icon: GitPullRequest },
   { label: "Redemption", href: "/redemption", icon: CreditCard },
   { label: "Services", href: "/services", icon: Tag },
   { label: "Instruments", href: "/instruments", icon: Ticket },
@@ -209,32 +205,22 @@ function NavGroup({ title, items }: { title: string; items: NavEntry[] }) {
 
 export function Sidebar({
   pendingCount,
-  configPendingCount,
-  moneyPendingCount,
-  userPendingCount,
+  approvalsPendingCount,
 }: {
   pendingCount?: number;
-  configPendingCount?: number;
-  moneyPendingCount?: number;
-  userPendingCount?: number;
+  approvalsPendingCount?: number;
 }) {
   const operations = OPERATIONS.map((item) =>
     item.href === "/reconciliation" && pendingCount
       ? { ...item, badge: pendingCount }
       : item,
   );
-  // Surface the counts of PENDING config- and money-operation requests
-  // awaiting a second admin's review.
+  // Surface the total count of PENDING requests awaiting review across the
+  // approval queues this admin can see (config + money + user).
   const config: NavEntry[] = CONFIG.map((entry) => {
     if (isParent(entry)) return entry;
-    if (entry.href === "/config-requests" && configPendingCount) {
-      return { ...entry, badge: configPendingCount };
-    }
-    if (entry.href === "/money-operations" && moneyPendingCount) {
-      return { ...entry, badge: moneyPendingCount };
-    }
-    if (entry.href === "/user-operations" && userPendingCount) {
-      return { ...entry, badge: userPendingCount };
+    if (entry.href === "/approvals" && approvalsPendingCount) {
+      return { ...entry, badge: approvalsPendingCount };
     }
     return entry;
   });

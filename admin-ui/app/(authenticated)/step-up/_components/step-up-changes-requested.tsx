@@ -1,0 +1,62 @@
+/**
+ * "Open requests" section for the Step-up PIN page. Lists the tenant's in-flight
+ * step-up proposals (PENDING + CHANGES_REQUESTED) so anyone can see a change is
+ * under approval. The maker additionally gets an "Edit & resubmit" button
+ * (CHANGES_REQUESTED creates/updates) opening the create dialog in revise mode;
+ * withdraw + version history live on the card itself.
+ */
+"use client";
+
+import { OpenRequestCard } from "@/app/(authenticated)/_components/open-request-card";
+import { Button } from "@/components/ui/button";
+import type { ConfigChangeRequest } from "@/lib/api-types";
+
+import { CreateStepUpDialog } from "./create-step-up-dialog";
+
+export function StepUpChangesRequested({
+  requests,
+  tenantId,
+  currentAdminId,
+}: {
+  requests: ConfigChangeRequest[];
+  tenantId: string;
+  currentAdminId: string;
+}) {
+  if (requests.length === 0) return null;
+  return (
+    <section className="mb-6 space-y-3">
+      <h2 className="text-sm font-semibold text-muted-foreground">
+        Open requests
+      </h2>
+      {requests.map((req) => {
+        // Both create and update proposals can be revised & resubmitted when a
+        // checker sends them back; only deletes carry no editable payload.
+        const canEdit =
+          req.maker_admin_id === currentAdminId &&
+          req.status === "CHANGES_REQUESTED" &&
+          req.operation !== "delete";
+        return (
+          <OpenRequestCard
+            key={req.id}
+            request={req}
+            tenantId={tenantId}
+            currentAdminId={currentAdminId}
+            editAction={
+              canEdit ? (
+                <CreateStepUpDialog
+                  tenantId={tenantId}
+                  reviseRequest={req}
+                  trigger={
+                    <Button variant="outline" size="sm">
+                      Edit &amp; resubmit
+                    </Button>
+                  }
+                />
+              ) : undefined
+            }
+          />
+        );
+      })}
+    </section>
+  );
+}

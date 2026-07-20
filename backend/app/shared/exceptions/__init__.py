@@ -1309,13 +1309,6 @@ class InvalidStepUpPin(AppHTTPException):
         super().__init__(401, "invalid_step_up_pin", "Incorrect PIN. Please try again.")
 
 
-class StepUpPolicyNotFound(AppHTTPException):
-    """The referenced step-up policy doesn't exist or belongs to another tenant."""
-
-    def __init__(self) -> None:
-        super().__init__(404, "step_up_policy_not_found", "Step-up policy not found.")
-
-
 # --- Airtime recharge ----------------------------------------------------
 
 

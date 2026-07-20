@@ -37,12 +37,14 @@ CONFIG_TYPE_LIMIT = "limit"
 CONFIG_TYPE_WALLET_LIMIT = "wallet_limit"
 CONFIG_TYPE_COMMISSION = "commission"
 CONFIG_TYPE_TAX = "tax"
+CONFIG_TYPE_STEP_UP = "step_up"
 CONFIG_TYPES = (
     CONFIG_TYPE_PRICING,
     CONFIG_TYPE_LIMIT,
     CONFIG_TYPE_WALLET_LIMIT,
     CONFIG_TYPE_COMMISSION,
     CONFIG_TYPE_TAX,
+    CONFIG_TYPE_STEP_UP,
 )
 
 # Operations a request can carry.
@@ -82,7 +84,7 @@ class ConfigChangeRequest(Base):
     __tablename__ = "config_change_requests"
     __table_args__ = (
         CheckConstraint(
-            "config_type IN ('pricing', 'limit', 'wallet_limit', 'commission', 'tax')",
+            "config_type IN ('pricing', 'limit', 'wallet_limit', 'commission', 'tax', 'step_up')",
             name="ck_config_change_requests_config_type",
         ),
         CheckConstraint(

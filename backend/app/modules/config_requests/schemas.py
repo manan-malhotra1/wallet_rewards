@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ConfigType = Literal["pricing", "limit", "wallet_limit", "commission", "tax"]
+ConfigType = Literal["pricing", "limit", "wallet_limit", "commission", "tax", "step_up"]
 ConfigOperation = Literal["create", "update", "delete"]
 
 

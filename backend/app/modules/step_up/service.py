@@ -10,7 +10,7 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +25,6 @@ from app.modules.step_up.schemas import (
 from app.shared.exceptions import (
     AppHTTPException,
     InvalidStepUpPin,
-    StepUpPolicyNotFound,
     StepUpRequired,
     TenantNotFound,
 )
@@ -163,8 +162,53 @@ async def enforce_step_up(
 
 
 # -----------------------------------------------------------------------------
-# Admin CRUD
+# Admin CRUD — write paths flow through config-governance maker-checker
 # -----------------------------------------------------------------------------
+#
+# Step-up policy WRITES (create / update / delete) are no longer exposed as
+# direct routes: they are proposed and approved via `config_requests` (config
+# type "step_up"), exactly like pricing / limit / commission / tax. The apply
+# dispatch there calls `create_policy` (create), `replace_step_up_policy_for_scope`
+# (update), and `delete_step_up_policy_for_scope` (delete). Only the read path
+# (`list_policies_for_tenant`) and the hot path (`enforce_step_up`) stay exposed.
+
+
+def _new_step_up_policy(request: StepUpPolicyCreateRequest) -> StepUpPolicy:
+    """Build a StepUpPolicy ORM row from a validated create request (no DB I/O).
+
+    Shared by `create_policy` and `replace_step_up_policy_for_scope`.
+    """
+    return StepUpPolicy(
+        tenant_id=request.tenant_id,
+        transaction_type=request.transaction_type,
+        currency=request.currency.upper(),
+        threshold_amount=request.threshold_amount,
+    )
+
+
+def _step_up_scope_filter(
+    *, tenant_id: UUID, transaction_type: str, currency: str
+) -> list[ColumnElement[bool]]:
+    """Column predicates selecting the step-up row in one scope.
+
+    Shared by `replace_step_up_policy_for_scope` and
+    `delete_step_up_policy_for_scope`. Scope = (tenant, transaction_type,
+    currency) — a single row. `currency` is upper-cased.
+    """
+    return [
+        StepUpPolicy.tenant_id == tenant_id,
+        StepUpPolicy.transaction_type == transaction_type,
+        StepUpPolicy.currency == currency.upper(),
+    ]
+
+
+def _step_up_state(policy: StepUpPolicy) -> dict[str, object]:
+    """Serialise a step-up policy for an audit snapshot."""
+    return {
+        "transaction_type": policy.transaction_type,
+        "currency": policy.currency,
+        "threshold_amount": str(policy.threshold_amount),
+    }
 
 
 async def create_policy(
@@ -174,15 +218,15 @@ async def create_policy(
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> StepUpPolicy:
-    """Create a step-up policy. 409 on the unique-index collision."""
+    """Create a step-up policy. 409 on the unique-index collision.
+
+    Invoked by the config-governance apply dispatch on approval of a `step_up`
+    `create` request (never a direct route). Commits once; writes a
+    `step_up_policy.created` audit row.
+    """
     await _assert_tenant_exists(session, request.tenant_id)
 
-    policy = StepUpPolicy(
-        tenant_id=request.tenant_id,
-        transaction_type=request.transaction_type,
-        currency=request.currency.upper(),
-        threshold_amount=request.threshold_amount,
-    )
+    policy = _new_step_up_policy(request)
     session.add(policy)
     try:
         await session.flush()
@@ -202,17 +246,68 @@ async def create_policy(
             action="step_up_policy.created",
             entity_type="step_up_policy",
             entity_id=str(policy.id),
-            after_state={
-                "transaction_type": policy.transaction_type,
-                "currency": policy.currency,
-                "threshold_amount": str(policy.threshold_amount),
-            },
+            after_state=_step_up_state(policy),
             ip_address=ip_address,
         )
 
     await session.commit()
     await session.refresh(policy)
     return policy
+
+
+async def replace_step_up_policy_for_scope(
+    session: AsyncSession,
+    requests: list[StepUpPolicyCreateRequest],
+    *,
+    target_config_id: UUID | None = None,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Atomically replace the step-up policy for a scope with a new one.
+
+    Scope = (tenant, transaction_type, currency) — a single row. The existing
+    row is deleted and the new one inserted in ONE transaction — DELETE flushed
+    before INSERT so the unique index never trips — committed once. A mid-apply
+    failure rolls the whole replace back. Invoked by the config-governance apply
+    dispatch on approval of a `step_up` `update` request.
+
+    Args:
+        requests: A one-element list holding the validated new policy.
+        target_config_id: The live row the maker edited (audit traceability).
+
+    Side effects:
+        Deletes + inserts a step_up_policies row; appends one
+        `step_up_policy.updated` audit row. Commits once.
+    """
+    first = requests[0]
+    scope = _step_up_scope_filter(
+        tenant_id=first.tenant_id,
+        transaction_type=first.transaction_type,
+        currency=first.currency,
+    )
+    existing = list((await session.execute(select(StepUpPolicy).where(*scope))).scalars().all())
+    before = [_step_up_state(p) for p in existing]
+    for row in existing:
+        await session.delete(row)
+    await session.flush()  # DELETE must precede the INSERT (unique index).
+
+    new_policy = _new_step_up_policy(first)
+    session.add(new_policy)
+    await session.flush()
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=first.tenant_id,
+            action="step_up_policy.updated",
+            entity_type="step_up_policy",
+            entity_id=str(target_config_id or new_policy.id),
+            before_state={"replaced": before},
+            after_state=_step_up_state(new_policy),
+            ip_address=ip_address,
+        )
+    await session.commit()
 
 
 async def list_policies_for_tenant(session: AsyncSession, tenant_id: UUID) -> list[StepUpPolicyOut]:
@@ -225,41 +320,47 @@ async def list_policies_for_tenant(session: AsyncSession, tenant_id: UUID) -> li
     return [StepUpPolicyOut.model_validate(p) for p in result.scalars().all()]
 
 
-async def delete_policy(
+async def delete_step_up_policy_for_scope(
     session: AsyncSession,
-    policy_id: UUID,
-    tenant_id: UUID,
+    target: StepUpPolicy,
     *,
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> None:
-    """Delete a policy. Tenant-scoped — cross-tenant deletes return 404."""
-    result = await session.execute(
-        select(StepUpPolicy).where(
-            StepUpPolicy.id == policy_id, StepUpPolicy.tenant_id == tenant_id
-        )
+    """Delete every step-up row sharing `target`'s scope, in one commit.
+
+    Scope = (tenant, transaction_type, currency) — a single row, so this removes
+    exactly that policy. The removal plus one `step_up_policy.deleted` audit row
+    (before_state summarising the removed row) land in ONE transaction, so a
+    mid-delete failure rolls back. Invoked by the config-governance apply
+    dispatch on approval of a `step_up` `delete` request.
+
+    Args:
+        target: The live row whose scope is removed — already loaded and
+            tenant-checked by the caller; its id anchors the audit entry.
+
+    Side effects:
+        Deletes a step_up_policies row; appends one `step_up_policy.deleted`
+        audit row. Commits once.
+    """
+    scope = _step_up_scope_filter(
+        tenant_id=target.tenant_id,
+        transaction_type=target.transaction_type,
+        currency=target.currency,
     )
-    policy = result.scalar_one_or_none()
-    if policy is None:
-        raise StepUpPolicyNotFound()
-
-    before = {
-        "transaction_type": policy.transaction_type,
-        "currency": policy.currency,
-        "threshold_amount": str(policy.threshold_amount),
-    }
-    await session.delete(policy)
-
+    existing = list((await session.execute(select(StepUpPolicy).where(*scope))).scalars().all())
+    before = [_step_up_state(p) for p in existing]
+    for row in existing:
+        await session.delete(row)
     if admin is not None:
         record_audit_for_admin(
             session,
             admin,
-            tenant_id=tenant_id,
+            tenant_id=target.tenant_id,
             action="step_up_policy.deleted",
             entity_type="step_up_policy",
-            entity_id=str(policy_id),
-            before_state=before,
+            entity_id=str(target.id),
+            before_state={"deleted": before},
             ip_address=ip_address,
         )
-
     await session.commit()

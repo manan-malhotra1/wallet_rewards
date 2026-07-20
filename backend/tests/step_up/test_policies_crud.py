@@ -1,110 +1,57 @@
-"""Tests for the admin CRUD endpoints on /api/v1/step-up/policies."""
+"""Read + retired-write coverage for /api/v1/step-up/policies.
+
+Step-up policy WRITES now flow exclusively through the config-governance
+maker-checker (config type "step_up") — the direct create/delete routes were
+retired, so only the tenant list stays here. Write-path behaviour (create /
+update / delete via propose→approve, scope guard, payload validation) is
+covered in tests/config_requests/test_step_up_operations.py.
+"""
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.models import Tenant
+from app.shared.models import StepUpPolicy, Tenant
 
 
-@pytest.mark.asyncio
-async def test_create_policy_happy_path(
-    async_client: AsyncClient,
-    test_tenant: Tenant,
-    admin_auth_header: dict[str, str],
-) -> None:
-    """POST /policies returns 201 + the persisted row."""
-    response = await async_client.post(
-        "/api/v1/step-up/policies",
-        headers=admin_auth_header,
-        json={
-            "tenant_id": str(test_tenant.id),
-            "transaction_type": "p2p",
-            "currency": "ZAR",
-            "threshold_amount": "200",
-        },
+async def _seed_policy(
+    session: AsyncSession,
+    tenant: Tenant,
+    *,
+    transaction_type: str = "p2p",
+    currency: str = "ZAR",
+    threshold: str = "100",
+) -> StepUpPolicy:
+    """Insert a step-up policy row directly (bypassing the maker-checker flow)."""
+    policy = StepUpPolicy(
+        tenant_id=tenant.id,
+        transaction_type=transaction_type,
+        currency=currency,
+        threshold_amount=Decimal(threshold),
     )
-    assert response.status_code == 201, response.text
-    body = response.json()
-    assert body["transaction_type"] == "p2p"
-    assert body["currency"] == "ZAR"
-
-
-@pytest.mark.asyncio
-async def test_create_policy_duplicate_returns_409(
-    async_client: AsyncClient,
-    test_tenant: Tenant,
-    admin_auth_header: dict[str, str],
-) -> None:
-    """The (tenant, txn_type, currency) unique index blocks a second insert."""
-    payload = {
-        "tenant_id": str(test_tenant.id),
-        "transaction_type": "p2p",
-        "currency": "ZAR",
-        "threshold_amount": "200",
-    }
-    first = await async_client.post(
-        "/api/v1/step-up/policies", headers=admin_auth_header, json=payload
-    )
-    assert first.status_code == 201
-    second = await async_client.post(
-        "/api/v1/step-up/policies", headers=admin_auth_header, json=payload
-    )
-    assert second.status_code == 409
-    assert second.json()["error_code"] == "step_up_policy_exists"
-
-
-@pytest.mark.asyncio
-async def test_create_policy_rejects_negative_threshold(
-    async_client: AsyncClient,
-    test_tenant: Tenant,
-    admin_auth_header: dict[str, str],
-) -> None:
-    """Pydantic ge=0 → negative threshold → 422."""
-    response = await async_client.post(
-        "/api/v1/step-up/policies",
-        headers=admin_auth_header,
-        json={
-            "tenant_id": str(test_tenant.id),
-            "transaction_type": "p2p",
-            "currency": "ZAR",
-            "threshold_amount": "-1",
-        },
-    )
-    assert response.status_code == 422
+    session.add(policy)
+    await session.commit()
+    await session.refresh(policy)
+    return policy
 
 
 @pytest.mark.asyncio
 async def test_list_policies_returns_only_tenant_rows(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
     """List endpoint is tenant-scoped — no cross-tenant leakage."""
-    await async_client.post(
-        "/api/v1/step-up/policies",
-        headers=admin_auth_header,
-        json={
-            "tenant_id": str(test_tenant.id),
-            "transaction_type": "p2p",
-            "currency": "ZAR",
-            "threshold_amount": "100",
-        },
-    )
-    await async_client.post(
-        "/api/v1/step-up/policies",
-        headers=admin_auth_header,
-        json={
-            "tenant_id": str(other_tenant.id),
-            "transaction_type": "p2p",
-            "currency": "ZAR",
-            "threshold_amount": "500",
-        },
-    )
+    await _seed_policy(db_session, test_tenant, threshold="100")
+    await _seed_policy(db_session, other_tenant, threshold="500")
+
     response = await async_client.get(
         "/api/v1/step-up/policies",
         headers=admin_auth_header,
@@ -117,14 +64,26 @@ async def test_list_policies_returns_only_tenant_rows(
 
 
 @pytest.mark.asyncio
-async def test_delete_policy_cross_tenant_returns_404(
+async def test_list_policies_requires_admin(
     async_client: AsyncClient,
     test_tenant: Tenant,
-    other_tenant: Tenant,
+) -> None:
+    """The list endpoint is admin-gated — no token → 401."""
+    response = await async_client.get(
+        "/api/v1/step-up/policies",
+        params={"tenant_id": str(test_tenant.id)},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_direct_create_endpoint_is_retired(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Deleting another tenant's policy must return 404 (no existence leak)."""
-    create = await async_client.post(
+    """POST /policies is gone — step-up creates go through config-requests now."""
+    response = await async_client.post(
         "/api/v1/step-up/policies",
         headers=admin_auth_header,
         json={
@@ -134,23 +93,21 @@ async def test_delete_policy_cross_tenant_returns_404(
             "threshold_amount": "200",
         },
     )
-    policy_id = create.json()["id"]
-
-    response = await async_client.delete(
-        f"/api/v1/step-up/policies/{policy_id}",
-        headers=admin_auth_header,
-        params={"tenant_id": str(other_tenant.id)},
-    )
-    assert response.status_code == 404
+    assert response.status_code == 405
 
 
 @pytest.mark.asyncio
-async def test_delete_policy_unknown_id_returns_404(
+async def test_direct_delete_endpoint_is_retired(
     async_client: AsyncClient,
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown policy id → 404."""
+    """DELETE /policies/{id} is gone — step-up deletes go through config-requests now.
+
+    The whole `/policies/{policy_id}` path was removed (not just the method), so
+    the router no longer matches it → 404 (route gone), unlike POST /policies
+    whose path still exists for GET and therefore 405s.
+    """
     response = await async_client.delete(
         f"/api/v1/step-up/policies/{uuid4()}",
         headers=admin_auth_header,

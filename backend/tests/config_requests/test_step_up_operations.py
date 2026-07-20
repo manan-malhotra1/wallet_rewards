@@ -375,3 +375,66 @@ async def test_step_up_missing_field_rejected(
     }
     resp = await _propose(async_client, test_tenant, body, _maker(make_admin_token))
     assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_step_up_update_non_p2p_type_no_scope_mismatch(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    make_admin_token: Callable[..., str],
+) -> None:
+    """A cashout (non-p2p) step-up policy can be created AND its threshold edited.
+
+    Regression: enforce_step_up guards more than p2p/redemption (cashout, cash_in,
+    airtime_recharge), and the seed provisions policies for them. Editing such a
+    policy's threshold must NOT 422 config_request_scope_mismatch — the scope
+    (transaction_type, currency) is unchanged, only the threshold moves.
+    """
+    create = await _propose(
+        async_client,
+        test_tenant,
+        {
+            "config_type": "step_up",
+            "operation": "create",
+            "payload": _step_up_payload(test_tenant, transaction_type="cashout", threshold="200"),
+        },
+        _maker(make_admin_token),
+    )
+    assert create.status_code == 201, create.text
+    await _approve(async_client, test_tenant, create.json()["id"], _checker(make_admin_token))
+    live = (
+        await db_session.execute(
+            select(StepUpPolicy).where(
+                StepUpPolicy.tenant_id == test_tenant.id,
+                StepUpPolicy.transaction_type == "cashout",
+            )
+        )
+    ).scalar_one()
+
+    update = await _propose(
+        async_client,
+        test_tenant,
+        {
+            "config_type": "step_up",
+            "operation": "update",
+            "target_config_id": str(live.id),
+            "payload": _step_up_payload(test_tenant, transaction_type="cashout", threshold="201"),
+        },
+        _maker(make_admin_token),
+    )
+    assert update.status_code == 201, update.text  # NOT 422 scope_mismatch
+    approved = await _approve(
+        async_client, test_tenant, update.json()["id"], _checker(make_admin_token)
+    )
+    assert approved.status_code == 200, approved.text
+
+    refreshed = (
+        await db_session.execute(
+            select(StepUpPolicy).where(
+                StepUpPolicy.tenant_id == test_tenant.id,
+                StepUpPolicy.transaction_type == "cashout",
+            )
+        )
+    ).scalar_one()
+    assert Decimal(str(refreshed.threshold_amount)) == Decimal("201")

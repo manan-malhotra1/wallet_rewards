@@ -41,7 +41,31 @@ import {
 import { useToast } from "@/components/ui/toast";
 import type { ConfigChangeRequest, StepUpPolicy } from "@/lib/api-types";
 
-type TxnType = "p2p" | "redemption";
+// The user-initiated transaction types enforce_step_up guards (mirrors the
+// backend step_up TransactionType Literal). A step-up policy can exist for any
+// of these, so the dialog must represent all of them — collapsing to p2p breaks
+// editing a cashout/cash_in/airtime policy (its scope would no longer match).
+type TxnType = "p2p" | "redemption" | "cashout" | "cash_in" | "airtime_recharge";
+
+const TXN_TYPE_LABELS: Record<TxnType, string> = {
+  p2p: "Peer-to-peer (money)",
+  redemption: "Redemption (points)",
+  cashout: "Cash-out (money)",
+  cash_in: "Cash-in (money)",
+  airtime_recharge: "Airtime recharge (money)",
+};
+
+const TXN_TYPES = Object.keys(TXN_TYPE_LABELS) as TxnType[];
+
+/** Redemption settles in points; every other guarded type is fiat (ZAR). */
+function defaultCurrencyFor(txn: TxnType): string {
+  return txn === "redemption" ? "PTS" : "ZAR";
+}
+
+/** Coerce an arbitrary stored value to a known TxnType (default p2p if unknown). */
+function toTxnType(value: unknown): TxnType {
+  return TXN_TYPES.includes(value as TxnType) ? (value as TxnType) : "p2p";
+}
 
 interface FormState {
   transaction_type: TxnType;
@@ -69,9 +93,10 @@ function initialForm(
     ? reviseRequest.payload
     : ((editPolicy as unknown as Record<string, unknown> | undefined) ?? null);
   if (source) {
-    const txn = str(source.transaction_type, "p2p");
+    // Preserve the policy's ACTUAL transaction_type — do NOT collapse it, or an
+    // edit of a cashout/cash_in/airtime policy would submit p2p and scope-mismatch.
     return {
-      transaction_type: txn === "redemption" ? "redemption" : "p2p",
+      transaction_type: toTxnType(source.transaction_type),
       currency: str(source.currency, "ZAR"),
       threshold_amount: str(source.threshold_amount, "0"),
     };
@@ -122,15 +147,14 @@ export function CreateStepUpDialog({
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  // Currency defaults sensibly per txn type — redemption is always points.
-  // Only auto-correct while the scope is editable (a locked scope is fixed).
+  // Currency defaults sensibly per txn type — redemption is points, every other
+  // guarded type is fiat. Only auto-correct while the scope is editable (a
+  // locked scope is fixed).
   React.useEffect(() => {
     if (scopeLocked) return;
-    if (form.transaction_type === "redemption" && form.currency !== "PTS") {
-      update("currency", "PTS");
-    }
-    if (form.transaction_type === "p2p" && form.currency === "PTS") {
-      update("currency", "ZAR");
+    const expected = defaultCurrencyFor(form.transaction_type);
+    if (form.currency !== expected) {
+      update("currency", expected);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.transaction_type, scopeLocked]);
@@ -202,8 +226,11 @@ export function CreateStepUpDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="p2p">Peer-to-peer (money)</SelectItem>
-                <SelectItem value="redemption">Redemption (points)</SelectItem>
+                {TXN_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {TXN_TYPE_LABELS[t]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

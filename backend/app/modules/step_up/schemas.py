@@ -9,10 +9,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# Only the user-initiated transaction types make sense as step-up
-# scopes. Fund is a system-initiated flow (already auth'd via the
-# external source) so it's deliberately excluded.
-TransactionType = Literal["p2p", "redemption"]
+# The user-initiated transaction types that `enforce_step_up` guards — every
+# money path that takes a user PIN. Fund/withdraw are system/admin-initiated
+# (already auth'd) and are deliberately excluded. Must stay in sync with the
+# enforce_step_up call sites (payments/redemption/cashout/cashin/airtime); if a
+# new user-initiated money path is added, add its transaction_type here so an
+# admin can configure a step-up policy for it via config maker-checker.
+TransactionType = Literal["p2p", "redemption", "cashout", "cash_in", "airtime_recharge"]
 
 
 class StepUpPolicyCreateRequest(BaseModel):

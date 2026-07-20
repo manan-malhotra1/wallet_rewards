@@ -21,7 +21,10 @@ export type StepUpActionResult =
 /** Fields the step-up dialog collects (threshold is a string). */
 export interface ProposeStepUpInput {
   tenant_id: string;
-  transaction_type: "p2p" | "redemption";
+  // The user-initiated types enforce_step_up guards (mirrors the backend
+  // step_up TransactionType Literal): p2p, redemption, cashout, cash_in,
+  // airtime_recharge.
+  transaction_type: "p2p" | "redemption" | "cashout" | "cash_in" | "airtime_recharge";
   currency: string;
   threshold_amount: string;
 }

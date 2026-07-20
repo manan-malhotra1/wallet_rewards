@@ -206,6 +206,41 @@ def _validate_payload(
     return _normalise_create_payload(config_type, bands), bands
 
 
+async def _assert_update_scope_matches_target(
+    session: AsyncSession,
+    config_type: str,
+    target_config_id: UUID,
+    tenant_id: UUID,
+    band: BaseModel,
+) -> None:
+    """Assert an update's payload keeps the scope of the live row it names.
+
+    An update edits exactly ONE live config row: the payload's derived scope MUST
+    equal that target row's scope. Otherwise an approval would atomically replace
+    a DIFFERENT scope and leave the named config untouched. This is the config-
+    governance trust boundary, and it is identical for propose and for revise —
+    both load the target fresh (under the caller's lock, for revise) and compare
+    scope keys — so the check lives here once.
+
+    Args:
+        band: The first validated create-schema band of the (possibly multi-band)
+            payload; its scope is compared against the live target row's scope.
+
+    Raises:
+        ConfigRequestTargetNotFound (404): no such live row in this tenant.
+        AppHTTPException (422): the payload's scope differs from the target's.
+    """
+    target = await load_config_target(session, config_type, target_config_id, tenant_id)
+    if target is None:
+        raise ConfigRequestTargetNotFound()
+    if config_scope(config_type, band) != config_scope(config_type, target):
+        raise AppHTTPException(
+            422,
+            "config_request_scope_mismatch",
+            "The edit's scope must match the config being edited.",
+        )
+
+
 async def _request_scope(
     session: AsyncSession, request: ConfigChangeRequest
 ) -> tuple[object, ...] | None:
@@ -294,30 +329,23 @@ async def propose_config_change(
         )
         target_config_id = None
         if request_data.operation == CONFIG_OP_UPDATE:
-            # An update edits a live row: require the target, verify it exists,
-            # and — the governance trust boundary — assert the edit's scope
-            # matches the target's. Otherwise a request naming target X (scope A)
-            # could carry a payload for scope B and silently replace B, leaving X
-            # untouched. Load the row ONCE and compare scope keys.
+            # An update edits a live row: require the target, then — the
+            # governance trust boundary — verify it exists and its scope matches
+            # the edit's. Otherwise a request naming target X (scope A) could carry
+            # a payload for scope B and silently replace B, leaving X untouched.
             if request_data.target_config_id is None:
                 raise AppHTTPException(
                     422,
                     "config_request_target_required",
                     "An update proposal needs a target_config_id.",
                 )
-            target = await load_config_target(
-                session, request_data.config_type, request_data.target_config_id, tenant_id
+            await _assert_update_scope_matches_target(
+                session,
+                request_data.config_type,
+                request_data.target_config_id,
+                tenant_id,
+                bands[0],
             )
-            if target is None:
-                raise ConfigRequestTargetNotFound()
-            if config_scope(request_data.config_type, bands[0]) != config_scope(
-                request_data.config_type, target
-            ):
-                raise AppHTTPException(
-                    422,
-                    "config_request_scope_mismatch",
-                    "The edit's scope must match the config being edited.",
-                )
             target_config_id = request_data.target_config_id
         new_scope: tuple[object, ...] | None = config_scope(request_data.config_type, bands[0])
     else:  # delete
@@ -495,25 +523,19 @@ async def revise_config_request(
     # tenant matches the request scope (422 config_request_tenant_mismatch).
     normalised, bands = _validate_payload(request.config_type, payload, request.tenant_id)
     if request.operation == CONFIG_OP_UPDATE:
-        # An update edits a live row: the revised payload's scope must still match
-        # the target the request names, else on approval it would replace a
-        # DIFFERENT scope and leave the named config untouched (same guard propose
-        # runs). Reload the target fresh under the request lock. An update always
-        # carries a target (propose requires it), so it is non-None here.
+        # Same trust boundary as propose: the revised payload's scope must still
+        # match the target the request names, else on approval it would replace a
+        # DIFFERENT scope and leave the named config untouched. Reload the target
+        # fresh under the request lock. An update always carries a target (propose
+        # requires it), so it is non-None here.
         assert request.target_config_id is not None
-        target = await load_config_target(
-            session, request.config_type, request.target_config_id, request.tenant_id
+        await _assert_update_scope_matches_target(
+            session,
+            request.config_type,
+            request.target_config_id,
+            request.tenant_id,
+            bands[0],
         )
-        if target is None:
-            raise ConfigRequestTargetNotFound()
-        if config_scope(request.config_type, bands[0]) != config_scope(
-            request.config_type, target
-        ):
-            raise AppHTTPException(
-                422,
-                "config_request_scope_mismatch",
-                "The edit's scope must match the config being edited.",
-            )
     request.payload = normalised
     request.revision += 1
     _add_review(

@@ -262,3 +262,145 @@ async def test_revise_with_foreign_tenant_band_rejected(
     assert foreign.json()["error_code"] == "config_request_tenant_mismatch"
     # Rejected revise added no snapshot.
     assert await _snapshot_count(db_session, request_id) == 1
+
+
+async def test_revise_with_malformed_band_rejected(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    make_admin_token: Callable[..., str],
+) -> None:
+    """Revising with an invalid-band payload → 422, same as propose's validation.
+
+    A revise must re-run `_validate_payload`; an empty `transaction_type` fails the
+    limit create schema (min_length=1), so the revise is rejected before any
+    snapshot is stored.
+    """
+    proposed = await async_client.post(
+        _url(test_tenant),
+        content=json.dumps(_limit_body(test_tenant.id, operation="create", max_amount="1000")),
+        headers=_maker(make_admin_token),
+    )
+    assert proposed.status_code == 201, proposed.text
+    request_id = proposed.json()["id"]
+    rc = await async_client.post(
+        _url(test_tenant, f"/{request_id}/request-changes"),
+        content=json.dumps({"comment": "fix it"}),
+        headers=_checker(make_admin_token),
+    )
+    assert rc.status_code == 200, rc.text
+
+    bad_payload = _limit_body(test_tenant.id, operation="create", max_amount="1000")["payload"]
+    bad_payload["transaction_type"] = ""  # violates min_length=1
+    malformed = await async_client.patch(
+        _url(test_tenant, f"/{request_id}"),
+        content=json.dumps({"payload": bad_payload}),
+        headers=_maker(make_admin_token),
+    )
+    assert malformed.status_code == 422, malformed.text
+    # Rejected revise stored nothing and did not bump the revision.
+    assert await _snapshot_count(db_session, request_id) == 1
+
+
+def _step_up_body(
+    tenant_id: UUID,
+    *,
+    operation: str,
+    threshold: str,
+    transaction_type: str = "p2p",
+    currency: str = "ZAR",
+    target: str | None = None,
+) -> dict:
+    body: dict = {
+        "config_type": "step_up",
+        "operation": operation,
+        "payload": {
+            "tenant_id": str(tenant_id),
+            "transaction_type": transaction_type,
+            "currency": currency,
+            "threshold_amount": threshold,
+        },
+    }
+    if target is not None:
+        body["target_config_id"] = target
+    return body
+
+
+async def test_revise_step_up_update_scope_mismatch_rejected(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    make_admin_token: Callable[..., str],
+) -> None:
+    """The revise scope guard is generic across config types, incl. `step_up`.
+
+    A step_up update is scoped by (transaction_type, currency). Revising it with a
+    payload naming a DIFFERENT transaction_type than the target row → 422
+    scope_mismatch, exactly as for limit. A same-scope revise still succeeds.
+    """
+    from app.shared.models import StepUpPolicy
+
+    # Propose + approve a step_up create so a live policy (scope p2p/ZAR) exists.
+    created = await async_client.post(
+        _url(test_tenant),
+        content=json.dumps(_step_up_body(test_tenant.id, operation="create", threshold="200")),
+        headers=_maker(make_admin_token),
+    )
+    assert created.status_code == 201, created.text
+    approved = await async_client.post(
+        _url(test_tenant, f"/{created.json()['id']}/approve"),
+        headers=_checker(make_admin_token),
+    )
+    assert approved.status_code == 200, approved.text
+    live = (
+        await db_session.execute(
+            select(StepUpPolicy).where(StepUpPolicy.tenant_id == test_tenant.id)
+        )
+    ).scalar_one()
+
+    # Propose an update (scope p2p/ZAR) and drive it to CHANGES_REQUESTED.
+    update = await async_client.post(
+        _url(test_tenant),
+        content=json.dumps(
+            _step_up_body(test_tenant.id, operation="update", threshold="500", target=str(live.id))
+        ),
+        headers=_maker(make_admin_token),
+    )
+    assert update.status_code == 201, update.text
+    request_id = update.json()["id"]
+    rc = await async_client.post(
+        _url(test_tenant, f"/{request_id}/request-changes"),
+        content=json.dumps({"comment": "raise it"}),
+        headers=_checker(make_admin_token),
+    )
+    assert rc.status_code == 200, rc.text
+
+    # Revise onto a DIFFERENT scope (transaction_type=redemption) → rejected.
+    mismatched = await async_client.patch(
+        _url(test_tenant, f"/{request_id}"),
+        content=json.dumps(
+            {
+                "payload": {
+                    "tenant_id": str(test_tenant.id),
+                    "transaction_type": "redemption",
+                    "currency": "ZAR",
+                    "threshold_amount": "750",
+                }
+            }
+        ),
+        headers=_maker(make_admin_token),
+    )
+    assert mismatched.status_code == 422, mismatched.text
+    assert mismatched.json()["error_code"] == "config_request_scope_mismatch"
+    assert await _snapshot_count(db_session, request_id) == 1
+
+    # A same-scope revise (p2p/ZAR) still succeeds and bumps the revision.
+    same_scope = _step_up_body(test_tenant.id, operation="update", threshold="900")["payload"]
+    ok = await async_client.patch(
+        _url(test_tenant, f"/{request_id}"),
+        content=json.dumps({"payload": same_scope}),
+        headers=_maker(make_admin_token),
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["revision"] == 2
+    assert await _snapshot_count(db_session, request_id) == 2

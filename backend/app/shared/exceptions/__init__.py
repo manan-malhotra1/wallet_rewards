@@ -53,6 +53,23 @@ class IdentifierAlreadyInUse(AppHTTPException):
         )
 
 
+class IdentifierNotManuallyVerifiable(AppHTTPException):
+    """The identifier's type cannot be verified by an admin (Epic 27, Story 27.3).
+
+    Only `account_number` identifiers have a manual admin-verification path.
+    phone / email are verification-proven through the OTP flow, and `card_number`
+    is never stored as a plain identifier — so all of those are rejected here.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "identifier_not_manually_verifiable",
+            "Only account-number identifiers can be verified by an admin; "
+            "phone/email use OTP.",
+        )
+
+
 class InvalidUserTypeParent(AppHTTPException):
     """The parent_user_id is incompatible with the user's type (Decision D4, Epic 12).
 

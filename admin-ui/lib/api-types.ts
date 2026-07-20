@@ -144,6 +144,7 @@ export interface AdminAccessResponse {
 }
 
 export interface UserIdentifier {
+  id: string;
   identifier_type: "phone" | "email" | "account_number" | "card_number";
   identifier_value: string;
   verified: boolean;

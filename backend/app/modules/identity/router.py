@@ -63,6 +63,7 @@ from app.modules.identity.service import (
     set_pin,
     set_user_access_level,
     verify_otp,
+    verify_user_identifier,
 )
 
 router = APIRouter(prefix="/api/v1/identity", tags=["identity"])
@@ -123,6 +124,41 @@ async def post_user_identifier(
         tenant_id=tenant_id,
         identifier_type=request.identifier_type,
         identifier_value=request.identifier_value,
+        admin=admin,
+        ip_address=fastapi_request.client.host if fastapi_request.client else None,
+    )
+    return IdentifierOut.model_validate(identifier)
+
+
+@router.post(
+    "/users/{user_id}/identifiers/{identifier_id}/verify",
+    response_model=IdentifierOut,
+)
+async def post_verify_user_identifier(
+    user_id: UUID,
+    identifier_id: UUID,
+    tenant_id: UUID,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> IdentifierOut:
+    """Manually verify an account_number identifier (Epic 27, Story 27.3).
+
+    Admin-only. account_number identifiers added post-registration have no
+    automated verification path (phone/email are proven by OTP), so they stay
+    `verified=false` until an admin attests them here. This is a MANUAL stub —
+    the real micro-deposit / partner-confirmation flow lands in a later phase.
+
+    Only `account_number` is verifiable: a phone/email/card identifier returns
+    422 `identifier_not_manually_verifiable`. Verifying an already-verified
+    identifier is an idempotent no-op (200, unchanged). Tenant-scoped: an
+    identifier in another tenant, or one not belonging to `user_id`, returns 404.
+    """
+    identifier = await verify_user_identifier(
+        session,
+        user_id=user_id,
+        identifier_id=identifier_id,
+        tenant_id=tenant_id,
         admin=admin,
         ip_address=fastapi_request.client.host if fastapi_request.client else None,
     )

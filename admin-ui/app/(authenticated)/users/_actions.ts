@@ -12,6 +12,7 @@ import {
   proposeUserOperation,
   setUserAccess,
   unlockUser,
+  verifyUserIdentifier,
 } from "@/lib/api-endpoints";
 import type {
   AccessLevel,
@@ -139,6 +140,37 @@ export async function addIdentifierAction(
           ? "That identifier is already registered."
           : err.message;
       return { ok: false, errorCode: err.errorCode, message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+export type VerifyIdentifierActionResult =
+  | { ok: true; verified: boolean }
+  | { ok: false; errorCode: string; message: string };
+
+/**
+ * Epic 27, Story 27.3 — manually mark an account_number identifier verified
+ * (platform-admin). Only account numbers are verifiable this way; the backend
+ * 422s `identifier_not_manually_verifiable` for phone/email (they use OTP).
+ * Revalidates /users so the row flips to a Verified badge.
+ */
+export async function verifyIdentifierAction(
+  userId: string,
+  identifierId: string,
+  tenantId: string,
+): Promise<VerifyIdentifierActionResult> {
+  try {
+    const res = await verifyUserIdentifier(userId, identifierId, tenantId);
+    revalidatePath("/users");
+    return { ok: true, verified: res.verified };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, errorCode: err.errorCode, message: err.message };
     }
     return {
       ok: false,

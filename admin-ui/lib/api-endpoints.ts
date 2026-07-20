@@ -266,6 +266,23 @@ export const addUserIdentifier = (
     { query: { tenant_id } },
   );
 
+/**
+ * Manually mark an account_number identifier verified (Epic 27, Story 27.3;
+ * platform-admin). Phone/email verify via OTP — the backend 422s
+ * `identifier_not_manually_verifiable` for those. Already-verified is an
+ * idempotent 200. Returns the updated identifier.
+ */
+export const verifyUserIdentifier = (
+  user_id: string,
+  identifier_id: string,
+  tenant_id: string,
+) =>
+  apiPost<UserIdentifier>(
+    `/api/v1/identity/users/${user_id}/identifiers/${identifier_id}/verify`,
+    undefined,
+    { query: { tenant_id } },
+  );
+
 // ---- Rules ---------------------------------------------------------------
 
 export const listRules = (tenant_id: string) =>

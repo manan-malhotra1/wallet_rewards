@@ -53,6 +53,7 @@ from app.shared.exceptions import (
     AccountLocked,
     AccountSuspended,
     IdentifierAlreadyInUse,
+    IdentifierNotManuallyVerifiable,
     InvalidCredentials,
     InvalidOtp,
     InvalidPinFormat,
@@ -1395,6 +1396,101 @@ async def add_user_identifier(
     if added is None:  # pragma: no cover - flush above guarantees the row exists
         raise UserNotFound()
     return added
+
+
+async def verify_user_identifier(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    identifier_id: UUID,
+    tenant_id: UUID,
+    admin: AdminPrincipal,
+    ip_address: str | None = None,
+) -> UserIdentifier:
+    """Manually mark an `account_number` identifier verified (Epic 27, Story 27.3).
+
+    `account_number` identifiers added post-registration have NO automated
+    verification flow (unlike phone/email, which the OTP flow proves), so they
+    stay `verified=False` forever. This admin action is the manual stub that
+    marks one verified. NOTE: this is a MANUAL stub — the real
+    micro-deposit / partner-confirmation verification flow is a later phase; for
+    now an admin attests the account out-of-band and flips the flag here.
+
+    Idempotency is state-based: an already-verified identifier is a no-op — it is
+    returned unchanged and NO second audit row is written, so a double-click is
+    safe (chosen over a 409 so retries never surface an error).
+
+    Args:
+        session: Async DB session (committed here on a real change).
+        user_id: The owning user; the identifier must belong to it.
+        identifier_id: The identifier to verify.
+        tenant_id: Caller's tenant; an identifier in another tenant is unknown.
+        admin: Authenticated platform-admin — the audit actor.
+        ip_address: Caller IP recorded on the audit row.
+
+    Returns:
+        The verified UserIdentifier row (maps to `IdentifierOut`).
+
+    Raises:
+        UserNotFound: 404 — no such identifier for this (user, tenant), whether
+            the id is unknown, belongs to another user, or lives in another
+            tenant (no existence leak, NFR-0220).
+        IdentifierNotManuallyVerifiable: 422 — the identifier is not an
+            account_number (phone/email verify via OTP; card is never a plain
+            identifier).
+
+    Side effects:
+        On a real change: sets `verified=True` and writes one
+        `admin.identifier_verified` audit row with before/after verified and the
+        identifier TYPE only — the raw value is NEVER written (NFR-0170).
+    """
+    from app.modules.audit.service import record_audit_for_admin
+
+    # Tenant- AND user-scoped lookup: a wrong tenant, wrong user, or unknown id
+    # all collapse to 404 with no existence leak (NFR-0220).
+    result = await session.execute(
+        select(UserIdentifier).where(
+            UserIdentifier.id == identifier_id,
+            UserIdentifier.user_id == user_id,
+            UserIdentifier.tenant_id == tenant_id,
+        )
+    )
+    identifier = result.scalar_one_or_none()
+    if identifier is None:
+        raise UserNotFound()
+
+    # Only account_number has a manual admin-verification path.
+    if identifier.identifier_type != "account_number":
+        raise IdentifierNotManuallyVerifiable()
+
+    # State-based idempotency: already verified → no-op, no audit row.
+    if identifier.verified:
+        return identifier
+
+    identifier.verified = True
+
+    # NFR-0170: audit the fact + type + before/after flag, NEVER the raw value.
+    record_audit_for_admin(
+        session,
+        admin,
+        tenant_id=tenant_id,
+        action="admin.identifier_verified",
+        entity_type="user",
+        entity_id=str(user_id),
+        before_state={"identifier_type": identifier.identifier_type, "verified": False},
+        after_state={"identifier_type": identifier.identifier_type, "verified": True},
+        ip_address=ip_address,
+    )
+    await session.commit()
+
+    # Re-select AFTER commit so the returned row is a fresh, non-expired instance.
+    reloaded = await session.execute(
+        select(UserIdentifier).where(UserIdentifier.id == identifier_id)
+    )
+    verified = reloaded.scalar_one_or_none()
+    if verified is None:  # pragma: no cover - the commit above guarantees the row
+        raise UserNotFound()
+    return verified
 
 
 async def resolve_identifier(

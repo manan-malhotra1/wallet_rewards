@@ -41,6 +41,7 @@ import { LockoutBadge } from "./lockout-badge";
 import { ResetPinButton } from "./reset-pin-button";
 import { UnlockButton } from "./unlock-button";
 import { UserTypeBadge } from "./user-type-badge";
+import { VerifyIdentifierButton } from "./verify-identifier-button";
 import { WalletBalances } from "./wallet-balances";
 
 const SYSTEM_COUNTERPARTY_LABEL: Record<string, string> = {
@@ -318,6 +319,13 @@ export function UserDetailCard({
                         <ShieldCheck className="h-3 w-3" />
                         Verified
                       </Badge>
+                    ) : ident.identifier_type === "account_number" &&
+                      canManageLockout ? (
+                      <VerifyIdentifierButton
+                        userId={detail.id}
+                        identifierId={ident.id}
+                        tenantId={detail.tenant_id}
+                      />
                     ) : (
                       <Badge variant="secondary">Unverified</Badge>
                     )}
@@ -326,6 +334,10 @@ export function UserDetailCard({
               })}
             </ul>
           )}
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Account numbers are verified manually by an admin; phone and email
+            verify via OTP.
+          </p>
         </div>
       </Section>
 

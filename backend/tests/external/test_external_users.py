@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.secret_box import encrypt_secret
-from app.shared.models import ApiKey, AuditLog, Tenant, User, UserIdentifier
+from app.shared.models import ApiKey, AuditLog, ExternalUserCreation, Tenant, User, UserIdentifier
 
 _SECRET = "ext-partner-secret-do-not-log"
 
@@ -121,12 +121,12 @@ async def test_idempotent_replay_writes_no_second_audit(
     test_tenant: Tenant,
     api_key: dict[str, str],
 ) -> None:
-    """An idempotent replay (existing identifier) must not double-audit."""
+    """A true retry (SAME Idempotency-Key) must not double-audit."""
     raw = json.dumps(_body("dupaudit@example.com")).encode()
     first = await async_client.post(
         "/api/v1/external/users",
         content=raw,
-        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw),
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="retry-key"),
     )
     assert first.status_code == 201, first.text
     user_id = first.json()["id"]
@@ -135,7 +135,7 @@ async def test_idempotent_replay_writes_no_second_audit(
     second = await async_client.post(
         "/api/v1/external/users",
         content=raw2,
-        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw2, idem="idem-key-2"),
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw2, idem="retry-key"),
     )
     assert second.status_code == 200, second.text
 
@@ -200,27 +200,27 @@ async def test_missing_email_or_phone_rejected(
 
 
 @pytest.mark.asyncio
-async def test_idempotent_replay_returns_same_user(
+async def test_same_idempotency_key_replays_same_user(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
     api_key: dict[str, str],
 ) -> None:
-    """Re-sending the same create (same identifier) returns the existing user
-    rather than a 409 — retries are safe, and only one user is created."""
-    raw = json.dumps(_body("dup@example.com")).encode()
+    """A true retry — SAME Idempotency-Key — replays the original user (200),
+    creates no second user, and raises no error (Pay-PRD-0200)."""
+    raw = json.dumps(_body("retry@example.com")).encode()
     first = await async_client.post(
         "/api/v1/external/users",
         content=raw,
-        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw),
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="same-key"),
     )
     assert first.status_code == 201, first.text
 
-    raw2 = json.dumps(_body("dup@example.com")).encode()
+    raw2 = json.dumps(_body("retry@example.com")).encode()
     second = await async_client.post(
         "/api/v1/external/users",
         content=raw2,
-        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw2, idem="idem-key-2"),
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw2, idem="same-key"),
     )
     assert second.status_code == 200, second.text
     assert second.json()["id"] == first.json()["id"]
@@ -229,6 +229,169 @@ async def test_idempotent_replay_returns_same_user(
         select(func.count()).select_from(User).where(User.tenant_id == test_tenant.id)
     )
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_new_key_free_identifier_writes_idempotency_row(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    api_key: dict[str, str],
+) -> None:
+    """A fresh create (new key, free identifier) records the key->user mapping
+    that a later retry replays from."""
+    raw = json.dumps(_body("recorded@example.com")).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="record-key"),
+    )
+    assert resp.status_code == 201, resp.text
+    user_id = resp.json()["id"]
+
+    row = (
+        await db_session.execute(
+            select(ExternalUserCreation).where(
+                ExternalUserCreation.tenant_id == test_tenant.id,
+                ExternalUserCreation.idempotency_key == "record-key",
+            )
+        )
+    ).scalar_one()
+    assert str(row.user_id) == user_id
+
+
+@pytest.mark.asyncio
+async def test_new_key_taken_identifier_returns_409(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    api_key: dict[str, str],
+) -> None:
+    """A NEW Idempotency-Key whose identifier is already taken is a genuine
+    conflict — 409 identifier_already_in_use, NOT a silent replay of the
+    existing user (S4: don't leak identifier existence)."""
+    raw = json.dumps(_body("conflict@example.com")).encode()
+    first = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="key-a"),
+    )
+    assert first.status_code == 201, first.text
+
+    raw2 = json.dumps(_body("conflict@example.com")).encode()
+    second = await async_client.post(
+        "/api/v1/external/users",
+        content=raw2,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw2, idem="key-b"),
+    )
+    assert second.status_code == 409, second.text
+    assert second.json()["error_code"] == "identifier_already_in_use"
+
+    # Still exactly one user — the conflict created nothing.
+    count = await db_session.scalar(
+        select(func.count()).select_from(User).where(User.tenant_id == test_tenant.id)
+    )
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_store_insert_conflict_replays_winner(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    api_key: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The concurrent same-key race: if the idempotency-row INSERT hits the
+    UNIQUE (tenant, key) because another request won, we roll back and replay
+    the winner's user (200) rather than surfacing the IntegrityError or a 409.
+
+    True concurrency is impractical against the shared test DB, so we force the
+    INSERT-collision branch: pre-seed the winner's mapping and make the initial
+    idempotency lookup miss once (the race window between fast-path and INSERT).
+    """
+    # Seed the "winner": an already-created user + its recorded mapping.
+    winner_raw = json.dumps(_body("winner@example.com")).encode()
+    winner = await async_client.post(
+        "/api/v1/external/users",
+        content=winner_raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], winner_raw, idem="winner-key"),
+    )
+    assert winner.status_code == 201, winner.text
+    winner_id = winner.json()["id"]
+
+    db_session.add(
+        ExternalUserCreation(
+            tenant_id=test_tenant.id,
+            idempotency_key="race-key",
+            user_id=winner_id,
+        )
+    )
+    await db_session.commit()
+
+    # Force the fast-path lookup to miss exactly once, so the loser proceeds to
+    # create + INSERT and collides with the seeded mapping.
+    import app.modules.external.service as ext_service
+
+    real_lookup = ext_service._find_external_creation
+    calls = {"n": 0}
+
+    async def _miss_once(session: AsyncSession, tenant_id: object, key: str) -> object:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return await real_lookup(session, tenant_id, key)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ext_service, "_find_external_creation", _miss_once)
+
+    raw = json.dumps(_body("loser@example.com")).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="race-key"),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["id"] == winner_id  # replayed the winner, not the loser
+
+
+@pytest.mark.asyncio
+async def test_same_key_two_tenants_creates_independently(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    other_tenant: Tenant,
+    api_key: dict[str, str],
+) -> None:
+    """The idempotency key is tenant-scoped: the SAME key in two tenants (via
+    two keys) creates two independent users."""
+    other_secret = "ext-partner-secret-other"
+    db_session.add(
+        ApiKey(
+            tenant_id=other_tenant.id,
+            key_id="sak_live_other",
+            secret_encrypted=encrypt_secret(other_secret),
+        )
+    )
+    await db_session.commit()
+
+    raw = json.dumps(_body("shared@example.com")).encode()
+    first = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="cross-tenant-key"),
+    )
+    assert first.status_code == 201, first.text
+    assert first.json()["tenant_id"] == str(test_tenant.id)
+
+    raw2 = json.dumps(_body("shared@example.com")).encode()
+    second = await async_client.post(
+        "/api/v1/external/users",
+        content=raw2,
+        headers=_sign_headers("sak_live_other", other_secret, raw2, idem="cross-tenant-key"),
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["tenant_id"] == str(other_tenant.id)
+    assert second.json()["id"] != first.json()["id"]
 
 
 @pytest.mark.asyncio

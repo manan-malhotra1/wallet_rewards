@@ -288,7 +288,10 @@ async def create_user(
     IntegrityError and re-raise as a clean 409 (Pay-PRD-0070).
 
     Args:
-        session: Async DB session (NOT committed here — caller commits).
+        session: Async DB session. COMMITTED here (the user, identifiers,
+            referral code, and any pending referral land atomically). Callers
+            that need to attach follow-on rows (e.g. an external idempotency
+            mapping) must commit those separately — this fn owns its commit.
         request: Validated registration payload.
         admin: Authenticated admin (audit context). Direct-registration is
             admin-only after Phase F.4; absent for OTP-flow self-registration.

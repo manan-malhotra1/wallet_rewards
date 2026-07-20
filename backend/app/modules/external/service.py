@@ -17,18 +17,23 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.auth.api_key import ApiKeyPrincipal
 from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_system
 from app.modules.commissions.service import calculate_commission
 from app.modules.external.schemas import (
+    ExternalCreateUserRequest,
     ExternalFundRequest,
     ExternalWithdrawRequest,
     MerchantCashinRequest,
     MerchantCashinResponse,
 )
+from app.modules.identity.schemas import CreateUserRequest, IdentifierIn
+from app.modules.identity.service import create_user
 from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
 from app.modules.limits.service import check_limits, check_wallet_send_limits
 from app.modules.payments.service import fund
@@ -57,15 +62,167 @@ from app.shared.exceptions import (
     AccountNotFound,
     DuplicateIdempotencyKey,
     FundingTemporarilyUnavailable,
+    IdentifierAlreadyInUse,
     InsufficientFloat,
     InsufficientFunds,
     NotAMerchantKey,
     SelfTransferNotAllowed,
 )
-from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET, Account, Transaction
+from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
+    Account,
+    ExternalUserCreation,
+    Transaction,
+    User,
+)
 from app.shared.models import ENTRY_DEBIT as _ENTRY_DEBIT
 
 MERCHANT_CASHIN_SERVICE_CODE = "merchant_cashin"
+
+
+async def _find_external_creation(
+    session: AsyncSession, tenant_id: UUID, idempotency_key: str
+) -> User | None:
+    """Return the user recorded for this `(tenant, idempotency_key)`, or None.
+
+    The user's identifiers are eager-loaded so a caller can serialise a
+    `UserOut` without a post-commit lazy load.
+
+    Args:
+        session: Async DB session.
+        tenant_id: The API key's tenant (never the body).
+        idempotency_key: The partner's `Idempotency-Key` header value.
+
+    Returns:
+        The originally-created `User`, or None if the key was never recorded.
+    """
+    row = (
+        await session.execute(
+            select(ExternalUserCreation).where(
+                ExternalUserCreation.tenant_id == tenant_id,
+                ExternalUserCreation.idempotency_key == idempotency_key,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    result = await session.execute(
+        select(User).options(selectinload(User.identifiers)).where(User.id == row.user_id)
+    )
+    return result.scalar_one()
+
+
+async def external_create_user(
+    session: AsyncSession,
+    *,
+    principal: ApiKeyPrincipal,
+    payload: ExternalCreateUserRequest,
+    idempotency_key: str,
+) -> tuple[User, bool]:
+    """Create a partner end-user, keyed idempotently on the `Idempotency-Key`.
+
+    The idempotency KEY — not the identifier — is the replay anchor
+    (Pay-PRD-0200):
+
+    - A retry whose key was already recorded replays the original user (no new
+      user, no error).
+    - A NEW key whose identifier is already taken is a genuine conflict and
+      propagates `IdentifierAlreadyInUse` (409) — it does NOT silently return
+      the existing user (that leaked identifier existence, S4).
+    - A new key with a free identifier creates the user and records the mapping.
+
+    Privilege/trust-relevant fields are forced server-side (S7 H1): a partner
+    always gets a `consumer` with no parent and cannot assert identifier
+    verification.
+
+    Args:
+        session: Async DB session (committed here).
+        principal: The authenticated API key — supplies the tenant + audit actor.
+        payload: The restricted partner create-user payload.
+        idempotency_key: The required `Idempotency-Key` header value.
+
+    Returns:
+        `(user, created)` — `created` is True for a fresh create (HTTP 201) and
+        False for an idempotent replay (HTTP 200); the router maps the flag.
+
+    Raises:
+        IdentifierAlreadyInUse (409): a NEW key collided with a taken identifier.
+
+    Side effects:
+        Inserts a `users` row (via identity.create_user), an
+        `external_user_creations` idempotency row, and a system-actor audit row.
+    """
+    tenant_id = principal.tenant_id
+
+    # Idempotency fast-path: a retry with a key we've already recorded replays
+    # the original user. The KEY drives dedup, never the identifier.
+    replay = await _find_external_creation(session, tenant_id, idempotency_key)
+    if replay is not None:
+        return replay, False
+
+    # Force privilege/trust-relevant fields server-side (S7 H1): a consumer with
+    # no parent, and no partner-asserted identifier verification.
+    create_req = CreateUserRequest(
+        tenant_id=tenant_id,
+        identifiers=[
+            IdentifierIn(
+                identifier_type=i.identifier_type,
+                identifier_value=i.identifier_value,
+                verified=False,
+            )
+            for i in payload.identifiers
+        ],
+        profile=payload.profile,
+        user_type="consumer",
+        parent_user_id=None,
+    )
+    try:
+        user = await create_user(session, create_req)
+    except IdentifierAlreadyInUse:
+        # A concurrent same-key request may have created the user between our
+        # fast-path miss and this create — if the key is now recorded, replay
+        # rather than 409. Otherwise it is a genuine conflict (new key, taken
+        # identifier) and the 409 propagates.
+        replay = await _find_external_creation(session, tenant_id, idempotency_key)
+        if replay is not None:
+            return replay, False
+        raise
+
+    # create_user already committed the user; record the idempotency mapping +
+    # a system-actor audit row (the partner path has no admin principal, so
+    # create_user did not audit) and commit them together.
+    session.add(
+        ExternalUserCreation(
+            tenant_id=tenant_id,
+            idempotency_key=idempotency_key,
+            user_id=user.id,
+        )
+    )
+    record_audit_for_system(
+        session,
+        tenant_id=tenant_id,
+        actor_id=f"apikey:{principal.key_id}",
+        action="user.created",
+        entity_type="user",
+        entity_id=str(user.id),
+        after_state={
+            "identifier_count": len(create_req.identifiers),
+            "has_profile": create_req.profile is not None,
+            "user_type": user.user_type,
+        },
+    )
+    try:
+        await session.commit()
+    except IntegrityError:
+        # A concurrent same-key request won the UNIQUE (tenant, key) race. Roll
+        # back our mapping/audit and replay the winner's user (200) — a
+        # concurrent retry must still replay, not 409.
+        await session.rollback()
+        replay = await _find_external_creation(session, tenant_id, idempotency_key)
+        if replay is not None:
+            return replay, False
+        raise
+    return user, True
 
 
 async def _find_by_idempotency(

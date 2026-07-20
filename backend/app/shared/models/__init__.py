@@ -96,6 +96,7 @@ from app.shared.models.events import (
     EventIngestionLog,
     ExternalEventSource,
 )
+from app.shared.models.external_user_creations import ExternalUserCreation
 from app.shared.models.instruments import (
     INSTRUMENT_STATUS_ACTIVE,
     INSTRUMENT_STATUS_DISABLED,
@@ -448,6 +449,8 @@ __all__ = [
     "EventIngestionLog",
     # Events
     "ExternalEventSource",
+    # External partner create-user idempotency (Epic 14)
+    "ExternalUserCreation",
     # Instruments catalog (Phase 3)
     "Instrument",
     "LedgerEntry",

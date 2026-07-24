@@ -1,0 +1,35 @@
+/**
+ * Tests for config-type label mapping — every ConfigType must resolve to a
+ * friendly label so a raw code never leaks into a maker-checker surface.
+ */
+import { describe, expect, it } from "vitest";
+
+import { configTypeLabel } from "@/lib/config-type-label";
+import type { ConfigType } from "@/lib/api-types";
+
+/** The full set of config types the UI must label. */
+const ALL_CONFIG_TYPES: ConfigType[] = [
+  "pricing",
+  "limit",
+  "wallet_limit",
+  "commission",
+  "tax",
+  "step_up",
+];
+
+describe("configTypeLabel covers every config type", () => {
+  it.each(ALL_CONFIG_TYPES)("returns a non-code label for %s", (type) => {
+    const label = configTypeLabel(type);
+    expect(label).toBeTruthy();
+    expect(label).not.toBe(type);
+    expect(label).not.toContain("_");
+  });
+
+  it("labels step_up as 'Step-up PIN policy'", () => {
+    expect(configTypeLabel("step_up")).toBe("Step-up PIN policy");
+  });
+
+  it("labels pricing as 'Service charge'", () => {
+    expect(configTypeLabel("pricing")).toBe("Service charge");
+  });
+});

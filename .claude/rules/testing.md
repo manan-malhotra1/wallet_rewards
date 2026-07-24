@@ -58,14 +58,33 @@ For each of the 7 rule types, at minimum:
 
 ## Frontend (admin-ui)
 
-- Vitest + Testing Library for unit/integration.
+Frontend automation testing is ACTIVE (previously deferred — see
+`coding-guidelines.md` §4).
+
+- Vitest + Testing Library for unit/integration, on a jsdom environment.
+- Harness: `admin-ui/vitest.config.ts` + `admin-ui/vitest.setup.ts`. The setup
+  file registers jest-dom matchers, an `afterEach(cleanup)`, and the jsdom
+  polyfills Radix UI needs (`scrollIntoView`, pointer-capture, `matchMedia`).
+- The `@/` alias is read from `tsconfig.json` so it tracks the build.
 - Playwright for E2E happy paths (Phase 2; not required for MVP).
 
-### Required coverage
+### What to test
 
-- Form components: valid submit, invalid validation, server-error display
-- Tables: sort, filter, multi-select, bulk action
-- Command palette: open via ⌘K, fuzzy search, command execution
+- `lib/` helpers: pure functions (labels, scope keys, formatters, diffing).
+- Form components: valid submit, invalid validation, server-error display.
+- Tables: sort, filter, multi-select, bulk action.
+- Command palette: open via ⌘K, fuzzy search, command execution.
+- Use Testing Library queries (`getByRole` / `getByLabelText`), not
+  implementation details. Mock server actions via `vi.mock` on the route's
+  `_actions` module — never call the backend from a component test.
+
+### Running
+
+```bash
+cd admin-ui
+npm test          # vitest run — non-interactive, exits (use in CI)
+npm run test:watch # watch mode for local development
+```
 
 ## What to mock
 

@@ -134,15 +134,25 @@ Every backend interface that another system can call MUST have automated tests:
 
 ---
 
-## 4. Frontend automation tests — DEFERRED
+## 4. Frontend automation tests — ACTIVE
 
-Frontend (admin-ui) automation testing is intentionally deferred to a later phase.
+Frontend (admin-ui) automation testing is now expected. The harness is Vitest +
+Testing Library on a jsdom DOM environment, configured in
+`admin-ui/vitest.config.ts` (with `admin-ui/vitest.setup.ts`). Run it with
+`npm test` (`vitest run` — non-interactive; `npm run test:watch` for watch mode).
 
-- Do NOT write Vitest/Playwright tests for admin-ui unless explicitly asked.
-- Do NOT block frontend PRs on missing tests.
-- Manual smoke testing in the browser is the current bar.
-
-When this changes, update this file and update `automation-testing` agent's scope.
+- **Write tests for:**
+  - `admin-ui/lib/` helpers — pure functions (labels, scope keys, formatters,
+    diffing). These are fast, DOM-free, and carry the coverage gate (see §
+    testing.md, 80% on `admin-ui/lib/`).
+  - Key interactive components — forms, dialogs, and the command palette, using
+    Testing Library queries (`getByRole` / `getByLabelText`), not implementation
+    details. Prioritise the components behind money/config maker-checker flows.
+- Co-locate tests as `*.test.ts` / `*.test.tsx` next to the source (kebab-case).
+- Mock server actions (`vi.mock` the route's `_actions` module); never hit the
+  backend from a component test.
+- Playwright / E2E remains Phase 2 (not required for MVP).
+- Don't chase 100%: cover lib helpers and the high-value interactive paths.
 
 ---
 

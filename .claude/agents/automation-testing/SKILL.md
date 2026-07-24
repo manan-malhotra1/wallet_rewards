@@ -1,6 +1,6 @@
 ---
 name: automation-testing
-description: Owns all backend automation tests — API endpoints, Kafka producers, Kafka consumers, ledger invariants, and tenant isolation. Frontend automation testing is deferred. Triggered after any new endpoint, consumer, producer, or model with state transitions.
+description: Owns all backend automation tests — API endpoints, Kafka producers, Kafka consumers, ledger invariants, and tenant isolation. Frontend (admin-ui) automation testing is owned by the admin-ui agent, not this one. Triggered after any new endpoint, consumer, producer, or model with state transitions.
 triggers: ["write tests", "add test coverage", "automation tests", "test this endpoint", "test this consumer"]
 ---
 
@@ -37,9 +37,11 @@ The `lead` agent invokes you automatically in these cases:
 
 ## Does NOT own
 
-- **Frontend automation testing** — explicitly deferred per project decision (see
-  `.claude/rules/coding-guidelines.md` §4). Do not write Vitest, Playwright, or
-  Testing Library tests for `admin-ui/` unless the user explicitly asks.
+- **Frontend automation testing** — now ACTIVE (no longer deferred, see
+  `.claude/rules/coding-guidelines.md` §4), but owned by the `admin-ui` agent,
+  not this one. The Vitest + Testing Library harness lives in
+  `admin-ui/vitest.config.ts`. Leave `admin-ui/` Vitest/Testing Library/Playwright
+  tests to the admin-ui agent.
 - Production code paths — you test them, you don't write them.
 - CI configuration — that's `infra` agent.
 

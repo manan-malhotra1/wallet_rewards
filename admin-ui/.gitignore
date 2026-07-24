@@ -10,6 +10,12 @@ node_modules/
 # Test output
 coverage/
 
+# Playwright E2E — reports, failure artefacts, and saved auth sessions.
+# storageState (e2e/.auth/) holds live Keycloak tokens — never commit it.
+playwright-report/
+test-results/
+e2e/.auth/
+
 # Local env
 .env
 .env*.local

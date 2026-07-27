@@ -1,4 +1,4 @@
-"""System-account provisioning on instrument create (Epic 28, Story 28.1).
+"""Currency system-account provisioning.
 
 Creating a new currency must eagerly provision that currency's SYSTEM
 accounts so it shows up complete on the System Wallets page, instead of
@@ -66,7 +66,7 @@ async def test_create_financial_instrument_provisions_five_system_accounts(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A fresh financial currency gets exactly its 5 money system accounts."""
+    """Verify adding a money currency sets up its five system accounts"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -95,7 +95,7 @@ async def test_financial_instrument_does_not_provision_operator_adjustment(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """operator_adjustment (the named bank mirror) is intentionally excluded."""
+    """Verify adding a money currency does not create the bank-mirror account"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -122,7 +122,7 @@ async def test_create_points_instrument_provisions_points_issuance(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A fresh points currency gets its system_points_issuance master."""
+    """Verify adding a points currency sets up its points-issuance account"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -155,7 +155,7 @@ async def test_points_instrument_reports_one_provisioned_account(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A points instrument audit records system_accounts == 1."""
+    """Verify adding a points currency records one provisioned account in the audit trail"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -189,7 +189,7 @@ async def test_audit_after_state_carries_system_accounts_count(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A financial instrument audit records system_accounts == 5."""
+    """Verify adding a money currency records five provisioned accounts in the audit trail"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -225,7 +225,7 @@ async def test_provisioning_is_idempotent_when_accounts_preexist(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Pre-seeded system accounts are not duplicated by instrument create."""
+    """Verify adding a currency does not duplicate system accounts that already exist"""
     # Pre-seed the 5 money system accounts for KES (the lazy path having
     # already touched this currency before the instrument was created).
     for account_type in _FINANCIAL_SYSTEM_TYPES:
@@ -259,7 +259,7 @@ async def test_lazy_get_or_create_returns_same_account_after_provision(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """The lazy cash-inflow helper returns the row provisioning already made."""
+    """Verify the first transaction reuses the system account already provisioned"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,

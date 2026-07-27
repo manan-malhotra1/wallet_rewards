@@ -1,4 +1,4 @@
-"""Model tests for MerchantProfile (Epic 17 S1).
+"""Merchant profiles.
 
 A merchant profile extends a `user_type='merchant'` user (Decision D1) with the
 business + provider metadata an airtime (or future) merchant needs. These tests
@@ -35,7 +35,7 @@ async def _make_merchant_user(session: AsyncSession, tenant: Tenant) -> User:
 async def test_merchant_profile_persists_with_server_defaults(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A profile persists and mode/status fall back to their server defaults."""
+    """Verify a new merchant profile is saved with sensible defaults"""
     user = await _make_merchant_user(db_session, test_tenant)
     profile = MerchantProfile(
         tenant_id=test_tenant.id,
@@ -58,7 +58,7 @@ async def test_merchant_profile_persists_with_server_defaults(
 async def test_merchant_profile_is_tenant_scoped(
     db_session: AsyncSession, test_tenant: Tenant, other_tenant: Tenant
 ) -> None:
-    """A profile in one tenant is invisible when querying another tenant."""
+    """Verify a merchant profile in one tenant is invisible to another tenant"""
     user = await _make_merchant_user(db_session, test_tenant)
     db_session.add(
         MerchantProfile(
@@ -87,7 +87,7 @@ async def test_merchant_profile_is_tenant_scoped(
 async def test_only_one_active_merchant_per_service_per_tenant(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Two ACTIVE merchants serving the same service in a tenant is rejected."""
+    """Verify only one active merchant can serve a given service in a tenant"""
     u1 = await _make_merchant_user(db_session, test_tenant)
     u2 = await _make_merchant_user(db_session, test_tenant)
     db_session.add(

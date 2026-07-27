@@ -1,4 +1,4 @@
-"""Schema validation for composite rule creation — Epic 10 / WAL-75.
+"""Composite rule setup validation.
 
 Composite rules require `composite_operator` in {AND, OR} and >= 2
 sub-conditions; non-composite rules must not carry either. The persistence
@@ -23,7 +23,7 @@ async def test_create_composite_rule_persists_conditions(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """A valid composite rule persists its operator + condition rows."""
+    """Verify an admin can create a combined-condition reward rule"""
     resp = await async_client.post(
         "/api/v1/rules",
         json={
@@ -60,7 +60,7 @@ async def test_create_composite_rule_persists_conditions(
 async def test_composite_without_operator_is_422(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Composite rule missing composite_operator → 422."""
+    """Verify a combined-condition rule is rejected when its and-or-or choice is missing"""
     resp = await async_client.post(
         "/api/v1/rules",
         json={
@@ -82,7 +82,7 @@ async def test_composite_without_operator_is_422(
 async def test_composite_with_single_condition_is_422(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Composite rule with fewer than 2 conditions → 422."""
+    """Verify a combined-condition rule is rejected when it has fewer than two conditions"""
     resp = await async_client.post(
         "/api/v1/rules",
         json={
@@ -104,7 +104,7 @@ async def test_composite_with_single_condition_is_422(
 async def test_non_composite_rule_rejects_conditions(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """A milestone rule carrying conditions → 422 (composite-only field)."""
+    """Verify a simple rule is rejected when it carries combined-condition settings"""
     resp = await async_client.post(
         "/api/v1/rules",
         json={
@@ -128,7 +128,7 @@ async def test_non_composite_rule_rejects_conditions(
 async def test_non_composite_rule_rejects_composite_operator(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """A first_time rule carrying composite_operator → 422."""
+    """Verify a simple rule is rejected when it carries an and-or-or choice"""
     resp = await async_client.post(
         "/api/v1/rules",
         json={

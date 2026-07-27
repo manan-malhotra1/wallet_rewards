@@ -1,4 +1,4 @@
-"""Integration tests for the airtime provider callback + operator resolve (S5).
+"""Airtime provider callbacks and operator resolve.
 
 POST /api/v1/airtime/{id}/callback is HMAC-verified against the merchant's
 decrypted callback secret and finalises a PENDING recharge (the async path for
@@ -204,7 +204,7 @@ async def test_callback_completes_pending_recharge(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A signed 'completed' callback flips a PENDING recharge to COMPLETED."""
+    """Verify a provider success callback completes a pending airtime recharge"""
     recharge_id = await _create_pending(async_client, alice_auth_header)
     raw = json.dumps({"outcome": "completed", "provider_reference": "MTN-XYZ"}).encode()
 
@@ -231,7 +231,7 @@ async def test_callback_failed_reverses_and_refunds(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A signed 'failed' callback reverses the reservation and refunds the user."""
+    """Verify a provider failure callback refunds the customer"""
     recharge_id = await _create_pending(async_client, alice_auth_header)
     raw = json.dumps({"outcome": "failed", "reason": "mno_rejected"}).encode()
 
@@ -255,7 +255,7 @@ async def test_callback_bad_signature_rejected(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A signature computed with the wrong secret -> 401."""
+    """Verify an airtime callback with an invalid signature is rejected"""
     recharge_id = await _create_pending(async_client, alice_auth_header)
     raw = json.dumps({"outcome": "completed"}).encode()
     resp = await async_client.post(
@@ -273,7 +273,7 @@ async def test_callback_missing_signature_rejected(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """No X-Sasai-Signature header -> 422 (header is required)."""
+    """Verify an airtime callback without a signature is rejected"""
     recharge_id = await _create_pending(async_client, alice_auth_header)
     raw = json.dumps({"outcome": "completed"}).encode()
     resp = await async_client.post(
@@ -291,7 +291,7 @@ async def test_callback_on_terminal_recharge_rejected(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A callback on an already-settled recharge -> 409 (idempotent guard)."""
+    """Verify a callback on an already-settled recharge is rejected"""
     # A success msisdn resolves synchronously to COMPLETED.
     created = await async_client.post(
         "/api/v1/airtime/recharge",
@@ -315,7 +315,7 @@ async def test_callback_on_terminal_recharge_rejected(
 async def test_callback_unknown_recharge_returns_404(
     async_client: AsyncClient, signed_merchant: MerchantProfile
 ) -> None:
-    """A callback for an unknown recharge id -> 404."""
+    """Verify a callback for an unknown recharge is rejected"""
     raw = json.dumps({"outcome": "completed"}).encode()
     resp = await async_client.post(
         f"/api/v1/airtime/{uuid4()}/callback",
@@ -339,7 +339,7 @@ async def test_admin_resolve_completes_pending_recharge(
     alice_auth_header: dict[str, str],
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An operator can force a stuck PENDING recharge to COMPLETED."""
+    """Verify an operator can force a stuck pending recharge to complete"""
     recharge_id = await _create_pending(async_client, alice_auth_header)
     resp = await async_client.post(
         f"/api/v1/airtime/{recharge_id}/resolve",
@@ -358,7 +358,7 @@ async def test_resolve_requires_admin(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A non-admin (user session token) cannot resolve a recharge."""
+    """Verify a customer cannot force-resolve a recharge"""
     recharge_id = await _create_pending(async_client, alice_auth_header)
     resp = await async_client.post(
         f"/api/v1/airtime/{recharge_id}/resolve",
@@ -377,7 +377,7 @@ async def test_resolve_on_terminal_recharge_rejected(
     alice_auth_header: dict[str, str],
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Operator resolve on an already-settled recharge -> 409 (S7 A1 guard)."""
+    """Verify an operator cannot resolve an already-settled recharge"""
     created = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body(_SUCCESS_MSISDN)),

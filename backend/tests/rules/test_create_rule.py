@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/rules (Phase C rule CRUD)."""
+"""Creating reward rules."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from app.shared.models import Tenant
 async def test_create_first_time_rule_happy_path(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """A valid first_time rule persists with status='active'."""
+    """Verify an admin can create a first-time reward rule that goes live"""
     response = await async_client.post(
         "/api/v1/rules",
         json={
@@ -36,7 +36,7 @@ async def test_create_first_time_rule_happy_path(
 async def test_create_milestone_rule_happy_path(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """A valid milestone rule with threshold persists."""
+    """Verify an admin can create a milestone reward rule"""
     response = await async_client.post(
         "/api/v1/rules",
         json={
@@ -57,7 +57,7 @@ async def test_create_milestone_rule_happy_path(
 async def test_create_milestone_rule_requires_count_threshold(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Milestone without count_threshold fails validation."""
+    """Verify a milestone rule is rejected when its target count is missing"""
     response = await async_client.post(
         "/api/v1/rules",
         json={
@@ -76,7 +76,7 @@ async def test_create_milestone_rule_requires_count_threshold(
 async def test_create_first_time_rule_rejects_count_threshold(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """First-time rules must NOT specify count_threshold."""
+    """Verify a first-time rule is rejected when it sets a target count"""
     response = await async_client.post(
         "/api/v1/rules",
         json={
@@ -96,7 +96,7 @@ async def test_create_first_time_rule_rejects_count_threshold(
 async def test_create_rule_rejects_unknown_tenant(
     async_client: AsyncClient,
 ) -> None:
-    """Unknown tenant_id → 404."""
+    """Verify a rule cannot be created for an unknown business"""
     response = await async_client.post(
         "/api/v1/rules",
         json={
@@ -117,7 +117,7 @@ async def test_list_rules_returns_only_tenant_rules(
     test_tenant: Tenant,
     other_tenant: Tenant,
 ) -> None:
-    """GET /rules filters by tenant_id — no cross-tenant leakage."""
+    """Verify a business only sees its own reward rules"""
     # Create rule in test_tenant.
     await async_client.post(
         "/api/v1/rules",

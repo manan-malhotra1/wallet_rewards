@@ -1,4 +1,4 @@
-"""Referral rule schema validation — pure Pydantic, no DB (Epic 10 / WAL-77).
+"""Referral rule setup validation.
 
 Covers the cross-field rules the evaluator relies on:
   - a referral rule REQUIRES referral_trigger
@@ -20,7 +20,7 @@ _TENANT = "00000000-0000-4000-8000-000000000001"
 
 
 def test_referral_rule_without_trigger_is_rejected() -> None:
-    """A referral rule must declare referral_trigger."""
+    """Verify a referral rule is rejected when its trigger is missing"""
     with pytest.raises(ValidationError, match="referral_trigger"):
         RuleCreateRequest(
             tenant_id=_TENANT,
@@ -32,7 +32,7 @@ def test_referral_rule_without_trigger_is_rejected() -> None:
 
 
 def test_nth_transaction_referral_without_n_is_rejected() -> None:
-    """An 'nth_transaction' referral rule must set referral_trigger_n >= 1."""
+    """Verify a transaction-count referral rule is rejected when the required count is missing"""
     with pytest.raises(ValidationError, match="referral_trigger_n"):
         RuleCreateRequest(
             tenant_id=_TENANT,
@@ -45,7 +45,7 @@ def test_nth_transaction_referral_without_n_is_rejected() -> None:
 
 
 def test_referral_fields_rejected_on_non_referral_rule() -> None:
-    """Referral config must not leak onto other rule types."""
+    """Verify referral settings are rejected on a non-referral rule"""
     with pytest.raises(ValidationError, match="referral_trigger"):
         RuleCreateRequest(
             tenant_id=_TENANT,
@@ -60,7 +60,7 @@ def test_referral_fields_rejected_on_non_referral_rule() -> None:
 
 
 def test_well_formed_signup_referral_rule_validates() -> None:
-    """A signup referral rule with an optional referee reward is valid."""
+    """Verify a well-formed signup referral rule is accepted"""
     req = RuleCreateRequest(
         tenant_id=_TENANT,
         name="invite a friend",

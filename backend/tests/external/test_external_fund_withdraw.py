@@ -1,4 +1,4 @@
-"""Integration tests for the external partner fund/withdraw API (Epic 18 S2).
+"""Partner fund and withdraw over a customer wallet.
 
 HMAC-signed, tenant derived from the API key, partner Idempotency-Key used as
 the ledger transaction key (safe retries), type-aware limits enforced.
@@ -186,7 +186,7 @@ async def test_external_fund_credits_user_wallet(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """A signed fund credits the user's wallet in the key's tenant."""
+    """Verify a partner can top up a customer from their float"""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
     resp = await async_client.post(
@@ -203,7 +203,7 @@ async def test_external_fund_credits_user_wallet(
 async def test_external_fund_missing_auth_rejected(
     async_client: AsyncClient, test_user: User, api_key: dict[str, str]
 ) -> None:
-    """No API key / signature → 401."""
+    """Verify an unsigned fund request is rejected"""
     raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
     resp = await async_client.post(
         "/api/v1/external/fund",
@@ -222,7 +222,7 @@ async def test_external_fund_idempotent_replay(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """Replaying the same Idempotency-Key funds the wallet exactly once."""
+    """Verify replaying a fund request tops up the wallet only once"""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
     first = await async_client.post(
@@ -250,8 +250,7 @@ async def test_external_fund_unknown_user_in_key_tenant_404(
     test_user: User,
     api_key: dict[str, str],
 ) -> None:
-    """The key scopes the tenant: a user that exists only in ANOTHER tenant
-    doesn't resolve → 404 (tenant isolation via the key)."""
+    """Verify a partner cannot fund a customer who is not in its own tenant"""
     # test_user belongs to test_tenant; the key is for test_tenant, but we ask
     # for a phone that isn't registered there.
     raw = json.dumps(_fund_body("+27829999999")).encode()
@@ -277,7 +276,7 @@ async def test_external_withdraw_debits_user_wallet(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """A signed withdraw debits the user's wallet."""
+    """Verify a partner can withdraw from a customer's wallet"""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
     body = {
         "identifier_type": "phone",
@@ -304,7 +303,7 @@ async def test_external_withdraw_all_empties_wallet(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """withdraw_all with no amount pulls the full balance."""
+    """Verify a partner can withdraw a customer's entire balance"""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
     body = {
         "identifier_type": "phone",
@@ -332,7 +331,7 @@ async def test_external_withdraw_insufficient_funds(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """Withdrawing more than the balance → 409."""
+    """Verify a withdrawal for more than the balance is rejected"""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("100"))
     body = {
         "identifier_type": "phone",
@@ -358,7 +357,7 @@ async def test_external_withdraw_bad_signature_rejected(
     test_user: User,
     api_key: dict[str, str],
 ) -> None:
-    """Signature computed with the wrong secret → 401."""
+    """Verify a withdrawal with an invalid signature is rejected"""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("100"))
     body = {
         "identifier_type": "phone",
@@ -383,7 +382,7 @@ async def test_external_withdraw_amount_and_all_rejected(
     test_user: User,
     api_key: dict[str, str],
 ) -> None:
-    """Both amount and withdraw_all → 422 (schema)."""
+    """Verify a withdrawal cannot request both a fixed amount and the full balance"""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("100"))
     body = {
         "identifier_type": "phone",
@@ -410,8 +409,7 @@ async def test_external_withdraw_idempotent_replay(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """Replaying the same key withdraws exactly once, even though the first
-    withdraw is now in the rolling total."""
+    """Verify replaying a withdrawal takes the money only once"""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
     body = {
         "identifier_type": "phone",
@@ -445,7 +443,7 @@ async def test_external_withdraw_enforces_type_aware_limit(
     test_user: User,
     api_key: dict[str, str],
 ) -> None:
-    """A configured max_amount on the 'withdraw' limit caps the partner."""
+    """Verify a withdrawal above the configured limit is rejected"""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
     # The gate needs a pricing config too; add it (zero-fee) so the request
     # reaches the limit check and trips AmountAboveMax rather than the gate.
@@ -486,7 +484,7 @@ async def test_external_reused_key_across_ops_conflicts(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """An Idempotency-Key used for fund cannot be reused for withdraw (S4 M-03)."""
+    """Verify an idempotency key used for a fund cannot be reused for a withdrawal"""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
     fund_raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
     fund = await async_client.post(
@@ -568,9 +566,7 @@ async def test_external_withdraw_concurrent_distinct_keys_cannot_overdraft(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """H-01: two concurrent withdraws (DISTINCT keys) for the full balance must
-    NOT both commit — exactly one succeeds, the wallet never goes negative, and
-    exactly one debit is posted.
+    """Verify two simultaneous withdrawals cannot overdraw the wallet.
 
     Distinct keys defeat the idempotency guard by design, so the ONLY thing that
     can prevent the double-spend is the wallet FOR UPDATE lock held continuously
@@ -616,9 +612,7 @@ async def test_external_withdraw_all_concurrent_cannot_double_drain(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """H-01 (withdraw_all variant): two concurrent `withdraw_all` calls cannot
-    each pull the full balance. withdraw_all needs no balance knowledge, so the
-    race is easier to trigger — exactly one drains it, the other gets 409."""
+    """Verify two simultaneous full withdrawals cannot drain the wallet twice"""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("100"))
     body = {
         "identifier_type": "phone",
@@ -659,9 +653,7 @@ async def test_external_fund_concurrent_cannot_exceed_max_balance(
     api_key: dict[str, str],
     fund_withdraw_configs: None,
 ) -> None:
-    """M-01: with a max_balance ceiling configured, two concurrent funds that are
-    each individually under the cap but jointly over it must NOT both land — the
-    wallet may never exceed max_balance.
+    """Verify two simultaneous top-ups cannot push a wallet past its balance ceiling.
 
     Cap 150, wallet starts at 0, each fund is 100: sequentially the first lands
     (100) and the second is rejected (100+100 > 150). Without a wallet lock, both
@@ -715,7 +707,7 @@ async def test_external_fund_fails_closed_when_no_config(
     test_user: User,
     api_key: dict[str, str],
 ) -> None:
-    """No fund pricing/limit config → 422 service_not_configured, no credit."""
+    """Verify a fund is refused when the service has no pricing or limit set up"""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
     resp = await async_client.post(
@@ -737,7 +729,7 @@ async def test_external_fund_fails_closed_when_only_pricing(
     test_user: User,
     api_key: dict[str, str],
 ) -> None:
-    """Pricing present but limit missing → still 422 (BOTH required)."""
+    """Verify a fund is refused when a limit is not set up"""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     await _seed_service_configs(db_session, test_tenant, service="fund", with_limit=False)
     raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
@@ -759,7 +751,7 @@ async def test_external_fund_succeeds_once_both_configs_exist(
     test_user: User,
     api_key: dict[str, str],
 ) -> None:
-    """With BOTH a pricing and a limit config the fund goes through (201)."""
+    """Verify a fund goes through once pricing and limits are set up"""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     await _seed_service_configs(db_session, test_tenant, service="fund")
     raw = json.dumps(_fund_body(_user_phone(test_user))).encode()
@@ -780,7 +772,7 @@ async def test_external_withdraw_fails_closed_when_no_config(
     test_user: User,
     api_key: dict[str, str],
 ) -> None:
-    """No withdraw pricing/limit config → 422 service_not_configured, no debit."""
+    """Verify a withdrawal is refused when the service has no pricing or limit set up"""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
     body = {
         "identifier_type": "phone",
@@ -808,7 +800,7 @@ async def test_external_withdraw_fails_closed_when_only_limit(
     test_user: User,
     api_key: dict[str, str],
 ) -> None:
-    """Limit present but pricing missing → still 422 (BOTH required)."""
+    """Verify a withdrawal is refused when pricing is not set up"""
     wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
     await _seed_service_configs(db_session, test_tenant, service="withdraw", with_pricing=False)
     body = {

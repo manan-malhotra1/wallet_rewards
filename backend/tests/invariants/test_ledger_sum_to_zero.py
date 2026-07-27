@@ -1,4 +1,4 @@
-"""System-wide ledger invariant: sum of all entries equals zero (NFR-0100).
+"""Ledger balances to zero.
 
 This test runs against the test database after the rest of the suite
 completes. It guards against any code path that accidentally writes
@@ -40,7 +40,7 @@ async def test_ledger_sum_to_zero_holds_after_writes(
     user_wallet: Account,
     user_points: Account,
 ) -> None:
-    """After arbitrary balanced writes, SUM(CREDIT) - SUM(DEBIT) is zero."""
+    """Verify every completed transaction balances to zero across accounts"""
     # Three sample transactions across the available accounts.
     await post_transaction(
         db_session,
@@ -107,7 +107,7 @@ async def test_ledger_sum_to_zero_holds_after_writes(
 async def test_ledger_entries_have_no_updated_at_column(
     db_session: AsyncSession,
 ) -> None:
-    """Belt-and-braces: confirm the table truly lacks `updated_at`.
+    """Verify ledger entries can never be edited after they are written.
 
     This is a structural guarantee for the append-only invariant — if
     someone adds `updated_at` later, the test fails and they revisit the

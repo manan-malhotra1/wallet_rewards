@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/events/external — the ingestion pipeline.
+"""Event ingestion — registered sources, proof-of-origin, and dedup.
 
 Covers the scenarios listed in
 docs/security/threat-models/phase-c-rewards-inflow.md §5.
@@ -145,7 +145,7 @@ async def test_ingest_rejects_unregistered_source(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Unknown source_key → outcome 'rejected', no reward issued."""
+    """Verify an event from an unregistered source is rejected and logged"""
     response = await async_client.post(
         "/api/v1/events/external",
         json=_make_event(
@@ -167,7 +167,7 @@ async def test_ingest_rejects_tenant_mismatch(
     other_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Source registered in tenant A, event claims tenant B → rejected."""
+    """Verify an event whose source belongs to another tenant is rejected"""
     await _seed_source(async_client, test_tenant, "mismatch-src")
     event = _make_event(
         source_key="mismatch-src",
@@ -187,7 +187,7 @@ async def test_ingest_dedupes_replayed_event(
     test_user: User,
     user_points: Account,
 ) -> None:
-    """Same (source_key, event_id) replay → outcome 'duplicate', no new reward."""
+    """Verify the same event processed twice only takes effect once"""
     await _ensure_system_points_issuance(db_session, test_tenant)
     await _seed_source(async_client, test_tenant, "dedup-src")
     await _seed_first_time_rule(async_client, test_tenant, transaction_type="fund")
@@ -224,7 +224,7 @@ async def test_first_time_rule_fires_exactly_once(
     test_user: User,
     user_points: Account,
 ) -> None:
-    """First-time rule fires on event 1; second qualifying event yields no reward."""
+    """Verify a first-time reward is granted only on the first qualifying event"""
     await _ensure_system_points_issuance(db_session, test_tenant)
     await _seed_source(async_client, test_tenant, "first-src")
     await _seed_first_time_rule(async_client, test_tenant, transaction_type="fund")
@@ -257,7 +257,7 @@ async def test_milestone_rule_fires_at_threshold_and_resets(
     test_user: User,
     user_points: Account,
 ) -> None:
-    """Milestone(threshold=3) fires on the 3rd event, then resets — 6th event fires again."""
+    """Verify a milestone reward is granted at the threshold and the count then restarts"""
     await _ensure_system_points_issuance(db_session, test_tenant)
     await _seed_source(async_client, test_tenant, "milestone-src")
     await _seed_milestone_rule(
@@ -291,7 +291,7 @@ async def test_rule_only_matches_correct_transaction_type(
     test_user: User,
     user_points: Account,
 ) -> None:
-    """Rule bound to 'fund' does not fire on 'p2p' events."""
+    """Verify a reward tied to one activity does not trigger on a different activity"""
     await _ensure_system_points_issuance(db_session, test_tenant)
     await _seed_source(async_client, test_tenant, "type-src")
     await _seed_first_time_rule(async_client, test_tenant, transaction_type="fund")
@@ -314,7 +314,7 @@ async def test_ingestion_log_records_outcome(
     test_user: User,
     user_points: Account,
 ) -> None:
-    """Every received event leaves an event_ingestion_log row."""
+    """Verify every received event is recorded in the ingestion log"""
     await _ensure_system_points_issuance(db_session, test_tenant)
     await _seed_source(async_client, test_tenant, "log-src")
     await _seed_first_time_rule(async_client, test_tenant)

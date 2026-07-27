@@ -1,4 +1,4 @@
-"""Tests for read-side name enrichment on the audit-log endpoint.
+"""Audit-log display names.
 
 The stored `audit_log` rows keep stable IDs (actor_id / entity_id). The read
 API additionally resolves those IDs to human display names (`actor_name`,
@@ -79,7 +79,7 @@ async def test_admin_actor_row_carries_admin_display_name(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """An admin-actor row resolves actor_name via the admin profile."""
+    """Verify an audit entry shows the operator's name"""
     sub = "11111111-1111-4000-8000-0000000000aa"
     db_session.add(
         AdminProfile(
@@ -111,7 +111,7 @@ async def test_user_actor_row_carries_user_display_name(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """A user-actor row resolves actor_name via the user resolver.
+    """Verify an audit entry shows the acting customer's name.
 
     `test_user` has a phone identifier but no profile, so the resolved name is
     the identifier value.
@@ -135,7 +135,7 @@ async def test_system_actor_row_gets_friendly_name(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """A system-actor row gets a friendly constant and never crashes."""
+    """Verify a system-generated audit entry shows a friendly system name"""
     row = await _add_audit_row(
         db_session,
         test_tenant,
@@ -155,7 +155,7 @@ async def test_apikey_system_actor_row_gets_api_key_name(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """An `apikey:`-prefixed system actor resolves to the 'API key' label."""
+    """Verify an audit entry from a partner key shows an API key name"""
     row = await _add_audit_row(
         db_session,
         test_tenant,
@@ -175,7 +175,7 @@ async def test_unknown_admin_actor_name_is_none(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """An admin actor with no recorded profile resolves to None (UI fallback)."""
+    """Verify an audit entry for an unknown operator shows no name"""
     row = await _add_audit_row(
         db_session,
         test_tenant,
@@ -201,7 +201,7 @@ async def test_user_entity_row_carries_affected_user_name(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """When entity_type == 'user', entity_name is the affected user's name."""
+    """Verify an audit entry shows the name of the affected customer"""
     row = await _add_audit_row(
         db_session,
         test_tenant,
@@ -221,7 +221,7 @@ async def test_non_user_entity_with_non_uuid_id_does_not_crash(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """A non-user entity with a non-UUID id yields entity_name=None, no crash."""
+    """Verify an audit entry for a non-customer record shows no affected name and does not fail"""
     row = await _add_audit_row(
         db_session,
         test_tenant,
@@ -244,7 +244,7 @@ async def test_enrichment_is_tenant_scoped(
     other_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """A user-entity row does not resolve a name across a tenant boundary.
+    """Verify audit-log names are never resolved across a tenant boundary.
 
     `test_user` belongs to `test_tenant`; querying the audit log under
     `other_tenant` never surfaces that user's row, so enrichment can't leak

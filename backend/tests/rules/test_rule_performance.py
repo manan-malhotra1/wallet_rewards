@@ -1,4 +1,4 @@
-"""Tests for the campaign-performance endpoints (single + batch).
+"""Reward rule performance.
 
 Covers:
   - Per-rule GET /api/v1/rules/{rule_id}/performance:
@@ -67,7 +67,7 @@ async def _seed_reward_events(
 async def test_performance_empty_rule_returns_zeros(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """A rule that has never fired returns total=0, unique=0, null timestamps."""
+    """Verify a rule that has never rewarded anyone shows zero activity"""
     rule_id = await _create_rule(async_client, str(test_tenant.id), "Empty rule")
 
     response = await async_client.get(
@@ -91,7 +91,7 @@ async def test_performance_counts_fires_and_unique_users(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """5 fires across 2 distinct users → total=5, unique=2, sum is right."""
+    """Verify a rule's performance shows how many rewards and distinct customers it reached"""
     rule_id = await _create_rule(async_client, str(test_tenant.id), "Active rule")
 
     # Create a second user inline — the suite has no secondary-user fixture
@@ -131,7 +131,7 @@ async def test_performance_counts_fires_and_unique_users(
 async def test_performance_unknown_rule_returns_404(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Unknown rule_id → 404 with rule_not_found error code."""
+    """Verify performance for an unknown rule is not found"""
     response = await async_client.get(
         f"/api/v1/rules/{uuid4()}/performance",
         params={"tenant_id": str(test_tenant.id)},
@@ -146,7 +146,7 @@ async def test_performance_cross_tenant_returns_404(
     test_tenant: Tenant,
     other_tenant: Tenant,
 ) -> None:
-    """Tenant B requesting Tenant A's rule gets 404 (no existence leak)."""
+    """Verify a business cannot view another business's rule performance"""
     rule_id = await _create_rule(async_client, str(test_tenant.id), "Tenant A rule")
 
     response = await async_client.get(
@@ -161,7 +161,7 @@ async def test_performance_cross_tenant_returns_404(
 async def test_performance_malformed_rule_id_returns_422(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """A non-UUID `rule_id` path param is rejected at parse time (422)."""
+    """Verify a badly formed rule reference is rejected"""
     response = await async_client.get(
         "/api/v1/rules/not-a-uuid/performance",
         params={"tenant_id": str(test_tenant.id)},
@@ -182,8 +182,7 @@ async def test_list_performance_aggregates_every_rule_in_tenant(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Three rules with mixed activity → batch returns one row per rule
-    with correct aggregates, including a zero-fire rule via LEFT JOIN."""
+    """Verify the performance overview reports every rule including those that never fired"""
     busy_rule = await _create_rule(async_client, str(test_tenant.id), "Busy")
     quiet_rule = await _create_rule(async_client, str(test_tenant.id), "Quiet")
     silent_rule = await _create_rule(async_client, str(test_tenant.id), "Silent")
@@ -243,7 +242,7 @@ async def test_list_performance_isolates_by_tenant(
     test_tenant: Tenant,
     other_tenant: Tenant,
 ) -> None:
-    """Caller scoped to tenant A never sees tenant B's rules (NFR-0220)."""
+    """Verify a business's performance overview excludes other businesses' rules"""
     a_rule = await _create_rule(async_client, str(test_tenant.id), "A-only")
     b_rule = await _create_rule(async_client, str(other_tenant.id), "B-only")
 
@@ -261,7 +260,7 @@ async def test_list_performance_isolates_by_tenant(
 async def test_list_performance_empty_tenant_returns_empty_list(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Tenant with zero rules returns [], not an error."""
+    """Verify a business with no rules gets an empty performance overview"""
     response = await async_client.get(
         "/api/v1/rules/performance",
         params={"tenant_id": str(test_tenant.id)},

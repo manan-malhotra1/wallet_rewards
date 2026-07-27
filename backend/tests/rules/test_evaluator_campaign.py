@@ -1,4 +1,4 @@
-"""Tests for the campaign rule type — Epic 10 (WAL-76).
+"""Campaign rewards.
 
 Campaign rules fire once per user, only within
 [campaign_start_date, campaign_end_date]. Outside the window the rule
@@ -111,7 +111,7 @@ async def test_campaign_fires_when_inside_window(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Event timestamped inside [start, end] fires the campaign rule."""
+    """Verify a customer earns a campaign reward during the campaign period"""
     await _ensure_system_points(db_session, test_tenant)
     await _user_points_account(db_session, test_tenant, test_user)
     await _register_source(async_client, test_tenant, "camp-in")
@@ -144,7 +144,7 @@ async def test_campaign_does_not_fire_outside_window(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Event timestamped before the start_date does NOT fire."""
+    """Verify a customer earns no campaign reward before the campaign starts"""
     await _ensure_system_points(db_session, test_tenant)
     await _register_source(async_client, test_tenant, "camp-out")
 
@@ -176,7 +176,7 @@ async def test_campaign_fires_once_per_user(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Two qualifying events in the window — only the first fires."""
+    """Verify a customer earns a campaign reward only once"""
     await _ensure_system_points(db_session, test_tenant)
     await _user_points_account(db_session, test_tenant, test_user)
     await _register_source(async_client, test_tenant, "camp-once")
@@ -208,7 +208,7 @@ async def test_campaign_fires_once_per_user(
 async def test_campaign_requires_both_dates_on_create(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Creating a campaign rule without end_date → 422."""
+    """Verify a campaign rule is rejected when its end date is missing"""
     resp = await async_client.post(
         "/api/v1/rules",
         json={
@@ -228,7 +228,7 @@ async def test_campaign_requires_both_dates_on_create(
 async def test_campaign_rejects_start_after_end(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """end < start is a config error → 422."""
+    """Verify a campaign rule is rejected when it ends before it starts"""
     resp = await async_client.post(
         "/api/v1/rules",
         json={

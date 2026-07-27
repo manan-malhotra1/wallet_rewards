@@ -1,4 +1,4 @@
-"""Integration tests for the airtime recharge API (Epic 17 S4).
+"""Airtime recharge.
 
 POST /api/v1/airtime/recharge reserves funds (DEBIT user wallet / CREDIT the
 airtime merchant's holding account) then makes an after-commit provider call.
@@ -222,7 +222,7 @@ async def test_recharge_success_debits_user_credits_merchant(
     airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A fast (synchronous) success returns 200 COMPLETED and moves money."""
+    """Verify a successful airtime recharge debits the customer and credits the merchant"""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body()),
@@ -248,7 +248,7 @@ async def test_recharge_provider_failure_reverses_and_refunds(
     airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A provider failure returns 200 REVERSED and refunds the user in full."""
+    """Verify a failed airtime recharge is reversed and the customer is refunded"""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body(msisdn=_FAIL_MSISDN)),
@@ -270,7 +270,7 @@ async def test_recharge_pending_returns_202(
     airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A provider 'pending' returns 202 and leaves the recharge PENDING."""
+    """Verify an airtime recharge awaiting the provider is left pending"""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body(msisdn=_PENDING_MSISDN)),
@@ -295,7 +295,7 @@ async def test_recharge_pending_returns_202(
 async def test_recharge_requires_auth(
     async_client: AsyncClient, airtime_merchant: MerchantProfile
 ) -> None:
-    """No session token -> 401."""
+    """Verify an airtime recharge requires the customer to be signed in"""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body()),
@@ -310,7 +310,7 @@ async def test_recharge_requires_permission(
     airtime_merchant: MerchantProfile,
     unpermitted_auth_header: dict[str, str],
 ) -> None:
-    """A user whose role does not permit airtime -> 403."""
+    """Verify a customer without airtime permission cannot recharge"""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body()),
@@ -326,7 +326,7 @@ async def test_recharge_missing_idempotency_key_rejected(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """The Idempotency-Key header is required (Pay-PRD-0200)."""
+    """Verify an airtime recharge without an idempotency key is rejected"""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body()),
@@ -341,7 +341,7 @@ async def test_recharge_no_merchant_configured_rejected(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """With no active airtime merchant in the tenant -> 422."""
+    """Verify an airtime recharge is refused when no airtime merchant is set up"""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body()),
@@ -359,7 +359,7 @@ async def test_recharge_insufficient_funds_rejected(
     airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """An unfunded wallet cannot buy airtime -> 409 insufficient_funds."""
+    """Verify a customer with too little balance cannot buy airtime"""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body(amount="100")),
@@ -384,7 +384,7 @@ async def test_recharge_idempotent_replay_returns_same_recharge(
     airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Replaying the same Idempotency-Key returns the same recharge, once."""
+    """Verify replaying an airtime recharge charges the customer only once"""
     first = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body()),
@@ -420,7 +420,7 @@ async def test_get_recharge_is_tenant_scoped(
     airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A recharge created in tenant A is not readable by a tenant B session."""
+    """Verify a recharge cannot be viewed from another tenant"""
     from app.auth.sessions import create_session
 
     created = await async_client.post(
@@ -448,7 +448,7 @@ async def test_get_recharge_is_tenant_scoped(
 async def test_get_unknown_recharge_returns_404(
     async_client: AsyncClient, alice_auth_header: dict[str, str]
 ) -> None:
-    """An unknown recharge id -> 404 airtime_recharge_not_found."""
+    """Verify looking up an unknown recharge is rejected"""
     got = await async_client.get(f"/api/v1/airtime/{uuid4()}", headers=alice_auth_header)
     assert got.status_code == 404
     assert got.json()["error_code"] == "airtime_recharge_not_found"
@@ -464,7 +464,7 @@ async def test_get_recharge_rejects_other_user_same_tenant(
     airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A different user in the SAME tenant cannot read alice's recharge (S7 A2)."""
+    """Verify a customer cannot view another customer's recharge"""
     from app.auth.sessions import create_session
 
     created = await async_client.post(
@@ -501,7 +501,7 @@ async def test_recharge_fails_closed_without_any_config(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """No pricing/limit config (flag NOT set) → 422 service_not_configured, no money moves.
+    """Verify an airtime recharge is refused when the service has no pricing or limit set up.
 
     Invariant #12: the airtime charge path fails closed unconditionally when a
     pricing config is missing — before any reservation is written.
@@ -528,7 +528,7 @@ async def test_recharge_fails_closed_when_pricing_present_but_limit_missing(
     funded_wallet: Account,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Pricing present but NO limit config → still 422, no money moves.
+    """Verify an airtime recharge is refused when a limit is not set up.
 
     Invariant #12 requires BOTH configs; a limit gap alone fails the charge closed.
     """
@@ -568,7 +568,7 @@ async def test_recharge_succeeds_when_both_configs_present(
     airtime_configs: None,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Pricing + limit config for airtime present → recharge proceeds."""
+    """Verify an airtime recharge goes through once pricing and limits are set up"""
     resp = await async_client.post(
         "/api/v1/airtime/recharge",
         content=json.dumps(_body()),

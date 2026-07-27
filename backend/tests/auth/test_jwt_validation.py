@@ -1,4 +1,4 @@
-"""Direct tests for the JWT verification chokepoint.
+"""Validating administrator sign-in tokens.
 
 Covers every threat scenario from the Phase F.1 threat model §5.
 """
@@ -27,30 +27,30 @@ from app.shared.exceptions import (
 
 
 def test_extract_bearer_happy() -> None:
-    """Standard Bearer header → token string."""
+    """Verify a standard sign-in header is read correctly"""
     assert extract_bearer_token("Bearer abc.def.ghi") == "abc.def.ghi"
 
 
 def test_extract_bearer_missing_header() -> None:
-    """None / empty → 401."""
+    """Verify a missing sign-in header is rejected"""
     with pytest.raises(InvalidAuthorizationHeader):
         extract_bearer_token(None)
 
 
 def test_extract_bearer_wrong_prefix() -> None:
-    """Non-Bearer scheme → 401."""
+    """Verify a sign-in header using the wrong scheme is rejected"""
     with pytest.raises(InvalidAuthorizationHeader):
         extract_bearer_token("Basic abc")
 
 
 def test_extract_bearer_empty_token() -> None:
-    """`Bearer ` with no token → 401."""
+    """Verify a sign-in header with no token is rejected"""
     with pytest.raises(InvalidAuthorizationHeader):
         extract_bearer_token("Bearer ")
 
 
 def test_extract_bearer_case_insensitive_scheme() -> None:
-    """`bearer` (lowercase) is accepted — HTTP scheme names are case-insensitive."""
+    """Verify a sign-in header scheme is accepted regardless of letter case"""
     assert extract_bearer_token("bearer abc") == "abc"
 
 
@@ -63,7 +63,7 @@ def test_extract_bearer_case_insensitive_scheme() -> None:
 async def test_verify_jwt_happy_path(
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Valid signed token → claims dict containing the expected fields."""
+    """Verify a valid administrator sign-in is accepted"""
     token = make_admin_token(roles=["platform-admin"], username="alice-admin")
     claims = await verify_jwt(token)
     assert claims["preferred_username"] == "alice-admin"
@@ -79,7 +79,7 @@ async def test_verify_jwt_happy_path(
 async def test_verify_rejects_alg_none(
     make_admin_token: Callable[..., str],
 ) -> None:
-    """`alg: none` is the classic attack — must be rejected."""
+    """Verify an unsigned administrator token is rejected"""
     # jose refuses to sign with 'none' via the normal encode path, so we
     # craft a token manually with the 'none' header.
     import base64
@@ -102,7 +102,7 @@ async def test_verify_rejects_tampered_payload(
     private_key_pem: bytes,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Tampering with the payload after signing breaks the signature."""
+    """Verify an administrator token altered after signing is rejected"""
     token = make_admin_token(roles=["finance-reviewer"])
     header, payload, sig = token.split(".")
     # Flip a character in the payload — signature no longer matches.
@@ -117,7 +117,7 @@ async def test_verify_rejects_tampered_payload(
 async def test_verify_rejects_wrong_key_signature(
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A token signed by a key not in our JWKS → 401."""
+    """Verify an administrator token signed by an untrusted key is rejected"""
     # Sign with a fresh key, label with our known kid — verification fails on signature.
     from jose import jwt as jose_jwt
 
@@ -149,7 +149,7 @@ async def test_verify_rejects_wrong_key_signature(
 async def test_verify_rejects_unknown_kid(
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Token with a kid that's not in JWKS → 401 unknown_signing_key.
+    """Verify an administrator token signed with an unknown key is rejected
 
     Note: our verifier will try one refetch on miss. In tests the cache is
     seeded directly with one known kid, and no refetch can happen because we
@@ -169,7 +169,7 @@ async def test_verify_rejects_unknown_kid(
 async def test_verify_rejects_expired_token(
     make_admin_token: Callable[..., str],
 ) -> None:
-    """exp in the past → TokenExpired (401)."""
+    """Verify an expired administrator token is rejected"""
     token = make_admin_token(roles=["platform-admin"], exp_seconds=-1)
     with pytest.raises(TokenExpired):
         await verify_jwt(token)
@@ -179,7 +179,7 @@ async def test_verify_rejects_expired_token(
 async def test_verify_rejects_wrong_issuer(
     make_admin_token: Callable[..., str],
 ) -> None:
-    """iss mismatch → InvalidToken (401)."""
+    """Verify an administrator token from an untrusted issuer is rejected"""
     token = make_admin_token(
         roles=["platform-admin"],
         iss_override="http://attacker.example/realms/evil",

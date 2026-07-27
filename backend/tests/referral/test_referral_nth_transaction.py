@@ -1,4 +1,4 @@
-"""nth_transaction-trigger referral behaviour (WAL-77).
+"""Referral rewards after enough transactions.
 
 The referral fires only once the referred user reaches N qualifying COMPLETED
 transactions — not before — and never twice. Transactions are inserted directly
@@ -74,7 +74,7 @@ async def _add_completed_txn(session: AsyncSession, tenant: Tenant, user: User) 
 async def test_nth_transaction_fires_only_at_threshold_and_once(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Reward fires when the 3rd qualifying txn lands — not before, and only once."""
+    """Verify a referral rewards the referrer only after enough new-customer transactions"""
     referrer = await _make_user(db_session, test_tenant)
     referee = await _make_user(db_session, test_tenant)
     await _add_points_account(db_session, test_tenant, None)

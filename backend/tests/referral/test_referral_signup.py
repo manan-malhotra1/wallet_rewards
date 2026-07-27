@@ -1,4 +1,4 @@
-"""Signup-trigger referral behaviour through identity.create_user (WAL-77).
+"""Referral rewards at signup.
 
 Exercises the end-to-end attribution flow: code generation on every signup,
 pending-referral creation when a valid code is quoted, rejection of
@@ -80,7 +80,7 @@ async def _seed_points_infra(session: AsyncSession, tenant: Tenant, user: User) 
 async def test_signup_with_valid_code_rewards_referrer(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A valid code at signup creates a rewarded referral + credits the referrer."""
+    """Verify entering a valid referral code at signup rewards the referrer"""
     referrer = await _create_user(db_session, test_tenant.id)
     await _seed_points_infra(db_session, test_tenant, referrer)
 
@@ -127,7 +127,7 @@ async def test_signup_with_valid_code_rewards_referrer(
 async def test_organic_signup_creates_no_referral_but_generates_code(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """No code quoted → no referral row, yet the user still gets a unique code."""
+    """Verify a customer who signs up without a code still gets their own referral code"""
     user = await _create_user(db_session, test_tenant.id)
 
     referrals = (
@@ -150,7 +150,7 @@ async def test_organic_signup_creates_no_referral_but_generates_code(
 async def test_unknown_referral_code_is_rejected(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A code that resolves to nobody in the tenant is a 422."""
+    """Verify signing up with an unrecognized referral code is rejected"""
     with pytest.raises(InvalidReferralCode):
         await _create_user(db_session, test_tenant.id, referral_code="NOSUCHCD")
 
@@ -159,7 +159,7 @@ async def test_unknown_referral_code_is_rejected(
 async def test_self_referral_is_rejected(
     db_session: AsyncSession, test_tenant: Tenant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Quoting one's own (just-generated) code is a 422 self-referral."""
+    """Verify a customer cannot refer themselves"""
     # Force the generated code to a known value so the same value can be quoted.
     monkeypatch.setattr(
         "app.modules.identity.service._generate_referral_code_value",
@@ -189,7 +189,7 @@ async def _wallet_balance(session: AsyncSession, user_id) -> Decimal | None:
 async def test_signup_cashback_provisions_and_credits_brand_new_referee(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A signup cashback rule provisions the wallets and pays BOTH sides.
+    """Verify a signup cashback referral opens wallets and pays both sides
 
     The headline "join -> 100 ZAR" case: a brand-new referee has no wallet yet,
     so the referral reward path must provision the financial_wallet for each
@@ -233,7 +233,7 @@ async def test_signup_cashback_provisions_and_credits_brand_new_referee(
 async def test_signup_succeeds_even_if_reward_issuance_fails(
     db_session: AsyncSession, test_tenant: Tenant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A reward-issuance failure must NOT fail an already-committed signup.
+    """Verify a signup still succeeds when the referral reward cannot be paid
 
     The user + referral commit before rewards fire (NFR-0130), so a failure in
     evaluate_referral_on_signup is swallowed + logged: the signup still returns

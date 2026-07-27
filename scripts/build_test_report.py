@@ -320,6 +320,29 @@ def _load_latest() -> list[dict[str, object]]:
     return data if isinstance(data, list) else []
 
 
+def _refresh_source_descriptions(scenarios: list[Scenario]) -> None:
+    """Re-read each BACKEND scenario's description + subsection label from source.
+
+    Descriptions are the test function's docstring first line and subsections are
+    the module docstring — both live in the .py files, so a re-render reflects
+    docstring edits without needing a fresh test run. Frontend descriptions are
+    the `it(...)` titles (only available from a vitest run), so they're left as
+    carried. A scenario whose function/file can't be parsed keeps its stored text.
+    """
+    cache: dict[str, tuple[str | None, dict[str, dict[str, object]]]] = {}
+    for scn in scenarios:
+        if scn.stack != "backend":
+            continue
+        if scn.rel_path not in cache:
+            cache[scn.rel_path] = _parse_python_file(scn.rel_path)
+        module_doc, funcs = cache[scn.rel_path]
+        meta = funcs.get(scn.name)
+        if meta and meta.get("doc"):
+            scn.description = str(meta["doc"])
+        if module_doc:
+            scn.subsection_label = module_doc
+
+
 def _apply_history(scenarios: list[Scenario], stacks_run: set[str]) -> None:
     """Append this EXECUTION's outcome to each scenario's rolling last-3 history.
 
@@ -395,8 +418,12 @@ _STEP_KEYWORDS = ("Given", "When", "Then", "And", "But", "*")
 
 
 def _norm(text: str) -> str:
-    """Normalise a scenario/description string for matching (case, whitespace)."""
-    return " ".join(text.split()).lower()
+    """Normalise a scenario/description string for matching.
+
+    Collapses whitespace, lowercases, and strips trailing sentence punctuation so
+    a docstring "Verify X." matches a Scenario named "Verify X".
+    """
+    return " ".join(text.split()).lower().rstrip(".!")
 
 
 def _load_gherkin() -> dict[str, list[tuple[str, str]]]:
@@ -727,6 +754,12 @@ def main() -> None:
         if d.get("stack") not in fresh_stacks
     ]
     scenarios = fresh + carried
+
+    # Backend descriptions/subsection labels live in the test DOCSTRINGS (source),
+    # so re-read them from AST every build — otherwise a carried scenario would
+    # show the stale text captured in latest.json at its last run, and docstring
+    # edits wouldn't appear until a full re-run.
+    _refresh_source_descriptions(scenarios)
 
     # Attach any matching Gherkin scenario (by "Verify …" name) for the click-to-
     # expand Given/When/Then. Re-derived each build; not persisted in latest.json.

@@ -1,4 +1,4 @@
-"""Tests for the reconciliation sweep + listing endpoints (Phase E.1).
+"""Reconciliation sweep of pending redemptions.
 
 Phase F.4: the redemption `/initiate` endpoint is user-only. The helper
 that creates pending redemptions mints a one-shot session token for the
@@ -137,7 +137,7 @@ async def test_sweep_bumps_retry_for_stale_pending(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """A PENDING redemption older than threshold gets retry_count incremented."""
+    """Verify a stuck pending redemption is retried during reconciliation"""
     redemption = await _make_pending_redemption(
         async_client,
         db_session,
@@ -175,7 +175,7 @@ async def test_sweep_ignores_recent_pending(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """A PENDING redemption inside the threshold window is NOT swept."""
+    """Verify a recent pending redemption is left alone during reconciliation"""
     redemption = await _make_pending_redemption(
         async_client,
         db_session,
@@ -207,7 +207,7 @@ async def test_sweep_ignores_completed(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Only PENDING redemptions are candidates — COMPLETED ones are skipped."""
+    """Verify a completed redemption is left alone during reconciliation"""
     redemption = await _make_pending_redemption(
         async_client,
         db_session,
@@ -244,7 +244,7 @@ async def test_sweep_escalates_after_max_retries(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """When retry_count reaches provider.max_retries, status -> MANUAL_REVIEW."""
+    """Verify a redemption that keeps failing is escalated for manual review"""
     redemption = await _make_pending_redemption(
         async_client,
         db_session,
@@ -288,7 +288,7 @@ async def test_sweep_writes_audit_log_per_item(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Every sweep action produces exactly one audit_log row."""
+    """Verify each reconciliation action is recorded in the audit trail"""
     redemption = await _make_pending_redemption(
         async_client,
         db_session,
@@ -338,7 +338,7 @@ async def test_pending_list_tenant_scoped(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """The pending list under another tenant returns []."""
+    """Verify the pending-redemption list only shows the requested tenant's items"""
     await _make_pending_redemption(
         async_client,
         db_session,
@@ -366,7 +366,7 @@ async def test_pending_list_carries_user_name(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """The pending list resolves user_name (falls back to the phone identifier).
+    """Verify the pending-redemption list shows each customer's name.
 
     `test_user` has a phone identifier but no profile, so `user_name` is the
     normalised phone value — never null for this user, and the raw id is still
@@ -402,7 +402,7 @@ async def test_manual_review_list_carries_user_name(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """The manual-review queue also surfaces the resolved user_name."""
+    """Verify the manual-review queue shows each customer's name"""
     redemption = await _make_pending_redemption(
         async_client,
         db_session,
@@ -432,7 +432,7 @@ async def test_manual_review_list_carries_user_name(
 
 @pytest.mark.asyncio
 async def test_sweep_rejects_unknown_tenant(async_client: AsyncClient) -> None:
-    """Sweep against an unknown tenant_id returns 404."""
+    """Verify a reconciliation sweep for an unknown tenant is rejected"""
     response = await async_client.post(
         "/api/v1/reconciliation/sweep",
         json={"tenant_id": str(uuid4()), "threshold_minutes": 5},

@@ -1,4 +1,4 @@
-"""Tests for the role CRUD admin endpoints (Phase F.3).
+"""Role administration — creating, editing, and assigning roles and permissions.
 
 These hit `/api/v1/roles/*` and `/api/v1/users/{id}/roles*` — all gated by
 the `platform-admin` Keycloak realm role from Phase F.1. The auth header is
@@ -21,6 +21,7 @@ from app.shared.models import Tenant, User
 
 @pytest.mark.asyncio
 async def test_create_role_happy_path(async_client: AsyncClient, test_tenant: Tenant) -> None:
+    """Verify an admin can create a role for a tenant."""
     response = await async_client.post(
         "/api/v1/roles",
         json={
@@ -40,6 +41,7 @@ async def test_create_role_happy_path(async_client: AsyncClient, test_tenant: Te
 async def test_create_role_duplicate_name_rejected(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
+    """Verify an admin cannot create two roles with the same name in a tenant."""
     payload = {"tenant_id": str(test_tenant.id), "name": "dupe"}
     first = await async_client.post("/api/v1/roles", json=payload)
     assert first.status_code == 201
@@ -50,6 +52,7 @@ async def test_create_role_duplicate_name_rejected(
 
 @pytest.mark.asyncio
 async def test_create_role_unknown_tenant(async_client: AsyncClient) -> None:
+    """Verify an admin cannot create a role for a tenant that does not exist."""
     response = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(uuid4()), "name": "x"},
@@ -61,6 +64,7 @@ async def test_create_role_unknown_tenant(async_client: AsyncClient) -> None:
 async def test_list_roles_tenant_scoped(
     async_client: AsyncClient, test_tenant: Tenant, other_tenant: Tenant
 ) -> None:
+    """Verify an admin only sees the roles belonging to their own tenant."""
     await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "A-role"},
@@ -79,6 +83,7 @@ async def test_list_roles_tenant_scoped(
 async def test_update_role_status_to_inactive(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
+    """Verify an admin can deactivate a role."""
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "frozen"},
@@ -102,6 +107,7 @@ async def test_update_role_status_to_inactive(
 async def test_set_permission_creates_then_updates(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
+    """Verify an admin can grant a permission and then change it in place."""
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "perm-test"},
@@ -134,6 +140,7 @@ async def test_set_permission_creates_then_updates(
 
 @pytest.mark.asyncio
 async def test_remove_permission(async_client: AsyncClient, test_tenant: Tenant) -> None:
+    """Verify an admin can remove a permission from a role."""
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "rm-test"},
@@ -166,6 +173,7 @@ async def test_remove_permission(async_client: AsyncClient, test_tenant: Tenant)
 async def test_assign_role_to_user(
     async_client: AsyncClient, test_tenant: Tenant, test_user: User
 ) -> None:
+    """Verify an admin can assign a role to a user."""
     role_resp = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "extra-role"},
@@ -189,7 +197,7 @@ async def test_assign_role_to_user(
 async def test_assign_role_idempotent(
     async_client: AsyncClient, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Re-assigning the same role returns the existing row, doesn't duplicate."""
+    """Verify assigning a role a user already has does not create a duplicate."""
     role_resp = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "idem-role"},
@@ -212,7 +220,7 @@ async def test_assign_role_idempotent(
 async def test_remove_role_from_user(
     async_client: AsyncClient, test_tenant: Tenant, test_user: User
 ) -> None:
-    """User starts with default role from fixture; remove it; list is empty."""
+    """Verify an admin can remove a role from a user."""
     listing = await async_client.get(
         f"/api/v1/users/{test_user.id}/roles",
         params={"tenant_id": str(test_tenant.id)},
@@ -240,7 +248,7 @@ async def test_assign_cross_tenant_user_rejects(
     other_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Assigning a role from tenant A to a user in tenant B (or vice versa) → 404."""
+    """Verify an admin cannot assign a role to a user in another tenant."""
     role_resp = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(other_tenant.id), "name": "x-tenant-role"},
@@ -266,7 +274,7 @@ async def test_assign_cross_tenant_user_rejects(
 async def test_role_crud_requires_admin(
     async_client: AsyncClient, test_tenant: Tenant, make_admin_token
 ) -> None:
-    """A token without `platform-admin` role gets 403."""
+    """Verify a non-admin cannot manage roles."""
     response = await async_client.post(
         "/api/v1/roles",
         headers={"Authorization": f"Bearer {make_admin_token(roles=['support-agent'])}"},

@@ -1,4 +1,4 @@
-"""Integration tests for POST /api/v1/external/users (Epic 14 S4).
+"""Partner-created customer accounts.
 
 The external partner API: HMAC-signed, tenant derived from the API key,
 reuses identity.create_user, idempotent on retry.
@@ -61,7 +61,7 @@ def _body(email: str = "partner.user@example.com") -> dict:
 async def test_valid_request_creates_user_in_key_tenant(
     async_client: AsyncClient, test_tenant: Tenant, api_key: dict[str, str]
 ) -> None:
-    """A correctly-signed request creates a consumer in the KEY's tenant."""
+    """Verify a partner can create a customer in its own tenant"""
     raw = json.dumps(_body()).encode()
     resp = await async_client.post(
         "/api/v1/external/users",
@@ -82,8 +82,7 @@ async def test_valid_request_writes_system_actor_audit(
     test_tenant: Tenant,
     api_key: dict[str, str],
 ) -> None:
-    """The partner path has no admin — the created user is audited as a
-    system actor keyed on the API key (NFR-0160 / NFR-0250)."""
+    """Verify a partner-created customer is recorded in the audit trail"""
     raw = json.dumps(_body("audited.partner@example.com")).encode()
     resp = await async_client.post(
         "/api/v1/external/users",
@@ -121,7 +120,7 @@ async def test_idempotent_replay_writes_no_second_audit(
     test_tenant: Tenant,
     api_key: dict[str, str],
 ) -> None:
-    """A true retry (SAME Idempotency-Key) must not double-audit."""
+    """Verify retrying a customer creation does not record a second audit entry"""
     raw = json.dumps(_body("dupaudit@example.com")).encode()
     first = await async_client.post(
         "/api/v1/external/users",
@@ -151,7 +150,7 @@ async def test_idempotent_replay_writes_no_second_audit(
 async def test_missing_auth_headers_rejected(
     async_client: AsyncClient, api_key: dict[str, str]
 ) -> None:
-    """No API key / signature -> 401 api_key_invalid."""
+    """Verify an unsigned customer-creation request is rejected"""
     raw = json.dumps(_body()).encode()
     resp = await async_client.post(
         "/api/v1/external/users",
@@ -164,7 +163,7 @@ async def test_missing_auth_headers_rejected(
 
 @pytest.mark.asyncio
 async def test_bad_signature_rejected(async_client: AsyncClient, api_key: dict[str, str]) -> None:
-    """A signature computed with the wrong secret -> 401 invalid_signature."""
+    """Verify a customer-creation request with an invalid signature is rejected"""
     raw = json.dumps(_body()).encode()
     headers = _sign_headers(api_key["key_id"], "the-wrong-secret", raw)
     resp = await async_client.post("/api/v1/external/users", content=raw, headers=headers)
@@ -176,7 +175,7 @@ async def test_bad_signature_rejected(async_client: AsyncClient, api_key: dict[s
 async def test_missing_idempotency_key_rejected(
     async_client: AsyncClient, api_key: dict[str, str]
 ) -> None:
-    """The Idempotency-Key header is required (Pay-PRD-0200)."""
+    """Verify a customer-creation request without an idempotency key is rejected"""
     raw = json.dumps(_body()).encode()
     headers = _sign_headers(api_key["key_id"], api_key["secret"], raw)
     del headers["Idempotency-Key"]
@@ -188,7 +187,7 @@ async def test_missing_idempotency_key_rejected(
 async def test_missing_email_or_phone_rejected(
     async_client: AsyncClient, api_key: dict[str, str]
 ) -> None:
-    """A partner-created user must be contactable by email or phone."""
+    """Verify a partner-created customer must have an email or phone"""
     body = {"identifiers": [{"identifier_type": "account_number", "identifier_value": "ZA-1"}]}
     raw = json.dumps(body).encode()
     resp = await async_client.post(
@@ -206,8 +205,7 @@ async def test_same_idempotency_key_replays_same_user(
     test_tenant: Tenant,
     api_key: dict[str, str],
 ) -> None:
-    """A true retry — SAME Idempotency-Key — replays the original user (200),
-    creates no second user, and raises no error (Pay-PRD-0200)."""
+    """Verify retrying a customer creation returns the same customer, not a second one"""
     raw = json.dumps(_body("retry@example.com")).encode()
     first = await async_client.post(
         "/api/v1/external/users",
@@ -238,8 +236,7 @@ async def test_new_key_free_identifier_writes_idempotency_row(
     test_tenant: Tenant,
     api_key: dict[str, str],
 ) -> None:
-    """A fresh create (new key, free identifier) records the key->user mapping
-    that a later retry replays from."""
+    """Verify a newly created customer is recorded so a later retry can replay it"""
     raw = json.dumps(_body("recorded@example.com")).encode()
     resp = await async_client.post(
         "/api/v1/external/users",
@@ -267,9 +264,7 @@ async def test_new_key_taken_identifier_returns_409(
     test_tenant: Tenant,
     api_key: dict[str, str],
 ) -> None:
-    """A NEW Idempotency-Key whose identifier is already taken is a genuine
-    conflict — 409 identifier_already_in_use, NOT a silent replay of the
-    existing user (S4: don't leak identifier existence)."""
+    """Verify creating a customer with an already-used contact detail is rejected as a conflict"""
     raw = json.dumps(_body("conflict@example.com")).encode()
     first = await async_client.post(
         "/api/v1/external/users",
@@ -302,9 +297,7 @@ async def test_store_insert_conflict_replays_winner(
     api_key: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The concurrent same-key race: if the idempotency-row INSERT hits the
-    UNIQUE (tenant, key) because another request won, we roll back and replay
-    the winner's user (200) rather than surfacing the IntegrityError or a 409.
+    """Verify two simultaneous retries create a single customer.
 
     True concurrency is impractical against the shared test DB, so we force the
     INSERT-collision branch: pre-seed the winner's mapping and make the initial
@@ -362,8 +355,7 @@ async def test_same_key_two_tenants_creates_independently(
     other_tenant: Tenant,
     api_key: dict[str, str],
 ) -> None:
-    """The idempotency key is tenant-scoped: the SAME key in two tenants (via
-    two keys) creates two independent users."""
+    """Verify the same idempotency key in two tenants creates two separate customers"""
     other_secret = "ext-partner-secret-other"
     db_session.add(
         ApiKey(
@@ -398,7 +390,7 @@ async def test_same_key_two_tenants_creates_independently(
 async def test_rate_limit_returns_429(
     async_client: AsyncClient, api_key: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Once a key exceeds its per-window quota, further requests get 429."""
+    """Verify a partner exceeding its request quota is throttled"""
     import app.auth.rate_limit as rl
 
     monkeypatch.setattr(rl, "API_KEY_RATE_LIMIT", 1)
@@ -426,8 +418,7 @@ async def test_partner_cannot_mass_assign_privileged_fields(
     db_session: AsyncSession,
     api_key: dict[str, str],
 ) -> None:
-    """A partner cannot set user_type / verified / parent_user_id (S7 H1);
-    they are forced server-side to consumer / False / none."""
+    """Verify a partner cannot set privileged fields when creating a customer"""
     body = {
         "identifiers": [
             {

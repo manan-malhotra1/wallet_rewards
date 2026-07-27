@@ -1,4 +1,4 @@
-"""Tests for manual resolve + audit log query (Phase E.1).
+"""Manual resolution of stuck redemptions.
 
 Phase F.4: helper calls `/initiate` (user-only) with a freshly-minted
 session token, overriding the admin Bearer from the reconciliation conftest.
@@ -114,7 +114,7 @@ async def test_manual_resolve_completed_finalises_redemption(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Manual resolve COMPLETED: ledger PENDING -> COMPLETED, balance drops."""
+    """Verify an operator can mark a stuck redemption as completed"""
     redemption = await _push_redemption_into_manual_review(
         async_client,
         db_session,
@@ -154,7 +154,7 @@ async def test_manual_resolve_reversed_restores_balance(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Manual resolve REVERSED: ledger PENDING -> REVERSED, balance restored."""
+    """Verify an operator can reverse a stuck redemption and restore the customer's balance"""
     redemption = await _push_redemption_into_manual_review(
         async_client,
         db_session,
@@ -190,7 +190,7 @@ async def test_manual_resolve_rejects_non_manual_review(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Resolve only works against MANUAL_REVIEW — PENDING redemption rejects."""
+    """Verify only a redemption awaiting review can be manually resolved"""
     # Make a PENDING redemption WITHOUT pushing into MANUAL_REVIEW.
     rule = Rule(
         tenant_id=test_tenant.id,
@@ -256,7 +256,7 @@ async def test_manual_resolve_cross_tenant_rejects(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Cross-tenant resolve -> 404 (no existence leak)."""
+    """Verify a redemption cannot be resolved from another tenant"""
     redemption = await _push_redemption_into_manual_review(
         async_client,
         db_session,
@@ -287,7 +287,7 @@ async def test_manual_resolve_writes_audit_entry(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Resolve writes an audit_log row with before/after state + actor=admin."""
+    """Verify manually resolving a redemption is recorded in the audit trail"""
     redemption = await _push_redemption_into_manual_review(
         async_client,
         db_session,
@@ -339,7 +339,7 @@ async def test_audit_query_tenant_scoped(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Audit endpoint only returns rows for the requested tenant."""
+    """Verify the audit log only returns entries for the requested tenant"""
     redemption = await _push_redemption_into_manual_review(
         async_client,
         db_session,

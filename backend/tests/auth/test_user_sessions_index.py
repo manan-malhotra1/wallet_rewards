@@ -1,4 +1,4 @@
-"""Tests for the per-user session index (admin access-lock support).
+"""Tracking and revoking user sessions.
 
 `create_session` maintains a Redis SET `user_sessions:<user_id>` so an admin
 login-lock can revoke every session for a user at once. Covers: the index is
@@ -34,7 +34,7 @@ def _redis():
 
 @pytest.mark.asyncio
 async def test_create_session_adds_token_to_user_index() -> None:
-    """Each new session token is recorded in the user's reverse index set."""
+    """Verify a new sign-in session is tracked for the user"""
     user_id, tenant_id = uuid4(), uuid4()
     token = await create_session(user_id, tenant_id)
 
@@ -46,7 +46,7 @@ async def test_create_session_adds_token_to_user_index() -> None:
 
 @pytest.mark.asyncio
 async def test_invalidate_session_removes_token_from_index() -> None:
-    """Logout deletes the session AND removes it from the per-user index."""
+    """Verify signing out clears the user's session"""
     user_id, tenant_id = uuid4(), uuid4()
     token = await create_session(user_id, tenant_id)
 
@@ -59,7 +59,7 @@ async def test_invalidate_session_removes_token_from_index() -> None:
 
 @pytest.mark.asyncio
 async def test_invalidate_user_sessions_kills_all_and_returns_count() -> None:
-    """Every live session for the user is revoked; the count is returned."""
+    """Verify an administrator can end all of a user's sessions at once"""
     user_id, tenant_id = uuid4(), uuid4()
     tokens = [await create_session(user_id, tenant_id) for _ in range(3)]
 
@@ -74,13 +74,13 @@ async def test_invalidate_user_sessions_kills_all_and_returns_count() -> None:
 
 @pytest.mark.asyncio
 async def test_invalidate_user_sessions_no_sessions_is_zero_noop() -> None:
-    """A user with no live sessions returns 0 and does not error."""
+    """Verify ending sessions for a user with none is harmless"""
     assert await invalidate_user_sessions(uuid4()) == 0
 
 
 @pytest.mark.asyncio
 async def test_read_session_slides_the_user_index_ttl() -> None:
-    """A sliding read refreshes the per-user index set, not just the token.
+    """Verify an active session stays revocable as it is used
 
     Regression (code-review BLOCKER): the index set must never expire out from
     under a still-live session, or a later login-lock would find an empty set
@@ -106,7 +106,7 @@ async def test_read_session_slides_the_user_index_ttl() -> None:
 
 @pytest.mark.asyncio
 async def test_invalidate_user_sessions_leaves_other_users_untouched() -> None:
-    """Killing one user's sessions must not touch another user's session."""
+    """Verify ending one user's sessions leaves other users signed in"""
     victim, bystander, tenant_id = uuid4(), uuid4(), uuid4()
     victim_token = await create_session(victim, tenant_id)
     bystander_token = await create_session(bystander, tenant_id)

@@ -1,4 +1,4 @@
-"""Tests for the dev-simulator event routes.
+"""Developer event simulator — signed ingest and Kafka produce.
 
 `/sim-ingest` is the HTTP path the mobile-simulator uses to fire events
 synchronously. It mirrors `/external` but skips admin auth — HMAC over
@@ -108,7 +108,7 @@ async def test_sim_ingest_404_when_flag_off(
     async_client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """SIMULATOR_DEV_MODE off → route reports 404 regardless of body."""
+    """Verify the developer ingest route is hidden when the simulator is switched off"""
     monkeypatch.setattr(settings, "SIMULATOR_DEV_MODE", False)
     response = await async_client.post(
         "/api/v1/events/sim-ingest",
@@ -127,7 +127,7 @@ async def test_sim_ingest_happy_path_with_valid_hmac(
     admin_auth_header: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Valid HMAC signature over the body → 200 + outcome='processed'."""
+    """Verify a correctly signed simulated event is accepted and processed"""
     monkeypatch.setattr(settings, "SIMULATOR_DEV_MODE", True)
     secret = "test-secret-abc"
     source_key = await _seed_source_with_secret(db_session, test_tenant, secret=secret)
@@ -176,7 +176,7 @@ async def test_sim_ingest_rejects_bad_signature(
     test_user: User,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Garbage signature → process_external_event rejects with outcome=rejected."""
+    """Verify a simulated event with an invalid signature is rejected"""
     monkeypatch.setattr(settings, "SIMULATOR_DEV_MODE", True)
     source_key = await _seed_source_with_secret(db_session, test_tenant)
     body = _event_body(test_tenant, test_user, source_key)
@@ -200,7 +200,7 @@ async def test_event_source_secret_stored_encrypted_not_plaintext(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """The event-source secret is Fernet ciphertext, not plaintext, at rest.
+    """Verify an event source signing secret is stored encrypted, never in plain text.
 
     A DB leak must not expose the live event-signing key. The column holds
     ciphertext that decrypts back to the original secret used for HMAC verify.
@@ -228,7 +228,7 @@ async def test_event_source_secret_stored_encrypted_not_plaintext(
 async def test_sim_kafka_produce_404_when_flag_off(
     async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """SIMULATOR_DEV_MODE off → 404."""
+    """Verify the developer Kafka produce route is hidden when the simulator is switched off"""
     monkeypatch.setattr(settings, "SIMULATOR_DEV_MODE", False)
     response = await async_client.post(
         "/api/v1/events/sim-kafka-produce",
@@ -241,7 +241,7 @@ async def test_sim_kafka_produce_404_when_flag_off(
 async def test_sim_kafka_produce_422_when_user_id_missing(
     async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """user_id is the partition key — missing it must reject (422)."""
+    """Verify a simulated Kafka event without a user is rejected"""
     monkeypatch.setattr(settings, "SIMULATOR_DEV_MODE", True)
     response = await async_client.post(
         "/api/v1/events/sim-kafka-produce",

@@ -1,4 +1,4 @@
-"""Tests for the composite rule type — Epic 10 / WAL-75 (Pay-PRD-0619).
+"""Combined-condition rewards.
 
 A composite rule combines its `rule_conditions` with `composite_operator`
 (AND / OR). Each sub-condition is satisfied when the user's count of
@@ -202,7 +202,7 @@ async def test_composite_and_fires_when_all_conditions_met(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """AND(fund>=1, send>=1): both satisfied → fires."""
+    """Verify a customer earns a reward when every condition of a combined rule is met"""
     await _register_source(async_client, test_tenant, "cmp-and-1")
     await _create_composite_rule(
         async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
@@ -230,7 +230,7 @@ async def test_composite_and_does_not_fire_when_one_condition_below(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """AND(fund>=1, send>=1): only fund satisfied → does not fire."""
+    """Verify a customer earns no reward when only some conditions of a combined rule are met"""
     await _register_source(async_client, test_tenant, "cmp-and-2")
     await _create_composite_rule(
         async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
@@ -255,7 +255,7 @@ async def test_composite_condition_respects_min_amount_and_count(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """AND(fund>=2 @>=100): a below-min fund does not count toward the threshold."""
+    """Verify small transactions do not count toward a combined rule's spending condition"""
     await _register_source(async_client, test_tenant, "cmp-min")
     await _create_composite_rule(
         async_client,
@@ -310,7 +310,7 @@ async def test_composite_or_fires_when_any_condition_met(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """OR(fund>=1, send>=1): only fund satisfied → fires."""
+    """Verify a customer earns a reward when any one condition of a combined rule is met"""
     await _register_source(async_client, test_tenant, "cmp-or-1")
     await _create_composite_rule(
         async_client, test_tenant, operator="OR", conditions=_TWO_CONDS
@@ -335,7 +335,7 @@ async def test_composite_or_does_not_fire_when_none_met(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """OR(fund>=2, send>=2): neither threshold reached → does not fire."""
+    """Verify a customer earns no reward when no condition of a combined rule is met"""
     await _register_source(async_client, test_tenant, "cmp-or-2")
     await _create_composite_rule(
         async_client,
@@ -375,7 +375,7 @@ async def test_composite_idempotent_re_evaluation(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Replaying the SAME event_id must not fire (or credit) twice."""
+    """Verify a repeated event never rewards a combined rule twice"""
     await _register_source(async_client, test_tenant, "cmp-idem")
     rule_id = await _create_composite_rule(
         async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
@@ -411,7 +411,7 @@ async def test_composite_reset_opens_new_window_and_fires_again(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """resets_after_trigger=True: after firing, only later txns count; refires."""
+    """Verify a customer can earn a resetting combined-rule reward again in a new cycle"""
     await _register_source(async_client, test_tenant, "cmp-reset")
     rule_id = await _create_composite_rule(
         async_client,
@@ -475,7 +475,7 @@ async def test_composite_no_reset_is_one_shot(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """resets_after_trigger=False: fires once, never again while satisfied."""
+    """Verify a one-time combined-rule reward is earned only once"""
     await _register_source(async_client, test_tenant, "cmp-noreset")
     rule_id = await _create_composite_rule(
         async_client,
@@ -513,7 +513,7 @@ async def test_composite_stop_after_n_triggers(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """stop_after_n_triggers=1: rule deactivates for the user after one fire."""
+    """Verify a combined rule stops rewarding a customer after its trigger limit"""
     await _register_source(async_client, test_tenant, "cmp-stop")
     rule_id = await _create_composite_rule(
         async_client,
@@ -576,7 +576,7 @@ async def test_composite_segment_bound_skips_non_member(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """A segment-bound composite does not fire for a user outside the segment."""
+    """Verify a combined-rule reward skips a customer outside the targeted segment"""
     await _register_source(async_client, test_tenant, "cmp-seg")
     rule_id = await _create_composite_rule(
         async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
@@ -611,7 +611,7 @@ async def test_composite_bonus_multiplier_scales_payout(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """An active bonus multiplier scales the composite's issued reward_value."""
+    """Verify an active bonus multiplier increases a combined rule's reward"""
     await _register_source(async_client, test_tenant, "cmp-mult")
     rule_id = await _create_composite_rule(
         async_client,

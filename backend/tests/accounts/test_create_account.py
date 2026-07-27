@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/accounts.
+"""Opening customer and system accounts.
 
 Covers happy path for each account type, tenant validation, currency
 normalisation, and invalid account_type rejection.
@@ -18,7 +18,7 @@ from app.shared.models import Tenant, User
 async def test_create_financial_wallet_for_user(
     async_client: AsyncClient, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Wallet creation for a user returns 201 with the correct fields."""
+    """Verify a new customer wallet is created and starts active"""
     response = await async_client.post(
         "/api/v1/accounts",
         json={
@@ -40,7 +40,7 @@ async def test_create_financial_wallet_for_user(
 async def test_create_system_points_issuance_account(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """System issuance account has no user_id or merchant_id."""
+    """Verify a system rewards points account can be opened without an owner"""
     response = await async_client.post(
         "/api/v1/accounts",
         json={
@@ -60,7 +60,7 @@ async def test_create_system_points_issuance_account(
 async def test_create_account_rejects_unknown_tenant(
     async_client: AsyncClient,
 ) -> None:
-    """Unknown tenant_id → 404 tenant_not_found."""
+    """Verify an account cannot be opened for an unknown business"""
     response = await async_client.post(
         "/api/v1/accounts",
         json={
@@ -77,7 +77,7 @@ async def test_create_account_rejects_unknown_tenant(
 async def test_create_account_validates_account_type(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Unknown account_type fails Pydantic Literal."""
+    """Verify an unrecognised account type is rejected"""
     response = await async_client.post(
         "/api/v1/accounts",
         json={
@@ -93,7 +93,7 @@ async def test_create_account_validates_account_type(
 async def test_create_account_normalises_currency_case(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Currency stored uppercase regardless of input."""
+    """Verify the account currency is saved in a standard uppercase form"""
     response = await async_client.post(
         "/api/v1/accounts",
         json={

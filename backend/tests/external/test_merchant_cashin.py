@@ -1,4 +1,4 @@
-"""Integration tests for the external merchant cash-in API (merchant_cashin).
+"""Merchant cash-in to a customer.
 
 A funded MERCHANT, authenticated by a merchant-bound API key, funds a CONSUMER
 from the merchant's OWN wallet. HMAC-signed, tenant derived from the key, the
@@ -248,8 +248,7 @@ async def test_merchant_funds_consumer_moves_money(
     merchant_key: dict[str, str],
     configs: None,
 ) -> None:
-    """The merchant is debited the principal, the consumer credited it, and the
-    two-sided move nets to zero at the ledger."""
+    """Verify a merchant can cash a customer in from the merchant's own wallet"""
     consumer_wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     merchant_wallet = (
         await db_session.execute(
@@ -281,8 +280,7 @@ async def test_merchant_cashin_debit_includes_fee(
     merchant: User,
     merchant_key: dict[str, str],
 ) -> None:
-    """With a non-zero fee configured, the merchant bears principal + fee while
-    the consumer still receives only the principal."""
+    """Verify a cash-in fee is borne by the merchant and not the customer"""
     consumer_wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     # R5 flat fee (exclusive by default) + wide limit.
     db_session.add(
@@ -328,7 +326,7 @@ async def test_fails_closed_when_no_config(
     merchant: User,
     merchant_key: dict[str, str],
 ) -> None:
-    """No pricing/limit config → 422 service_not_configured, no ledger write."""
+    """Verify a cash-in is refused when the service has no pricing or limit set up"""
     consumer_wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     resp = await _post(async_client, merchant_key, _body(_consumer_phone(test_user)))
     assert resp.status_code == 422, resp.text
@@ -345,7 +343,7 @@ async def test_fails_closed_when_only_pricing(
     merchant: User,
     merchant_key: dict[str, str],
 ) -> None:
-    """Pricing present but limit missing → still 422 (BOTH required)."""
+    """Verify a cash-in is refused when a limit is not set up"""
     consumer_wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     await _seed_service_configs(db_session, test_tenant, with_limit=False)
     resp = await _post(async_client, merchant_key, _body(_consumer_phone(test_user)))
@@ -363,7 +361,7 @@ async def test_fails_closed_when_only_limit(
     merchant: User,
     merchant_key: dict[str, str],
 ) -> None:
-    """Limit present but pricing missing → still 422 (BOTH required)."""
+    """Verify a cash-in is refused when pricing is not set up"""
     consumer_wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     await _seed_service_configs(db_session, test_tenant, with_pricing=False)
     resp = await _post(async_client, merchant_key, _body(_consumer_phone(test_user)))
@@ -386,7 +384,7 @@ async def test_insufficient_merchant_funds(
     merchant_key: dict[str, str],
     configs: None,
 ) -> None:
-    """A merchant with too little balance → 409 insufficient_funds, no move."""
+    """Verify a merchant with too little balance cannot cash a customer in"""
     # This test overrides the default `merchant` fixture's wallet by binding the
     # key to a POORLY-funded merchant instead.
     poor = await _make_merchant(db_session, test_tenant, balance=Decimal("50"))
@@ -417,7 +415,7 @@ async def test_non_merchant_key_rejected(
     plain_key: dict[str, str],
     configs: None,
 ) -> None:
-    """A key without merchant_user_id → 403 not_a_merchant_key."""
+    """Verify an ordinary partner key cannot perform a merchant cash-in"""
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     resp = await _post(async_client, plain_key, _body(_consumer_phone(test_user)))
     assert resp.status_code == 403, resp.text
@@ -428,7 +426,7 @@ async def test_non_merchant_key_rejected(
 async def test_missing_auth_rejected(
     async_client: AsyncClient, test_user: User, merchant_key: dict[str, str]
 ) -> None:
-    """No API key / signature → 401."""
+    """Verify an unsigned cash-in request is rejected"""
     raw = json.dumps(_body(_consumer_phone(test_user))).encode()
     resp = await async_client.post(
         "/api/v1/external/merchant-cashin",
@@ -442,7 +440,7 @@ async def test_missing_auth_rejected(
 async def test_bad_signature_rejected(
     async_client: AsyncClient, test_user: User, merchant_key: dict[str, str]
 ) -> None:
-    """Signature computed with the wrong secret → 401."""
+    """Verify a cash-in request with an invalid signature is rejected"""
     resp = await _post(
         async_client,
         {"key_id": merchant_key["key_id"], "secret": "the-wrong-secret"},
@@ -455,7 +453,7 @@ async def test_bad_signature_rejected(
 async def test_missing_idempotency_key_rejected(
     async_client: AsyncClient, test_user: User, merchant_key: dict[str, str]
 ) -> None:
-    """No Idempotency-Key header → 422 (required header)."""
+    """Verify a cash-in request without an idempotency key is rejected"""
     raw = json.dumps(_body(_consumer_phone(test_user))).encode()
     ts = int(time.time())
     digest = hmac.new(
@@ -481,7 +479,7 @@ async def test_unknown_consumer_404(
     merchant_key: dict[str, str],
     configs: None,
 ) -> None:
-    """A phone that doesn't resolve in the key's tenant → 404."""
+    """Verify a cash-in to an unknown customer is rejected"""
     resp = await _post(async_client, merchant_key, _body("+27829999999"))
     assert resp.status_code == 404
 
@@ -501,7 +499,7 @@ async def test_idempotent_replay_moves_once(
     merchant_key: dict[str, str],
     configs: None,
 ) -> None:
-    """Replaying the same Idempotency-Key funds the consumer exactly once."""
+    """Verify replaying a cash-in credits the customer only once"""
     consumer_wallet = await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("0"))
     body = _body(_consumer_phone(test_user), "100")
     first = await _post(async_client, merchant_key, body, idem="mc-dup")
@@ -523,7 +521,7 @@ async def test_tenant_isolation_via_key(
     merchant_key: dict[str, str],
     configs: None,
 ) -> None:
-    """A consumer that exists only in ANOTHER tenant doesn't resolve → 404.
+    """Verify a merchant cannot cash in a customer from another tenant.
 
     The key scopes the tenant, so a merchant in test_tenant cannot reach a user
     registered in other_tenant.

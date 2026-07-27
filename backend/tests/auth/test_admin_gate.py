@@ -1,4 +1,4 @@
-"""Tests for `get_current_admin` + `require_admin_role` as a FastAPI dependency.
+"""Gating administrator actions by role.
 
 Exercises the dependency end-to-end through an httpx request to a
 reconciliation endpoint (which we picked as the Phase F.1 pilot surface).
@@ -19,7 +19,7 @@ from app.shared.models import Tenant
 async def test_admin_endpoint_rejects_missing_authorization(
     async_client: AsyncClient,
 ) -> None:
-    """Hitting an admin endpoint with no Authorization header → 401."""
+    """Verify an administrator action is rejected without a sign-in"""
     response = await async_client.post(
         "/api/v1/reconciliation/sweep",
         json={"tenant_id": str(uuid4()), "threshold_minutes": 5},
@@ -34,7 +34,7 @@ async def test_admin_endpoint_rejects_wrong_role(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Sweep requires platform-admin — support-agent gets 403."""
+    """Verify an administrator without the right role is refused"""
     token = make_admin_token(roles=["support-agent"])
     response = await async_client.post(
         "/api/v1/reconciliation/sweep",
@@ -51,7 +51,7 @@ async def test_admin_endpoint_accepts_platform_admin(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Same call with platform-admin → 200."""
+    """Verify a platform administrator can perform a privileged action"""
     response = await async_client.post(
         "/api/v1/reconciliation/sweep",
         headers=admin_auth_header,
@@ -68,7 +68,7 @@ async def test_read_endpoint_accepts_finance_reviewer(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Read endpoints (pending list) accept finance-reviewer."""
+    """Verify a finance reviewer can view pending items"""
     token = make_admin_token(roles=["finance-reviewer"])
     response = await async_client.get(
         "/api/v1/reconciliation/pending",
@@ -85,7 +85,7 @@ async def test_read_endpoint_rejects_no_role(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Token with empty roles → 403 on read endpoint."""
+    """Verify an administrator with no role cannot view pending items"""
     token = make_admin_token(roles=[])
     response = await async_client.get(
         "/api/v1/reconciliation/pending",
@@ -102,7 +102,7 @@ async def test_admin_endpoint_rejects_expired_token(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Expired token → 401 token_expired."""
+    """Verify an expired administrator sign-in is rejected"""
     token = make_admin_token(roles=["platform-admin"], exp_seconds=-10)
     response = await async_client.post(
         "/api/v1/reconciliation/sweep",
@@ -118,7 +118,7 @@ async def test_admin_endpoint_rejects_garbage_token(
     async_client: AsyncClient,
     test_tenant: Tenant,
 ) -> None:
-    """Random string as token → 401, not 500."""
+    """Verify a malformed administrator sign-in is rejected safely"""
     response = await async_client.post(
         "/api/v1/reconciliation/sweep",
         headers={"Authorization": "Bearer not.a.real.jwt"},

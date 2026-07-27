@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/catalog/featured (A4 — mobile home card).
+"""Featured campaign card — the reward the mobile home screen highlights.
 
 Covers happy path, empty/inactive/out-of-window paths, tenant isolation,
 and the 401 auth-failure case. Campaign rules are seeded directly via
@@ -67,7 +67,7 @@ async def test_featured_returns_active_campaign(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Happy path — one active in-window campaign exists; endpoint surfaces it."""
+    """Verify a customer sees the active featured campaign for their tenant."""
     rule = await _seed_campaign(db_session, test_tenant)
 
     response = await async_client.get(
@@ -91,7 +91,7 @@ async def test_featured_returns_null_when_no_campaigns(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """No campaigns exist → 200 with campaign: null (NOT a 404)."""
+    """Verify a customer with no running campaigns sees an empty card, not an error."""
     response = await async_client.get(
         "/api/v1/catalog/featured",
         headers=await _user_header(test_user),
@@ -108,7 +108,7 @@ async def test_featured_skips_inactive_campaigns(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """status != 'active' rules are filtered out → campaign: null."""
+    """Verify a customer does not see a campaign that has been switched off."""
     await _seed_campaign(db_session, test_tenant, status="inactive")
 
     response = await async_client.get(
@@ -127,7 +127,7 @@ async def test_featured_skips_out_of_window_campaigns(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Campaigns whose window has ended are not surfaced.
+    """Verify a customer does not see a campaign whose dates have passed.
 
     Defence-in-depth alongside the evaluator's same-day window check —
     keeps the mobile card from advertising a campaign the rules engine
@@ -157,7 +157,7 @@ async def test_featured_returns_newest_campaign_first(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Two eligible campaigns → the newer one is surfaced (created_at DESC)."""
+    """Verify a customer sees the most recently launched campaign when several run."""
     older = await _seed_campaign(db_session, test_tenant, name="Older")
     newer = await _seed_campaign(db_session, test_tenant, name="Newer")
     # Sanity check: created_at ordering matches insertion.
@@ -180,7 +180,7 @@ async def test_featured_isolates_across_tenants(
     test_user: User,
     other_tenant: Tenant,
 ) -> None:
-    """A campaign in `other_tenant` is invisible to `test_tenant` callers."""
+    """Verify a customer never sees a featured campaign belonging to another tenant."""
     await _seed_campaign(db_session, other_tenant, name="Cross-tenant Bonus")
 
     response = await async_client.get(
@@ -196,7 +196,7 @@ async def test_featured_isolates_across_tenants(
 async def test_featured_requires_session_token(
     async_client: AsyncClient,
 ) -> None:
-    """Missing Authorization header → 401, no campaign data leaked."""
+    """Verify a signed-out visitor cannot see any featured campaign."""
     response = await async_client.get("/api/v1/catalog/featured")
 
     assert response.status_code == 401
@@ -208,7 +208,7 @@ async def test_featured_requires_session_token(
 async def test_featured_rejects_unknown_session_token(
     async_client: AsyncClient,
 ) -> None:
-    """Bogus bearer token → 401 (the user has no Redis-backed session)."""
+    """Verify a visitor with an invalid session cannot see any featured campaign."""
     response = await async_client.get(
         "/api/v1/catalog/featured",
         headers={"Authorization": f"Bearer {uuid4().hex}"},

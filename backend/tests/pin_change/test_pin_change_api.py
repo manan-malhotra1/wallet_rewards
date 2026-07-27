@@ -1,4 +1,4 @@
-"""Integration tests for the change-PIN API.
+"""Changing a customer PIN.
 
 POST /api/v1/pin/change: a user changes their own PIN — a charged self-service
 operation subject to invariant #12 (fail-closed on BOTH pricing AND limit
@@ -73,7 +73,7 @@ async def test_change_pin_with_fee_debits_wallet_and_switches_pin(
     fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """Fee path: NEW pin works + OLD fails; wallet debited fee+tax; txn + row exist."""
+    """Verify a customer can change their PIN and is charged the fee"""
     resp = await async_client.post(
         "/api/v1/pin/change",
         content=json.dumps(change_pin_body()),
@@ -125,7 +125,7 @@ async def test_change_pin_audit_row_has_no_pin_or_hash(
     fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """The pin.changed audit carries only the charge breakdown (NFR-0170)."""
+    """Verify a PIN change is audited without recording the PIN"""
     resp = await async_client.post(
         "/api/v1/pin/change",
         content=json.dumps(change_pin_body()),
@@ -157,7 +157,7 @@ async def test_change_pin_zero_fee_writes_no_transaction(
     zero_fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """Zero fee: PIN changes, PinChange row exists, but NO ledger transaction."""
+    """Verify a free PIN change moves no money"""
     resp = await async_client.post(
         "/api/v1/pin/change",
         content=json.dumps(change_pin_body()),
@@ -191,7 +191,7 @@ async def test_change_pin_zero_fee_is_idempotent(
     zero_fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """Same Idempotency-Key twice → one PIN change, identical response."""
+    """Verify repeating a free PIN change request changes the PIN only once"""
     headers = change_pin_headers(pin_auth_header, idem="zero-fee-replay")
     first = await async_client.post(
         "/api/v1/pin/change", content=json.dumps(change_pin_body()), headers=headers
@@ -221,7 +221,7 @@ async def test_change_pin_fee_idempotent_charges_once(
     fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """Replay of a charged change: one PinChange, one Transaction, one debit."""
+    """Verify repeating a charged PIN change request charges only once"""
     headers = change_pin_headers(pin_auth_header, idem="fee-replay")
     first = await async_client.post(
         "/api/v1/pin/change", content=json.dumps(change_pin_body()), headers=headers
@@ -260,7 +260,7 @@ async def test_change_pin_fails_closed_when_pricing_config_missing(
     limit_only_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """Limit present but pricing MISSING → 422 service_not_configured, no change."""
+    """Verify a PIN change is refused when its pricing is not configured"""
     resp = await async_client.post(
         "/api/v1/pin/change",
         content=json.dumps(change_pin_body()),
@@ -286,7 +286,7 @@ async def test_change_pin_fails_closed_when_limit_config_missing(
     pricing_only_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """Pricing present but limit MISSING → 422 service_not_configured, no change."""
+    """Verify a PIN change is refused when its limits are not configured"""
     resp = await async_client.post(
         "/api/v1/pin/change",
         content=json.dumps(change_pin_body()),
@@ -312,7 +312,7 @@ async def test_change_pin_wrong_current_pin_rejected_and_no_change(
     zero_fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """Wrong current PIN → 401; pin_hash unchanged; no PinChange row."""
+    """Verify a customer cannot change their PIN with the wrong current PIN"""
     resp = await async_client.post(
         "/api/v1/pin/change",
         content=json.dumps(change_pin_body(current="0000")),
@@ -336,7 +336,7 @@ async def test_change_pin_locks_out_after_repeated_wrong_current_pin(
     zero_fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """Five wrong current-PIN attempts trip the lockout (423) — same as login."""
+    """Verify repeated wrong current PIN attempts lock the account"""
     last_status = None
     for i in range(5):
         resp = await async_client.post(
@@ -364,7 +364,7 @@ async def test_change_pin_locks_out_after_repeated_wrong_current_pin(
 
 @pytest.mark.asyncio
 async def test_change_pin_requires_authentication(async_client: AsyncClient) -> None:
-    """No session token → 401."""
+    """Verify changing a PIN requires the customer to be signed in"""
     resp = await async_client.post(
         "/api/v1/pin/change",
         content=json.dumps(change_pin_body()),
@@ -380,7 +380,7 @@ async def test_change_pin_malformed_new_pin_rejected(
     zero_fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """A non-numeric new PIN → 422 invalid_pin_format."""
+    """Verify a new PIN that is not a valid format is rejected"""
     resp = await async_client.post(
         "/api/v1/pin/change",
         content=json.dumps(change_pin_body(new="12ab")),
@@ -397,7 +397,7 @@ async def test_change_pin_new_same_as_current_rejected(
     zero_fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """New PIN equal to current → 422 new_pin_same_as_current."""
+    """Verify a customer cannot reuse their current PIN as the new one"""
     resp = await async_client.post(
         "/api/v1/pin/change",
         content=json.dumps(change_pin_body(new=CURRENT_PIN)),
@@ -421,7 +421,7 @@ async def test_change_pin_insufficient_funds_for_fee(
     fee_configs: None,
     pin_auth_header: dict[str, str],
 ) -> None:
-    """A fee is due but the (existing) wallet is empty → 409; pin_hash unchanged."""
+    """Verify a PIN change is refused when the wallet cannot cover the fee"""
     # An empty (unfunded) wallet so the fee can't be covered.
     from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET
 
@@ -516,7 +516,7 @@ async def test_change_pin_is_tenant_isolated(
     test_tenant: Tenant,
     other_tenant: Tenant,
 ) -> None:
-    """The same Idempotency-Key changes PINs independently across tenants.
+    """Verify a reused key changes PINs independently across businesses
 
     The idempotency guard is `(tenant_id, idempotency_key)`, so a key used by a
     tenant-A user must not collide with — or leak the result of — a same-key

@@ -1,4 +1,4 @@
-"""Tests for /api/v1/segments admin CRUD + membership."""
+"""Managing customer segments."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ async def test_create_segment_happy_path(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """POST returns 201 + the persisted row."""
+    """Verify an admin can create a customer segment"""
     resp = await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
@@ -38,7 +38,7 @@ async def test_create_segment_duplicate_name_409(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Same name twice within the tenant → 409."""
+    """Verify a segment cannot reuse an existing segment name"""
     payload = {"tenant_id": str(test_tenant.id), "name": "dup"}
     a = await async_client.post("/api/v1/segments", headers=admin_auth_header, json=payload)
     assert a.status_code == 201
@@ -54,7 +54,7 @@ async def test_list_segments_tenant_scoped(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Listing returns only the requesting tenant's rows."""
+    """Verify a business only sees its own customer segments"""
     await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
@@ -82,7 +82,7 @@ async def test_add_user_to_segment_idempotent(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Adding the same user twice is a no-op (no duplicate row)."""
+    """Verify adding a customer to a segment twice does not duplicate them"""
     create = await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
@@ -114,7 +114,7 @@ async def test_add_user_cross_tenant_returns_404(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Adding a user to a segment in a different tenant → 404."""
+    """Verify a customer cannot be added to another business's segment"""
     create = await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
@@ -137,7 +137,7 @@ async def test_add_unknown_user_returns_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown user_id → 404."""
+    """Verify an unknown customer cannot be added to a segment"""
     create = await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,

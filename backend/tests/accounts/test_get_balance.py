@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/accounts/{id}/balance.
+"""Reading account balances.
 
 Validates Pay-PRD-0130 (available_balance = balance - reserved) and
 NFR-0220 (cross-tenant access returns 404).
@@ -32,7 +32,7 @@ async def test_get_balance_empty_account(
     test_tenant: Tenant,
     user_wallet: Account,
 ) -> None:
-    """A brand-new account has zero balance."""
+    """Verify a new customer starts with a zero balance"""
     response = await async_client.get(
         f"/api/v1/accounts/{user_wallet.id}/balance",
         params={"tenant_id": str(test_tenant.id)},
@@ -47,7 +47,7 @@ async def test_get_balance_empty_account(
 async def test_get_balance_returns_404_for_unknown(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Unknown account id → 404."""
+    """Verify checking the balance of an unknown account is rejected"""
     response = await async_client.get(
         f"/api/v1/accounts/{uuid4()}/balance",
         params={"tenant_id": str(test_tenant.id)},
@@ -62,7 +62,7 @@ async def test_get_balance_cross_tenant_returns_404(
     other_tenant: Tenant,
     user_wallet: Account,
 ) -> None:
-    """Account exists in test_tenant; requesting from other_tenant returns 404."""
+    """Verify one business cannot see another business's account balance"""
     response = await async_client.get(
         f"/api/v1/accounts/{user_wallet.id}/balance",
         params={"tenant_id": str(other_tenant.id)},
@@ -78,7 +78,7 @@ async def test_get_balance_reflects_completed_ledger(
     user_wallet: Account,
     system_points_account: Account,
 ) -> None:
-    """Balance equals SUM(CREDIT - DEBIT) over COMPLETED entries.
+    """Verify a customer's balance reflects their completed transactions
 
     Post a 100-unit transaction between system and the user's wallet, then
     verify the wallet shows +100 and the system shows -100.

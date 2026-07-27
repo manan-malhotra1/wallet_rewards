@@ -1,4 +1,4 @@
-"""Tests that a segment-bound rule only fires for users in the segment."""
+"""Segment-targeted rewards."""
 
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ async def test_segment_bound_rule_fires_only_for_members(
     admin_auth_header: dict[str, str],
     user_points,
 ) -> None:
-    """User in the bound segment → rule fires. User outside → no fire."""
+    """Verify a reward only applies to customers in the targeted segment"""
     await _ensure_system_points(db_session, test_tenant)
 
     # Source + segment + rule with segment binding.

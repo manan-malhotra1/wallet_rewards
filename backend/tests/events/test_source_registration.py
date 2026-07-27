@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/events/sources."""
+"""Event source registration."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from app.shared.models import Tenant
 
 @pytest.mark.asyncio
 async def test_register_source_happy_path(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """A valid source registers with status='active'."""
+    """Verify a new event source can be registered and is immediately active"""
     response = await async_client.post(
         "/api/v1/events/sources",
         json={
@@ -31,7 +31,7 @@ async def test_register_source_happy_path(async_client: AsyncClient, test_tenant
 async def test_register_source_rejects_duplicate_key(
     async_client: AsyncClient, test_tenant: Tenant, other_tenant: Tenant
 ) -> None:
-    """source_key is globally unique — second registration fails 409."""
+    """Verify an event source key cannot be registered twice"""
     first = await async_client.post(
         "/api/v1/events/sources",
         json={
@@ -58,7 +58,7 @@ async def test_register_source_rejects_duplicate_key(
 async def test_register_source_rejects_unknown_tenant(
     async_client: AsyncClient,
 ) -> None:
-    """Unknown tenant_id → 404."""
+    """Verify an event source cannot be registered for an unknown tenant"""
     response = await async_client.post(
         "/api/v1/events/sources",
         json={

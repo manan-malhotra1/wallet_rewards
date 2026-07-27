@@ -1,4 +1,4 @@
-"""Tests for the per-rule GET / PATCH / DELETE endpoints + budget_scope.
+"""Managing reward rules.
 
 DELETE is soft — sets status='inactive'. Hard-delete is rejected by the
 FK on `reward_events.rule_id` once the rule has fired.
@@ -46,7 +46,7 @@ async def _create_rule(client: AsyncClient, tenant: Tenant, name: str) -> str:
 async def test_get_rule_returns_full_payload(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Single-rule fetch returns all fields including type-specific ones."""
+    """Verify an admin can view the full details of a reward rule"""
     rule_id = await _create_rule(async_client, test_tenant, "fetchable")
     resp = await async_client.get(
         f"/api/v1/rules/{rule_id}",
@@ -65,7 +65,7 @@ async def test_get_rule_cross_tenant_returns_404(
     test_tenant: Tenant,
     other_tenant: Tenant,
 ) -> None:
-    """Fetching a rule from another tenant must return 404."""
+    """Verify a business cannot view another business's reward rule"""
     rule_id = await _create_rule(async_client, test_tenant, "cross-tenant-fetch")
     resp = await async_client.get(
         f"/api/v1/rules/{rule_id}",
@@ -83,7 +83,7 @@ async def test_get_rule_cross_tenant_returns_404(
 async def test_patch_rule_updates_reward_value(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Changing reward_value persists + the GET reflects it."""
+    """Verify an admin can change a reward rule's payout amount"""
     rule_id = await _create_rule(async_client, test_tenant, "patchable")
     resp = await async_client.patch(
         f"/api/v1/rules/{rule_id}",
@@ -98,7 +98,7 @@ async def test_patch_rule_updates_reward_value(
 async def test_patch_rule_rejects_zero_reward(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """reward_value <= 0 → 422."""
+    """Verify a reward rule cannot be updated to a zero or negative payout"""
     rule_id = await _create_rule(async_client, test_tenant, "zero-reward")
     resp = await async_client.patch(
         f"/api/v1/rules/{rule_id}",
@@ -114,7 +114,7 @@ async def test_patch_rule_cross_tenant_returns_404(
     test_tenant: Tenant,
     other_tenant: Tenant,
 ) -> None:
-    """Patching another tenant's rule must return 404 — no existence leak."""
+    """Verify a business cannot change another business's reward rule"""
     rule_id = await _create_rule(async_client, test_tenant, "cross-tenant-patch")
     resp = await async_client.patch(
         f"/api/v1/rules/{rule_id}",
@@ -135,7 +135,7 @@ async def test_delete_rule_soft_deletes(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """DELETE returns 204 and the row keeps existing with status='inactive'."""
+    """Verify an admin can deactivate a reward rule"""
     rule_id = await _create_rule(async_client, test_tenant, "to-delete")
     resp = await async_client.delete(
         f"/api/v1/rules/{rule_id}",
@@ -149,7 +149,7 @@ async def test_delete_rule_soft_deletes(
 
 @pytest.mark.asyncio
 async def test_delete_rule_is_idempotent(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """Deleting an already-inactive rule returns 204 (no-op)."""
+    """Verify deactivating an already-inactive rule succeeds"""
     rule_id = await _create_rule(async_client, test_tenant, "to-delete-twice")
     a = await async_client.delete(
         f"/api/v1/rules/{rule_id}",
@@ -168,7 +168,7 @@ async def test_delete_rule_cross_tenant_returns_404(
     test_tenant: Tenant,
     other_tenant: Tenant,
 ) -> None:
-    """Cross-tenant delete must 404."""
+    """Verify a business cannot deactivate another business's reward rule"""
     rule_id = await _create_rule(async_client, test_tenant, "cross-tenant-delete")
     resp = await async_client.delete(
         f"/api/v1/rules/{rule_id}",
@@ -209,7 +209,7 @@ async def test_budget_scope_none(
     async_client: AsyncClient,
     test_tenant: Tenant,
 ) -> None:
-    """No budgets configured → budget_scope is 'none'."""
+    """Verify a rule with no reward budget reports no budget"""
     rule_id = await _create_rule(async_client, test_tenant, "scope-none")
     resp = await async_client.get(
         f"/api/v1/rules/{rule_id}/performance",
@@ -224,7 +224,7 @@ async def test_budget_scope_tenant_only(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """Only a tenant-wide budget → 'tenant_only'."""
+    """Verify a rule covered only by a business-wide budget reports it"""
     rule_id = await _create_rule(async_client, test_tenant, "scope-tenant")
     await _seed_budget(db_session, test_tenant, scope_id=None)
     resp = await async_client.get(
@@ -240,7 +240,7 @@ async def test_budget_scope_rule_only(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """Only a rule-scoped budget → 'rule_only'."""
+    """Verify a rule with its own budget reports it"""
     rule_id = await _create_rule(async_client, test_tenant, "scope-rule")
     await _seed_budget(db_session, test_tenant, scope_id=rule_id)
     resp = await async_client.get(
@@ -256,7 +256,7 @@ async def test_budget_scope_both(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """Tenant + rule-scoped budgets → 'both'."""
+    """Verify a rule reports both its own and the business-wide budget"""
     rule_id = await _create_rule(async_client, test_tenant, "scope-both")
     await _seed_budget(db_session, test_tenant, scope_id=None)
     await _seed_budget(db_session, test_tenant, scope_id=rule_id)
@@ -273,7 +273,7 @@ async def test_budget_scope_batch_endpoint(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """Batch endpoint surfaces the same scope info per row."""
+    """Verify the rules overview shows each rule's budget coverage"""
     rule_a = await _create_rule(async_client, test_tenant, "batch-a")
     rule_b = await _create_rule(async_client, test_tenant, "batch-b")
     # Tenant-wide budget → both rules get 'tenant_only'.

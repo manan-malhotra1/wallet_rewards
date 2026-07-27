@@ -1,4 +1,4 @@
-"""Audit-trail test for POST /api/v1/accounts (NFR-0160 / NFR-0250).
+"""Auditing account creation.
 
 Account creation is an administrator action, so it must land an immutable
 `audit_log` row with the owner scope + type/currency (never secrets).
@@ -23,6 +23,7 @@ async def test_create_account_writes_audit(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
+    """Verify opening an account is recorded in the audit trail"""
     resp = await async_client.post(
         "/api/v1/accounts",
         json={

@@ -1,4 +1,4 @@
-"""Audit-trail tests for the roles admin endpoints (NFR-0160 / NFR-0250).
+"""Roles audit trail — every permission change leaves an immutable record.
 
 Authorization edits govern who may move money, so every role / permission /
 binding mutation must land an immutable `audit_log` row. These tests hit the
@@ -38,6 +38,7 @@ async def _audit_rows(
 async def test_create_role_writes_audit(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
+    """Verify creating a role is recorded in the audit trail."""
     resp = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "audit-role", "description": "d"},
@@ -60,6 +61,7 @@ async def test_create_role_writes_audit(
 async def test_update_role_writes_before_after_audit(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
+    """Verify editing a role records both its old and new state."""
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "to-update"},
@@ -85,7 +87,7 @@ async def test_update_role_writes_before_after_audit(
 async def test_set_permission_writes_grant_audit(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Granting a permission on a role is the money-relevant edit — audit it."""
+    """Verify granting a permission to a role is recorded in the audit trail."""
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "perm-role"},
@@ -112,6 +114,7 @@ async def test_set_permission_writes_grant_audit(
 async def test_remove_permission_writes_revoke_audit(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
+    """Verify revoking a permission from a role is recorded in the audit trail."""
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "revoke-role"},
@@ -142,6 +145,7 @@ async def test_assign_role_writes_binding_audit(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
+    """Verify assigning a role to a user is recorded in the audit trail."""
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "assign-role"},
@@ -175,7 +179,7 @@ async def test_idempotent_reassign_writes_no_second_audit(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Re-assigning an existing binding is a no-op — it must not double-audit."""
+    """Verify re-assigning a role a user already has adds no duplicate audit record."""
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "dup-assign"},
@@ -209,6 +213,7 @@ async def test_remove_role_writes_binding_audit(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
+    """Verify removing a role from a user is recorded in the audit trail."""
     create = await async_client.post(
         "/api/v1/roles",
         json={"tenant_id": str(test_tenant.id), "name": "remove-role"},

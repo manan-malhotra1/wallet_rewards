@@ -1,4 +1,4 @@
-"""Tests for /api/v1/instruments — Phase 3 catalog surface.
+"""Currency catalog management.
 
 Covers list (tenant-scoped + status filter), create (happy + dup-code +
 auth + validation), patch (display_name + status + 404), soft-delete
@@ -44,7 +44,7 @@ async def _seed_instrument(
 async def test_list_instruments_requires_auth(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Anonymous list → 401."""
+    """Verify the currency catalog cannot be listed without signing in"""
     resp = await async_client.get("/api/v1/instruments", params={"tenant_id": str(test_tenant.id)})
     assert resp.status_code == 401
 
@@ -56,7 +56,7 @@ async def test_list_instruments_returns_active_and_disabled(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """No status filter → both active and disabled rows."""
+    """Verify the currency catalog lists both active and disabled currencies"""
     await _seed_instrument(db_session, str(test_tenant.id), "ZAR", "R")
     await _seed_instrument(db_session, str(test_tenant.id), "BTC", "₿", status="disabled")
     resp = await async_client.get(
@@ -76,7 +76,7 @@ async def test_list_instruments_status_filter(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """status=active filter excludes disabled rows."""
+    """Verify the currency catalog can be filtered to active currencies"""
     await _seed_instrument(db_session, str(test_tenant.id), "ZAR", "R")
     await _seed_instrument(db_session, str(test_tenant.id), "OLD", "x", status="disabled")
     resp = await async_client.get(
@@ -96,7 +96,7 @@ async def test_list_instruments_tenant_isolated(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A request for tenant A doesn't surface tenant B's catalog."""
+    """Verify one tenant's currency catalog does not show another tenant's currencies"""
     await _seed_instrument(db_session, str(test_tenant.id), "ZAR", "R")
     await _seed_instrument(db_session, str(other_tenant.id), "ZAR", "R")
     resp = await async_client.get(
@@ -115,7 +115,7 @@ async def test_create_instrument_happy_path(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """POST returns 201 + the persisted row."""
+    """Verify a new currency can be added to the catalog"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -140,7 +140,7 @@ async def test_create_instrument_duplicate_code_409(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Two instruments with the same code in one tenant → 409."""
+    """Verify a currency code cannot be added twice in a tenant"""
     await _seed_instrument(db_session, str(test_tenant.id), "ZAR", "R")
     resp = await async_client.post(
         "/api/v1/instruments",
@@ -163,7 +163,7 @@ async def test_create_instrument_rejects_lowercase_code(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Codes must be uppercase — 'zar' is rejected."""
+    """Verify a currency code must be uppercase"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -186,7 +186,7 @@ async def test_create_instrument_with_backfill_creates_user_accounts(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """assign_to_existing_users=true → one account per user appears."""
+    """Verify adding a currency can give every existing customer an account for it"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -227,7 +227,7 @@ async def test_create_instrument_without_backfill_skips_user_accounts(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """assign_to_existing_users default false → no accounts created."""
+    """Verify adding a currency leaves existing customers without an account unless requested"""
     await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -262,7 +262,7 @@ async def test_patch_instrument_display_name_and_status(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """PATCH updates symbol/display_name/status; code + account_type stay put."""
+    """Verify a currency's name, symbol, and status can be edited"""
     inst = await _seed_instrument(db_session, str(test_tenant.id), "PTS", "p", "Points")
     resp = await async_client.patch(
         f"/api/v1/instruments/{inst.id}",
@@ -286,7 +286,7 @@ async def test_patch_rejects_code_field(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """extra='forbid' blocks accidental code mutations."""
+    """Verify a currency's code cannot be changed after creation"""
     inst = await _seed_instrument(db_session, str(test_tenant.id), "ZAR", "R")
     resp = await async_client.patch(
         f"/api/v1/instruments/{inst.id}",
@@ -303,7 +303,7 @@ async def test_patch_unknown_instrument_returns_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """PATCH on a non-existent id → 404."""
+    """Verify editing an unknown currency is rejected"""
     resp = await async_client.patch(
         f"/api/v1/instruments/{uuid4()}",
         params={"tenant_id": str(test_tenant.id)},
@@ -320,7 +320,7 @@ async def test_delete_instrument_removes_from_list(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Soft-deleted instruments don't appear in GET."""
+    """Verify a removed currency no longer appears in the catalog"""
     inst = await _seed_instrument(db_session, str(test_tenant.id), "ZAR", "R")
     delete_resp = await async_client.delete(
         f"/api/v1/instruments/{inst.id}",
@@ -345,7 +345,7 @@ async def test_delete_then_recreate_same_code_succeeds(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Partial-unique index allows re-adding a deleted code."""
+    """Verify a removed currency code can be added again"""
     inst = await _seed_instrument(db_session, str(test_tenant.id), "ZAR", "R")
     await async_client.delete(
         f"/api/v1/instruments/{inst.id}",

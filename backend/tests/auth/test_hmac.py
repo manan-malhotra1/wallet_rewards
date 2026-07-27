@@ -1,4 +1,4 @@
-"""Unit tests for the HMAC verifier helper (Phase F.5).
+"""Verifying request signatures.
 
 These exercise the pure functions in `app.auth.hmac` — no DB, no FastAPI.
 The E2E behaviour against the provider-callback endpoint is in
@@ -25,13 +25,13 @@ BODY = b'{"outcome":"completed","external_reference":"MUKURU-1"}'
 
 
 def test_signature_round_trip_succeeds():
-    """A header built by `build_signature_header` verifies cleanly."""
+    """Verify a correctly signed request passes verification"""
     header = build_signature_header(raw_body=BODY, secret=SECRET, timestamp=1718473200)
     verify_signature(header=header, raw_body=BODY, secret=SECRET, now=1718473200)
 
 
 def test_signature_inside_window_succeeds():
-    """A header signed `REPLAY_WINDOW_SECONDS - 1` ago still verifies."""
+    """Verify a recently signed request is still accepted"""
     ts = 1718473200
     header = build_signature_header(raw_body=BODY, secret=SECRET, timestamp=ts)
     verify_signature(
@@ -43,7 +43,7 @@ def test_signature_inside_window_succeeds():
 
 
 def test_signature_outside_window_raises_skew():
-    """A header older than the replay window is rejected."""
+    """Verify a request signed too long ago is rejected"""
     ts = 1718473200
     header = build_signature_header(raw_body=BODY, secret=SECRET, timestamp=ts)
     with pytest.raises(SignatureTimestampSkew):
@@ -56,7 +56,7 @@ def test_signature_outside_window_raises_skew():
 
 
 def test_signature_future_outside_window_raises_skew():
-    """Timestamp from the future is also rejected (clock skew, not just stale)."""
+    """Verify a request signed too far in the future is rejected"""
     ts = 1718473200
     header = build_signature_header(raw_body=BODY, secret=SECRET, timestamp=ts)
     with pytest.raises(SignatureTimestampSkew):
@@ -69,7 +69,7 @@ def test_signature_future_outside_window_raises_skew():
 
 
 def test_tampered_body_raises_invalid_signature():
-    """Mutating a single byte of the body invalidates the signature."""
+    """Verify a request whose body was altered is rejected"""
     ts = 1718473200
     header = build_signature_header(raw_body=BODY, secret=SECRET, timestamp=ts)
     tampered = BODY.replace(b"MUKURU-1", b"MUKURU-2")
@@ -78,7 +78,7 @@ def test_tampered_body_raises_invalid_signature():
 
 
 def test_wrong_secret_raises_invalid_signature():
-    """Verifying with a different secret fails."""
+    """Verify a request signed with the wrong secret is rejected"""
     ts = 1718473200
     header = build_signature_header(raw_body=BODY, secret=SECRET, timestamp=ts)
     with pytest.raises(InvalidSignature):
@@ -86,19 +86,19 @@ def test_wrong_secret_raises_invalid_signature():
 
 
 def test_missing_v1_raises_malformed():
-    """Header without a `v1=` field is malformed."""
+    """Verify a request missing its signature is rejected as malformed"""
     with pytest.raises(SignatureMalformed):
         verify_signature(header="t=1718473200", raw_body=BODY, secret=SECRET, now=1718473200)
 
 
 def test_missing_timestamp_raises_malformed():
-    """Header without a `t=` field is malformed."""
+    """Verify a request missing its signing time is rejected as malformed"""
     with pytest.raises(SignatureMalformed):
         verify_signature(header="v1=deadbeef", raw_body=BODY, secret=SECRET, now=1718473200)
 
 
 def test_non_integer_timestamp_raises_malformed():
-    """`t=` must be an integer; anything else is malformed."""
+    """Verify a request with an invalid signing time is rejected as malformed"""
     with pytest.raises(SignatureMalformed):
         verify_signature(
             header="t=notanumber,v1=deadbeef",
@@ -109,7 +109,7 @@ def test_non_integer_timestamp_raises_malformed():
 
 
 def test_multiple_v1_digests_verify_when_any_matches():
-    """Rotation case — multiple `v1=` values; verify passes if ANY matches."""
+    """Verify a request stays valid during a secret rotation"""
     ts = 1718473200
     good_header = build_signature_header(raw_body=BODY, secret=SECRET, timestamp=ts)
     # Inject an extra (wrong) digest before the good one; both should be tried.
@@ -121,7 +121,7 @@ def test_multiple_v1_digests_verify_when_any_matches():
 
 
 def test_uppercase_v1_is_compared_case_insensitively():
-    """Hex digests are lowercased before constant-time compare."""
+    """Verify a signature is accepted regardless of letter case"""
     ts = 1718473200
     header = build_signature_header(raw_body=BODY, secret=SECRET, timestamp=ts)
     upper_header = header.replace("v1=", "v1=").upper().replace("T=", "t=").replace("V1=", "v1=")
@@ -129,7 +129,7 @@ def test_uppercase_v1_is_compared_case_insensitively():
 
 
 def test_extra_unknown_fields_ignored():
-    """Forwards-compat — unknown header fields don't break verification."""
+    """Verify unknown extra signature fields do not break verification"""
     ts = 1718473200
     header = build_signature_header(raw_body=BODY, secret=SECRET, timestamp=ts)
     composed = f"{header},v2=futurefield,extra=value"

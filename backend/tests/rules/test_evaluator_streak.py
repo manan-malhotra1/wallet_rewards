@@ -1,4 +1,4 @@
-"""Tests for the streak rule type — Epic 10 (WAL-73).
+"""Streak rewards.
 
 Streak rules track `current_streak` on UserRuleProgress: increments on a
 qualifying event in the immediately-next period (day/week), resets on a
@@ -124,7 +124,7 @@ async def test_streak_fires_on_n_consecutive_days(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """3-day streak: event on day 1, 2, 3 → day 3 fires."""
+    """Verify a customer earns a streak reward after several consecutive days of activity"""
     await _ensure_system_points(db_session, test_tenant)
     await _user_points_account(db_session, test_tenant, test_user)
     await _register_source(async_client, test_tenant, "streak-3d")
@@ -146,7 +146,7 @@ async def test_streak_breaks_on_gap_and_restarts(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Day 1 → 2 → 4 (gap) → 5. Streak resets at day 4; never reaches 3."""
+    """Verify a customer's streak resets when they miss a day"""
     await _ensure_system_points(db_session, test_tenant)
     await _user_points_account(db_session, test_tenant, test_user)
     await _register_source(async_client, test_tenant, "streak-break")
@@ -176,7 +176,7 @@ async def test_streak_same_day_is_no_op(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Two events on day 1 should advance the streak by 1, not 2."""
+    """Verify multiple actions on the same day advance a streak only once"""
     await _ensure_system_points(db_session, test_tenant)
     await _user_points_account(db_session, test_tenant, test_user)
     await _register_source(async_client, test_tenant, "streak-same-day")
@@ -212,7 +212,7 @@ async def test_streak_resets_after_trigger(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """After firing on day 3, the streak resets and fires again on day 6."""
+    """Verify a customer can earn a streak reward again after it resets"""
     await _ensure_system_points(db_session, test_tenant)
     await _user_points_account(db_session, test_tenant, test_user)
     await _register_source(async_client, test_tenant, "streak-reset")
@@ -240,7 +240,7 @@ async def test_streak_resets_after_trigger(
 async def test_streak_requires_units_and_window_on_create(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Missing streak_units → 422."""
+    """Verify a streak rule is rejected when its length is missing"""
     resp = await async_client.post(
         "/api/v1/rules",
         json={
@@ -264,7 +264,7 @@ async def test_streak_progress_state_increments(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """current_streak on user_rule_progress increments per qualifying day."""
+    """Verify a customer's streak count grows with each qualifying day"""
     await _ensure_system_points(db_session, test_tenant)
     await _user_points_account(db_session, test_tenant, test_user)
     await _register_source(async_client, test_tenant, "streak-state")

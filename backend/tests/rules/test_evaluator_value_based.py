@@ -1,4 +1,4 @@
-"""Tests for the value_based rule type — Epic 10 (WAL-74).
+"""Value-based rewards.
 
 Drives the engine via the public events/external HTTP path so the
 candidate query + dispatcher + branch are all exercised end-to-end.
@@ -98,7 +98,7 @@ async def test_value_based_fires_when_amount_meets_threshold(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """min_amount=100; a R 500 event fires the rule."""
+    """Verify a customer earns a reward when a transaction meets the minimum amount"""
     await _ensure_system_points(db_session, test_tenant)
     await _register_source(async_client, test_tenant, "vb-src-1")
     await _create_value_based_rule(async_client, test_tenant, min_amount="100")
@@ -130,7 +130,7 @@ async def test_value_based_does_not_fire_below_threshold(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """min_amount=100; a R 50 event does NOT fire."""
+    """Verify a customer earns no reward when a transaction is below the minimum amount"""
     await _ensure_system_points(db_session, test_tenant)
     await _register_source(async_client, test_tenant, "vb-src-2")
     await _create_value_based_rule(async_client, test_tenant, min_amount="100")
@@ -150,7 +150,7 @@ async def test_value_based_stop_after_n_triggers(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """stop_after_n_triggers=2; events 1+2 fire, event 3 doesn't."""
+    """Verify a value-based rule stops rewarding a customer after its trigger limit"""
     await _ensure_system_points(db_session, test_tenant)
     await _register_source(async_client, test_tenant, "vb-src-3")
     await _create_value_based_rule(
@@ -180,7 +180,7 @@ async def test_value_based_stop_after_n_triggers(
 async def test_value_based_requires_min_amount_on_create(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Creating a value_based rule without min_amount → 422."""
+    """Verify a value-based rule is rejected when its minimum amount is missing"""
     resp = await async_client.post(
         "/api/v1/rules",
         json={

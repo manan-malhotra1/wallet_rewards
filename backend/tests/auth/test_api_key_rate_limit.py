@@ -1,4 +1,4 @@
-"""Per-key fixed-window rate limiting for the external API (Epic 14 S5)."""
+"""Rate-limiting partner API calls."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from app.auth.rate_limit import consume_api_key_quota
 async def test_requests_within_limit_allowed_then_blocked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Up to the limit is allowed; the next request is blocked with a retry hint."""
+    """Verify an API key is rate-limited after too many calls"""
     monkeypatch.setattr(rl, "API_KEY_RATE_LIMIT", 2)
     a1, _ = await consume_api_key_quota("sak_rl_a")
     a2, _ = await consume_api_key_quota("sak_rl_a")
@@ -25,7 +25,7 @@ async def test_requests_within_limit_allowed_then_blocked(
 
 @pytest.mark.asyncio
 async def test_buckets_are_per_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """One key exhausting its quota does not affect another key."""
+    """Verify one API key hitting its limit does not affect another"""
     monkeypatch.setattr(rl, "API_KEY_RATE_LIMIT", 1)
     assert (await consume_api_key_quota("key-A"))[0] is True
     assert (await consume_api_key_quota("key-B"))[0] is True

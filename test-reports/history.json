@@ -861,12 +861,20 @@
     {
       "date": "2026-07-27T23:56:17",
       "outcome": "failed"
+    },
+    {
+      "date": "2026-07-28T01:02:27",
+      "outcome": "passed"
     }
   ],
   "backend::backend/tests/catalog/test_summary.py::test_redemption_history_returns_user_redemptions": [
     {
       "date": "2026-07-27T23:56:17",
       "outcome": "failed"
+    },
+    {
+      "date": "2026-07-28T01:02:27",
+      "outcome": "passed"
     }
   ],
   "backend::backend/tests/catalog/test_summary.py::test_summary_for_user_with_no_points_account": [
@@ -885,6 +893,10 @@
     {
       "date": "2026-07-27T23:56:17",
       "outcome": "failed"
+    },
+    {
+      "date": "2026-07-28T01:02:27",
+      "outcome": "passed"
     }
   ],
   "backend::backend/tests/commissions/test_band_boundary.py::test_commission_upper_bound_is_inclusive": [
@@ -4281,6 +4293,10 @@
     {
       "date": "2026-07-27T23:56:17",
       "outcome": "failed"
+    },
+    {
+      "date": "2026-07-28T01:02:27",
+      "outcome": "passed"
     }
   ],
   "backend::backend/tests/roles/test_permission_gate.py::test_p2p_rejects_user_whose_role_lacks_p2p_permission": [

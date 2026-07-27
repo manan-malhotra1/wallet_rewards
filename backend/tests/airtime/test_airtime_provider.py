@@ -1,4 +1,4 @@
-"""Unit tests for the airtime provider adapter + simulator (Epic 17 S3).
+"""Airtime provider simulator.
 
 The simulator is deterministic so the recharge flow's success / failure /
 pending branches are exercisable without a live MNO. Outcome rules:
@@ -34,6 +34,7 @@ def _req(msisdn: str, **config: object) -> ProvisionRequest:
 
 @pytest.mark.asyncio
 async def test_simulator_default_msisdn_succeeds_with_reference() -> None:
+    """Verify a normal airtime top-up succeeds with a provider reference"""
     result = await SimulatorProvider().provision(_req("+27825551234"))
     assert result.outcome == PROVIDER_OUTCOME_SUCCESS
     assert result.provider_reference is not None
@@ -42,6 +43,7 @@ async def test_simulator_default_msisdn_succeeds_with_reference() -> None:
 
 @pytest.mark.asyncio
 async def test_simulator_failed_suffix_returns_failure_no_reference() -> None:
+    """Verify a failing airtime top-up returns a failure with no reference"""
     result = await SimulatorProvider().provision(_req("+27820000001"))
     assert result.outcome == PROVIDER_OUTCOME_FAILED
     assert result.failure_reason is not None
@@ -50,6 +52,7 @@ async def test_simulator_failed_suffix_returns_failure_no_reference() -> None:
 
 @pytest.mark.asyncio
 async def test_simulator_pending_suffix_returns_pending() -> None:
+    """Verify an airtime top-up can come back as still pending"""
     result = await SimulatorProvider().provision(_req("+27820000002"))
     assert result.outcome == PROVIDER_OUTCOME_PENDING
     assert result.provider_reference is None
@@ -57,16 +60,19 @@ async def test_simulator_pending_suffix_returns_pending() -> None:
 
 @pytest.mark.asyncio
 async def test_force_outcome_overrides_msisdn_rule() -> None:
+    """Verify a forced outcome overrides the default airtime result"""
     # msisdn would otherwise succeed, but the forced outcome wins.
     result = await SimulatorProvider().provision(_req("+27825551234", force_outcome="failed"))
     assert result.outcome == PROVIDER_OUTCOME_FAILED
 
 
 def test_get_provider_returns_simulator_for_simulator_mode() -> None:
+    """Verify simulator mode uses the simulated airtime provider"""
     assert isinstance(get_provider(MERCHANT_MODE_SIMULATOR), SimulatorProvider)
 
 
 def test_get_provider_rejects_unwired_live_mode() -> None:
+    """Verify live airtime mode is refused until a real provider is wired in"""
     # 'live' has no real adapter wired in v1 — fail loudly, never silently
     # fall back to the simulator for real money.
     with pytest.raises(NotImplementedError):

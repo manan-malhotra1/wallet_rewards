@@ -1,4 +1,4 @@
-"""Audit-trail tests for /api/v1/instruments CRUD (NFR-0160 / NFR-0250).
+"""Currency catalog audit trail.
 
 Every create / update / soft-delete of a catalog instrument is an
 administrator action and must land an immutable `audit_log` row.
@@ -36,6 +36,7 @@ async def test_create_instrument_writes_audit(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
+    """Verify adding a currency is recorded in the audit trail"""
     resp = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -65,6 +66,7 @@ async def test_update_instrument_writes_before_after_audit(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
+    """Verify editing a currency records its before and after state"""
     create = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,
@@ -99,6 +101,7 @@ async def test_soft_delete_instrument_writes_audit(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
+    """Verify removing a currency is recorded in the audit trail"""
     create = await async_client.post(
         "/api/v1/instruments",
         headers=admin_auth_header,

@@ -1,4 +1,4 @@
-"""Admin CRUD for external-API keys (Epic 14 S2).
+"""Managing partner API keys.
 
 Create (secret shown once), list (secret never returned), revoke
 (tenant-isolated). platform-admin gated; happy + 401/403/404 + tenant scope.
@@ -42,8 +42,7 @@ async def test_create_returns_secret_once_and_stores_it_encrypted(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Create returns a usable key_id + plaintext secret once; the secret is
-    stored only encrypted and never appears in the list response."""
+    """Verify a new API key's secret is shown only once and never stored in the clear"""
     resp = await async_client.post(
         "/api/v1/api-keys",
         headers=admin_auth_header,
@@ -81,7 +80,7 @@ async def test_create_without_merchant_user_leaves_it_null(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Omitting merchant_user_id mints an ordinary key with NULL binding."""
+    """Verify an API key can be created without linking it to a merchant"""
     resp = await async_client.post(
         "/api/v1/api-keys",
         headers=admin_auth_header,
@@ -102,7 +101,7 @@ async def test_create_with_merchant_user_binds_key_and_audits(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A valid merchant user binds the key, is returned, and lands in audit."""
+    """Verify an API key can be linked to a merchant and the change is audited"""
     merchant = await _make_user(db_session, test_tenant.id, USER_TYPE_MERCHANT)
     resp = await async_client.post(
         "/api/v1/api-keys",
@@ -139,7 +138,7 @@ async def test_create_with_non_merchant_user_422_and_no_key(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A consumer user -> 422 merchant_user_required, no key row created."""
+    """Verify an API key cannot be linked to a non-merchant user"""
     consumer = await _make_user(db_session, test_tenant.id, USER_TYPE_CONSUMER)
     resp = await async_client.post(
         "/api/v1/api-keys",
@@ -161,8 +160,7 @@ async def test_create_with_unknown_merchant_user_422_and_no_key(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An unknown merchant_user_id -> 422 (uniform with wrong-type; no existence
-    leak), no key row created."""
+    """Verify an API key cannot be linked to an unknown user"""
     resp = await async_client.post(
         "/api/v1/api-keys",
         headers=admin_auth_header,
@@ -184,7 +182,7 @@ async def test_create_with_merchant_user_from_another_tenant_rejected(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A merchant user in ANOTHER tenant -> 422 (tenant isolation), no key row."""
+    """Verify an API key cannot be linked to a merchant from another business"""
     foreign_merchant = await _make_user(db_session, other_tenant.id, USER_TYPE_MERCHANT)
     resp = await async_client.post(
         "/api/v1/api-keys",
@@ -201,7 +199,7 @@ async def test_create_with_merchant_user_from_another_tenant_rejected(
 
 @pytest.mark.asyncio
 async def test_create_requires_auth(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """No admin token -> 401."""
+    """Verify creating an API key requires an administrator to sign in"""
     resp = await async_client.post("/api/v1/api-keys", json={"tenant_id": str(test_tenant.id)})
     assert resp.status_code == 401
 
@@ -212,7 +210,7 @@ async def test_create_forbidden_without_platform_admin(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A token lacking platform-admin -> 403."""
+    """Verify only a platform administrator can create an API key"""
     token = make_admin_token(roles=["support-agent"])
     resp = await async_client.post(
         "/api/v1/api-keys",
@@ -226,7 +224,7 @@ async def test_create_forbidden_without_platform_admin(
 async def test_create_unknown_tenant_404(
     async_client: AsyncClient, admin_auth_header: dict[str, str]
 ) -> None:
-    """Creating a key for a non-existent tenant -> 404."""
+    """Verify an API key cannot be created for an unknown business"""
     resp = await async_client.post(
         "/api/v1/api-keys",
         headers=admin_auth_header,
@@ -242,7 +240,7 @@ async def test_list_is_tenant_scoped(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Listing a tenant's keys never returns another tenant's keys."""
+    """Verify one business only sees its own API keys"""
     for tid, label in ((test_tenant.id, "a"), (other_tenant.id, "b")):
         await async_client.post(
             "/api/v1/api-keys",
@@ -264,7 +262,7 @@ async def test_revoke_sets_status_and_is_tenant_isolated(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Revoke flips status to revoked; revoking under the wrong tenant -> 404."""
+    """Verify an administrator can revoke an API key only within their own business"""
     created = await async_client.post(
         "/api/v1/api-keys",
         headers=admin_auth_header,

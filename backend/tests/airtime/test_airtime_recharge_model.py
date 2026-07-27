@@ -1,4 +1,4 @@
-"""Model tests for AirtimeRecharge registration (Epic 17 S1).
+"""Airtime recharge records.
 
 The `AirtimeRecharge` model existed in the tree but was never registered in
 `shared/models/__init__.py` nor given a table migration, so `airtime_recharges`
@@ -44,7 +44,7 @@ async def _make_pending_txn(session: AsyncSession, tenant: Tenant, key: str) -> 
 async def test_airtime_recharge_persists_pending(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """A recharge row persists and defaults to PENDING."""
+    """Verify a new airtime recharge is saved and starts as pending"""
     txn = await _make_pending_txn(db_session, test_tenant, "rc-1")
     recharge = AirtimeRecharge(
         tenant_id=test_tenant.id,
@@ -68,7 +68,7 @@ async def test_airtime_recharge_persists_pending(
 async def test_airtime_recharge_idempotency_key_unique_per_tenant(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Two recharges with the same (tenant, idempotency_key) is rejected."""
+    """Verify two recharges with the same idempotency key in a tenant are rejected"""
     txn1 = await _make_pending_txn(db_session, test_tenant, "txn-a")
     db_session.add(
         AirtimeRecharge(
@@ -105,7 +105,7 @@ async def test_airtime_recharge_idempotency_key_unique_per_tenant(
 async def test_airtime_recharge_is_tenant_scoped(
     db_session: AsyncSession, test_tenant: Tenant, other_tenant: Tenant, test_user: User
 ) -> None:
-    """A recharge in one tenant is invisible when querying another tenant."""
+    """Verify a recharge in one tenant is invisible to another tenant"""
     txn = await _make_pending_txn(db_session, test_tenant, "rc-iso")
     db_session.add(
         AirtimeRecharge(

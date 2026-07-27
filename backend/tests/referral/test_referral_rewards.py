@@ -1,4 +1,4 @@
-"""Referral reward issuance — points, cashback, idempotency, cap-exemption.
+"""Referral reward payouts.
 
 Drives `evaluate_referral_on_signup` (and `issue_cashback_reward`) directly with
 both sides provisioned, which is the realistic shape once a referred user's
@@ -78,7 +78,7 @@ async def _pending_referral(
 async def test_signup_rewards_both_sides_with_points(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Points referral credits both the referrer and the referee once."""
+    """Verify a referral rewards both the referrer and the new customer with points"""
     referrer = await _make_user(db_session, test_tenant)
     referee = await _make_user(db_session, test_tenant)
     await _add_account(
@@ -123,7 +123,7 @@ async def test_signup_rewards_both_sides_with_points(
 async def test_signup_cashback_credits_wallets_from_system_inflow(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Cashback referral debits system_cash_inflow and credits both wallets (ZAR)."""
+    """Verify a cashback referral pays both the referrer and the new customer into their wallets"""
     referrer = await _make_user(db_session, test_tenant)
     referee = await _make_user(db_session, test_tenant)
     referrer_w = await _add_account(
@@ -179,7 +179,7 @@ async def test_signup_cashback_credits_wallets_from_system_inflow(
 async def test_signup_evaluation_is_idempotent(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Re-running signup evaluation never double-pays either side."""
+    """Verify a referral never pays either side twice"""
     referrer = await _make_user(db_session, test_tenant)
     referee = await _make_user(db_session, test_tenant)
     await _add_account(
@@ -222,7 +222,7 @@ async def test_signup_evaluation_is_idempotent(
 async def test_cashback_reward_is_cap_exempt(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A cashback reward lands even when it pushes the wallet past max_balance."""
+    """Verify a cashback referral reward lands even when it exceeds the wallet limit"""
     referee = await _make_user(db_session, test_tenant)
     wallet = await _add_account(
         db_session, test_tenant, account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,

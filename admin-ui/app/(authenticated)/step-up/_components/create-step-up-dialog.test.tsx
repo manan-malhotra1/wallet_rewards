@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 describe("Step-up PIN policy form", () => {
-  it("Editing a policy keeps that policy's own service instead of resetting it", async () => {
+  it("Verify editing a policy keeps its own service instead of resetting it", async () => {
     const user = userEvent.setup();
     render(<CreateStepUpDialog tenantId="tenant-1" open editPolicy={cashInPolicy} />);
 
@@ -62,7 +62,7 @@ describe("Step-up PIN policy form", () => {
     });
   });
 
-  it("A money transfer policy defaults to Rand (ZAR)", async () => {
+  it("Verify a money transfer policy defaults to Rand (ZAR)", async () => {
     const user = userEvent.setup();
     render(<CreateStepUpDialog tenantId="tenant-1" open />);
 
@@ -75,7 +75,7 @@ describe("Step-up PIN policy form", () => {
     });
   });
 
-  it("A rewards redemption policy uses points, not currency", async () => {
+  it("Verify a rewards redemption policy uses points, not currency", async () => {
     const user = userEvent.setup();
     render(<CreateStepUpDialog tenantId="tenant-1" open />);
 

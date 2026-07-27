@@ -8,13 +8,13 @@ import { describe, expect, it } from "vitest";
 import { configScopeKey } from "@/lib/config-scope";
 
 describe("Configuration identity rules", () => {
-  it("A step-up policy is identified by its service and currency", () => {
+  it("Verify a step-up policy cannot be duplicated for the same service and currency", () => {
     expect(
       configScopeKey("step_up", { transaction_type: "cash_in", currency: "zar" }),
     ).toBe("step_up|cash_in|ZAR");
   });
 
-  it("Step-up policies for different services are treated as separate configs", () => {
+  it("Verify step-up policies for different services are kept as separate configs", () => {
     const cashIn = configScopeKey("step_up", {
       transaction_type: "cash_in",
       currency: "ZAR",
@@ -26,17 +26,17 @@ describe("Configuration identity rules", () => {
     expect(cashIn).not.toBe(p2p);
   });
 
-  it("A tax configuration is identified by currency alone", () => {
+  it("Verify a tax configuration cannot be duplicated for the same currency", () => {
     expect(configScopeKey("tax", { currency: "ZAR" })).toBe("tax|ZAR");
   });
 
-  it("A wallet limit is identified by currency and customer type, defaulting to all customers when unspecified", () => {
+  it("Verify a wallet limit is scoped by currency and customer type, defaulting to all customers", () => {
     expect(configScopeKey("wallet_limit", { currency: "ZAR", user_type: null })).toBe(
       "wallet_limit|ZAR|all",
     );
   });
 
-  it("A commission is identified by service, currency and customer type", () => {
+  it("Verify a commission cannot be duplicated for the same service, currency and customer type", () => {
     expect(
       configScopeKey("commission", {
         transaction_type: "cashout",
@@ -46,7 +46,7 @@ describe("Configuration identity rules", () => {
     ).toBe("commission|cashout|ZAR|agent");
   });
 
-  it("Two pricing configs count as the same only when service, account type, currency and customer type all match", () => {
+  it("Verify two pricing configs count as the same only when service, account type, currency and customer type all match", () => {
     expect(
       configScopeKey("pricing", {
         transaction_type: "cash_in",
@@ -57,7 +57,7 @@ describe("Configuration identity rules", () => {
     ).toBe("pricing|cash_in|financial_wallet|ZAR|all");
   });
 
-  it("A tiered pricing config takes its identity from its first tier", () => {
+  it("Verify a tiered pricing config is scoped by its first tier", () => {
     expect(
       configScopeKey("pricing", {
         bands: [

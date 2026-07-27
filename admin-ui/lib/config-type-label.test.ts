@@ -19,7 +19,7 @@ const ALL_CONFIG_TYPES: ConfigType[] = [
 
 describe("Configuration type names", () => {
   it.each(ALL_CONFIG_TYPES)(
-    "Every configuration type shows a readable name, not a raw code (%s)",
+    "Verify every configuration type shows a readable name, not a raw code (%s)",
     (type) => {
       const label = configTypeLabel(type);
       expect(label).toBeTruthy();
@@ -28,11 +28,11 @@ describe("Configuration type names", () => {
     },
   );
 
-  it("Step-up policies are labelled 'Step-up PIN policy'", () => {
+  it("Verify a step-up policy shows as 'Step-up PIN policy'", () => {
     expect(configTypeLabel("step_up")).toBe("Step-up PIN policy");
   });
 
-  it("Pricing configurations are labelled 'Service charge'", () => {
+  it("Verify admins see 'Service charge' instead of a raw pricing code", () => {
     expect(configTypeLabel("pricing")).toBe("Service charge");
   });
 });

@@ -80,7 +80,7 @@ beforeEach(() => {
 });
 
 describe("Config version history", () => {
-  it("A config created during setup shows its current values as a baseline version", async () => {
+  it("Verify a config created during setup shows a baseline version", async () => {
     loadConfigHistoryAction.mockResolvedValue({
       ok: true,
       versions: [version({ id: "live-limit-1", synthesized: true })],
@@ -105,7 +105,7 @@ describe("Config version history", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("When a config has approved edit history, older versions can be restored", async () => {
+  it("Verify older versions can be restored when a config has approved edit history", async () => {
     loadConfigHistoryAction.mockResolvedValue({
       ok: true,
       versions: [

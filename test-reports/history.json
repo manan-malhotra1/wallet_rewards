@@ -1,1 +1,5744 @@
-{}
+{
+  "backend::backend/tests/accounts/test_create_account.py::test_create_account_normalises_currency_case": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/accounts/test_create_account.py::test_create_account_rejects_unknown_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/accounts/test_create_account.py::test_create_account_validates_account_type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/accounts/test_create_account.py::test_create_financial_wallet_for_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/accounts/test_create_account.py::test_create_system_points_issuance_account": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/accounts/test_create_account_audit.py::test_create_account_writes_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/accounts/test_get_balance.py::test_get_balance_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/accounts/test_get_balance.py::test_get_balance_empty_account": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/accounts/test_get_balance.py::test_get_balance_reflects_completed_ledger": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/accounts/test_get_balance.py::test_get_balance_returns_404_for_unknown": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_callback.py::test_admin_resolve_completes_pending_recharge": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_callback.py::test_callback_bad_signature_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_callback.py::test_callback_completes_pending_recharge": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_callback.py::test_callback_failed_reverses_and_refunds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_callback.py::test_callback_missing_signature_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_callback.py::test_callback_on_terminal_recharge_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_callback.py::test_callback_unknown_recharge_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_callback.py::test_resolve_on_terminal_recharge_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_callback.py::test_resolve_requires_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_provider.py::test_force_outcome_overrides_msisdn_rule": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_provider.py::test_get_provider_rejects_unwired_live_mode": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_provider.py::test_get_provider_returns_simulator_for_simulator_mode": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_provider.py::test_simulator_default_msisdn_succeeds_with_reference": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_provider.py::test_simulator_failed_suffix_returns_failure_no_reference": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_provider.py::test_simulator_pending_suffix_returns_pending": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_get_recharge_is_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_get_recharge_rejects_other_user_same_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_get_unknown_recharge_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_fails_closed_when_pricing_present_but_limit_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_fails_closed_without_any_config": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_idempotent_replay_returns_same_recharge": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_insufficient_funds_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_missing_idempotency_key_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_no_merchant_configured_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_pending_returns_202": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_provider_failure_reverses_and_refunds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_requires_permission": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_succeeds_when_both_configs_present": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_api.py::test_recharge_success_debits_user_credits_merchant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_model.py::test_airtime_recharge_idempotency_key_unique_per_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_model.py::test_airtime_recharge_is_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/airtime/test_airtime_recharge_model.py::test_airtime_recharge_persists_pending": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_create_forbidden_without_platform_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_create_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_create_returns_secret_once_and_stores_it_encrypted": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_create_unknown_tenant_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_create_with_merchant_user_binds_key_and_audits": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_create_with_merchant_user_from_another_tenant_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_create_with_non_merchant_user_422_and_no_key": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_create_with_unknown_merchant_user_422_and_no_key": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_create_without_merchant_user_leaves_it_null": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_list_is_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/api_keys/test_api_key_admin.py::test_revoke_sets_status_and_is_tenant_isolated": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_admin_gate.py::test_admin_endpoint_accepts_platform_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_admin_gate.py::test_admin_endpoint_rejects_expired_token": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_admin_gate.py::test_admin_endpoint_rejects_garbage_token": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_admin_gate.py::test_admin_endpoint_rejects_missing_authorization": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_admin_gate.py::test_admin_endpoint_rejects_wrong_role": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_admin_gate.py::test_read_endpoint_accepts_finance_reviewer": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_admin_gate.py::test_read_endpoint_rejects_no_role": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_auth.py::test_malformed_signature_header_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_auth.py::test_revoked_key_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_auth.py::test_tampered_body_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_auth.py::test_timestamp_outside_window_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_auth.py::test_unknown_key_id_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_auth.py::test_valid_signature_returns_tenant_principal": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_model.py::test_api_key_key_id_is_globally_unique": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_model.py::test_api_key_persists_with_active_default": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_model.py::test_api_keys_are_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_rate_limit.py::test_buckets_are_per_key": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_api_key_rate_limit.py::test_requests_within_limit_allowed_then_blocked": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_extra_unknown_fields_ignored": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_missing_timestamp_raises_malformed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_missing_v1_raises_malformed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_multiple_v1_digests_verify_when_any_matches": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_non_integer_timestamp_raises_malformed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_signature_future_outside_window_raises_skew": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_signature_inside_window_succeeds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_signature_outside_window_raises_skew": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_signature_round_trip_succeeds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_tampered_body_raises_invalid_signature": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_uppercase_v1_is_compared_case_insensitively": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_hmac.py::test_wrong_secret_raises_invalid_signature": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_extract_bearer_case_insensitive_scheme": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_extract_bearer_empty_token": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_extract_bearer_happy": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_extract_bearer_missing_header": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_extract_bearer_wrong_prefix": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_verify_jwt_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_verify_rejects_alg_none": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_verify_rejects_expired_token": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_verify_rejects_tampered_payload": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_verify_rejects_unknown_kid": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_verify_rejects_wrong_issuer": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_jwt_validation.py::test_verify_rejects_wrong_key_signature": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_secret_box.py::test_encrypt_decrypt_round_trip": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_secret_box.py::test_encrypt_is_non_deterministic": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_user_sessions_index.py::test_create_session_adds_token_to_user_index": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_user_sessions_index.py::test_invalidate_session_removes_token_from_index": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_user_sessions_index.py::test_invalidate_user_sessions_kills_all_and_returns_count": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_user_sessions_index.py::test_invalidate_user_sessions_leaves_other_users_untouched": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_user_sessions_index.py::test_invalidate_user_sessions_no_sessions_is_zero_noop": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/auth/test_user_sessions_index.py::test_read_session_slides_the_user_index_ttl": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/budgets/test_budgets.py::test_list_budgets_returns_consumption": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/budgets/test_budgets.py::test_no_budgets_is_pass_through": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/budgets/test_budgets.py::test_tenant_scope_lifetime_budget_blocks_overrun": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_fails_closed_when_no_config_at_all": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_fails_closed_when_pricing_present_but_limit_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_happy_path_matches_worked_example": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_idempotent_replay": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_missing_idempotency_key_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_overdraft_on_agent_float_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_permission_denied": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_succeeds_when_both_configs_present": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_tenant_isolation": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashin/test_cashin_api.py::test_cash_in_unknown_customer_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_fails_closed_when_no_config_at_all": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_fails_closed_when_pricing_present_but_limit_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_happy_path_matches_worked_example": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_idempotent_replay": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_missing_idempotency_key_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_overdraft_on_subscriber_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_permission_denied": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_recipient_not_agent_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_step_up_required_without_pin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_step_up_verified_with_pin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_tenant_isolation": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_to_self_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/cashout/test_cashout_api.py::test_cash_out_unknown_agent_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_featured.py::test_featured_isolates_across_tenants": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_featured.py::test_featured_rejects_unknown_session_token": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_featured.py::test_featured_requires_session_token": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_featured.py::test_featured_returns_active_campaign": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_featured.py::test_featured_returns_newest_campaign_first": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_featured.py::test_featured_returns_null_when_no_campaigns": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_featured.py::test_featured_skips_inactive_campaigns": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_featured.py::test_featured_skips_out_of_window_campaigns": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_points_history.py::test_points_history_cross_tenant_isolated": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_points_history.py::test_points_history_empty_for_user_without_account": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_points_history.py::test_points_history_includes_rule_name_for_rewards": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_points_history.py::test_points_history_orders_newest_first": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "failed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_summary.py::test_redemption_history_returns_user_redemptions": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "failed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_summary.py::test_summary_for_user_with_no_points_account": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_summary.py::test_summary_reflects_lifetime_earned": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/catalog/test_summary.py::test_summary_reflects_lifetime_redeemed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "failed"
+    }
+  ],
+  "backend::backend/tests/commissions/test_band_boundary.py::test_commission_upper_bound_is_inclusive": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/commissions/test_commissions_router.py::test_list_is_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/commissions/test_commissions_router.py::test_list_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/commissions/test_commissions_router.py::test_list_requires_platform_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/commissions/test_commissions_router.py::test_list_returns_seeded_configs": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_admin_names.py::test_maker_and_checker_names_resolved": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_band_boundary.py::test_plus_one_gap_bands_accepted": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_band_boundary.py::test_shared_boundary_bands_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_baseline_history.py::test_baseline_mirrors_live_row_that_fails_create_schema": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_baseline_history.py::test_baseline_tenant_isolation_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_baseline_history.py::test_baseline_unknown_target_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_baseline_history.py::test_multi_band_scope_without_history_synthesizes_all_bands": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_baseline_history.py::test_scope_with_applied_history_has_no_synthesized_baseline": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_baseline_history.py::test_single_band_scope_without_history_synthesizes_baseline": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_delete_operation.py::test_delete_apply_failure_leaves_scope_intact": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_delete_operation.py::test_delete_commission_removes_whole_schedule": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_delete_operation.py::test_delete_limit_removes_only_target_scope": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_delete_operation.py::test_delete_nonexistent_target_is_404_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_delete_operation.py::test_delete_pricing_removes_whole_scope_leaves_other_scope": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_delete_operation.py::test_delete_tax_removes_single_row": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_delete_operation.py::test_delete_writes_one_deleted_audit_summarising_scope": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_history.py::test_history_absent_target_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_history.py::test_history_excludes_other_scope": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_history.py::test_history_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_history.py::test_history_returns_all_versions_chronologically": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_history.py::test_history_route_not_shadowed_by_request_id": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_history.py::test_history_tenant_isolation": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_history.py::test_history_wrong_role_is_403": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_approve_by_different_admin_applies_config": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_approve_requires_config_approver_role": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_full_revise_resubmit_loop_applies_revised_config": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_propose_creates_pending_no_config_write": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_propose_invalid_payload_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_request_changes_requires_comment": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_revise_by_non_maker_forbidden": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_self_approval_forbidden": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_tenant_isolation_on_request": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_wallet_limit_config_via_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_maker_checker.py::test_withdraw_is_terminal": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_multi_band.py::test_band_scope_mismatch_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_multi_band.py::test_commission_multi_band_propose_and_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_multi_band.py::test_list_filtered_by_config_type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_multi_band.py::test_multi_band_apply_creates_all_rows": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_multi_band.py::test_multi_band_propose_accepted": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_multi_band.py::test_overlapping_bands_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_multi_band.py::test_single_dict_payload_still_applies": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_open_request_guard.py::test_changes_requested_blocks_new_propose": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_open_request_guard.py::test_create_vs_create_same_scope_is_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_open_request_guard.py::test_delete_when_update_open_same_scope_is_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_open_request_guard.py::test_different_scope_unaffected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_open_request_guard.py::test_new_propose_succeeds_after_approve": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_open_request_guard.py::test_new_propose_succeeds_after_withdraw": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_open_request_guard.py::test_second_update_same_scope_is_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_revise_trust_boundary.py::test_revise_scope_mismatch_leaves_target_untouched_after_approve": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_revise_trust_boundary.py::test_revise_step_up_update_scope_mismatch_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_revise_trust_boundary.py::test_revise_update_scope_mismatch_rejected_matching_succeeds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_revise_trust_boundary.py::test_revise_with_foreign_tenant_band_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_revise_trust_boundary.py::test_revise_with_malformed_band_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_revisions.py::test_delete_proposal_snapshot_has_null_payload": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_revisions.py::test_propose_creates_revision_1_snapshot": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_revisions.py::test_resubmit_and_approve_add_no_snapshot": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_revisions.py::test_revise_adds_revision_2_snapshot_ordered": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_every_guarded_type_creates_and_edits_via_maker_checker": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_approve_requires_config_approver": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_create_writes_no_policy_until_approved": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_delete_removes_row_on_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_different_scope_open_request_allowed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_literal_matches_guarded_set": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_missing_field_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_negative_threshold_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_propose_requires_platform_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_second_open_request_same_scope_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_self_approval_forbidden": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_update_changes_threshold_on_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_update_non_p2p_type_no_scope_mismatch": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_step_up_operations.py::test_step_up_update_scope_mismatch_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_propose_update_nonexistent_target_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_propose_update_without_payload_is_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_propose_update_without_target_is_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_update_apply_failure_leaves_original_intact": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_update_limit_config_replaces_in_place": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_update_pricing_replaces_whole_band_set": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_update_proposal_can_be_revised_and_resubmitted": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_update_proposal_records_revision_1_snapshot": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_update_scope_mismatch_rejected_matching_succeeds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/config_requests/test_update_operation.py::test_update_tax_config_replaces_in_place": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_ingest_event.py::test_first_time_rule_fires_exactly_once": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_ingest_event.py::test_ingest_dedupes_replayed_event": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_ingest_event.py::test_ingest_rejects_tenant_mismatch": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_ingest_event.py::test_ingest_rejects_unregistered_source": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_ingest_event.py::test_ingestion_log_records_outcome": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_ingest_event.py::test_milestone_rule_fires_at_threshold_and_resets": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_ingest_event.py::test_rule_only_matches_correct_transaction_type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_sim_routes.py::test_event_source_secret_stored_encrypted_not_plaintext": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_sim_routes.py::test_sim_ingest_404_when_flag_off": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_sim_routes.py::test_sim_ingest_happy_path_with_valid_hmac": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_sim_routes.py::test_sim_ingest_rejects_bad_signature": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_sim_routes.py::test_sim_kafka_produce_404_when_flag_off": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_sim_routes.py::test_sim_kafka_produce_422_when_user_id_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_source_registration.py::test_register_source_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_source_registration.py::test_register_source_rejects_duplicate_key": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/events/test_source_registration.py::test_register_source_rejects_unknown_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_fund_concurrent_cannot_exceed_max_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_fund_credits_user_wallet": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_fund_fails_closed_when_no_config": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_fund_fails_closed_when_only_pricing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_fund_idempotent_replay": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_fund_missing_auth_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_fund_succeeds_once_both_configs_exist": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_fund_unknown_user_in_key_tenant_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_reused_key_across_ops_conflicts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_all_concurrent_cannot_double_drain": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_all_empties_wallet": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_amount_and_all_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_bad_signature_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_concurrent_distinct_keys_cannot_overdraft": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_debits_user_wallet": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_enforces_type_aware_limit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_fails_closed_when_no_config": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_fails_closed_when_only_limit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_idempotent_replay": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_fund_withdraw.py::test_external_withdraw_insufficient_funds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_bad_signature_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_idempotent_replay_writes_no_second_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_missing_auth_headers_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_missing_email_or_phone_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_missing_idempotency_key_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_new_key_free_identifier_writes_idempotency_row": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_new_key_taken_identifier_returns_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_partner_cannot_mass_assign_privileged_fields": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_rate_limit_returns_429": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_same_idempotency_key_replays_same_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_same_key_two_tenants_creates_independently": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_store_insert_conflict_replays_winner": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_valid_request_creates_user_in_key_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_external_users.py::test_valid_request_writes_system_actor_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_bad_signature_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_fails_closed_when_no_config": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_fails_closed_when_only_limit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_fails_closed_when_only_pricing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_idempotent_replay_moves_once": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_insufficient_merchant_funds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_merchant_cashin_debit_includes_fee": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_merchant_funds_consumer_moves_money": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_missing_auth_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_missing_idempotency_key_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_non_merchant_key_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_tenant_isolation_via_key": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/external/test_merchant_cashin.py::test_unknown_consumer_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock.py::test_access_cross_tenant_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock.py::test_access_invalid_level_is_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock.py::test_access_requires_platform_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock.py::test_access_unknown_user_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock.py::test_access_writes_audit_row_with_before_after": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock.py::test_login_lock_kills_live_session": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock.py::test_set_access_level_flips_status": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock.py::test_transactions_lock_does_not_kill_session": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock.py::test_user_detail_surfaces_access_level": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_cashout_blocked_for_locked_subscriber": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_change_pin_blocked_for_locked_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_guard_allows_active_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_guard_blocks_non_active_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_guard_cross_tenant_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_guard_runs_after_idempotency_fast_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_guard_unknown_user_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_login_allowed_for_active": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_login_allowed_for_txn_locked": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_login_blocked_for_login_locked_status": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_access_lock_enforcement.py::test_p2p_send_blocked_for_locked_sender": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_account_number_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_duplicate_identifier_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_identifier_cross_tenant_user_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_identifier_forbids_non_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_identifier_rejects_card_number": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_identifier_rejects_empty_value": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_identifier_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_identifier_unknown_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_identifier_writes_audit_without_raw_value": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_add_identifier.py::test_add_phone_and_email_normalised": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_pin_reset.py::test_pin_reset_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_pin_reset.py::test_pin_reset_each_call_produces_different_pin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_pin_reset.py::test_pin_reset_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_pin_reset.py::test_pin_reset_unknown_user_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_unlock.py::test_admin_pin_reset_also_clears_an_active_lockout": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_unlock.py::test_unlock_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_unlock.py::test_unlock_releases_a_locked_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_unlock.py::test_unlock_requires_platform_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_unlock.py::test_unlock_unknown_user_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_unlock.py::test_unlock_when_not_locked_is_a_noop": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_unlock.py::test_unlock_writes_audit_row": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_admin_unlock.py::test_user_detail_surfaces_lock_status": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_auth_start.py::test_auth_start_does_not_leak_across_tenants": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_auth_start.py::test_auth_start_missing_phone_returns_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_auth_start.py::test_auth_start_normalises_phone_whitespace": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_auth_start.py::test_auth_start_rejects_malformed_phone": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_auth_start.py::test_auth_start_returns_needs_otp_for_unknown_phone": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_auth_start.py::test_auth_start_returns_needs_pin_for_known_phone": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_auth_start.py::test_auth_start_unknown_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_to_toplevel_type_rejects_parent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_attaches_valid_parent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_forbids_non_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_is_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_rejects_incompatible_parent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_rejects_invalid_type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_rejects_self_parent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_requires_reason": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_tenant_isolation": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_change_user_type.py::test_change_type_unknown_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_create_user.py::test_create_user_allows_same_phone_in_different_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_create_user.py::test_create_user_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_create_user.py::test_create_user_rejects_duplicate_phone_in_same_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_create_user.py::test_create_user_rejects_unauthenticated_caller": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_create_user.py::test_create_user_rejects_unknown_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_create_user.py::test_create_user_validates_empty_identifiers": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_create_user.py::test_create_user_validates_identifier_type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_create_user.py::test_create_user_with_profile": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_me_wallet.py::test_me_wallet_bad_token_is_401": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_me_wallet.py::test_me_wallet_does_not_leak_other_users_accounts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_me_wallet.py::test_me_wallet_no_token_is_401": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_me_wallet.py::test_me_wallet_returns_caller_accounts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_me_wallet.py::test_me_wallet_transaction_exposes_fee_commission_tax": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_me_wallet.py::test_me_wallet_transaction_exposes_reference": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_auth_pin_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_auth_pin_lockout_after_max_attempts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_auth_pin_unknown_phone_returns_invalid_credentials": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_auth_pin_user_without_pin_returns_pin_not_set": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_auth_pin_wrong_pin_returns_401": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_logout_invalidates_session": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_logout_without_authorization_header_is_noop": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_otp_send_autocreates_unknown_phone": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_otp_send_happy_path_returns_otp_in_dev": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_otp_send_rate_limit_60s_window": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_otp_send_unknown_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_otp_verify_happy_path_returns_registration_token": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_otp_verify_single_use": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_otp_verify_unknown_phone_returns_401": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_otp_verify_wrong_otp_returns_401": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_pin_set_rejects_already_set": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_pin_set_rejects_non_numeric": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_pin_set_token_single_use": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_pin_set_with_invalid_token": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_pin_otp_flow.py::test_pin_set_with_valid_token": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_identifier.py::test_resolve_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_identifier.py::test_resolve_rejects_unauthenticated_caller": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_identifier.py::test_resolve_returns_404_for_other_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_identifier.py::test_resolve_returns_404_for_unknown": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_user_names.py::test_batches_mixed_users": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_user_names.py::test_falls_back_to_identifier_when_no_profile": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_user_names.py::test_identifier_fallback_prefers_phone_over_email": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_user_names.py::test_omitted_when_no_profile_and_no_identifier": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_user_names.py::test_partial_profile_uses_available_name_part": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_user_names.py::test_resolves_to_profile_full_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_user_names.py::test_tenant_scoped_does_not_resolve_other_tenant_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_resolve_user_names.py::test_unknown_user_id_is_omitted": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_status_constraint.py::test_unknown_status_is_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_status_constraint.py::test_valid_status_is_accepted": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_transactions.py::test_user_transactions_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_transactions.py::test_user_transactions_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_transactions.py::test_user_transactions_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_transactions.py::test_user_transactions_unknown_user_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_agent_parent_must_be_super_agent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_consumer_cannot_have_parent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_create_agent_under_super_agent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_create_agent_without_parent_allowed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_create_merchant_under_head_merchant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_create_super_agent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_create_user_defaults_to_consumer": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_invalid_user_type_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_missing_parent_reference_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_parent_must_be_same_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_user_detail_exposes_type_and_parent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_user_detail_parent_name_falls_back_to_identifier": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_user_detail_parent_name_null_without_parent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_user_types.py::test_user_detail_parent_name_uses_profile": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_verify_identifier.py::test_verify_account_number_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_verify_identifier.py::test_verify_already_verified_is_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_verify_identifier.py::test_verify_cross_tenant_identifier_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_verify_identifier.py::test_verify_identifier_forbids_non_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_verify_identifier.py::test_verify_identifier_of_wrong_user_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_verify_identifier.py::test_verify_identifier_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_verify_identifier.py::test_verify_rejects_phone_identifier": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/identity/test_verify_identifier.py::test_verify_unknown_identifier_is_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instrument_system_provisioning.py::test_audit_after_state_carries_system_accounts_count": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instrument_system_provisioning.py::test_create_financial_instrument_provisions_five_system_accounts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instrument_system_provisioning.py::test_create_points_instrument_provisions_points_issuance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instrument_system_provisioning.py::test_financial_instrument_does_not_provision_operator_adjustment": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instrument_system_provisioning.py::test_lazy_get_or_create_returns_same_account_after_provision": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instrument_system_provisioning.py::test_points_instrument_reports_one_provisioned_account": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instrument_system_provisioning.py::test_provisioning_is_idempotent_when_accounts_preexist": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_audit.py::test_create_instrument_writes_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_audit.py::test_soft_delete_instrument_writes_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_audit.py::test_update_instrument_writes_before_after_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_create_instrument_duplicate_code_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_create_instrument_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_create_instrument_rejects_lowercase_code": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_create_instrument_with_backfill_creates_user_accounts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_create_instrument_without_backfill_skips_user_accounts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_delete_instrument_removes_from_list": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_delete_then_recreate_same_code_succeeds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_list_instruments_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_list_instruments_returns_active_and_disabled": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_list_instruments_status_filter": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_list_instruments_tenant_isolated": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_patch_instrument_display_name_and_status": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_patch_rejects_code_field": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/instruments/test_instruments_router.py::test_patch_unknown_instrument_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/invariants/test_ledger_sum_to_zero.py::test_ledger_entries_have_no_updated_at_column": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/invariants/test_ledger_sum_to_zero.py::test_ledger_sum_to_zero_holds_after_writes": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_balance_guard.py::test_guard_allows_reversal_over_max_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_balance_guard.py::test_guard_rejects_credit_over_max_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_balance_guard.py::test_guard_rejects_debit_over_available_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_balance_guard.py::test_guard_skips_collection_account_credit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_commission_cap_exempt.py::test_commission_credit_lands_at_max_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_commission_cap_exempt.py::test_normal_credit_over_cap_still_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_float_floor.py::test_concurrent_funds_cannot_overdraw_float": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_float_floor.py::test_external_partner_fund_floored_on_empty_float": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_float_floor.py::test_financial_wallet_overdraft_still_insufficient_funds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_float_floor.py::test_fund_rejected_when_float_empty": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_float_floor.py::test_fund_reversal_credits_float_and_is_not_blocked": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_float_floor.py::test_fund_succeeds_after_float_topped_up": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_post_transaction.py::test_post_transaction_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_post_transaction.py::test_post_transaction_idempotent_returns_existing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_post_transaction.py::test_post_transaction_rejects_single_entry": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_post_transaction.py::test_post_transaction_rejects_unbalanced_entries": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_post_transaction.py::test_post_transaction_rejects_unknown_account": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_post_transaction.py::test_post_transaction_rejects_zero_sum_zero_amounts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_transaction_reference.py::test_build_reference_format": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_transaction_reference.py::test_build_reference_keeps_large_numbers": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_transaction_reference.py::test_build_reference_matches_pattern": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_transaction_reference.py::test_idempotent_replay_keeps_reference_and_number": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_transaction_reference.py::test_new_transaction_gets_reference": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_transaction_reference.py::test_reference_number_increments_within_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_transaction_reference.py::test_reference_unique_within_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/ledger/test_transaction_reference.py::test_two_tenants_number_independently": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_limits.py::test_amount_above_max_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_limits.py::test_amount_below_min_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_limits.py::test_daily_count_cap_enforced": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_limits.py::test_no_config_is_pass_through": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_type_aware_limits.py::test_default_covers_every_type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_type_aware_limits.py::test_no_config_is_passthrough": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_type_aware_limits.py::test_second_default_row_collides": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_type_aware_limits.py::test_typed_config_beats_default": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_type_aware_limits.py::test_untyped_user_falls_back_to_default": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_limit_configs_tenant_isolation.py::test_wallet_limit_config_not_visible_across_tenants": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_receive_limits.py::test_credit_that_fits_under_max_balance_passes": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_receive_limits.py::test_max_balance_blocks_credit_over_cap": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_receive_limits.py::test_no_wallet_config_is_pass_through": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_receive_limits.py::test_receive_daily_count_cap_enforced": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_receive_limits.py::test_receive_weekly_value_cap_enforced": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_receive_limits.py::test_receive_window_excludes_older_than_7d": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_receive_limits.py::test_recipient_facing_cap_raises_recipient_limit_reached": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_receive_limits.py::test_recipient_facing_max_balance_is_detail_free": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_receive_limits.py::test_wallet_receive_config_does_not_leak_across_tenants": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_send_limits.py::test_no_wallet_config_is_pass_through": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_send_limits.py::test_send_counts_across_services": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_send_limits.py::test_send_daily_count_cap_enforced": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_send_limits.py::test_send_value_excludes_fees": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_send_limits.py::test_send_weekly_value_cap_enforced": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_send_limits.py::test_send_window_excludes_older_than_7d": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_send_limits.py::test_send_with_fee_counts_as_one_transaction": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_wallet_send_limits.py::test_wallet_send_config_does_not_leak_across_tenants": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_weekly_monthly_limits.py::test_monthly_cap_catches_txns_outside_the_weekly_window": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_weekly_monthly_limits.py::test_monthly_count_cap_enforced": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_weekly_monthly_limits.py::test_unconfigured_windows_are_not_checked": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_weekly_monthly_limits.py::test_weekly_count_cap_enforced": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_weekly_monthly_limits.py::test_weekly_value_cap_enforced": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/limits/test_weekly_monthly_limits.py::test_weekly_window_excludes_txns_older_than_7d": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/merchant/test_merchant_profile_model.py::test_merchant_profile_is_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/merchant/test_merchant_profile_model.py::test_merchant_profile_persists_with_server_defaults": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/merchant/test_merchant_profile_model.py::test_only_one_active_merchant_per_service_per_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_changes_loop.py::test_request_changes_moves_to_changes_requested": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_changes_loop.py::test_request_changes_requires_comment": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_changes_loop.py::test_review_thread_records_whole_loop": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_changes_loop.py::test_revise_by_non_maker_forbidden": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_changes_loop.py::test_revise_resubmit_resets_approval_round": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_changes_loop.py::test_withdraw_by_non_maker_forbidden": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_changes_loop.py::test_withdraw_is_terminal_no_execution": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_four_eyes.py::test_adjust_system_wallet_applies_on_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_four_eyes.py::test_approve_requires_treasury_approver_role": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_four_eyes.py::test_approve_unknown_request_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_four_eyes.py::test_create_bank_mirror_applies_on_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_four_eyes.py::test_fund_user_applies_on_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_four_eyes.py::test_second_approve_after_applied_is_409_no_double_post": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_four_eyes.py::test_self_approval_forbidden": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_four_eyes.py::test_withdraw_user_applies_on_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_n_eyes_policy.py::test_first_of_two_approvals_moves_no_money": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_n_eyes_policy.py::test_policy_defaults_to_one_when_absent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_n_eyes_policy.py::test_policy_op_specific_beats_tenant_default": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_n_eyes_policy.py::test_policy_tenant_default_applies_when_no_op_specific": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_n_eyes_policy.py::test_six_eyes_maker_approve_is_self_approval_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_n_eyes_policy.py::test_six_eyes_needs_two_distinct_approvals": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_n_eyes_policy.py::test_six_eyes_same_approver_twice_is_duplicate_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_propose.py::test_propose_adjust_system_wallet_is_pending": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_propose.py::test_propose_create_bank_mirror_is_pending_no_account": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_propose.py::test_propose_fund_user_is_pending_no_money_moved": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_propose.py::test_propose_invalid_payload_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_propose.py::test_propose_requires_platform_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_propose.py::test_propose_unknown_operation_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_propose.py::test_propose_unknown_tenant_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_propose.py::test_propose_withdraw_user_is_pending_no_money_moved": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_tenant_isolation.py::test_approve_across_tenants_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_tenant_isolation.py::test_ledger_balances_to_zero_after_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_tenant_isolation.py::test_list_is_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_tenant_isolation.py::test_request_not_visible_across_tenants": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_treasury_gated.py::test_treasury_bank_mirror_proposes_not_executes": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_treasury_gated.py::test_treasury_fund_user_executes_after_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_treasury_gated.py::test_treasury_fund_user_proposes_not_executes": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/money_operations/test_treasury_gated.py::test_treasury_fund_user_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/multipliers/test_multiplier_resolution.py::test_admin_create_multiplier_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/multipliers/test_multiplier_resolution.py::test_admin_create_rejects_inverted_window": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/multipliers/test_multiplier_resolution.py::test_admin_create_rejects_nonpositive_multiplier": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/multipliers/test_multiplier_resolution.py::test_biggest_multiplier_wins": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/multipliers/test_multiplier_resolution.py::test_global_multiplier_applies": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/multipliers/test_multiplier_resolution.py::test_no_multipliers_returns_one": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/multipliers/test_multiplier_resolution.py::test_outside_window_does_not_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/multipliers/test_multiplier_resolution.py::test_segment_multiplier_requires_membership": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p.py::test_p2p_earned_points_reflects_rule_issuance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p.py::test_p2p_response_includes_earned_points_field": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_invariant12_p2p_fails_closed_when_pricing_present_but_limit_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_invariant12_p2p_fails_closed_without_any_config": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_bidirectional_concurrent_transfers_do_not_deadlock": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_concurrent_double_spend_blocked": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_concurrent_transfers_cannot_exceed_recipient_max_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_cross_tenant_recipient_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_fails_closed_when_amount_outside_configured_band": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_fails_closed_when_flag_on_and_config_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_happy_path_moves_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_idempotent_replay": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_rejects_overdraft": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_rejects_self_transfer": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_rejects_sender_without_wallet_in_currency": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_rejects_unauthenticated_caller": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_rejects_unknown_recipient": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_rejects_zero_amount": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_requires_idempotency_key": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/payments/test_p2p_transfer.py::test_p2p_succeeds_when_flag_on_and_configs_present": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_audit_row_has_no_pin_or_hash": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_fails_closed_when_limit_config_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_fails_closed_when_pricing_config_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_fee_idempotent_charges_once": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_insufficient_funds_for_fee": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_is_tenant_isolated": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_locks_out_after_repeated_wrong_current_pin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_malformed_new_pin_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_new_same_as_current_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_requires_authentication": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_with_fee_debits_wallet_and_switches_pin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_wrong_current_pin_rejected_and_no_change": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_zero_fee_is_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pin_change/test_pin_change_api.py::test_change_pin_zero_fee_writes_no_transaction": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_assembler.py::test_every_flag_combination_balances": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_assembler.py::test_fully_inclusive_fee_that_is_all_tax_omits_zero_fee_leg": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_assembler.py::test_worked_example_byte_for_byte": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_assembler.py::test_zero_commission_and_tax_collapses_to_principal_and_fee": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_band_boundary.py::test_above_top_band_raises_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_band_boundary.py::test_above_top_band_resolves_none": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_band_boundary.py::test_upper_bound_is_inclusive": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_band_boundary.py::test_upper_boundary_fee_is_applied": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_commission_config.py::test_amount_band_selection": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_commission_config.py::test_fixed_plus_variable_with_cap": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_commission_config.py::test_no_config_means_zero": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_commission_config.py::test_typed_beats_default": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_fee_quote.py::test_quote_derives_points_account_for_pts_currency": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_fee_quote.py::test_quote_does_not_leak_other_tenant_pricing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_fee_quote.py::test_quote_honors_explicit_account_type_override": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_fee_quote.py::test_quote_rejects_non_positive_amount": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_fee_quote.py::test_quote_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_fee_quote.py::test_quote_returns_configured_fixed_fee": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_fee_quote.py::test_quote_unconfigured_service_returns_zero": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_fee_quote.py::test_quote_variable_fee_scales_with_amount": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_pricing.py::test_fixed_fee_only": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_pricing.py::test_get_or_create_system_fee_account_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_pricing.py::test_missing_config_raises": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_pricing.py::test_variable_fee_capped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_pricing.py::test_zero_fee_config_returns_zero": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_service_gating.py::test_gate_ignores_configs_for_a_different_user_type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_service_gating.py::test_gate_matches_typed_config_for_matching_user_type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_service_gating.py::test_gate_names_user_type_in_error": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_service_gating.py::test_gate_passes_when_both_configs_present": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_service_gating.py::test_gate_raises_when_limits_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_service_gating.py::test_gate_raises_when_no_config_even_with_flag_off": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_service_gating.py::test_gate_raises_when_pricing_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_slab_pricing.py::test_amount_selects_the_right_band": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_slab_pricing.py::test_null_band_back_compat": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_slab_pricing.py::test_specific_band_beats_null_band_default": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_slab_pricing.py::test_typed_band_beats_default_band": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_system_accounts_v2.py::test_get_or_create_commission_is_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_system_accounts_v2.py::test_get_or_create_taxes_is_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_system_accounts_v2.py::test_guard_skips_commission_and_taxes_credits": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_tax_config.py::test_inclusive_flags_surface_on_result": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_tax_config.py::test_no_config_means_zero_tax": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_tax_config.py::test_tax_percentage_math": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_type_aware_pricing.py::test_default_applies_when_no_typed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_type_aware_pricing.py::test_missing_config_raises": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/pricing/test_type_aware_pricing.py::test_typed_fee_beats_default": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_audit_enrichment.py::test_admin_actor_row_carries_admin_display_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_audit_enrichment.py::test_apikey_system_actor_row_gets_api_key_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_audit_enrichment.py::test_enrichment_is_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_audit_enrichment.py::test_non_user_entity_with_non_uuid_id_does_not_crash": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_audit_enrichment.py::test_system_actor_row_gets_friendly_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_audit_enrichment.py::test_unknown_admin_actor_name_is_none": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_audit_enrichment.py::test_user_actor_row_carries_user_display_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_audit_enrichment.py::test_user_entity_row_carries_affected_user_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_manual_resolve.py::test_audit_query_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_manual_resolve.py::test_manual_resolve_completed_finalises_redemption": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_manual_resolve.py::test_manual_resolve_cross_tenant_rejects": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_manual_resolve.py::test_manual_resolve_rejects_non_manual_review": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_manual_resolve.py::test_manual_resolve_reversed_restores_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_manual_resolve.py::test_manual_resolve_writes_audit_entry": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_sweep.py::test_manual_review_list_carries_user_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_sweep.py::test_pending_list_carries_user_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_sweep.py::test_pending_list_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_sweep.py::test_sweep_bumps_retry_for_stale_pending": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_sweep.py::test_sweep_escalates_after_max_retries": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_sweep.py::test_sweep_ignores_completed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_sweep.py::test_sweep_ignores_recent_pending": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_sweep.py::test_sweep_rejects_unknown_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/reconciliation/test_sweep.py::test_sweep_writes_audit_log_per_item": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_confirm_fail_redemption.py::test_confirm_cross_tenant_rejects": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_confirm_fail_redemption.py::test_confirm_marks_completed_and_drops_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_confirm_fail_redemption.py::test_confirm_response_carries_user_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_confirm_fail_redemption.py::test_confirm_then_confirm_rejects": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_confirm_fail_redemption.py::test_confirm_then_fail_rejects": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_confirm_fail_redemption.py::test_fail_cross_tenant_rejects": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_confirm_fail_redemption.py::test_fail_response_carries_user_name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_confirm_fail_redemption.py::test_fail_restores_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_initiate_redemption.py::test_initiate_concurrent_double_spend_blocked": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_initiate_redemption.py::test_initiate_cross_tenant_provider_rejects": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_initiate_redemption.py::test_initiate_fails_closed_when_no_config": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_initiate_redemption.py::test_initiate_fails_closed_when_only_limit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_initiate_redemption.py::test_initiate_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_initiate_redemption.py::test_initiate_idempotent_replay": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_initiate_redemption.py::test_initiate_rejects_insufficient_points": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_initiate_redemption.py::test_initiate_rejects_unknown_provider": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_callback.py::test_callback_failure_outcome_restores_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_callback.py::test_callback_happy_path_completes_redemption": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_callback.py::test_callback_missing_signature_returns_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_callback.py::test_callback_provider_without_secret_returns_401": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_callback.py::test_callback_replay_after_terminal_returns_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_callback.py::test_callback_stale_timestamp_returns_401": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_callback.py::test_callback_tampered_body_returns_401": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_callback.py::test_callback_unknown_redemption_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_callback.py::test_provider_secret_stored_encrypted_not_plaintext": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_registration.py::test_register_provider_creates_wallet": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/redemption/test_provider_registration.py::test_register_provider_rejects_unknown_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_nth_transaction.py::test_nth_transaction_fires_only_at_threshold_and_once": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_rewards.py::test_cashback_reward_is_cap_exempt": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_rewards.py::test_signup_cashback_credits_wallets_from_system_inflow": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_rewards.py::test_signup_evaluation_is_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_rewards.py::test_signup_rewards_both_sides_with_points": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_schema.py::test_nth_transaction_referral_without_n_is_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_schema.py::test_referral_fields_rejected_on_non_referral_rule": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_schema.py::test_referral_rule_without_trigger_is_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_schema.py::test_well_formed_signup_referral_rule_validates": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_signup.py::test_organic_signup_creates_no_referral_but_generates_code": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_signup.py::test_self_referral_is_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_signup.py::test_signup_cashback_provisions_and_credits_brand_new_referee": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_signup.py::test_signup_succeeds_even_if_reward_issuance_fails": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_signup.py::test_signup_with_valid_code_rewards_referrer": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/referral/test_referral_signup.py::test_unknown_referral_code_is_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rewards/test_issue_points_reward.py::test_issue_reward_creates_correct_ledger_entries": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rewards/test_issue_points_reward.py::test_issue_reward_fails_when_points_account_missing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rewards/test_issue_points_reward.py::test_issue_reward_is_idempotent_on_replay": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_permission_gate.py::test_p2p_allowed_when_any_role_grants_permission": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "failed"
+    }
+  ],
+  "backend::backend/tests/roles/test_permission_gate.py::test_p2p_rejects_user_whose_role_lacks_p2p_permission": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_permission_gate.py::test_p2p_rejects_user_with_no_role": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_permission_gate.py::test_p2p_rejects_when_role_is_inactive": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_permission_gate.py::test_redemption_initiate_also_gated": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_audit.py::test_assign_role_writes_binding_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_audit.py::test_create_role_writes_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_audit.py::test_idempotent_reassign_writes_no_second_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_audit.py::test_remove_permission_writes_revoke_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_audit.py::test_remove_role_writes_binding_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_audit.py::test_set_permission_writes_grant_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_audit.py::test_update_role_writes_before_after_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_assign_cross_tenant_user_rejects": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_assign_role_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_assign_role_to_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_create_role_duplicate_name_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_create_role_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_create_role_unknown_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_list_roles_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_remove_permission": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_remove_role_from_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_role_crud_requires_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_set_permission_creates_then_updates": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/roles/test_role_crud.py::test_update_role_status_to_inactive": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_composite_validation.py::test_composite_with_single_condition_is_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_composite_validation.py::test_composite_without_operator_is_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_composite_validation.py::test_create_composite_rule_persists_conditions": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_composite_validation.py::test_non_composite_rule_rejects_composite_operator": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_composite_validation.py::test_non_composite_rule_rejects_conditions": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_create_rule.py::test_create_first_time_rule_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_create_rule.py::test_create_first_time_rule_rejects_count_threshold": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_create_rule.py::test_create_milestone_rule_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_create_rule.py::test_create_milestone_rule_requires_count_threshold": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_create_rule.py::test_create_rule_rejects_unknown_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_create_rule.py::test_list_rules_returns_only_tenant_rules": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_campaign.py::test_campaign_does_not_fire_outside_window": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_campaign.py::test_campaign_fires_once_per_user": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_campaign.py::test_campaign_fires_when_inside_window": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_campaign.py::test_campaign_rejects_start_after_end": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_campaign.py::test_campaign_requires_both_dates_on_create": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_and_does_not_fire_when_one_condition_below": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_and_fires_when_all_conditions_met": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_bonus_multiplier_scales_payout": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_condition_respects_min_amount_and_count": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_idempotent_re_evaluation": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_no_reset_is_one_shot": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_or_does_not_fire_when_none_met": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_or_fires_when_any_condition_met": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_reset_opens_new_window_and_fires_again": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_segment_bound_skips_non_member": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_composite.py::test_composite_stop_after_n_triggers": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_streak.py::test_streak_breaks_on_gap_and_restarts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_streak.py::test_streak_fires_on_n_consecutive_days": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_streak.py::test_streak_progress_state_increments": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_streak.py::test_streak_requires_units_and_window_on_create": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_streak.py::test_streak_resets_after_trigger": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_streak.py::test_streak_same_day_is_no_op": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_value_based.py::test_value_based_does_not_fire_below_threshold": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_value_based.py::test_value_based_fires_when_amount_meets_threshold": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_value_based.py::test_value_based_requires_min_amount_on_create": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_evaluator_value_based.py::test_value_based_stop_after_n_triggers": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_budget_scope_batch_endpoint": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_budget_scope_both": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_budget_scope_none": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_budget_scope_rule_only": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_budget_scope_tenant_only": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_delete_rule_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_delete_rule_is_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_delete_rule_soft_deletes": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_get_rule_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_get_rule_returns_full_payload": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_patch_rule_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_patch_rule_rejects_zero_reward": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_crud.py::test_patch_rule_updates_reward_value": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_performance.py::test_list_performance_aggregates_every_rule_in_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_performance.py::test_list_performance_empty_tenant_returns_empty_list": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_performance.py::test_list_performance_isolates_by_tenant": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_performance.py::test_performance_counts_fires_and_unique_users": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_performance.py::test_performance_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_performance.py::test_performance_empty_rule_returns_zeros": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_performance.py::test_performance_malformed_rule_id_returns_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/rules/test_rule_performance.py::test_performance_unknown_rule_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/segments/test_segment_binding_on_rule.py::test_segment_bound_rule_fires_only_for_members": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/segments/test_segments_crud.py::test_add_unknown_user_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/segments/test_segments_crud.py::test_add_user_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/segments/test_segments_crud.py::test_add_user_to_segment_idempotent": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/segments/test_segments_crud.py::test_create_segment_duplicate_name_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/segments/test_segments_crud.py::test_create_segment_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/segments/test_segments_crud.py::test_list_segments_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_audit.py::test_create_service_writes_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_audit.py::test_soft_delete_service_writes_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_audit.py::test_update_service_writes_before_after_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_create_service_duplicate_code_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_create_service_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_create_service_rejects_invalid_code": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_delete_service_removes_from_list": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_delete_then_recreate_same_code_succeeds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_list_services_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_list_services_returns_active_and_disabled": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_list_services_status_filter": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_list_services_tenant_isolated": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_patch_rejects_code_field": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_patch_service_display_name_and_status": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/services/test_services_router.py::test_patch_unknown_service_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_enforce_fail_closed.py::test_no_policy_correct_pin_succeeds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_enforce_fail_closed.py::test_no_policy_no_pin_raises_step_up_required": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_enforce_fail_closed.py::test_no_policy_wrong_pin_raises_invalid": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_enforce_fail_closed.py::test_policy_above_threshold_requires_pin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_enforce_fail_closed.py::test_policy_below_threshold_skips_pin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_p2p_step_up.py::test_p2p_above_threshold_with_correct_pin_succeeds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_p2p_step_up.py::test_p2p_above_threshold_with_wrong_pin_returns_invalid_step_up_pin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_p2p_step_up.py::test_p2p_above_threshold_without_pin_returns_step_up_required": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_p2p_step_up.py::test_p2p_below_threshold_no_pin_needed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_p2p_step_up.py::test_p2p_no_policy_requires_pin_fail_closed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_p2p_step_up.py::test_p2p_no_policy_with_correct_pin_succeeds": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_policies_crud.py::test_direct_create_endpoint_is_retired": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_policies_crud.py::test_direct_delete_endpoint_is_retired": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_policies_crud.py::test_list_policies_requires_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/step_up/test_policies_crud.py::test_list_policies_returns_only_tenant_rows": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/taxes/test_taxes_router.py::test_list_is_tenant_scoped": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/taxes/test_taxes_router.py::test_list_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/taxes/test_taxes_router.py::test_list_requires_platform_admin": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/taxes/test_taxes_router.py::test_list_returns_seeded_configs": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_audit.py::test_patch_tenant_writes_audit": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_get_tenant_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_get_tenant_unknown_id_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_list_tenants_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_list_tenants_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_patch_tenant_business_type_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_patch_tenant_duplicate_name_returns_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_patch_tenant_name_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_patch_tenant_rejects_extra_fields": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_patch_tenant_rejects_unknown_business_type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_patch_tenant_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/tenants/test_tenants_router.py::test_patch_unknown_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_adjust_cross_tenant_returns_404_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_adjust_mirror_currency_mismatch_returns_422_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_adjust_missing_bank_mirror_is_validation_error": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_adjust_posts_counter_leg_to_the_chosen_mirror": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_adjust_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_adjust_unknown_account_returns_404_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_adjust_unknown_mirror_returns_404_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_adjust_zero_amount_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_cannot_adjust_bank_mirror_as_target_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_fund_float_credits_target_and_debits_chosen_mirror": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_adjust_system_wallet.py::test_withdraw_float_debits_target_and_credits_mirror": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_create_bank_mirror_blank_name_returns_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_create_bank_mirror_duplicate_name_returns_409_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_create_bank_mirror_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_create_bank_mirror_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_create_bank_mirror_wrong_role_returns_403": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_rename_bank_mirror_collision_returns_409": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_rename_bank_mirror_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_rename_bank_mirror_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_rename_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_rename_non_operator_adjustment_account_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_rename_unknown_mirror_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_bank_mirrors.py::test_two_mirrors_with_different_names_coexist": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_fund_user.py::test_fund_user_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_fund_user.py::test_fund_user_rejects_credit_over_max_balance": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_fund_user.py::test_fund_user_rejects_negative_amount": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_fund_user.py::test_fund_user_requires_reason": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_fund_user.py::test_fund_user_unknown_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_system_wallets_view.py::test_list_system_wallets_excludes_user_owned": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_system_wallets_view.py::test_list_system_wallets_returns_system_accounts": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_system_wallets_view.py::test_system_wallet_transactions_drill_down": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_system_wallets_view.py::test_transactions_cross_tenant_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_system_wallets_view.py::test_transactions_unknown_account_returns_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_all_empties_the_wallet": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_all_on_empty_wallet_is_rejected_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_all_with_amount_is_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_credits_chosen_bank_mirror": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_cross_tenant_returns_404_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_foreign_tenant_mirror_returns_404_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_happy_path": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_ignores_user_pin_field": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_mirror_currency_mismatch_returns_422_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_missing_bank_mirror_is_validation_error": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_missing_wallet_returns_404_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_rejects_insufficient_balance_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_requires_auth": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_unknown_mirror_returns_404_at_apply": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/treasury/test_withdraw_from_user.py::test_withdraw_without_amount_or_all_is_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_audit.py::test_propose_and_apply_write_audit_rows": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_changes_loop.py::test_request_changes_moves_to_changes_requested": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_changes_loop.py::test_request_changes_requires_comment": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_changes_loop.py::test_revise_then_resubmit_resets_round": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_changes_loop.py::test_withdraw_is_terminal_and_applies_nothing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_changes_loop.py::test_withdraw_only_by_maker": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_four_eyes.py::test_approve_requires_user_approver_role": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_four_eyes.py::test_approve_unknown_request_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_four_eyes.py::test_create_user_applies_on_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_four_eyes.py::test_second_approve_after_applied_is_409_no_double_create": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_four_eyes.py::test_self_approval_forbidden": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_four_eyes.py::test_update_user_applies_on_approval": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_n_eyes.py::test_duplicate_approver_rejected": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_n_eyes.py::test_six_eyes_needs_two_distinct_checkers": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_propose.py::test_propose_create_user_is_pending_and_creates_nothing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_propose.py::test_propose_create_without_email_or_phone_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_propose.py::test_propose_requires_platform_admin_role": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_propose.py::test_propose_unknown_operation_422": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_propose.py::test_propose_update_unknown_target_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_propose.py::test_propose_update_user_is_pending_and_changes_nothing": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_tenant_isolation.py::test_approve_from_other_tenant_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "backend::backend/tests/user_operations/test_tenant_isolation.py::test_get_from_other_tenant_404": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/_components/config-view-button.test.tsx::Config version history Verify a config created during setup shows a baseline version": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/_components/config-view-button.test.tsx::Config version history Verify older versions can be restored when a config has approved edit history": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/step-up/_components/create-step-up-dialog.test.tsx::Step-up PIN policy form Verify a money transfer policy defaults to Rand (ZAR)": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/step-up/_components/create-step-up-dialog.test.tsx::Step-up PIN policy form Verify a rewards redemption policy uses points, not currency": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/step-up/_components/create-step-up-dialog.test.tsx::Step-up PIN policy form Verify editing a policy keeps its own service instead of resetting it": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a change shows only the fields that actually changed": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a general access change reads as 'User access changed' when the before and after are unknown": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a known admin action reads as plain language in the audit log": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a previously empty value is shown as a dash next to its readable field name": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a status change is shown in plain words on both the old and new values": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a transaction-locked account is shown as 'Transactions locked'": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify admin, user and system actors are named in plain language": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify an active account is shown as 'Active'": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify an unrecognised account status is still shown as readable words": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify an unrecognised action still shows as readable words, never a raw code": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify blocking a user's transactions is recorded as 'Transactions locked'": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify restoring a suspended user is recorded as 'Login access restored'": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify suspending a user is recorded as 'Login locked' in the audit log": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify the audit log shows where an action came from (admin portal or mobile app)": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify true/false values are shown as Yes and No": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a commission cannot be duplicated for the same service, currency and customer type": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a step-up policy cannot be duplicated for the same service and currency": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a tax configuration cannot be duplicated for the same currency": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a tiered pricing config is scoped by its first tier": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a wallet limit is scoped by currency and customer type, defaulting to all customers": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify step-up policies for different services are kept as separate configs": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify two pricing configs count as the same only when service, account type, currency and customer type all match": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify a step-up policy shows as 'Step-up PIN policy'": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify admins see 'Service charge' instead of a raw pricing code": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (commission)": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (limit)": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (pricing)": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (step_up)": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (tax)": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (wallet_limit)": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/money-operation-label.test.ts::Treasury operation wording Verify adjusting a treasury wallet shows whether the amount is added or removed, and on which account": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/money-operation-label.test.ts::Treasury operation wording Verify an unrecognised treasury operation is shown as-is rather than hidden": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/money-operation-label.test.ts::Treasury operation wording Verify funding a user reads as the amount, currency and recipient on one line": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/lib/money-operation-label.test.ts::Treasury operation wording Verify withdrawing from a user is labelled 'Withdraw from user'": [
+    {
+      "date": "2026-07-27T23:56:17",
+      "outcome": "passed"
+    }
+  ]
+}

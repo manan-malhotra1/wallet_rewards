@@ -89,3 +89,8 @@ class ConfigChangeRequestOut(BaseModel):
     reviews: list[ConfigReviewOut] = Field(default_factory=list)
     # Per-revision payload snapshots (detail endpoint only), revision-ascending.
     revisions: list[ConfigRevisionOut] = Field(default_factory=list)
+    # True only for the read-time "current" baseline synthesized for a scope with
+    # no applied maker-checker history (e.g. a seed-created config). The UI labels
+    # it "Current (baseline)" and MUST NOT call GET /{id} for it — its id is the
+    # live config row's id, not a real request id, so that fetch would 404.
+    synthesized: bool = False

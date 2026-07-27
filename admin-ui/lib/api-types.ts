@@ -658,6 +658,14 @@ export interface ConfigChangeRequest {
    * detail endpoint (`getConfigRequest`), absent on the list endpoint.
    */
   revisions?: ConfigRevision[];
+  /**
+   * True only for the read-time "current" baseline the history endpoint
+   * synthesizes for a scope with no applied maker-checker history (e.g. a
+   * seed-created config). Its `id` is the live config row's id, NOT a real
+   * request id — never fetch `GET /config-requests/{id}` for it. Rendered as
+   * "Current (baseline)" and never offered for restore (it already is current).
+   */
+  synthesized?: boolean;
 }
 
 // ---- Epic 18 — Money operations (maker-checker for treasury moves) ------

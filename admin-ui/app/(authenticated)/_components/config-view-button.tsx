@@ -102,7 +102,9 @@ function VersionRow({
               {formatTimestamp(version.updated_at)}
             </span>
             <span className="text-xs text-muted-foreground">
-              · {version.maker_admin_name ?? "Unknown"}
+              {/* A synthesized baseline has no real maker — it reflects the
+                  seeded live config, so attribute it to the system. */}
+              · {version.synthesized ? "System" : (version.maker_admin_name ?? "Unknown")}
             </span>
           </span>
         </button>
@@ -314,8 +316,23 @@ function VersionHistory({
   if (load.status === "error") {
     return <p className="text-sm text-destructive">{load.message}</p>;
   }
-  if (load.versions.length <= 1) {
-    return <p className="text-sm text-muted-foreground">No prior versions.</p>;
+  if (load.versions.length === 0) {
+    return <p className="text-sm text-muted-foreground">No versions yet.</p>;
+  }
+  // A single version (a lone applied change, or the synthesized "current"
+  // baseline for a seed-created config) still renders as one row — there's just
+  // nothing to compare against, so the Compare toggle is suppressed.
+  if (load.versions.length === 1) {
+    return (
+      <VersionList
+        versions={load.versions}
+        configType={configType}
+        serviceNames={serviceNames}
+        canPropose={canPropose}
+        changeProposed={changeProposed}
+        onRestore={onRestore}
+      />
+    );
   }
 
   return (
@@ -385,7 +402,11 @@ function VersionList({
       version,
       index,
       isCurrent: index === currentIndex,
-      label: versionLabel(index, versions.length),
+      // A synthesized baseline (seed-created config, no applied history) IS the
+      // current live config — label it as such rather than "Active · v1".
+      label: version.synthesized
+        ? "Current (baseline)"
+        : versionLabel(index, versions.length),
     }))
     .reverse();
 

@@ -24,9 +24,13 @@ from app.modules.config_requests.apply import (
     apply_config_request,
     config_scope,
     load_config_target,
+    load_live_scope_as_bands,
     validate_band_payload,
 )
-from app.modules.config_requests.schemas import ConfigChangeProposeRequest
+from app.modules.config_requests.schemas import (
+    ConfigChangeProposeRequest,
+    ConfigChangeRequestOut,
+)
 from app.shared.exceptions import (
     AppHTTPException,
     ConfigRequestAlreadyOpen,
@@ -648,12 +652,51 @@ async def list_config_requests(
     return list(result.scalars().all())
 
 
+def _synthesize_baseline(
+    config_type: str, target: Any, bands: list[BaseModel]
+) -> ConfigChangeRequestOut:
+    """Build a read-time "current" baseline version from the live config row(s).
+
+    Used only when a scope has NO applied maker-checker history (e.g. a
+    seed-created config), so the version panel reflects the live values instead
+    of rendering empty. The result is a TRANSIENT DTO — never added to the
+    session, never persisted.
+
+    Args:
+        target: The live config ORM row named by the request (source of the
+            stable id / timestamps).
+        bands: The scope's live rows as create-schema models (single-row types →
+            one band; multi-band types → the whole schedule, amount-ascending).
+
+    Returns:
+        A `ConfigChangeRequestOut` marked `synthesized=True`, carrying the live
+        config in create-schema payload shape. `synthesized` tells the UI to
+        label it "Current (baseline)" and NOT call GET /{id} (the id is the live
+        row's, not a request id, so that fetch would 404).
+    """
+    return ConfigChangeRequestOut(
+        id=target.id,
+        tenant_id=target.tenant_id,
+        config_type=config_type,
+        operation=CONFIG_OP_CREATE,
+        payload=_normalise_create_payload(config_type, bands),
+        target_config_id=None,
+        status=CONFIG_STATUS_APPLIED,
+        maker_admin_id="system",
+        checker_admin_id=None,
+        revision=1,
+        created_at=target.created_at,
+        updated_at=target.updated_at,
+        synthesized=True,
+    )
+
+
 async def list_config_history_for_scope(
     session: AsyncSession,
     tenant_id: UUID,
     config_type: str,
     target_config_id: UUID,
-) -> list[ConfigChangeRequest]:
+) -> list[ConfigChangeRequestOut]:
     """Return every APPLIED version of the live config named by target, oldest-first.
 
     A live config's stable identity is its SCOPE, not its row id — an approved
@@ -661,6 +704,13 @@ async def list_config_history_for_scope(
     config's version history is every APPLIED create/update request of this
     config_type whose payload scope equals the live row's scope, in apply order.
     The final entry mirrors the current live values.
+
+    When (and only when) that applied-request list is EMPTY — a config created
+    directly by the seed, never through the maker-checker — a SINGLE "current"
+    baseline version is synthesized from the live config row(s) so the version
+    panel isn't blank. The baseline is marked `synthesized=True`; real entries
+    stay `synthesized=False`. No synthetic entry is appended when real applied
+    requests exist (the last already reflects current values).
 
     Scope matching handles both payload shapes uniformly: `validate_band_payload`
     parses a multi-band `{"bands": [...]}` (pricing/commission) or a flat dict
@@ -671,9 +721,11 @@ async def list_config_history_for_scope(
         target_config_id: The CURRENT live row id (an update changes it).
 
     Returns:
-        The matching requests ordered by `updated_at` ASC (apply time — approve
-        stages the APPLIED transition in the same commit), so the latest is last.
-        Reviews/revisions are omitted to stay lean, mirroring the list endpoint.
+        The matching requests (as DTOs) ordered by `updated_at` ASC (apply time —
+        approve stages the APPLIED transition in the same commit), so the latest
+        is last; OR a one-element list holding the synthesized baseline when
+        there is no applied history. Reviews/revisions are omitted to stay lean,
+        mirroring the list endpoint.
 
     Raises:
         ConfigRequestTargetNotFound (404): no such live row in this tenant.
@@ -702,7 +754,14 @@ async def list_config_history_for_scope(
         bands = validate_band_payload(config_type, request.payload)
         if config_scope(config_type, bands[0]) == target_scope:
             history.append(request)
-    return history
+
+    if history:
+        return [ConfigChangeRequestOut.model_validate(request) for request in history]
+
+    # No applied maker-checker history: synthesize the live config as a single
+    # "current" baseline so the version panel reflects live values, not emptiness.
+    live_bands = await load_live_scope_as_bands(session, config_type, target, tenant_id)
+    return [_synthesize_baseline(config_type, target, live_bands)]
 
 
 async def get_config_request(

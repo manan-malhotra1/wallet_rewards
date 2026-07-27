@@ -188,6 +188,52 @@ async def load_config_target(
 MULTI_BAND_TYPES = {CONFIG_TYPE_PRICING, CONFIG_TYPE_COMMISSION}
 
 
+async def load_live_scope_as_bands(
+    session: AsyncSession, config_type: str, target: object, tenant_id: UUID
+) -> list[BaseModel]:
+    """Mirror a live config scope into its create-schema band SHAPE (no validation).
+
+    Gathers every live row of `config_type` in this tenant sharing `target`'s
+    scope and copies each row's create-relevant fields into the type's create
+    schema via `model_construct` — which BYPASSES the create validators on
+    purpose. A live row may legitimately hold state a create payload cannot
+    (e.g. a limit with every cap null, or an explicit "unlimited" config): the
+    baseline must FAITHFULLY MIRROR the live values, never re-assert the create
+    rules against them. `_normalise_create_payload`'s `model_dump(mode="json")`
+    still serialises Decimals / UUIDs correctly because the declared field types
+    drive JSON serialisation regardless of how the model was built.
+
+    Multi-band types (pricing/commission) yield the whole schedule ordered by
+    `amount_from` ascending; single-row types (limit/wallet_limit/tax/step_up)
+    yield exactly one band.
+
+    Used to synthesize a "current" baseline version for a scope that has no
+    applied maker-checker history (see `list_config_history_for_scope`).
+
+    Returns:
+        The scope's live rows as create-schema models, amount-ascending.
+    """
+    model = _MODEL_BY_TYPE[config_type]
+    result = await session.execute(select(model).where(model.tenant_id == tenant_id))
+    target_scope = config_scope(config_type, target)
+    rows = [
+        row for row in result.scalars().all() if config_scope(config_type, row) == target_scope
+    ]
+    # Order bands by amount_from ascending; single-row types have no amount_from
+    # (getattr -> None) so the key is uniform and the sort is a no-op for them.
+    rows.sort(
+        key=lambda row: (
+            getattr(row, "amount_from", None) is None,
+            getattr(row, "amount_from", None) or 0,
+        )
+    )
+    schema_cls, _ = _DISPATCH[config_type]
+    return [
+        schema_cls.model_construct(**{name: getattr(row, name) for name in schema_cls.model_fields})
+        for row in rows
+    ]
+
+
 def build_create_schema(config_type: str, payload: dict[str, Any]) -> BaseModel:
     """Validate a proposal payload against its config type's create schema.
 

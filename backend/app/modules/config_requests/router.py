@@ -119,14 +119,16 @@ async def get_config_history(
     (last in the list) is the current live config; earlier entries are prior
     versions a "restore this version" action can re-propose.
 
+    A scope with no applied maker-checker history (e.g. a seed-created config)
+    yields a single `synthesized=True` baseline built from the live values.
+
     This STATIC route is declared before `GET /{request_id}` so "history" is
     never captured as a request id.
     """
     _ = admin
-    requests = await list_config_history_for_scope(
+    outs = await list_config_history_for_scope(
         session, tenant_id, config_type, target_config_id
     )
-    outs = [ConfigChangeRequestOut.model_validate(r) for r in requests]
     await _attach_admin_names(session, outs)
     return outs
 

@@ -1,4 +1,4 @@
-"""Commission amount-band upper-bound boundary tests (money-path boundary fix).
+"""Commission tier boundaries.
 
 Mirrors the pricing boundary fix: a commission band `[amount_from, amount_to]`
 is INCLUSIVE on both ends, so an amount equal to a band's `amount_to` resolves
@@ -66,7 +66,7 @@ async def _commission(session: AsyncSession, tenant: Tenant, agent: User, amount
 async def test_commission_upper_bound_is_inclusive(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """An amount equal to a band's amount_to pays that band's commission."""
+    """Verify the correct commission tier applies right at a tier boundary amount."""
     await _make_band(db_session, test_tenant, amount_from="1", amount_to="200", fixed="1")
     await _make_band(db_session, test_tenant, amount_from="201", amount_to="400", fixed="2")
     await _make_band(db_session, test_tenant, amount_from="401", amount_to="500", fixed="3")

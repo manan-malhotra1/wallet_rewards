@@ -1,4 +1,4 @@
-"""Per-revision payload snapshot tests (additive to Epic 22 maker-checker).
+"""Revision trail — keeping a full snapshot of every edit to a change request.
 
 Each edit of a config request keeps a full history of its payload: propose
 snapshots revision 1, every revise snapshots the bumped revision, and the
@@ -81,7 +81,7 @@ async def test_propose_creates_revision_1_snapshot(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Propose → exactly one snapshot at revision 1 carrying the proposed payload."""
+    """Verify proposing a change records its original version as the first revision."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id, fixed_fee="5")),
@@ -109,7 +109,7 @@ async def test_revise_adds_revision_2_snapshot_ordered(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """request-changes → revise adds a revision-2 snapshot; both returned in order."""
+    """Verify editing a change adds a new revision and both are kept in order."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id, fixed_fee="5")),
@@ -150,7 +150,7 @@ async def test_resubmit_and_approve_add_no_snapshot(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Only propose + revise snapshot: resubmit and approve leave the count at 2."""
+    """Verify resubmitting and approving a change add no new revisions."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id, fixed_fee="5")),
@@ -191,7 +191,7 @@ async def test_delete_proposal_snapshot_has_null_payload(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A delete proposal carries no payload → its revision-1 snapshot is null."""
+    """Verify a delete proposal records a revision with no config values."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(

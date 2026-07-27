@@ -1,4 +1,4 @@
-"""Config version-history-by-scope read endpoint tests (Pricing v2 Epic 22).
+"""Version history — showing every past version of a config in order.
 
 A live config's identity is its SCOPE, not its row id — an approved `update`
 atomically REPLACES the scope (new row id each time). The version history of a
@@ -149,7 +149,7 @@ async def test_history_returns_all_versions_chronologically(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """create + 2 updates on one scope → 3 entries oldest-first, last == live cap."""
+    """Verify a config's history shows every version oldest-first, ending at the current one."""
     live_id = await _create_and_update_twice(
         async_client, db_session, test_tenant, make_admin_token
     )
@@ -187,7 +187,7 @@ async def test_history_excludes_other_scope(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A limit config of a DIFFERENT currency scope is not in this scope's history."""
+    """Verify a config's history shows only its own versions, not another config's."""
     live_id = await _create_and_update_twice(
         async_client, db_session, test_tenant, make_admin_token
     )
@@ -223,7 +223,7 @@ async def test_history_absent_target_is_404(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A target_config_id that isn't a live row in this tenant → 404."""
+    """Verify a history request for an unknown config is rejected cleanly."""
     resp = await async_client.get(
         _history_url(test_tenant, "limit", str(uuid4())), headers=_maker(make_admin_token)
     )
@@ -242,7 +242,7 @@ async def test_history_route_not_shadowed_by_request_id(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Hitting `/history` resolves to the history handler, not `GET /{request_id}`.
+    """Verify the version-history view loads its own list, not a single request.
 
     If it were shadowed, "history" would be parsed as a request_id UUID and the
     request would 422 on the path param. A 200 with a list proves the static
@@ -266,7 +266,7 @@ async def test_history_route_not_shadowed_by_request_id(
 async def test_history_requires_auth(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """No bearer token → 401."""
+    """Verify version history cannot be viewed without signing in."""
     resp = await async_client.get(_history_url(test_tenant, "limit", str(uuid4())))
     assert resp.status_code == 401, resp.text
 
@@ -276,7 +276,7 @@ async def test_history_wrong_role_is_403(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A token without the admin role required by the read → 403."""
+    """Verify an admin without the right role cannot view version history."""
     token = make_admin_token(roles=["auditor"], sub=MAKER_SUB)
     resp = await async_client.get(
         _history_url(test_tenant, "limit", str(uuid4())),
@@ -292,7 +292,7 @@ async def test_history_tenant_isolation(
     other_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A live row in tenant A queried under tenant B's id → 404 (not found there)."""
+    """Verify one tenant cannot view another tenant's config history."""
     live_id = await _create_and_update_twice(
         async_client, db_session, test_tenant, make_admin_token
     )

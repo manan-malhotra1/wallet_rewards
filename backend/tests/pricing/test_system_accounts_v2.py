@@ -1,4 +1,4 @@
-"""Tests for the Pricing v2 system wallets — `commission` + `taxes` (Story 19.1).
+"""Commission and tax holding accounts.
 
 Covers the two lazy get-or-create helpers (create-once + idempotent refetch)
 and confirms the balance guard skips both types: a large credit/debit to a
@@ -33,7 +33,7 @@ from app.shared.models import (
 async def test_get_or_create_commission_is_idempotent(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """First call creates the account; the second returns the same row."""
+    """Verify collected commission is gathered into one holding account."""
     first = await get_or_create_system_commission(
         db_session, tenant_id=test_tenant.id, currency="zar"
     )
@@ -52,7 +52,7 @@ async def test_get_or_create_commission_is_idempotent(
 async def test_get_or_create_taxes_is_idempotent(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """First call creates the taxes account; the second returns the same row."""
+    """Verify collected tax is gathered into one holding account."""
     first = await get_or_create_system_tax_service(
         db_session, tenant_id=test_tenant.id, currency="ZAR"
     )
@@ -69,7 +69,7 @@ async def test_get_or_create_taxes_is_idempotent(
 async def test_guard_skips_commission_and_taxes_credits(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Large credits to commission/taxes are never cap-checked (invariant #11a).
+    """Verify commission and tax holding accounts are not subject to customer balance limits.
 
     Even with a tenant-wide ZAR ceiling configured, a credit far above it lands
     on these unguarded pool accounts.

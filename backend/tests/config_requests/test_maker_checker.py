@@ -1,4 +1,4 @@
-"""Maker-checker workflow tests (Pricing v2 Epic 22, Story 22.3).
+"""Maker-checker workflow — proposing, approving, and revising config changes.
 
 Propose → (approve | request-changes → revise → resubmit)* → APPLIED / WITHDRAWN.
 Covers: no config row until APPLIED; four-eyes (self-approval 409, role 403);
@@ -74,7 +74,7 @@ async def test_propose_creates_pending_no_config_write(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Propose → PENDING with a `submitted` review, and NO pricing row yet."""
+    """Verify a proposed config change stays pending and does not take effect until approved."""
     resp = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id)),
@@ -94,7 +94,7 @@ async def test_approve_by_different_admin_applies_config(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A different admin approves → APPLIED and the pricing row now exists."""
+    """Verify a config change goes live once a second admin approves it."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id)),
@@ -118,7 +118,7 @@ async def test_self_approval_forbidden(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """The maker cannot approve their own request even holding config-approver → 409."""
+    """Verify the admin who proposed a change cannot approve their own change."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id)),
@@ -140,7 +140,7 @@ async def test_approve_requires_config_approver_role(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A plain platform-admin (no config-approver) approving → 403."""
+    """Verify only an admin with approver rights can approve a config change."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id)),
@@ -162,7 +162,7 @@ async def test_full_revise_resubmit_loop_applies_revised_config(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """propose → request-changes → revise → resubmit → approve applies the REVISED fee."""
+    """Verify a change sent back for edits applies the revised version once re-approved."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id, fixed_fee="5")),
@@ -241,7 +241,7 @@ async def test_revise_by_non_maker_forbidden(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Only the original maker may revise a CHANGES_REQUESTED request → 403 otherwise."""
+    """Verify only the admin who proposed a change may edit it after changes are requested."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id)),
@@ -272,7 +272,7 @@ async def test_request_changes_requires_comment(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """request-changes without a comment → 422."""
+    """Verify requesting changes requires a comment explaining why."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id)),
@@ -294,7 +294,7 @@ async def test_withdraw_is_terminal(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Maker withdraws → WITHDRAWN; a later approve → 409 (terminal), no config."""
+    """Verify a withdrawn change stays withdrawn and can no longer be approved."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id)),
@@ -321,7 +321,7 @@ async def test_wallet_limit_config_via_approval(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """The dispatch also applies non-pricing types: a wallet_limit config."""
+    """Verify wallet-balance limits can also be changed through the approval workflow."""
     from app.shared.models import WalletLimitConfig
 
     proposal = {
@@ -357,7 +357,7 @@ async def test_propose_invalid_payload_422(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A payload that fails the config type's create schema → 422 at propose."""
+    """Verify a config change with invalid values is rejected cleanly."""
     bad = {
         "config_type": "pricing",
         "operation": "create",
@@ -383,7 +383,7 @@ async def test_tenant_isolation_on_request(
     other_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A request proposed in tenant A is 404 when queried under tenant B."""
+    """Verify one tenant cannot see another tenant's config change request."""
     proposed = await async_client.post(
         _url(test_tenant),
         content=json.dumps(_pricing_payload(test_tenant.id)),

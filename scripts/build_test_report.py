@@ -38,6 +38,10 @@ LATEST_PATH = REPORTS_DIR / "latest.json"
 OUTPUT_PATH = REPORTS_DIR / "index.html"
 BACKEND_RUN = REPORTS_DIR / "backend-run.json"
 FRONTEND_RUN = REPORTS_DIR / "frontend-run.json"
+# Cucumber/Gherkin .feature files (committed, not deployed). A Scenario whose
+# name matches a test case's "Verify …" description supplies that row's
+# expandable Given/When/Then.
+FEATURES_DIR = REPO_ROOT / "features"
 
 # How many past executions to keep + show per test case.
 HISTORY_LIMIT = 3
@@ -64,6 +68,9 @@ class Scenario:
     end_lineno: int | None = None
     updated: str | None = None  # YYYY-MM-DD (git); None = uncommitted
     history: list[dict[str, str]] = field(default_factory=list)
+    # Given/When/Then steps from a matching .feature Scenario (name == description),
+    # as (keyword, text) pairs incl. any Background steps; None if no scenario exists.
+    gherkin: list[tuple[str, str]] | None = None
 
     @property
     def key(self) -> str:
@@ -381,6 +388,65 @@ def _apply_dates(scenarios: list[Scenario]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Gherkin (.feature) — Given/When/Then scenarios keyed by "Verify …" name
+# ---------------------------------------------------------------------------
+
+_STEP_KEYWORDS = ("Given", "When", "Then", "And", "But", "*")
+
+
+def _norm(text: str) -> str:
+    """Normalise a scenario/description string for matching (case, whitespace)."""
+    return " ".join(text.split()).lower()
+
+
+def _load_gherkin() -> dict[str, list[tuple[str, str]]]:
+    """Parse every features/**/*.feature into {normalised scenario name: steps}.
+
+    Steps are (keyword, text) pairs; a feature's `Background:` steps are prepended
+    to each of that feature's scenarios so a row shows its full setup. Matching is
+    by scenario NAME == the test case's "Verify …" description (normalised). A
+    minimal hand-rolled parser — no external Cucumber dependency.
+    """
+    scenarios: dict[str, list[tuple[str, str]]] = {}
+    if not FEATURES_DIR.exists():
+        return scenarios
+    for path in sorted(FEATURES_DIR.rglob("*.feature")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        background: list[tuple[str, str]] = []
+        current_name: str | None = None
+        bucket: list[tuple[str, str]] | None = None
+        target = "scenario"  # or "background"
+        for raw in lines:
+            line = raw.strip()
+            if not line or line.startswith("#") or line.startswith("@"):
+                continue
+            if line.startswith("Feature:"):
+                continue
+            if line.startswith("Background:"):
+                target, background = "background", []
+                current_name = None
+                continue
+            if line.startswith("Scenario:") or line.startswith("Scenario Outline:"):
+                current_name = line.split(":", 1)[1].strip()
+                bucket = list(background)
+                scenarios[_norm(current_name)] = bucket
+                target = "scenario"
+                continue
+            keyword = next((k for k in _STEP_KEYWORDS if line.startswith(k + " ")), None)
+            if keyword is None:
+                continue
+            step = (keyword, line[len(keyword) :].strip())
+            if target == "background":
+                background.append(step)
+            elif bucket is not None:
+                bucket.append(step)
+    return scenarios
+
+
+# ---------------------------------------------------------------------------
 # HTML rendering
 # ---------------------------------------------------------------------------
 
@@ -510,14 +576,34 @@ def _render_row(scn: Scenario) -> str:
     )
     updated = scn.updated or "uncommitted"
     dur = f"{scn.duration:.2f}s" if scn.duration else "—"
+    # When a matching .feature Scenario exists, the description becomes a toggle
+    # that reveals its Given/When/Then; otherwise it's plain text.
+    if scn.gherkin:
+        desc_cell = (
+            f'<button type="button" class="desc-toggle" aria-expanded="false">'
+            f'<span class="caret">▸</span>{escape(scn.description)}{variant}</button>'
+            f'<div class="gherkin" hidden>{_render_gherkin(scn.gherkin)}</div>'
+        )
+    else:
+        desc_cell = f"{escape(scn.description)}{variant}"
     return (
         f'<tr class="row {result_cls}-row">'
-        f'<td class="desc">{escape(scn.description)}{variant}</td>'
+        f'<td class="desc">{desc_cell}</td>'
         f'<td class="dots">{_dots(scn.history)}</td>'
         f'<td><span class="pill {result_cls}">{result}</span></td>'
         f'<td class="num">{dur}</td>'
         f'<td class="num">{escape(updated)}</td></tr>'
     )
+
+
+def _render_gherkin(steps: list[tuple[str, str]]) -> str:
+    """Render Given/When/Then step lines, each keyword emphasised."""
+    out = []
+    for keyword, text in steps:
+        out.append(
+            f'<div class="step"><span class="kw">{escape(keyword)}</span> {escape(text)}</div>'
+        )
+    return "".join(out)
 
 
 _HTML_SHELL = """<!doctype html>
@@ -573,6 +659,15 @@ tr.row:last-child td {{ border-bottom:none; }}
 .pill.f {{ color:var(--fail); background:color-mix(in srgb, var(--fail) 15%, transparent); }}
 .pill.s {{ color:var(--skip); background:color-mix(in srgb, var(--skip) 18%, transparent); }}
 body.only-fail tr.p-row, body.only-fail tr.s-row {{ display:none; }}
+.desc-toggle {{ display:inline-flex; gap:6px; align-items:baseline; background:none; border:none;
+  padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer; }}
+.desc-toggle:hover {{ color:var(--fg); }}
+.caret {{ color:var(--muted); font-size:10px; transition:transform .12s; }}
+.desc-toggle[aria-expanded="true"] .caret {{ transform:rotate(90deg); }}
+.gherkin {{ margin:8px 0 2px; padding:10px 12px; border-left:2px solid var(--line);
+  background:var(--card); border-radius:0 6px 6px 0; }}
+.step {{ font-size:13px; line-height:1.7; }}
+.step .kw {{ display:inline-block; min-width:54px; font-weight:700; color:var(--muted); }}
 </style></head>
 <body>
 <header>
@@ -594,6 +689,14 @@ body.only-fail tr.p-row, body.only-fail tr.s-row {{ display:none; }}
   }});
   document.getElementById('only-fail').addEventListener('change', function (e) {{
     document.body.classList.toggle('only-fail', e.target.checked);
+  }});
+  document.querySelectorAll('.desc-toggle').forEach(function (b) {{
+    b.addEventListener('click', function () {{
+      var open = b.getAttribute('aria-expanded') === 'true';
+      b.setAttribute('aria-expanded', String(!open));
+      var panel = b.nextElementSibling;
+      if (panel) panel.hidden = open;
+    }});
   }});
 </script>
 </body></html>
@@ -625,6 +728,16 @@ def main() -> None:
     ]
     scenarios = fresh + carried
 
+    # Attach any matching Gherkin scenario (by "Verify …" name) for the click-to-
+    # expand Given/When/Then. Re-derived each build; not persisted in latest.json.
+    gherkin = _load_gherkin()
+    matched = 0
+    for scn in scenarios:
+        steps = gherkin.get(_norm(scn.description))
+        if steps:
+            scn.gherkin = steps
+            matched += 1
+
     _apply_history(scenarios, fresh_stacks)
     _apply_dates(scenarios)
     _save_latest(scenarios)
@@ -637,7 +750,10 @@ def main() -> None:
 
     b = sum(1 for s in scenarios if s.stack == "backend")
     f = sum(1 for s in scenarios if s.stack == "frontend")
-    print(f"Report written to {OUTPUT_PATH} ({b} backend + {f} frontend cases)")
+    print(
+        f"Report written to {OUTPUT_PATH} ({b} backend + {f} frontend cases; "
+        f"{matched} with a Gherkin scenario)"
+    )
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Tests for the UNCONDITIONAL fail-closed service gate (invariant #12, Epic 23).
+"""Blocking transactions with no price or limit configured.
 
 `require_pricing_and_limits` enforces that BOTH a pricing config and a limit
 config resolve for the acting user's type before a service may run. This is now
@@ -67,14 +67,14 @@ async def _gate(session, tenant_id, user_id) -> None:
 
 
 async def test_gate_raises_when_no_config_even_with_flag_off(db_session, test_tenant, test_user):
-    """No configs and flag OFF → still raises (the gate is unconditional)."""
+    """Verify a transaction is blocked when neither a price nor a limit is configured."""
     assert test_tenant.require_config_to_transact is False
     with pytest.raises(ServiceNotConfigured):
         await _gate(db_session, test_tenant.id, test_user.id)
 
 
 async def test_gate_passes_when_both_configs_present(db_session, test_tenant, test_user):
-    """Pricing AND limit config → no raise (flag irrelevant)."""
+    """Verify a transaction is allowed once both a price and a limit are configured."""
     await _seed_pricing(db_session, test_tenant.id)
     await _seed_limit(db_session, test_tenant.id)
     await db_session.commit()
@@ -84,7 +84,7 @@ async def test_gate_passes_when_both_configs_present(db_session, test_tenant, te
 
 
 async def test_gate_raises_when_pricing_missing(db_session, test_tenant, test_user):
-    """Limit present but no pricing → ServiceNotConfigured naming service."""
+    """Verify a transaction is blocked when no price is configured for it."""
     await _seed_limit(db_session, test_tenant.id)
     await db_session.commit()
 
@@ -94,7 +94,7 @@ async def test_gate_raises_when_pricing_missing(db_session, test_tenant, test_us
 
 
 async def test_gate_raises_when_limits_missing(db_session, test_tenant, test_user):
-    """Pricing present but no limit → ServiceNotConfigured naming service."""
+    """Verify a transaction is blocked when no limit is configured for it."""
     await _seed_pricing(db_session, test_tenant.id)
     await db_session.commit()
 
@@ -104,14 +104,14 @@ async def test_gate_raises_when_limits_missing(db_session, test_tenant, test_use
 
 
 async def test_gate_names_user_type_in_error(db_session, test_tenant, test_user):
-    """The 422 message names the resolved user_type (default 'consumer')."""
+    """Verify the block message says which customer type has no configuration."""
     with pytest.raises(ServiceNotConfigured) as exc:
         await _gate(db_session, test_tenant.id, test_user.id)
     assert "consumer" in exc.value.message
 
 
 async def test_gate_ignores_configs_for_a_different_user_type(db_session, test_tenant, test_user):
-    """Configs scoped ONLY to a different user_type → still raises.
+    """Verify configuration for one customer type does not unblock another customer type.
 
     `test_user` resolves to 'consumer'; configs seeded for 'agent' must not
     satisfy the gate (no NULL-default row exists).
@@ -145,7 +145,7 @@ async def test_gate_ignores_configs_for_a_different_user_type(db_session, test_t
 
 
 async def test_gate_matches_typed_config_for_matching_user_type(db_session, test_tenant, test_user):
-    """Configs scoped to the caller's own user_type → passes (no raise)."""
+    """Verify a transaction is allowed when the customer's own type is configured."""
     await create_pricing_config(
         db_session,
         PricingConfigCreateRequest(

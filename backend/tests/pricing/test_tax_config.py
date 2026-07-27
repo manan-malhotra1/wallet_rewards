@@ -1,4 +1,4 @@
-"""Tax config + `calculate_tax` tests (Story 19.4).
+"""Tax calculation on fees and commission.
 
 Percentage math on fee and commission bases; the inclusive/exclusive flags are
 surfaced on the result (they steer the assembler, not the amount); no-config →
@@ -41,7 +41,7 @@ async def _make_tax(
 
 @pytest.mark.asyncio
 async def test_tax_percentage_math(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """Tax on fee and commission is rate*base, rounded to 6dp."""
+    """Verify the configured tax is added to the fee and commission."""
     await _make_tax(db_session, test_tenant, fee_pct="0.15", commission_pct="0.15")
     result = await calculate_tax(
         db_session,
@@ -58,7 +58,7 @@ async def test_tax_percentage_math(db_session: AsyncSession, test_tenant: Tenant
 async def test_inclusive_flags_surface_on_result(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """The inclusive/exclusive flags travel back for the assembler to use."""
+    """Verify tax can be configured as included in or added on top of the charge."""
     await _make_tax(
         db_session,
         test_tenant,
@@ -82,7 +82,7 @@ async def test_inclusive_flags_surface_on_result(
 
 @pytest.mark.asyncio
 async def test_no_config_means_zero_tax(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """No tax config → zero tax with exclusive (default) flags."""
+    """Verify no tax is charged when none is configured."""
     result = await calculate_tax(
         db_session,
         tenant_id=test_tenant.id,

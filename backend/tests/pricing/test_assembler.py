@@ -1,4 +1,4 @@
-"""Charge-assembler tests (Story 20.1).
+"""Fee, commission and tax breakdown on a transfer.
 
 The assembler is a pure function, so these run without a DB. They prove:
   - the design spec's worked example is reproduced byte-for-byte;
@@ -62,7 +62,7 @@ def _debit_to(entries, account_id) -> Decimal:
 
 
 def test_worked_example_byte_for_byte() -> None:
-    """The design spec's worked cash-in reproduces exactly.
+    """Verify a transfer's fee, commission and tax are split into the correct amounts.
 
     A=100, F=2, Tf=0.30, C=1, Tc=0.15; fee inclusive, fee-tax exclusive,
     commission-tax inclusive. Expected legs:
@@ -115,7 +115,7 @@ def test_worked_example_byte_for_byte() -> None:
 def test_every_flag_combination_balances(
     fee_inclusive: bool, fee_tax_inclusive: bool, commission_tax_inclusive: bool
 ) -> None:
-    """ΣDEBIT == ΣCREDIT for all 8 flag combinations with non-trivial amounts."""
+    """Verify the money charged always balances against the money credited."""
     result = assemble_charges(
         ACCOUNTS,
         ChargeAmounts(
@@ -140,7 +140,7 @@ def test_every_flag_combination_balances(
 
 
 def test_zero_commission_and_tax_collapses_to_principal_and_fee() -> None:
-    """With C=Tf=Tc=0 and exclusive fee, only the 3 plain fee legs appear."""
+    """Verify a transfer with no commission or tax only charges the plain fee."""
     result = assemble_charges(
         ACCOUNTS,
         ChargeAmounts(principal=Decimal("100"), fee=Decimal("2")),
@@ -158,7 +158,7 @@ def test_zero_commission_and_tax_collapses_to_principal_and_fee() -> None:
 
 
 def test_fully_inclusive_fee_that_is_all_tax_omits_zero_fee_leg() -> None:
-    """Edge case: F == Tf with fee-tax inclusive → net fee is 0, leg omitted."""
+    """Verify a fee that is entirely tax leaves the customer charged only the tax."""
     result = assemble_charges(
         ACCOUNTS,
         ChargeAmounts(principal=Decimal("100"), fee=Decimal("1"), fee_tax=Decimal("1")),

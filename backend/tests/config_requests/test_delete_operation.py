@@ -1,4 +1,4 @@
-"""Maker-checker `delete` operation tests — delete removes the whole SCOPE.
+"""Deleting a config — removing an entire fee schedule through approval.
 
 The admin UI models a config as "one row per config (scope)". For multi-band
 types (pricing, commission) a schedule is several `*_config` rows sharing one
@@ -163,7 +163,7 @@ async def test_delete_pricing_removes_whole_scope_leaves_other_scope(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Delete targeting one band of a 3-band scope removes all 3; another scope survives."""
+    """Verify deleting a fee schedule removes all its bands while other schedules remain."""
     # Scope A: a 3-band ZAR/agent schedule.
     await _create_and_approve(
         async_client,
@@ -215,7 +215,7 @@ async def test_delete_commission_removes_whole_schedule(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A commission multi-band delete removes every band of the schedule."""
+    """Verify deleting a commission schedule removes every band in it."""
     await _create_and_approve(
         async_client,
         test_tenant,
@@ -266,7 +266,7 @@ async def test_delete_limit_removes_only_target_scope(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A single-row limit delete removes exactly that config; a different one stays."""
+    """Verify deleting one limit removes only that limit and leaves others in place."""
     await _create_and_approve(
         async_client,
         test_tenant,
@@ -310,7 +310,7 @@ async def test_delete_tax_removes_single_row(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A tax (single-row) delete removes exactly the one config."""
+    """Verify deleting a tax config removes exactly that config."""
     await _create_and_approve(
         async_client,
         test_tenant,
@@ -354,7 +354,7 @@ async def test_delete_writes_one_deleted_audit_summarising_scope(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A pricing scope delete appends exactly one `pricing_config.deleted` audit row.
+    """Verify deleting a fee schedule is recorded in the audit trail with the removed bands.
 
     Its before_state summarises the removed bands (all 2), and audit_log has no
     updated_at (append-only, NFR-0160).
@@ -412,7 +412,7 @@ async def test_delete_nonexistent_target_is_404_at_apply(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Approving a delete whose target is absent → 404 config_request_target_not_found.
+    """Verify approving a delete for a config that no longer exists is rejected cleanly.
 
     Delete propose does NOT check target existence (no payload to validate); the
     apply-time guard loads the target and 404s uniformly if it is gone.
@@ -444,7 +444,7 @@ async def test_delete_apply_failure_leaves_scope_intact(
     make_admin_token: Callable[..., str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failure after the scope delete but before commit rolls the whole thing back.
+    """Verify a failed delete leaves the config fully intact and still awaiting approval.
 
     The delete stages its row removals + audit then a SINGLE commit; injecting a
     failure at the audit step (post-delete, pre-commit) proves the scope is never

@@ -1,4 +1,4 @@
-"""One-open-change-per-scope guard on the maker-checker propose path.
+"""One change at a time — blocking a second pending edit on the same config.
 
 A maker must NOT be able to stack multiple in-flight change requests on the same
 config scope (tenant_id, config_type, scope). Before a new proposal is created,
@@ -129,7 +129,7 @@ async def test_second_update_same_scope_is_409(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A second update proposal for a scope already having an open request → 409."""
+    """Verify a second edit is blocked while one is already awaiting approval for that config."""
     live = await _create_live_limit(
         async_client, db_session, test_tenant, make_admin_token, max_amount="1000"
     )
@@ -156,7 +156,7 @@ async def test_create_vs_create_same_scope_is_409(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Two create proposals for the same scope conflict (the guard is op-agnostic)."""
+    """Verify a second create proposal is blocked while one is already pending for that scope."""
     first = await _propose(
         async_client,
         test_tenant,
@@ -181,7 +181,7 @@ async def test_delete_when_update_open_same_scope_is_409(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A delete proposal conflicts with an open update on the same scope."""
+    """Verify a delete is blocked while an edit is already pending for the same config."""
     live = await _create_live_limit(
         async_client, db_session, test_tenant, make_admin_token, max_amount="1000"
     )
@@ -209,7 +209,7 @@ async def test_changes_requested_blocks_new_propose(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A CHANGES_REQUESTED request still counts as OPEN — a new propose is blocked.
+    """Verify a new proposal is blocked while an earlier one is still awaiting the maker's edits.
 
     The maker must REVISE the in-flight request, not stack a fresh one.
     """
@@ -251,7 +251,7 @@ async def test_new_propose_succeeds_after_withdraw(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Withdrawing the open request → WITHDRAWN (terminal) frees the scope."""
+    """Verify withdrawing a pending change frees the config for a new proposal."""
     live = await _create_live_limit(
         async_client, db_session, test_tenant, make_admin_token, max_amount="1000"
     )
@@ -282,7 +282,7 @@ async def test_new_propose_succeeds_after_approve(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Approving the open request → APPLIED (terminal) frees the scope for a fresh edit."""
+    """Verify approving a pending change frees the config for a new proposal."""
     live = await _create_live_limit(
         async_client, db_session, test_tenant, make_admin_token, max_amount="1000"
     )
@@ -324,7 +324,7 @@ async def test_different_scope_unaffected(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """An open request on scope A does not block a proposal for scope B."""
+    """Verify a pending change on one config does not block changes to a different config."""
     p2p = await _create_live_limit(
         async_client,
         db_session,

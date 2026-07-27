@@ -1,4 +1,4 @@
-"""Amount-band upper-bound boundary tests (money-path boundary bug fix).
+"""Fee tier boundaries on a transfer.
 
 The band range `[amount_from, amount_to]` is INCLUSIVE on BOTH ends: a
 transaction whose amount equals a band's `amount_to` must resolve to that band
@@ -84,7 +84,7 @@ async def _resolve(
 
 @pytest.mark.asyncio
 async def test_upper_bound_is_inclusive(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """An amount equal to a band's amount_to resolves to that band."""
+    """Verify the correct fee tier applies right at a tier boundary amount."""
     await _seed_three_bands(db_session, test_tenant)
     user = await _make_user(db_session, test_tenant)
 
@@ -100,7 +100,7 @@ async def test_upper_bound_is_inclusive(db_session: AsyncSession, test_tenant: T
 async def test_above_top_band_resolves_none(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """An amount above the top band's upper end (no open band) resolves None."""
+    """Verify no fee tier applies to an amount above the highest configured tier."""
     await _seed_three_bands(db_session, test_tenant)
     user = await _make_user(db_session, test_tenant)
     assert await _resolve(db_session, test_tenant, user, "501") is None
@@ -110,7 +110,7 @@ async def test_above_top_band_resolves_none(
 async def test_upper_boundary_fee_is_applied(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """The reported scenario: a 500 txn under a 401-500 band deducts the band fee."""
+    """Verify a transfer at the exact top of a fee tier is charged that tier's fee."""
     await _seed_three_bands(db_session, test_tenant)
     user = await _make_user(db_session, test_tenant)
 
@@ -130,7 +130,7 @@ async def test_upper_boundary_fee_is_applied(
 async def test_above_top_band_raises_missing(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """No band contains 501 → pricing is missing (Pay-PRD-0420, no silent zero)."""
+    """Verify a transfer above every configured fee tier is blocked rather than charged nothing."""
     await _seed_three_bands(db_session, test_tenant)
     user = await _make_user(db_session, test_tenant)
     with pytest.raises(PricingConfigMissing):

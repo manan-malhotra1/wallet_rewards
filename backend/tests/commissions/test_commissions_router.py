@@ -1,4 +1,4 @@
-"""Tests for the read-only commission-config list endpoint (Epic 24 backend).
+"""Viewing commission configuration.
 
 Config WRITES go through the maker-checker flow; only an admin-gated LIST is
 exposed, mirroring the pricing router. Coverage: happy path, auth (401),
@@ -40,6 +40,7 @@ async def test_list_returns_seeded_configs(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
+    """Verify an admin can list the configured commission rates."""
     await _seed(db_session, test_tenant.id)
     resp = await async_client.get(
         URL, params={"tenant_id": str(test_tenant.id)}, headers=admin_auth_header
@@ -52,6 +53,7 @@ async def test_list_returns_seeded_configs(
 
 
 async def test_list_requires_auth(async_client: AsyncClient, test_tenant: Tenant) -> None:
+    """Verify commission rates cannot be listed without signing in."""
     resp = await async_client.get(URL, params={"tenant_id": str(test_tenant.id)})
     assert resp.status_code == 401
 
@@ -61,6 +63,7 @@ async def test_list_requires_platform_admin(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
+    """Verify only a platform admin can list commission rates."""
     token = make_admin_token(roles=["config-approver"])  # lacks platform-admin
     resp = await async_client.get(
         URL,
@@ -77,6 +80,7 @@ async def test_list_is_tenant_scoped(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
+    """Verify one tenant cannot see another tenant's commission rates."""
     await _seed(db_session, test_tenant.id, "cash_in")
     await _seed(db_session, other_tenant.id, "p2p")
     resp = await async_client.get(

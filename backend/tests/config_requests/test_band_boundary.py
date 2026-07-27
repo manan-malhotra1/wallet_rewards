@@ -1,4 +1,4 @@
-"""Band-overlap validation under inclusive upper bounds (money-path boundary fix).
+"""Fee band boundaries — rejecting overlapping amount ranges.
 
 Bands are `[amount_from, amount_to]` inclusive on both ends. Two bands overlap
 when the next band STARTS AT OR BEFORE the previous band's (inclusive) end. So
@@ -43,7 +43,7 @@ def _maker(make_admin_token: Callable[..., str]) -> dict[str, str]:
 
 
 async def test_plus_one_gap_bands_accepted(async_client, test_tenant, make_admin_token):
-    """1-200, 201-400 are contiguous with a +1 gap — valid under inclusive bounds."""
+    """Verify adjacent fee bands that leave no gap are accepted."""
     bands = [_band(test_tenant.id, "1", "200", "1"), _band(test_tenant.id, "201", "400", "2")]
     resp = await async_client.post(
         _url(test_tenant), json=_body(test_tenant.id, bands), headers=_maker(make_admin_token)
@@ -52,7 +52,7 @@ async def test_plus_one_gap_bands_accepted(async_client, test_tenant, make_admin
 
 
 async def test_shared_boundary_bands_rejected(async_client, test_tenant, make_admin_token):
-    """1-200, 200-400 share the endpoint 200 (both contain it) → overlap rejected."""
+    """Verify fee bands that overlap on a shared amount are rejected."""
     bands = [_band(test_tenant.id, "1", "200", "1"), _band(test_tenant.id, "200", "400", "2")]
     resp = await async_client.post(
         _url(test_tenant), json=_body(test_tenant.id, bands), headers=_maker(make_admin_token)

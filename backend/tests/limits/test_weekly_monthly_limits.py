@@ -1,4 +1,4 @@
-"""Tests for rolling weekly + monthly service-wise limit caps (WAL-234).
+"""Transaction limits — weekly and monthly caps.
 
 `check_limits` enforces daily (24h), weekly (7d), and monthly (30d) rolling
 count + value caps. These tests drive the new weekly/monthly windows and the
@@ -87,7 +87,7 @@ async def _check(session: AsyncSession, tenant_id, user_id, amount="10") -> None
 async def test_weekly_count_cap_enforced(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Two txns inside 7d with weekly_count_cap=2 → the 3rd raises 429."""
+    """Verify a customer cannot exceed their weekly number of transactions."""
     await _seed_txns(db_session, test_tenant.id, test_user.id, ages_days=[1, 6])
     await _seed_config(db_session, test_tenant.id, weekly_count_cap=2)
 
@@ -99,7 +99,7 @@ async def test_weekly_count_cap_enforced(
 async def test_weekly_value_cap_enforced(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """R90 already moved this week + R20 now > weekly_value_cap=R100 → 429."""
+    """Verify a customer cannot exceed their weekly transaction total."""
     await _seed_txns(db_session, test_tenant.id, test_user.id, ages_days=[2], amount="90")
     await _seed_config(db_session, test_tenant.id, weekly_value_cap=Decimal("100"))
 
@@ -111,7 +111,7 @@ async def test_weekly_value_cap_enforced(
 async def test_monthly_count_cap_enforced(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Three txns inside 30d with monthly_count_cap=3 → the 4th raises 429."""
+    """Verify a customer cannot exceed their monthly number of transactions."""
     await _seed_txns(db_session, test_tenant.id, test_user.id, ages_days=[10, 20, 29])
     await _seed_config(db_session, test_tenant.id, monthly_count_cap=3)
 
@@ -123,7 +123,7 @@ async def test_monthly_count_cap_enforced(
 async def test_weekly_window_excludes_txns_older_than_7d(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """A txn 8 days old does NOT count toward the weekly cap (boundary)."""
+    """Verify transactions older than a week no longer count toward the weekly limit."""
     await _seed_txns(db_session, test_tenant.id, test_user.id, ages_days=[8])
     await _seed_config(db_session, test_tenant.id, weekly_count_cap=1)
 
@@ -135,7 +135,7 @@ async def test_weekly_window_excludes_txns_older_than_7d(
 async def test_monthly_cap_catches_txns_outside_the_weekly_window(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Txns 10/20 days old skip the weekly cap but trip the monthly cap."""
+    """Verify transactions too old for the weekly limit still count toward the monthly limit."""
     await _seed_txns(db_session, test_tenant.id, test_user.id, ages_days=[10, 20])
     await _seed_config(db_session, test_tenant.id, weekly_count_cap=5, monthly_count_cap=2)
 
@@ -149,7 +149,7 @@ async def test_monthly_cap_catches_txns_outside_the_weekly_window(
 async def test_unconfigured_windows_are_not_checked(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """With only a weekly cap set, a same-day flurry never trips a daily cap."""
+    """Verify only the limits a tenant has actually configured are enforced."""
     await _seed_txns(db_session, test_tenant.id, test_user.id, ages_days=[0.1, 0.2, 0.3])
     await _seed_config(db_session, test_tenant.id, weekly_count_cap=10)
 

@@ -1,4 +1,4 @@
-"""Commission config + `calculate_commission` tests (Story 19.3).
+"""Operator commission calculation.
 
 Fixed + variable + cap math; typed-vs-default precedence; amount-band selection;
 and the no-config → Decimal("0") rule (commission is optional, unlike a fee).
@@ -65,7 +65,7 @@ async def _commission(session: AsyncSession, tenant: Tenant, agent: User, amount
 
 @pytest.mark.asyncio
 async def test_fixed_plus_variable_with_cap(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """commission = fixed + min(pct*amount, cap)."""
+    """Verify the operator commission adds a fixed amount to a capped percentage."""
     await _make_config(db_session, test_tenant, fixed="1", variable="0.05", cap="10")
     agent = await _make_agent(db_session, test_tenant)
 
@@ -77,7 +77,7 @@ async def test_fixed_plus_variable_with_cap(db_session: AsyncSession, test_tenan
 
 @pytest.mark.asyncio
 async def test_typed_beats_default(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """An agent-typed commission (2) wins over the NULL default (5)."""
+    """Verify an operator type with its own commission rate is paid that rate, not the default."""
     await _make_config(db_session, test_tenant, user_type=None, fixed="5")
     await _make_config(db_session, test_tenant, user_type="agent", fixed="2")
     agent = await _make_agent(db_session, test_tenant, "agent")
@@ -89,7 +89,7 @@ async def test_typed_beats_default(db_session: AsyncSession, test_tenant: Tenant
 
 @pytest.mark.asyncio
 async def test_amount_band_selection(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """The amount picks the matching band."""
+    """Verify the commission for the transaction amount comes from the matching amount tier."""
     await _make_config(db_session, test_tenant, amount_from="0", amount_to="100", fixed="1")
     await _make_config(db_session, test_tenant, amount_from="100", amount_to=None, fixed="3")
     agent = await _make_agent(db_session, test_tenant)
@@ -100,6 +100,6 @@ async def test_amount_band_selection(db_session: AsyncSession, test_tenant: Tena
 
 @pytest.mark.asyncio
 async def test_no_config_means_zero(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """A missing commission config → Decimal('0'), not an error."""
+    """Verify no operator commission is recorded when none is configured."""
     agent = await _make_agent(db_session, test_tenant)
     assert await _commission(db_session, test_tenant, agent, "100") == Decimal("0")

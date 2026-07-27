@@ -1,4 +1,4 @@
-"""Tests for cumulative wallet SEND limits (WAL-235).
+"""Wallet limits — money going out.
 
 `check_wallet_send_limits` enforces per-(tenant, currency) rolling
 daily/weekly/monthly caps on the count + principal value a user sends from
@@ -130,7 +130,7 @@ async def _check(session: AsyncSession, tenant_id, user_id, amount="10") -> None
 async def test_no_wallet_config_is_pass_through(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """No wallet limit config → check is a no-op even for a huge send."""
+    """Verify money going out is allowed through when no wallet limit is configured."""
     await _check(db_session, test_tenant.id, test_user.id, amount="9999999")
 
 
@@ -138,7 +138,7 @@ async def test_no_wallet_config_is_pass_through(
 async def test_send_daily_count_cap_enforced(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """Two sends today with send_daily_count_cap=2 → the 3rd raises 429."""
+    """Verify a customer cannot exceed the number of times they can send money in a day."""
     sink = await _make_sink(db_session, test_tenant.id)
     for _ in range(2):
         await _seed_send(
@@ -155,7 +155,7 @@ async def test_send_daily_count_cap_enforced(
 async def test_send_weekly_value_cap_enforced(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """R90 sent this week + R20 now > send_weekly_value_cap=R100 → 429."""
+    """Verify a customer cannot exceed the total amount they can send in a week."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_send(
         db_session, test_tenant.id, user_wallet.id, sink.id, principal="90", age_days=2
@@ -171,7 +171,7 @@ async def test_send_weekly_value_cap_enforced(
 async def test_send_value_excludes_fees(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """A prior send of principal R90 + fee R50 counts only R90 toward the cap."""
+    """Verify fees are not counted toward how much a customer can send."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_send(
         db_session, test_tenant.id, user_wallet.id, sink.id, principal="90", age_days=2, fee="50"
@@ -187,7 +187,7 @@ async def test_send_value_excludes_fees(
 async def test_send_with_fee_counts_as_one_transaction(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """A send with principal + fee debit legs counts as ONE toward the cap."""
+    """Verify a single send counts once toward the customer's limit even when a fee is charged."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_send(
         db_session, test_tenant.id, user_wallet.id, sink.id, principal="10", age_days=0.2, fee="2"
@@ -203,7 +203,7 @@ async def test_send_with_fee_counts_as_one_transaction(
 async def test_send_counts_across_services(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """Sends of different transaction_types both count toward the wallet cap."""
+    """Verify a customer's send limit applies across all the ways they can send money."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_send(
         db_session,
@@ -233,7 +233,7 @@ async def test_send_counts_across_services(
 async def test_send_window_excludes_older_than_7d(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """A send 8 days old does NOT count toward the weekly send cap (boundary)."""
+    """Verify money sent more than a week ago no longer counts toward the weekly limit."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_send(
         db_session, test_tenant.id, user_wallet.id, sink.id, principal="100", age_days=8
@@ -248,7 +248,7 @@ async def test_send_window_excludes_older_than_7d(
 async def test_wallet_send_config_does_not_leak_across_tenants(
     db_session: AsyncSession, test_tenant: Tenant, other_tenant: Tenant, test_user: User
 ) -> None:
-    """A wallet limit config in another tenant doesn't apply to this caller."""
+    """Verify one tenant cannot see or use another tenant's wallet limits."""
     await _seed_config(db_session, other_tenant.id, send_daily_count_cap=0)
 
     # test_user is in test_tenant, which has no wallet config → pass-through,

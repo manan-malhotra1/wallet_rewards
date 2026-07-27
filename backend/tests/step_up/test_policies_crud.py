@@ -1,4 +1,4 @@
-"""Read + retired-write coverage for /api/v1/step-up/policies.
+"""Step-up policies — admin viewing and change governance.
 
 Step-up policy WRITES now flow exclusively through the config-governance
 maker-checker (config type "step_up") — the direct create/delete routes were
@@ -48,7 +48,7 @@ async def test_list_policies_returns_only_tenant_rows(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """List endpoint is tenant-scoped — no cross-tenant leakage."""
+    """Verify one tenant cannot see another tenant's step-up policies."""
     await _seed_policy(db_session, test_tenant, threshold="100")
     await _seed_policy(db_session, other_tenant, threshold="500")
 
@@ -68,7 +68,7 @@ async def test_list_policies_requires_admin(
     async_client: AsyncClient,
     test_tenant: Tenant,
 ) -> None:
-    """The list endpoint is admin-gated — no token → 401."""
+    """Verify viewing step-up policies requires an admin sign-in."""
     response = await async_client.get(
         "/api/v1/step-up/policies",
         params={"tenant_id": str(test_tenant.id)},
@@ -82,7 +82,7 @@ async def test_direct_create_endpoint_is_retired(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """POST /policies is gone — step-up creates go through config-requests now."""
+    """Verify step-up policies can no longer be created directly, only through the approval flow."""
     response = await async_client.post(
         "/api/v1/step-up/policies",
         headers=admin_auth_header,
@@ -102,7 +102,7 @@ async def test_direct_delete_endpoint_is_retired(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """DELETE /policies/{id} is gone — step-up deletes go through config-requests now.
+    """Verify step-up policies can no longer be deleted directly, only through the approval flow.
 
     The whole `/policies/{policy_id}` path was removed (not just the method), so
     the router no longer matches it → 404 (route gone), unlike POST /policies

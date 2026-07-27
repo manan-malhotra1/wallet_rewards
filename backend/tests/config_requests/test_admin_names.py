@@ -1,4 +1,4 @@
-"""Admin display names on config-change requests (never expose bare IDs).
+"""Reviewer names — showing who proposed and who approved a config change.
 
 Makers/checkers are Keycloak subs internally; the API resolves each to a human
 display name (recorded in `admin_profiles` when the admin acts) so the review UI
@@ -42,6 +42,7 @@ async def test_maker_and_checker_names_resolved(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
+    """Verify the review screen shows the names of the admins who proposed and approved a change."""
     maker_token = make_admin_token(roles=["platform-admin"], sub=MAKER_SUB, username="alice-maker")
     checker_token = make_admin_token(
         roles=["platform-admin", "config-approver"],

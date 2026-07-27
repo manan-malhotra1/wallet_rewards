@@ -1,4 +1,4 @@
-"""Tests for the generic, service-agnostic fee quote endpoint.
+"""Fee preview quote for any service.
 
 `POST /api/v1/pricing/quote` previews the service charge for ANY service by
 its code (== transaction_type), so new services need no new route. These
@@ -60,7 +60,7 @@ async def test_quote_returns_configured_fixed_fee(
     test_tenant: Tenant,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A configured fixed fee is returned with the correct total (amount + fee)."""
+    """Verify the fee quoted for a transfer matches the configured price."""
     await _seed_pricing(
         db_session,
         tenant_id=test_tenant.id,
@@ -91,7 +91,7 @@ async def test_quote_variable_fee_scales_with_amount(
     test_tenant: Tenant,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A percentage fee is amount-dependent — the reason a static fee won't do."""
+    """Verify a percentage-based fee grows with the transfer amount."""
     await _seed_pricing(
         db_session,
         tenant_id=test_tenant.id,
@@ -118,8 +118,7 @@ async def test_quote_unconfigured_service_returns_zero(
     async_client: AsyncClient,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """A brand-new service with no pricing config quotes 0 through the same
-    endpoint — proving genericity (legacy pass-through, no new route needed)."""
+    """Verify a service with no configured price previews a zero fee."""
     resp = await async_client.post(
         QUOTE_URL,
         headers=alice_auth_header,
@@ -140,8 +139,7 @@ async def test_quote_derives_points_account_for_pts_currency(
     test_tenant: Tenant,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """With no account_type given, a PTS quote resolves to the points account
-    scope and finds a points-account config."""
+    """Verify a points redemption is quoted its own configured fee."""
     await _seed_pricing(
         db_session,
         tenant_id=test_tenant.id,
@@ -168,7 +166,7 @@ async def test_quote_honors_explicit_account_type_override(
     test_tenant: Tenant,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """An explicit account_type overrides the currency-derived default.
+    """Verify a caller can preview the fee for a specific account type.
 
     The config is keyed on (ZAR, points_account) — which the ZAR default
     (financial_wallet) would miss; passing account_type explicitly hits it.
@@ -207,7 +205,7 @@ async def test_quote_honors_explicit_account_type_override(
 
 @pytest.mark.asyncio
 async def test_quote_requires_auth(async_client: AsyncClient) -> None:
-    """No session token → 401."""
+    """Verify a fee quote cannot be requested without signing in."""
     resp = await async_client.post(
         QUOTE_URL,
         json={"service": "p2p", "amount": "25", "currency": "ZAR"},
@@ -219,7 +217,7 @@ async def test_quote_requires_auth(async_client: AsyncClient) -> None:
 async def test_quote_rejects_non_positive_amount(
     async_client: AsyncClient, alice_auth_header: dict[str, str]
 ) -> None:
-    """amount must be > 0 → 422."""
+    """Verify a fee quote for a zero or negative amount is rejected."""
     resp = await async_client.post(
         QUOTE_URL,
         headers=alice_auth_header,
@@ -235,8 +233,7 @@ async def test_quote_does_not_leak_other_tenant_pricing(
     other_tenant: Tenant,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Tenant isolation: a config in another tenant must not affect this
-    caller's quote (tenant comes from the session token)."""
+    """Verify one tenant cannot see or use another tenant's pricing."""
     await _seed_pricing(
         db_session,
         tenant_id=other_tenant.id,

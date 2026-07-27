@@ -1,4 +1,4 @@
-"""Tenant isolation for the wallet_limit_configs table (WAL-233).
+"""Wallet limits — keeping tenants separate.
 
 A wallet limit config created in one tenant must never be visible to a
 query scoped to another tenant (NFR-0220). CRUD + enforcement land in
@@ -20,7 +20,7 @@ from app.shared.models import Tenant, WalletLimitConfig
 async def test_wallet_limit_config_not_visible_across_tenants(
     db_session: AsyncSession, test_tenant: Tenant, other_tenant: Tenant
 ) -> None:
-    """A config in test_tenant is invisible to an other_tenant-scoped query."""
+    """Verify one tenant cannot see or use another tenant's wallet limits."""
     db_session.add(
         WalletLimitConfig(
             tenant_id=test_tenant.id,

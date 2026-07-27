@@ -1,4 +1,4 @@
-"""Tests for the limits service (Phase G.2).
+"""Transaction limits — core rules.
 
 We test the service directly (faster + more focused than going through
 the admin HTTP layer) and the integration via the p2p_transfer service
@@ -29,7 +29,7 @@ from app.shared.models import (
 
 @pytest.mark.asyncio
 async def test_no_config_is_pass_through(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """When no limit config exists, check_limits is a no-op."""
+    """Verify a transaction is allowed through when no limit is configured for it."""
     await check_limits(
         db_session,
         tenant_id=test_tenant.id,
@@ -43,7 +43,7 @@ async def test_no_config_is_pass_through(db_session: AsyncSession, test_tenant: 
 
 @pytest.mark.asyncio
 async def test_amount_below_min_rejected(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """Configuring min_amount=R 50 → R 10 transfer raises AmountBelowMin."""
+    """Verify a transfer below the minimum amount is rejected."""
     await create_limit_config(
         db_session,
         LimitConfigCreateRequest(
@@ -68,7 +68,7 @@ async def test_amount_below_min_rejected(db_session: AsyncSession, test_tenant: 
 
 @pytest.mark.asyncio
 async def test_amount_above_max_rejected(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """max_amount=R 1000 → R 5000 transfer raises AmountAboveMax."""
+    """Verify a transfer above the maximum amount is rejected."""
     await create_limit_config(
         db_session,
         LimitConfigCreateRequest(
@@ -95,7 +95,7 @@ async def test_amount_above_max_rejected(db_session: AsyncSession, test_tenant: 
 async def test_daily_count_cap_enforced(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Once daily_count_cap=2 is reached, a 3rd transfer raises 429."""
+    """Verify a customer cannot exceed their daily number of transactions."""
     from app.shared.models import TXN_STATUS_COMPLETED, Transaction
 
     # `test_user` is a real DB row so the FK on `transactions.initiated_by`

@@ -1,4 +1,4 @@
-"""Revise trust-boundary tests — a revise must re-run propose's scope/tenant guards.
+"""Edit-time safeguards — re-checking scope and tenant when a change is revised.
 
 `revise_config_request` edits a CHANGES_REQUESTED request's payload before it is
 resubmitted and (on approval) applied. It is a governance trust boundary just
@@ -140,7 +140,7 @@ async def test_revise_update_scope_mismatch_rejected_matching_succeeds(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Revising an update with a payload whose scope differs from the target → 422.
+    """Verify a revised edit cannot be redirected to a different config than it named.
 
     Without the guard the revised payload could move the request's scope so that
     on approval it replaces a DIFFERENT config than the request names. A same-
@@ -191,7 +191,7 @@ async def test_revise_scope_mismatch_leaves_target_untouched_after_approve(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A same-scope revise applies to the named config; the cap lands, one row."""
+    """Verify a same-scope revised edit applies to the config it named."""
     live = await _create_live_limit(
         async_client, db_session, test_tenant, make_admin_token, "1000"
     )
@@ -230,7 +230,7 @@ async def test_revise_with_foreign_tenant_band_rejected(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Revising with a band carrying a foreign tenant_id → 422 tenant_mismatch.
+    """Verify a revised edit carrying another tenant's data is rejected.
 
     Mirrors propose's tenant-match guard: a revised payload's band tenant_id must
     equal the request's tenant.
@@ -270,7 +270,7 @@ async def test_revise_with_malformed_band_rejected(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Revising with an invalid-band payload → 422, same as propose's validation.
+    """Verify a revised edit with invalid values is rejected before it is saved.
 
     A revise must re-run `_validate_payload`; an empty `transaction_type` fails the
     limit create schema (min_length=1), so the revise is rejected before any
@@ -332,7 +332,7 @@ async def test_revise_step_up_update_scope_mismatch_rejected(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """The revise scope guard is generic across config types, incl. `step_up`.
+    """Verify a revised step-up threshold cannot be redirected to a different scope.
 
     A step_up update is scoped by (transaction_type, currency). Revising it with a
     payload naming a DIFFERENT transaction_type than the target row → 422

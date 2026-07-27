@@ -1,4 +1,4 @@
-"""Tests for wallet RECEIVE limits + max balance (WAL-236).
+"""Wallet limits — money coming in.
 
 `check_wallet_receive_limits` guards a credit before it lands on a user's
 financial wallet: a max-balance ceiling and rolling daily/weekly/monthly
@@ -122,7 +122,7 @@ async def _check(
 async def test_no_wallet_config_is_pass_through(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """No wallet limit config → no-op even for a huge credit."""
+    """Verify money coming in is allowed through when no wallet limit is configured."""
     await _check(db_session, test_tenant.id, test_user.id, amount="9999999")
 
 
@@ -130,7 +130,7 @@ async def test_no_wallet_config_is_pass_through(
 async def test_max_balance_blocks_credit_over_cap(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """balance 80 + credit 30 > max_balance 100 → 409 max_balance_exceeded."""
+    """Verify money coming in that would push a wallet over its balance ceiling is rejected."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_receive(
         db_session, test_tenant.id, user_wallet.id, sink.id, principal="80", age_days=2
@@ -146,7 +146,7 @@ async def test_max_balance_blocks_credit_over_cap(
 async def test_credit_that_fits_under_max_balance_passes(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """balance 80 + credit 20 = 100, not > 100 → passes."""
+    """Verify money coming in that keeps a wallet at or under its balance ceiling is allowed."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_receive(
         db_session, test_tenant.id, user_wallet.id, sink.id, principal="80", age_days=2
@@ -160,7 +160,7 @@ async def test_credit_that_fits_under_max_balance_passes(
 async def test_receive_daily_count_cap_enforced(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """Two receives today with receive_daily_count_cap=2 → the 3rd raises 429."""
+    """Verify a customer cannot exceed the number of times they can receive money in a day."""
     sink = await _make_sink(db_session, test_tenant.id)
     for _ in range(2):
         await _seed_receive(
@@ -177,7 +177,7 @@ async def test_receive_daily_count_cap_enforced(
 async def test_receive_weekly_value_cap_enforced(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """R90 received this week + R20 now > receive_weekly_value_cap=R100 → 429."""
+    """Verify a customer cannot exceed the total amount they can receive in a week."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_receive(
         db_session, test_tenant.id, user_wallet.id, sink.id, principal="90", age_days=2
@@ -193,7 +193,7 @@ async def test_receive_weekly_value_cap_enforced(
 async def test_recipient_facing_max_balance_is_detail_free(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """P2P credit breaching recipient max balance → recipient_max_balance_exceeded."""
+    """Verify a transfer to a full recipient wallet is declined without revealing the balance."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_receive(
         db_session, test_tenant.id, user_wallet.id, sink.id, principal="80", age_days=2
@@ -209,7 +209,7 @@ async def test_recipient_facing_max_balance_is_detail_free(
 async def test_recipient_facing_cap_raises_recipient_limit_reached(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """P2P credit breaching a recipient receive cap → recipient_limit_reached."""
+    """Verify a transfer to a recipient at their limit is declined without revealing it."""
     sink = await _make_sink(db_session, test_tenant.id)
     for _ in range(2):
         await _seed_receive(
@@ -226,7 +226,7 @@ async def test_recipient_facing_cap_raises_recipient_limit_reached(
 async def test_receive_window_excludes_older_than_7d(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """A receive 8 days old does NOT count toward the weekly receive cap."""
+    """Verify money received more than a week ago no longer counts toward the weekly limit."""
     sink = await _make_sink(db_session, test_tenant.id)
     await _seed_receive(
         db_session, test_tenant.id, user_wallet.id, sink.id, principal="100", age_days=8
@@ -240,7 +240,7 @@ async def test_receive_window_excludes_older_than_7d(
 async def test_wallet_receive_config_does_not_leak_across_tenants(
     db_session: AsyncSession, test_tenant: Tenant, other_tenant: Tenant, test_user: User
 ) -> None:
-    """A wallet limit config in another tenant doesn't apply to this caller."""
+    """Verify one tenant cannot see or use another tenant's wallet limits."""
     await _seed_config(db_session, other_tenant.id, max_balance=Decimal("1"))
 
     await _check(db_session, test_tenant.id, test_user.id, amount="9999999")

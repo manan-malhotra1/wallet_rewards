@@ -1,4 +1,4 @@
-"""Maker-checker `update` operation tests (config edit → checker → atomic replace).
+"""Editing a config — routing edits through approval and replacing cleanly.
 
 `update` lets an admin EDIT a live config (its scope locked) and route the
 change through a checker. Apply is an atomic replace of the payload's scope:
@@ -128,7 +128,7 @@ def _pricing_band(tenant_id: UUID, frm: str | None, to: str | None, fixed: str) 
 async def test_propose_update_without_target_is_422(
     async_client: AsyncClient, test_tenant: Tenant, make_admin_token: Callable[..., str]
 ) -> None:
-    """An update proposal missing target_config_id → 422 (target required)."""
+    """Verify an edit that does not say which config to change is rejected cleanly."""
     resp = await _propose(
         async_client,
         test_tenant,
@@ -142,7 +142,7 @@ async def test_propose_update_without_target_is_422(
 async def test_propose_update_nonexistent_target_is_404(
     async_client: AsyncClient, test_tenant: Tenant, make_admin_token: Callable[..., str]
 ) -> None:
-    """An update proposal whose target isn't in this tenant → 404."""
+    """Verify an edit pointing at a config that does not exist is rejected cleanly."""
     resp = await _propose(
         async_client,
         test_tenant,
@@ -158,7 +158,7 @@ async def test_propose_update_nonexistent_target_is_404(
 async def test_propose_update_without_payload_is_422(
     async_client: AsyncClient, test_tenant: Tenant, make_admin_token: Callable[..., str]
 ) -> None:
-    """An update proposal with no payload → 422 (payload required)."""
+    """Verify an edit with no new values is rejected cleanly."""
     body = {
         "config_type": "limit",
         "operation": "update",
@@ -201,7 +201,7 @@ async def test_update_limit_config_replaces_in_place(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Edit a live limit config's cap via update → new value lands, still one row."""
+    """Verify editing a limit updates its value and leaves a single config."""
     live = await _create_live_limit(
         async_client, db_session, test_tenant, make_admin_token, "1000"
     )
@@ -236,7 +236,7 @@ async def test_update_proposal_records_revision_1_snapshot(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """An update proposal snapshots revision 1 like any other proposal."""
+    """Verify a proposed edit records its original version as the first revision."""
     live = await _create_live_limit(
         async_client, db_session, test_tenant, make_admin_token, "1000"
     )
@@ -277,7 +277,7 @@ async def test_update_pricing_replaces_whole_band_set(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A live 2-band schedule edited to 3 bands → scope has exactly the 3 new bands."""
+    """Verify editing a fee schedule replaces it with exactly the new bands."""
     create_body = {
         "config_type": "pricing",
         "operation": "create",
@@ -345,7 +345,7 @@ async def test_update_tax_config_replaces_in_place(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A tax (single-row) edit cycle works: new rate lands, still one row."""
+    """Verify editing a tax config updates its rate and leaves a single config."""
     created = await _propose(
         async_client,
         test_tenant,
@@ -390,8 +390,7 @@ async def test_update_apply_failure_leaves_original_intact(
     make_admin_token: Callable[..., str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If the replace raises AFTER its delete+insert but before commit, the whole
-    replace rolls back: the original config survives and the request is un-applied.
+    """Verify a failed edit leaves the original config intact and still awaiting approval.
 
     The replace does its delete+insert then the audit write then a SINGLE commit;
     injecting a failure at the audit step (post-flush, pre-commit) exercises the
@@ -450,7 +449,7 @@ async def test_update_scope_mismatch_rejected_matching_succeeds(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """An update naming target X (scope A) with a payload for scope B → 422.
+    """Verify an edit cannot be redirected to a different config than it named.
 
     Otherwise the request would silently replace scope B and leave X untouched.
     A same-scope edit against the same target still succeeds.
@@ -499,7 +498,7 @@ async def test_update_proposal_can_be_revised_and_resubmitted(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """request-changes on an update → revise → resubmit → approve applies the revised edit.
+    """Verify an edit sent back for changes applies its revised value once re-approved.
 
     The request stays operation=update, the snapshot revision bumps, and the
     revised cap is what lands on the live config.

@@ -1,4 +1,4 @@
-"""Precedence tests for type-aware pricing (Epic 16).
+"""Per-customer-type pricing.
 
 An exact-`user_type` fee config wins over the `user_type IS NULL` default in
 quote resolution; the default covers every other type; a missing config still
@@ -58,7 +58,7 @@ async def _fee(session: AsyncSession, tenant: Tenant, user: User) -> Decimal:
 
 @pytest.mark.asyncio
 async def test_typed_fee_beats_default(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """A merchant's fee (1) wins over the NULL default (5); a consumer gets 5."""
+    """Verify each customer type is charged its own configured price."""
     await _make_pricing(db_session, test_tenant, user_type=None, fixed_fee="5")
     await _make_pricing(db_session, test_tenant, user_type="merchant", fixed_fee="1")
     merchant = await _make_user(db_session, test_tenant, "merchant")
@@ -70,7 +70,7 @@ async def test_typed_fee_beats_default(db_session: AsyncSession, test_tenant: Te
 
 @pytest.mark.asyncio
 async def test_default_applies_when_no_typed(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """An agent with no agent-specific fee resolves to the NULL default."""
+    """Verify a customer with no type-specific price falls back to the default price."""
     await _make_pricing(db_session, test_tenant, user_type=None, fixed_fee="5")
     agent = await _make_user(db_session, test_tenant, "agent")
     assert await _fee(db_session, test_tenant, agent) == Decimal("5.000000")
@@ -78,7 +78,7 @@ async def test_default_applies_when_no_typed(db_session: AsyncSession, test_tena
 
 @pytest.mark.asyncio
 async def test_missing_config_raises(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """No config for the slot still raises PricingConfigMissing (Pay-PRD-0420)."""
+    """Verify a transaction is blocked when no price is configured for the customer."""
     consumer = await _make_user(db_session, test_tenant, "consumer")
     with pytest.raises(PricingConfigMissing):
         await _fee(db_session, test_tenant, consumer)

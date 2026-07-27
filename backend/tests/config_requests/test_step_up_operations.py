@@ -1,4 +1,4 @@
-"""Maker-checker coverage for the `step_up` config type.
+"""Step-up PIN thresholds — governing them through the approval workflow.
 
 Step-up PIN thresholds are governed exactly like pricing / limit / commission /
 tax: a maker (platform-admin) PROPOSES a create/update/delete and a DIFFERENT
@@ -95,7 +95,7 @@ async def test_step_up_create_writes_no_policy_until_approved(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Propose create → no row; the checker's approval mints the policy row."""
+    """Verify a new step-up threshold only takes effect once approved."""
     body = _create_body(test_tenant)
     proposed = await _propose(async_client, test_tenant, body, _maker(make_admin_token))
     assert proposed.status_code == 201, proposed.text
@@ -130,7 +130,7 @@ async def test_step_up_update_changes_threshold_on_approval(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """An approved update replaces the scope's row with the new threshold."""
+    """Verify an approved edit updates the step-up threshold."""
     create = await _propose(
         async_client,
         test_tenant,
@@ -180,7 +180,7 @@ async def test_step_up_update_scope_mismatch_rejected(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """An update whose payload scope differs from its target → 422 scope_mismatch."""
+    """Verify a step-up edit cannot be redirected to a different scope than it named."""
     create = await _propose(
         async_client,
         test_tenant,
@@ -221,7 +221,7 @@ async def test_step_up_delete_removes_row_on_approval(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """An approved delete removes the policy row for the target's scope."""
+    """Verify an approved delete removes the step-up threshold."""
     create = await _propose(
         async_client,
         test_tenant,
@@ -261,7 +261,7 @@ async def test_step_up_self_approval_forbidden(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """The maker cannot approve their own step-up request (needs config-approver + distinct)."""
+    """Verify the admin who proposed a step-up change cannot approve their own change."""
     proposed = await _propose(
         async_client,
         test_tenant,
@@ -283,7 +283,7 @@ async def test_step_up_propose_requires_platform_admin(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A config-approver (checker) cannot PROPOSE — propose is platform-admin only."""
+    """Verify only a platform admin can propose a step-up change."""
     body = _create_body(test_tenant)
     resp = await _propose(async_client, test_tenant, body, _checker(make_admin_token))
     assert resp.status_code == 403, resp.text
@@ -294,7 +294,7 @@ async def test_step_up_approve_requires_config_approver(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A platform-admin (non-approver) cannot APPROVE — approve is config-approver only."""
+    """Verify only an approver can approve a step-up change."""
     proposed = await _propose(
         async_client,
         test_tenant,
@@ -319,7 +319,7 @@ async def test_step_up_second_open_request_same_scope_rejected(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """Two open requests for the same (transaction_type, currency) → 409 already_open."""
+    """Verify a second step-up change is blocked while one is already pending for the same scope."""
     body = _create_body(test_tenant)
     first = await _propose(async_client, test_tenant, body, _maker(make_admin_token))
     assert first.status_code == 201, first.text
@@ -334,7 +334,7 @@ async def test_step_up_different_scope_open_request_allowed(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A second open request on a DIFFERENT scope (currency) is not blocked."""
+    """Verify pending step-up changes on different scopes do not block each other."""
     zar = _create_body(test_tenant)
     usd = _create_body(test_tenant, currency="USD")
     first = await _propose(async_client, test_tenant, zar, _maker(make_admin_token))
@@ -348,7 +348,7 @@ async def test_step_up_negative_threshold_rejected(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A negative threshold fails the create schema → 422 (before any write)."""
+    """Verify a negative step-up threshold is rejected."""
     body = {
         "config_type": "step_up",
         "operation": "create",
@@ -363,7 +363,7 @@ async def test_step_up_missing_field_rejected(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A payload missing transaction_type fails the create schema → 422."""
+    """Verify a step-up change missing a required field is rejected."""
     body = {
         "config_type": "step_up",
         "operation": "create",
@@ -384,7 +384,7 @@ async def test_step_up_update_non_p2p_type_no_scope_mismatch(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A cashout (non-p2p) step-up policy can be created AND its threshold edited.
+    """Verify a non-p2p step-up threshold can be created and later edited.
 
     Regression: enforce_step_up guards more than p2p/redemption (cashout, cash_in,
     airtime_recharge), and the seed provisions policies for them. Editing such a
@@ -456,7 +456,7 @@ from app.modules.step_up.schemas import (  # noqa: E402
 
 
 def test_step_up_literal_matches_guarded_set() -> None:
-    """The TransactionType Literal and its runtime tuple mirror must be identical.
+    """Verify every step-up transaction type the system provisions can be configured.
 
     The seed iterates STEP_UP_TRANSACTION_TYPES, so if it ever diverged from the
     Literal the seed could provision a policy the maker-checker schema rejects
@@ -474,7 +474,7 @@ async def test_every_guarded_type_creates_and_edits_via_maker_checker(
     make_admin_token: Callable[..., str],
     txn_type: str,
 ) -> None:
-    """EVERY guarded txn type can be created AND its threshold edited via approval.
+    """Verify every step-up transaction type can be created and edited through approval.
 
     Would have caught the reported bug: a non-p2p type (cashout/cash_in/airtime)
     that the schema rejected on create, or that scope-mismatched on edit.

@@ -1,4 +1,4 @@
-"""Baseline (synthesized) config version-history tests (Pricing v2 Epic 22).
+"""Version history — showing a starting baseline for configs created during setup.
 
 A live config created directly by the seed (never through the maker-checker) has
 ZERO applied create/update requests, so its scope's version history is empty and
@@ -62,7 +62,7 @@ async def test_single_band_scope_without_history_synthesizes_baseline(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A live limit row created outside maker-checker → 1 synthesized baseline."""
+    """Verify a config created during setup still shows a starting baseline version."""
     live = LimitConfig(
         tenant_id=test_tenant.id,
         transaction_type="p2p",
@@ -111,7 +111,7 @@ async def test_multi_band_scope_without_history_synthesizes_all_bands(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A live pricing schedule (3 bands) with no applied history → 1 baseline.
+    """Verify a multi-band fee schedule created during setup shows its full baseline version.
 
     The single synthesized entry's payload gathers EVERY band sharing the scope,
     ordered by amount_from ascending — regardless of DB insertion order.
@@ -175,7 +175,7 @@ async def test_baseline_mirrors_live_row_that_fails_create_schema(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """An all-null-caps limit (which `LimitConfigCreateRequest` rejects) → baseline.
+    """Verify a config still shows a baseline version even when its values predate current rules.
 
     The live row legitimately holds state the CREATE schema forbids ("At least
     one cap must be set."). The baseline must mirror it faithfully via
@@ -222,7 +222,7 @@ async def test_scope_with_applied_history_has_no_synthesized_baseline(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """An APPLIED create through the workflow → real entry, synthesized=False."""
+    """Verify a workflow-changed config shows its real history without a duplicate baseline."""
     body = {
         "config_type": "limit",
         "operation": "create",
@@ -279,7 +279,7 @@ async def test_baseline_tenant_isolation_is_404(
     other_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A live row in tenant A queried under tenant B's id → 404 (not synthesized)."""
+    """Verify one tenant cannot see another tenant's config history."""
     live = LimitConfig(
         tenant_id=test_tenant.id,
         transaction_type="p2p",
@@ -303,7 +303,7 @@ async def test_baseline_unknown_target_is_404(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """An unknown target id → 404, never a fabricated baseline."""
+    """Verify a request for an unknown config's history is rejected cleanly."""
     resp = await async_client.get(
         _history_url(test_tenant, "limit", str(uuid4())), headers=_maker(make_admin_token)
     )

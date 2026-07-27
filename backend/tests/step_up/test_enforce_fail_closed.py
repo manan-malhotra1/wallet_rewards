@@ -1,4 +1,4 @@
-"""Direct unit tests for `enforce_step_up` — the FAIL-CLOSED contract.
+"""PIN re-entry — required by default.
 
 These bypass the HTTP layer and call `enforce_step_up` against a real DB
 session so the policy lookup, the fail-closed branch, and the real bcrypt
@@ -59,7 +59,7 @@ async def _seed_policy(
 async def test_no_policy_no_pin_raises_step_up_required(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """FAIL-CLOSED: no policy for the scope + no PIN → StepUpRequired (any amount)."""
+    """Verify the PIN is required by default when no step-up policy exists."""
     user = await _make_user_with_pin(db_session, test_tenant)
 
     with pytest.raises(StepUpRequired) as exc:
@@ -80,7 +80,7 @@ async def test_no_policy_no_pin_raises_step_up_required(
 async def test_no_policy_correct_pin_succeeds(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """FAIL-CLOSED companion: no policy + the correct PIN → no raise (returns None)."""
+    """Verify a transaction proceeds with the correct PIN when no policy is set."""
     user = await _make_user_with_pin(db_session, test_tenant)
 
     result = await enforce_step_up(
@@ -98,7 +98,7 @@ async def test_no_policy_correct_pin_succeeds(
 async def test_no_policy_wrong_pin_raises_invalid(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """No policy + a wrong PIN → InvalidStepUpPin (fail-closed still verifies)."""
+    """Verify a transaction is blocked when the customer enters the wrong PIN."""
     user = await _make_user_with_pin(db_session, test_tenant)
 
     with pytest.raises(InvalidStepUpPin):
@@ -116,7 +116,7 @@ async def test_no_policy_wrong_pin_raises_invalid(
 async def test_policy_below_threshold_skips_pin(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Regression guard: WITH a policy, amount <= threshold still skips the PIN.
+    """Verify no PIN is asked for an amount at or below the configured threshold.
 
     The fail-closed flip must NOT have broken the below-threshold path — a
     configured R200 threshold lets a R100 transfer through with no PIN.
@@ -139,7 +139,7 @@ async def test_policy_below_threshold_skips_pin(
 async def test_policy_above_threshold_requires_pin(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """WITH a policy, an amount over the threshold + no PIN → StepUpRequired.
+    """Verify the customer is asked to re-enter their PIN above the configured amount.
 
     The reported hint carries the CONFIGURED threshold (200), not 0.
     """

@@ -1,4 +1,4 @@
-"""Precedence tests for type-aware service limits (Epic 15).
+"""Transaction limits — per customer type.
 
 Confirms the resolution order at enforcement: an exact-`user_type` config beats
 the `user_type IS NULL` default, the default covers every other type, and no
@@ -59,7 +59,7 @@ async def _check(session: AsyncSession, tenant: Tenant, user: User, amount: str)
 
 @pytest.mark.asyncio
 async def test_typed_config_beats_default(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """An agent's type-specific max (1000) wins over the NULL default (100)."""
+    """Verify each customer type is held to its own configured limits."""
     await _make_limit(db_session, test_tenant, user_type=None, max_amount="100")
     await _make_limit(db_session, test_tenant, user_type="agent", max_amount="1000")
     agent = await _make_user(db_session, test_tenant, "agent")
@@ -75,7 +75,7 @@ async def test_typed_config_beats_default(db_session: AsyncSession, test_tenant:
 async def test_untyped_user_falls_back_to_default(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A consumer (no consumer-specific config) resolves to the NULL default."""
+    """Verify a customer with no type-specific limit falls back to the default limit."""
     await _make_limit(db_session, test_tenant, user_type=None, max_amount="100")
     await _make_limit(db_session, test_tenant, user_type="agent", max_amount="1000")
     consumer = await _make_user(db_session, test_tenant, "consumer")
@@ -86,7 +86,7 @@ async def test_untyped_user_falls_back_to_default(
 
 @pytest.mark.asyncio
 async def test_default_covers_every_type(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """With only a NULL-default config, an unrelated type still resolves to it."""
+    """Verify the default limit applies to every customer type without its own limit."""
     await _make_limit(db_session, test_tenant, user_type=None, max_amount="100")
     merchant = await _make_user(db_session, test_tenant, "merchant")
     with pytest.raises(AmountAboveMax):
@@ -95,14 +95,14 @@ async def test_default_covers_every_type(db_session: AsyncSession, test_tenant: 
 
 @pytest.mark.asyncio
 async def test_no_config_is_passthrough(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """No config for the slot → no-op even for a large amount."""
+    """Verify a transaction is allowed through when no limit is configured for it."""
     consumer = await _make_user(db_session, test_tenant, "consumer")
     await _check(db_session, test_tenant, consumer, "999999")
 
 
 @pytest.mark.asyncio
 async def test_second_default_row_collides(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """NULLS NOT DISTINCT: a second NULL-default row for the same dims → 409."""
+    """Verify a duplicate default limit for the same transaction cannot be created."""
     await _make_limit(db_session, test_tenant, user_type=None, max_amount="100")
     # A typed row for the same dims coexists (different user_type).
     await _make_limit(db_session, test_tenant, user_type="agent", max_amount="1000")

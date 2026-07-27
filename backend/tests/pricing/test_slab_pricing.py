@@ -1,4 +1,4 @@
-"""Amount-slab pricing tests (Story 19.2).
+"""Fee tiers by transfer amount.
 
 The amount picks the band whose `[amount_from, amount_to]` contains it; a
 specific band beats the NULL-band default; a typed row beats the NULL-type
@@ -65,7 +65,7 @@ async def _fee(session: AsyncSession, tenant: Tenant, user: User, amount: str) -
 
 @pytest.mark.asyncio
 async def test_amount_selects_the_right_band(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """Two bands [0,99] fee 2 and [100,None] fee 9 — amount picks the band.
+    """Verify the fee tier matching the transfer amount is applied.
 
     Bounds are inclusive on both ends, so the bands must not share the 100
     endpoint; the closed band ends at 99 and the open band starts at 100.
@@ -88,7 +88,7 @@ async def test_amount_selects_the_right_band(db_session: AsyncSession, test_tena
 async def test_specific_band_beats_null_band_default(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A NULL-band default (fee 5) is overridden by a [0,100) band (fee 1)."""
+    """Verify an amount-specific fee tier overrides the catch-all price."""
     await _make_band(
         db_session, test_tenant, user_type=None, amount_from=None, amount_to=None, fixed_fee="5"
     )
@@ -103,7 +103,7 @@ async def test_specific_band_beats_null_band_default(
 
 @pytest.mark.asyncio
 async def test_typed_band_beats_default_band(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """For the same [0,100) band, a merchant-typed row (fee 1) beats the default (fee 4)."""
+    """Verify each customer type is charged its own configured price for a tier."""
     await _make_band(
         db_session, test_tenant, user_type=None, amount_from="0", amount_to="100", fixed_fee="4"
     )
@@ -124,7 +124,7 @@ async def test_typed_band_beats_default_band(db_session: AsyncSession, test_tena
 
 @pytest.mark.asyncio
 async def test_null_band_back_compat(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """A single NULL-band config (the pre-slab shape) applies to every amount."""
+    """Verify a single catch-all price applies to every transfer amount."""
     await _make_band(
         db_session, test_tenant, user_type=None, amount_from=None, amount_to=None, fixed_fee="3"
     )

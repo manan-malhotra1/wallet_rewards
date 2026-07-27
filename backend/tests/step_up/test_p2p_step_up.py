@@ -1,4 +1,4 @@
-"""Tests for the step-up PIN enforcement on POST /api/v1/payments/p2p."""
+"""PIN re-entry on person-to-person transfers."""
 
 from __future__ import annotations
 
@@ -143,7 +143,7 @@ def _idem() -> dict[str, str]:
 async def test_p2p_below_threshold_no_pin_needed(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Threshold R 200; sending R 100 should succeed without a PIN."""
+    """Verify no PIN is needed for a transfer at or below the configured amount."""
     alice, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 1111")
     bob, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 2222")
     await fund(
@@ -176,7 +176,7 @@ async def test_p2p_below_threshold_no_pin_needed(
 async def test_p2p_above_threshold_without_pin_returns_step_up_required(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """R 500 over a R 200 threshold without a PIN → 401 step_up_required."""
+    """Verify the customer is asked to re-enter their PIN above the configured amount."""
     alice, _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 3333")
     _ = await _make_tenant_user_with_pin(db_session, test_tenant, phone="+27 82 555 4444")
     await fund(
@@ -209,7 +209,7 @@ async def test_p2p_above_threshold_without_pin_returns_step_up_required(
 async def test_p2p_above_threshold_with_wrong_pin_returns_invalid_step_up_pin(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Wrong PIN with a step-up-required amount → 401 invalid_step_up_pin."""
+    """Verify a transfer is blocked when the customer enters the wrong PIN."""
     alice, _ = await _make_tenant_user_with_pin(
         db_session, test_tenant, phone="+27 82 555 5555", pin="1234"
     )
@@ -245,7 +245,7 @@ async def test_p2p_above_threshold_with_wrong_pin_returns_invalid_step_up_pin(
 async def test_p2p_above_threshold_with_correct_pin_succeeds(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Correct PIN with a step-up-required amount → 201 + ledger writes."""
+    """Verify a transfer completes when the customer re-enters the correct PIN."""
     alice, _ = await _make_tenant_user_with_pin(
         db_session, test_tenant, phone="+27 82 555 7777", pin="1234"
     )
@@ -283,7 +283,7 @@ async def test_p2p_above_threshold_with_correct_pin_succeeds(
 async def test_p2p_no_policy_requires_pin_fail_closed(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """FAIL-CLOSED: with NO policy for the scope, a P2P without a PIN → 401.
+    """Verify the PIN is required by default when no step-up policy exists.
 
     Step-up flipped from fail-OPEN to fail-CLOSED: a missing policy no longer
     waves the caller through — it now requires a PIN for ANY amount. Previously
@@ -321,7 +321,7 @@ async def test_p2p_no_policy_requires_pin_fail_closed(
 async def test_p2p_no_policy_with_correct_pin_succeeds(
     async_client: AsyncClient, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """FAIL-CLOSED companion: no policy + the correct PIN → 201.
+    """Verify a transfer completes with the correct PIN even when no step-up policy exists.
 
     A missing policy demands a PIN (fail-closed), but a valid PIN still lets the
     transfer through — proving the control gates rather than blocks outright.

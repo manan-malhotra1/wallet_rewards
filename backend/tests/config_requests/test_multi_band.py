@@ -1,4 +1,4 @@
-"""Multi-band pricing/commission config-change requests (Epic 25).
+"""Multi-band schedules — proposing and applying tiered fee/commission tables.
 
 A pricing or commission create proposal may carry several amount bands as
 `{"bands": [row, ...]}`; propose validates the set and approve applies all bands
@@ -70,6 +70,7 @@ async def _pricing_count(session: AsyncSession, tenant: Tenant) -> int:
 
 
 async def test_multi_band_propose_accepted(async_client, test_tenant, make_admin_token):
+    """Verify a tiered fee schedule with several bands can be proposed."""
     resp = await async_client.post(
         _url(test_tenant), json=_bands_body(test_tenant.id), headers=_maker(make_admin_token)
     )
@@ -78,6 +79,7 @@ async def test_multi_band_propose_accepted(async_client, test_tenant, make_admin
 
 
 async def test_overlapping_bands_rejected(async_client, test_tenant, make_admin_token):
+    """Verify a fee schedule with overlapping bands is rejected."""
     bad = [_band(test_tenant.id, "0", "100", "1"), _band(test_tenant.id, "50", "200", "2")]
     resp = await async_client.post(
         _url(test_tenant), json=_bands_body(test_tenant.id, bad), headers=_maker(make_admin_token)
@@ -87,6 +89,7 @@ async def test_overlapping_bands_rejected(async_client, test_tenant, make_admin_
 
 
 async def test_band_scope_mismatch_rejected(async_client, test_tenant, make_admin_token):
+    """Verify a fee schedule whose bands cover different scopes is rejected."""
     b2 = _band(test_tenant.id, "100", None, "2")
     b2["currency"] = "USD"  # different scope than band 1
     resp = await async_client.post(
@@ -101,6 +104,7 @@ async def test_band_scope_mismatch_rejected(async_client, test_tenant, make_admi
 async def test_multi_band_apply_creates_all_rows(
     async_client, db_session, test_tenant, make_admin_token
 ):
+    """Verify approving a tiered fee schedule creates every band."""
     rid = (
         await async_client.post(
             _url(test_tenant), json=_bands_body(test_tenant.id), headers=_maker(make_admin_token)
@@ -116,6 +120,7 @@ async def test_multi_band_apply_creates_all_rows(
 async def test_single_dict_payload_still_applies(
     async_client, db_session, test_tenant, make_admin_token
 ):
+    """Verify a single-band fee proposal still applies correctly."""
     body = {
         "config_type": "pricing",
         "operation": "create",
@@ -147,7 +152,7 @@ def _commission_band(tenant_id, frm, to, fixed):
 async def test_commission_multi_band_propose_and_apply(
     async_client, db_session, test_tenant, make_admin_token
 ):
-    """Commission schedules (no account_type) must propose + apply, not 500."""
+    """Verify a tiered commission schedule can be proposed and applied."""
     from sqlalchemy import func, select
 
     from app.shared.models import CommissionConfig
@@ -180,6 +185,7 @@ async def test_commission_multi_band_propose_and_apply(
 
 
 async def test_list_filtered_by_config_type(async_client, test_tenant, make_admin_token):
+    """Verify the config-request list can be filtered to a single config type."""
     await async_client.post(
         _url(test_tenant), json=_bands_body(test_tenant.id), headers=_maker(make_admin_token)
     )

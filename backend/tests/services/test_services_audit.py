@@ -1,4 +1,4 @@
-"""Audit-trail tests for /api/v1/services CRUD (NFR-0160 / NFR-0250).
+"""Service catalog changes are recorded in the audit trail.
 
 Every create / update / soft-delete of a catalog service is an administrator
 action and must land an immutable `audit_log` row.
@@ -36,6 +36,7 @@ async def test_create_service_writes_audit(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
+    """Verify adding a service is recorded in the audit trail"""
     resp = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
@@ -59,6 +60,7 @@ async def test_update_service_writes_before_after_audit(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
+    """Verify editing a service is recorded in the audit trail with the old and new values"""
     create = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
@@ -87,6 +89,7 @@ async def test_soft_delete_service_writes_audit(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
+    """Verify deleting a service is recorded in the audit trail"""
     create = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,

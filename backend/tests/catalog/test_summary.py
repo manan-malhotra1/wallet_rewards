@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/catalog/me/summary + redemption-history.
+"""Customer rewards summary and redemption history.
 
 Phase F.4: catalog endpoints are user-only. tenant_id + user_id come from
 the session token — there is no longer a `/{user_id}/` path. Provider
@@ -18,6 +18,7 @@ from app.modules.rewards.service import issue_points_reward
 from app.shared.models import (
     Account,
     Rule,
+    StepUpPolicy,
     Tenant,
     User,
 )
@@ -65,7 +66,7 @@ async def test_summary_for_user_with_no_points_account(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """User with no points_account → response with points: null."""
+    """Verify a customer who has earned no points sees a blank summary."""
     response = await async_client.get(
         "/api/v1/catalog/me/summary",
         headers=await _user_header(test_user),
@@ -83,7 +84,7 @@ async def test_summary_reflects_lifetime_earned(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """After two reward issuances: available + lifetime_earned both = sum."""
+    """Verify a customer's summary shows the total points they have earned."""
     await _seed_reward(db_session, test_tenant, test_user, Decimal("100"), key="a")
     await _seed_reward(db_session, test_tenant, test_user, Decimal("50"), key="b")
 
@@ -108,7 +109,7 @@ async def test_summary_reflects_lifetime_redeemed(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """After redeem + confirm, lifetime_redeemed reflects the COMPLETED debit.
+    """Verify a customer's summary shows the total points they have redeemed.
 
     Mixes auth contexts: admin for provider + confirm, user for initiate +
     catalog read.
@@ -116,6 +117,18 @@ async def test_summary_reflects_lifetime_redeemed(
     await _seed_reward(db_session, test_tenant, test_user, Decimal("200"), key="r1")
 
     await seed_redemption_service_config(db_session, test_tenant)
+    # Step-up is fail-closed (no policy → PIN for any amount); test_user has no
+    # PIN. This test covers redeemed-balance accounting, not step-up, so seed a
+    # redemption policy above the 80-point redeem to wave it through.
+    db_session.add(
+        StepUpPolicy(
+            tenant_id=test_tenant.id,
+            transaction_type="redemption",
+            currency="PTS",
+            threshold_amount=Decimal("1000"),
+        )
+    )
+    await db_session.commit()
     pr = await async_client.post(
         "/api/v1/redemption/providers",
         headers=admin_auth_header,
@@ -159,9 +172,21 @@ async def test_redemption_history_returns_user_redemptions(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Redemption history is newest-first and tenant-scoped via session."""
+    """Verify a customer's redemption history lists their most recent redeems first."""
     await _seed_reward(db_session, test_tenant, test_user, Decimal("100"), key="h")
     await seed_redemption_service_config(db_session, test_tenant)
+    # Step-up is fail-closed (no policy → PIN for any amount); test_user has no
+    # PIN. This test covers redemption history, not step-up, so seed a
+    # redemption policy above the redeem amounts to wave them through.
+    db_session.add(
+        StepUpPolicy(
+            tenant_id=test_tenant.id,
+            transaction_type="redemption",
+            currency="PTS",
+            threshold_amount=Decimal("1000"),
+        )
+    )
+    await db_session.commit()
     pr = await async_client.post(
         "/api/v1/redemption/providers",
         headers=admin_auth_header,

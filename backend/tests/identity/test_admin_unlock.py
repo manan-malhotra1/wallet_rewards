@@ -1,4 +1,4 @@
-"""Tests for the PIN-lockout admin surfaces (NFR-0190).
+"""Admin unlock — releasing a customer locked out by wrong PIN attempts.
 
 Covers POST /api/v1/identity/users/{id}/unlock (release a lockout without a PIN
 change), the fix that admin PIN-reset now ALSO clears an active lockout, and the
@@ -40,7 +40,7 @@ async def test_unlock_releases_a_locked_user(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A locked user is released (was_locked=true) and can retry immediately."""
+    """Verify an admin can release a customer locked out by wrong PIN attempts"""
     await _lock(test_user.id)
     assert await is_locked(test_user.id) is True
 
@@ -61,7 +61,7 @@ async def test_unlock_when_not_locked_is_a_noop(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unlocking an already-unlocked user succeeds with was_locked=false."""
+    """Verify unlocking a customer who is not locked simply succeeds"""
     resp = await async_client.post(
         f"/api/v1/identity/users/{test_user.id}/unlock",
         params={"tenant_id": str(test_tenant.id)},
@@ -78,7 +78,7 @@ async def test_unlock_requires_platform_admin(
     test_user: User,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A token without the platform-admin role is forbidden (403)."""
+    """Verify only a platform administrator can unlock a customer"""
     token = make_admin_token(roles=["support-agent"])
     resp = await async_client.post(
         f"/api/v1/identity/users/{test_user.id}/unlock",
@@ -94,7 +94,7 @@ async def test_unlock_unknown_user_returns_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown user_id → 404."""
+    """Verify unlocking a customer who does not exist is rejected"""
     resp = await async_client.post(
         f"/api/v1/identity/users/{uuid4()}/unlock",
         params={"tenant_id": str(test_tenant.id)},
@@ -111,7 +111,7 @@ async def test_unlock_cross_tenant_returns_404(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unlocking another tenant's user must 404 — no existence leak."""
+    """Verify an admin cannot unlock a customer in another tenant"""
     resp = await async_client.post(
         f"/api/v1/identity/users/{test_user.id}/unlock",
         params={"tenant_id": str(other_tenant.id)},
@@ -128,7 +128,7 @@ async def test_unlock_writes_audit_row(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """The unlock is audited as admin.user_unlocked (NFR-0250)."""
+    """Verify unlocking a customer is recorded in the audit trail"""
     await _lock(test_user.id)
     await async_client.post(
         f"/api/v1/identity/users/{test_user.id}/unlock",
@@ -154,7 +154,7 @@ async def test_admin_pin_reset_also_clears_an_active_lockout(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Regression: an admin PIN reset must fully unlock, not just clear the counter."""
+    """Verify resetting a customer's PIN also releases an active lockout"""
     await _lock(test_user.id)
     assert await is_locked(test_user.id) is True
 
@@ -174,7 +174,7 @@ async def test_user_detail_surfaces_lock_status(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """The user-detail payload reports is_locked + a positive unlocks_in_seconds."""
+    """Verify a customer's lockout status and remaining time show on their profile"""
     # Unlocked first.
     unlocked = await async_client.get(
         f"/api/v1/identity/users/{test_user.id}",

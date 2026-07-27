@@ -1,4 +1,4 @@
-"""Six-eyes (required_approvals=2): TWO distinct checkers are needed to apply.
+"""User changes: how many approvals are required.
 
 Also asserts the duplicate-approver guard — the same checker cannot supply two
 of the required approvals.
@@ -42,7 +42,7 @@ async def test_six_eyes_needs_two_distinct_checkers(
     checker_header: dict[str, str],
     checker2_header: dict[str, str],
 ) -> None:
-    """First approval keeps it PENDING; a second DISTINCT approval applies it."""
+    """Verify a user change needing two approvals only applies after two different admins approve"""
     before = await user_count(db_session, test_tenant)
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
@@ -71,7 +71,7 @@ async def test_duplicate_approver_rejected(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """The same checker approving twice in one round → 409 duplicate_approver."""
+    """Verify one admin cannot supply both required approvals for a user change"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )

@@ -1,4 +1,4 @@
-"""Tests for the reward-budgets service (Phase G.1)."""
+"""Reward budget caps — keeping giveaways within limits."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from app.shared.models import Tenant
 
 @pytest.mark.asyncio
 async def test_no_budgets_is_pass_through(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """When no budget rows exist, check_budget_available is a no-op."""
+    """Verify rewards are issued normally when no budget limit is set"""
     await check_budget_available(
         db_session,
         tenant_id=test_tenant.id,
@@ -34,7 +34,7 @@ async def test_no_budgets_is_pass_through(db_session: AsyncSession, test_tenant:
 async def test_tenant_scope_lifetime_budget_blocks_overrun(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A tenant-scoped lifetime budget of 500 PTS rejects a 600 PTS issuance."""
+    """Verify rewards stop once the business reward budget is exhausted"""
     await create_budget(
         db_session,
         BudgetCreateRequest(
@@ -59,7 +59,7 @@ async def test_tenant_scope_lifetime_budget_blocks_overrun(
 async def test_list_budgets_returns_consumption(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """List endpoint returns consumed + remaining + percent_consumed."""
+    """Verify an admin can see how much of a reward budget has been used"""
     await create_budget(
         db_session,
         BudgetCreateRequest(

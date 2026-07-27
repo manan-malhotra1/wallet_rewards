@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/identity/users/{user_id}/transactions.
+"""Customer transaction history — an admin viewing a customer's recent transactions.
 
 Admin-facing version of the mobile /me/wallet recent-transactions feed.
 Shape matches WalletTransactionOut so the admin UI's table component
@@ -84,7 +84,7 @@ async def test_user_transactions_requires_auth(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Anonymous GET → 401."""
+    """Verify viewing a customer's transactions requires signing in"""
     resp = await async_client.get(
         f"/api/v1/identity/users/{test_user.id}/transactions",
         params={"tenant_id": str(test_tenant.id)},
@@ -100,7 +100,7 @@ async def test_user_transactions_happy_path(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """One funded wallet → one CREDIT row marked as 'in'."""
+    """Verify an admin can see a customer's recent transactions"""
     await _seed_wallet_with_credit(db_session, test_tenant, test_user, amount=Decimal("500"))
 
     resp = await async_client.get(
@@ -124,7 +124,7 @@ async def test_user_transactions_unknown_user_returns_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown user_id → 404."""
+    """Verify viewing transactions for a customer who does not exist is rejected"""
     resp = await async_client.get(
         f"/api/v1/identity/users/{uuid4()}/transactions",
         params={"tenant_id": str(test_tenant.id)},
@@ -142,7 +142,7 @@ async def test_user_transactions_cross_tenant_returns_404(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """User in tenant A queried via tenant B → 404 (no leak)."""
+    """Verify an admin cannot see the transactions of a customer in another tenant"""
     await _seed_wallet_with_credit(db_session, test_tenant, test_user, amount=Decimal("100"))
 
     resp = await async_client.get(

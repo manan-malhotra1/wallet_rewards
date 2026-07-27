@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/redemption/providers."""
+"""Redemption provider setup — onboarding reward partners."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ async def test_register_provider_creates_wallet(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """Provider registration auto-creates the linked redemption wallet."""
+    """Verify registering a redemption provider sets up its rewards wallet automatically"""
     response = await async_client.post(
         "/api/v1/redemption/providers",
         json={
@@ -54,7 +54,7 @@ async def test_register_provider_creates_wallet(
 async def test_register_provider_rejects_unknown_tenant(
     async_client: AsyncClient,
 ) -> None:
-    """Unknown tenant_id → 404."""
+    """Verify a provider cannot be registered under a business that does not exist"""
     response = await async_client.post(
         "/api/v1/redemption/providers",
         json={

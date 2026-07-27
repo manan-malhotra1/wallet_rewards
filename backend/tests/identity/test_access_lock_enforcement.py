@@ -1,4 +1,4 @@
-"""Enforcement tests for user.status (migration 0045).
+"""Account lock enforcement — what a locked customer can and cannot do.
 
 Two enforcement points that used to be COSMETIC and are now real:
 
@@ -96,7 +96,7 @@ async def _phone_user_id(session: AsyncSession, tenant: Tenant, phone_normalised
 async def test_guard_allows_active_user(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """An active user passes the guard without raising (no-op)."""
+    """Verify an active customer is allowed to transact"""
     await assert_user_can_transact(db_session, tenant_id=test_tenant.id, user_id=test_user.id)
 
 
@@ -108,7 +108,7 @@ async def test_guard_allows_active_user(
 async def test_guard_blocks_non_active_user(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, status: str
 ) -> None:
-    """Any non-active status raises TransactionsBlocked (403)."""
+    """Verify a locked or suspended customer cannot transact"""
     await _set_status(test_user.id, status)
     with pytest.raises(TransactionsBlocked):
         await assert_user_can_transact(db_session, tenant_id=test_tenant.id, user_id=test_user.id)
@@ -116,7 +116,7 @@ async def test_guard_blocks_non_active_user(
 
 @pytest.mark.asyncio
 async def test_guard_unknown_user_is_404(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """An unknown user id raises UserNotFound (404)."""
+    """Verify a customer who does not exist cannot transact"""
     with pytest.raises(UserNotFound):
         await assert_user_can_transact(db_session, tenant_id=test_tenant.id, user_id=uuid4())
 
@@ -125,7 +125,7 @@ async def test_guard_unknown_user_is_404(db_session: AsyncSession, test_tenant: 
 async def test_guard_cross_tenant_is_404(
     db_session: AsyncSession, other_tenant: Tenant, test_user: User
 ) -> None:
-    """A user in another tenant is treated as unknown (no existence leak)."""
+    """Verify a customer from another tenant cannot transact"""
     with pytest.raises(UserNotFound):
         await assert_user_can_transact(db_session, tenant_id=other_tenant.id, user_id=test_user.id)
 
@@ -140,7 +140,7 @@ async def test_guard_cross_tenant_is_404(
 async def test_login_blocked_for_login_locked_status(
     async_client, db_session: AsyncSession, test_tenant: Tenant, status: str
 ) -> None:
-    """A suspended / closed account cannot log in — 403 account_suspended."""
+    """Verify a suspended or closed customer cannot sign in"""
     phone = f"+27 82 511 {uuid4().int % 10000:04d}"
     await _register_with_pin(async_client, test_tenant, phone)
     user_id = await _phone_user_id(db_session, test_tenant, phone.replace(" ", ""))
@@ -158,7 +158,7 @@ async def test_login_blocked_for_login_locked_status(
 async def test_login_allowed_for_txn_locked(
     async_client, db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A txn_locked user CAN still log in (they retain read access)."""
+    """Verify a transactions-locked customer can still sign in to view their account"""
     phone = f"+27 82 512 {uuid4().int % 10000:04d}"
     await _register_with_pin(async_client, test_tenant, phone)
     user_id = await _phone_user_id(db_session, test_tenant, phone.replace(" ", ""))
@@ -174,7 +174,7 @@ async def test_login_allowed_for_txn_locked(
 
 @pytest.mark.asyncio
 async def test_login_allowed_for_active(async_client, test_tenant: Tenant) -> None:
-    """Baseline regression: an active user logs in normally."""
+    """Verify an active customer can sign in normally"""
     phone = f"+27 82 513 {uuid4().int % 10000:04d}"
     await _register_with_pin(async_client, test_tenant, phone)
 
@@ -208,7 +208,7 @@ async def _grant_role(session: AsyncSession, tenant: Tenant, user_id, txn_types:
 async def test_p2p_send_blocked_for_locked_sender(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, status: str
 ) -> None:
-    """P2P send is blocked for a txn_locked / suspended SENDER (the initiator)."""
+    """Verify a locked customer cannot send money to another person"""
     await _set_status(test_user.id, status)
     with pytest.raises(TransactionsBlocked):
         await p2p_transfer(
@@ -228,7 +228,7 @@ async def test_p2p_send_blocked_for_locked_sender(
 async def test_change_pin_blocked_for_locked_user(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, status: str
 ) -> None:
-    """change_pin is blocked for a locked user (no role needed for this path)."""
+    """Verify a locked customer cannot change their PIN"""
     await _set_status(test_user.id, status)
     with pytest.raises(TransactionsBlocked):
         await change_pin(
@@ -245,7 +245,7 @@ async def test_change_pin_blocked_for_locked_user(
 async def test_cashout_blocked_for_locked_subscriber(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """cash_out is blocked for a txn_locked SUBSCRIBER (the initiator)."""
+    """Verify a locked customer cannot cash out"""
     await _grant_role(db_session, test_tenant, test_user.id, ("cashout",))
     await _set_status(test_user.id, USER_STATUS_TXN_LOCKED)
     with pytest.raises(TransactionsBlocked):
@@ -267,7 +267,7 @@ async def test_cashout_blocked_for_locked_subscriber(
 async def test_guard_runs_after_idempotency_fast_path(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """A replay with an existing key returns the original even when now-locked.
+    """Verify a retried request returns the original result even after the customer is locked
 
     Proves the guard sits AFTER the idempotency fast-path: a pre-existing
     change_pin row is returned as-is rather than raising TransactionsBlocked.

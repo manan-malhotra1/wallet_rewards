@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/identity/users/{user_id}/identifiers (Epic 27, Story 27.1).
+"""Adding an identifier — giving an existing customer a new phone, email, or account number.
 
 Covers adding a post-registration identifier to an existing user: happy path
 (account_number / phone / email), duplicate rejection (Pay-PRD-0070), unknown /
@@ -69,7 +69,7 @@ async def test_add_account_number_happy_path(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Adding an account_number to an existing user returns 201, verified=false."""
+    """Verify an admin can add an account number to an existing customer"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 3000")
     status, body = await _add_identifier(
         async_client,
@@ -108,7 +108,7 @@ async def test_add_phone_and_email_normalised(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Phone + email additions succeed and are normalised on write (same as create)."""
+    """Verify an added phone number and email are tidied into a standard format"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 3001")
 
     phone_status, phone_body = await _add_identifier(
@@ -144,7 +144,7 @@ async def test_add_duplicate_identifier_rejected(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An identifier already taken by ANY user in the tenant returns 409, no new row."""
+    """Verify an identifier already used by someone else in the tenant is rejected"""
     owner = await _create_user(
         async_client, admin_auth_header, test_tenant, phone="+27 82 555 3002"
     )
@@ -197,7 +197,7 @@ async def test_add_identifier_unknown_user(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An unknown user_id returns 404 user_not_found."""
+    """Verify adding an identifier to a customer who does not exist is rejected"""
     status, body = await _add_identifier(
         async_client,
         admin_auth_header,
@@ -217,7 +217,7 @@ async def test_add_identifier_cross_tenant_user_is_404(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A user in another tenant is invisible — 404, no existence leak (NFR-0220)."""
+    """Verify an admin cannot add an identifier to a customer in another tenant"""
     user = await _create_user(
         async_client, admin_auth_header, other_tenant, phone="+27 82 555 3004"
     )
@@ -241,7 +241,7 @@ async def test_add_identifier_forbids_non_admin(
     admin_auth_header: dict[str, str],
     make_admin_token,
 ) -> None:
-    """A caller without the platform-admin role is 403."""
+    """Verify only a platform administrator can add an identifier"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 3005")
     non_admin = {"Authorization": f"Bearer {make_admin_token(roles=['viewer'])}"}
     status, _ = await _add_identifier(
@@ -261,7 +261,7 @@ async def test_add_identifier_requires_auth(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """No Authorization header → 401."""
+    """Verify adding an identifier requires signing in"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 3006")
     status, _ = await _add_identifier(
         async_client,
@@ -280,7 +280,7 @@ async def test_add_identifier_rejects_card_number(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """card_number is excluded from the schema Literal — a raw PAN never stored (422)."""
+    """Verify a raw card number cannot be added as an identifier"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 3007")
     status, _ = await _add_identifier(
         async_client,
@@ -299,7 +299,7 @@ async def test_add_identifier_rejects_empty_value(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An empty identifier_value fails min_length validation (422)."""
+    """Verify an empty identifier is rejected"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 3008")
     status, _ = await _add_identifier(
         async_client,
@@ -319,7 +319,7 @@ async def test_add_identifier_writes_audit_without_raw_value(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A `user.identifier_added` audit row is written; the raw value is NOT in it."""
+    """Verify adding an identifier is audited without recording the sensitive value"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 3009")
     secret_value = "ZA-AUDIT-887-9"
     status, _ = await _add_identifier(

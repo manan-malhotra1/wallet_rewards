@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/treasury/fund-user (admin fund).
+"""Topping up a customer wallet.
 
 Epic 18: fund-user now PROPOSES a money operation; the fund posts only after a
 distinct treasury-approver approves it. Body-level validation (amount, reason,
@@ -55,7 +55,7 @@ async def test_fund_user_happy_path(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """Proposing then approving a R 500 fund credits the user's wallet."""
+    """Verify an admin can top up a customer's wallet from the operator float"""
     wallet = await _seed_user_wallet(db_session, test_tenant, test_user)
 
     proposed = await async_client.post(
@@ -90,7 +90,7 @@ async def test_fund_user_rejects_negative_amount(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Pydantic gt=0 → negative amount → 422 at propose."""
+    """Verify an admin cannot top up a wallet by a negative amount"""
     response = await async_client.post(
         "/api/v1/treasury/fund-user",
         headers=admin_auth_header,
@@ -113,7 +113,7 @@ async def test_fund_user_requires_reason(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Empty `reason` → 422 — the treasury request body requires it."""
+    """Verify an admin must give a reason when topping up a wallet"""
     response = await async_client.post(
         "/api/v1/treasury/fund-user",
         headers=admin_auth_header,
@@ -135,7 +135,7 @@ async def test_fund_user_unknown_tenant_returns_404(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown tenant_id → 404 at propose."""
+    """Verify topping up a wallet for an unknown tenant is refused"""
     response = await async_client.post(
         "/api/v1/treasury/fund-user",
         headers=admin_auth_header,
@@ -160,7 +160,9 @@ async def test_fund_user_rejects_credit_over_max_balance(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """An over-cap fund is rejected by the balance guard at APPLY time (invariant #11).
+    """Verify a top-up that would push a wallet past its maximum balance is refused
+
+    An over-cap fund is rejected by the balance guard at APPLY time (invariant #11).
 
     Propose succeeds (PENDING); the max-balance breach surfaces on approval and
     nothing lands.

@@ -1,4 +1,4 @@
-"""E2E tests for POST /api/v1/redemption/{id}/callback (Phase F.5).
+"""Provider redemption callbacks — trusted delivery updates.
 
 Covers the threat model scenarios from
 docs/security/threat-models/phase-f5-hmac-and-audit.md §7:
@@ -125,7 +125,7 @@ async def test_callback_happy_path_completes_redemption(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Valid HMAC + outcome=completed → redemption COMPLETED, audit row written."""
+    """Verify a provider confirming delivery completes the customer's redemption"""
     redemption_id, _ = await _seed_pending_redemption(
         async_client,
         db_session,
@@ -174,7 +174,7 @@ async def test_callback_failure_outcome_restores_balance(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Valid HMAC + outcome=failed → redemption FAILED, balance restored."""
+    """Verify a provider reporting failure returns the held points to the customer"""
     redemption_id, _ = await _seed_pending_redemption(
         async_client,
         db_session,
@@ -210,7 +210,7 @@ async def test_callback_tampered_body_returns_401(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Mutating the body after signing → 401 invalid_signature, no transition."""
+    """Verify a redemption callback with an altered message is rejected"""
     redemption_id, _ = await _seed_pending_redemption(
         async_client,
         db_session,
@@ -243,7 +243,7 @@ async def test_callback_stale_timestamp_returns_401(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Signature timestamp > 5 min ago → 401 signature_timestamp_skew."""
+    """Verify an out-of-date redemption callback is rejected"""
     redemption_id, _ = await _seed_pending_redemption(
         async_client,
         db_session,
@@ -276,7 +276,7 @@ async def test_callback_missing_signature_returns_422(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """No X-Sasai-Signature header → 422 (FastAPI's missing-header default)."""
+    """Verify a redemption callback without a signature is rejected"""
     redemption_id, _ = await _seed_pending_redemption(
         async_client,
         db_session,
@@ -304,7 +304,7 @@ async def test_callback_provider_without_secret_returns_401(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Provider registered with no shared_secret → 401 signature_not_configured."""
+    """Verify a callback for a provider with no signing secret is rejected"""
     redemption_id, _ = await _seed_pending_redemption(
         async_client,
         db_session,
@@ -338,7 +338,7 @@ async def test_callback_replay_after_terminal_returns_409(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """A second valid callback on the same redemption → 409 (already terminal)."""
+    """Verify a repeated redemption callback cannot change an already-finished redemption"""
     redemption_id, _ = await _seed_pending_redemption(
         async_client,
         db_session,
@@ -378,7 +378,7 @@ async def test_provider_secret_stored_encrypted_not_plaintext(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """The stored secret is Fernet ciphertext, not the plaintext operator input.
+    """Verify a provider's signing secret is stored encrypted rather than in plain text
 
     Asserts the DB column never holds the raw secret (a DB leak must not expose
     the live callback-signing key) while HMAC verification still succeeds end
@@ -416,7 +416,7 @@ async def test_callback_unknown_redemption_returns_404(
     async_client: AsyncClient,
     test_tenant: Tenant,
 ) -> None:
-    """An unknown redemption_id → 404 redemption_not_found."""
+    """Verify a callback for a redemption that does not exist is rejected"""
     body = json.dumps({"outcome": "completed"}).encode()
     signature = build_signature_header(raw_body=body, secret=PROVIDER_SECRET)
     response = await async_client.post(

@@ -1,4 +1,4 @@
-"""Tests for the multipliers module — CRUD + hot-path resolution."""
+"""Bonus point multipliers — boosting what customers earn."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from app.shared.models import (
 async def test_no_multipliers_returns_one(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Empty table → resolver returns 1.00."""
+    """Verify points are earned at the normal rate when no bonus is active"""
     m = await resolve_multiplier_for_issuance(
         db_session,
         tenant_id=test_tenant.id,
@@ -38,7 +38,7 @@ async def test_no_multipliers_returns_one(
 async def test_global_multiplier_applies(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Tenant-global multiplier (NULL rule + NULL segment) applies to everyone."""
+    """Verify a business-wide bonus increases the points every customer earns"""
     db_session.add(
         BonusMultiplier(
             tenant_id=test_tenant.id,
@@ -59,7 +59,7 @@ async def test_global_multiplier_applies(
 async def test_outside_window_does_not_apply(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Multiplier with `valid_until` in the past → not applied."""
+    """Verify a bonus multiplier stops applying after the promotion ends"""
     db_session.add(
         BonusMultiplier(
             tenant_id=test_tenant.id,
@@ -81,7 +81,7 @@ async def test_outside_window_does_not_apply(
 async def test_segment_multiplier_requires_membership(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """A segment-bound multiplier only applies to users in the segment."""
+    """Verify a targeted bonus only boosts points for customers in the chosen group"""
     segment = Segment(tenant_id=test_tenant.id, name=f"seg-{uuid4().hex[:6]}")
     db_session.add(segment)
     await db_session.commit()
@@ -122,7 +122,7 @@ async def test_segment_multiplier_requires_membership(
 async def test_biggest_multiplier_wins(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
-    """When multiple multipliers match, the largest applies (no stacking)."""
+    """Verify only the largest bonus applies when several could apply at once"""
     db_session.add_all(
         [
             BonusMultiplier(tenant_id=test_tenant.id, multiplier=Decimal("2.00")),
@@ -146,7 +146,7 @@ async def test_admin_create_multiplier_happy_path(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """POST /multipliers returns 201."""
+    """Verify an admin can create a bonus multiplier"""
     resp = await async_client.post(
         "/api/v1/multipliers",
         headers=admin_auth_header,
@@ -161,7 +161,7 @@ async def test_admin_create_rejects_inverted_window(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """valid_from >= valid_until → 422."""
+    """Verify a bonus multiplier with an end date before its start date is rejected"""
     resp = await async_client.post(
         "/api/v1/multipliers",
         headers=admin_auth_header,
@@ -181,7 +181,7 @@ async def test_admin_create_rejects_nonpositive_multiplier(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """multiplier <= 0 → 422."""
+    """Verify a bonus multiplier that is zero or negative is rejected"""
     resp = await async_client.post(
         "/api/v1/multipliers",
         headers=admin_auth_header,

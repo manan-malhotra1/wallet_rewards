@@ -1,4 +1,4 @@
-"""Every user-operation transition writes an audit_log row (NFR-0160/0250)."""
+"""Every user change is recorded in the audit trail."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ async def test_propose_and_apply_write_audit_rows(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """Propose then approve → proposed + approved + applied audit rows exist."""
+    """Verify proposing and approving a user change is fully recorded in the audit trail"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )

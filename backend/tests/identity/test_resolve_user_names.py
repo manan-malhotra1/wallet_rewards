@@ -1,4 +1,4 @@
-"""Unit tests for `identity.service.resolve_user_names`.
+"""Customer display names — choosing the best name to show for a customer.
 
 Covers the display-name resolution order: profile full name first, primary
 identifier value as a fallback, and omission (caller falls back to a short id)
@@ -46,7 +46,7 @@ async def _make_user(
 
 @pytest.mark.asyncio
 async def test_resolves_to_profile_full_name(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """A user with a profile resolves to the joined + stripped full name."""
+    """Verify a customer with a profile is shown by their full name"""
     user = await _make_user(
         db_session,
         test_tenant,
@@ -62,7 +62,7 @@ async def test_resolves_to_profile_full_name(db_session: AsyncSession, test_tena
 async def test_partial_profile_uses_available_name_part(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A profile with only a first name resolves to just that (no stray space)."""
+    """Verify a customer with only a first name is shown by that name"""
     user = await _make_user(db_session, test_tenant, first_name="Jane")
     names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[user.id])
     assert names[user.id] == "Jane"
@@ -72,7 +72,7 @@ async def test_partial_profile_uses_available_name_part(
 async def test_falls_back_to_identifier_when_no_profile(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """No profile → the primary identifier value stands in for the name."""
+    """Verify a customer with no profile is shown by their identifier"""
     user = await _make_user(db_session, test_tenant, identifiers=[("phone", "+27825550202")])
     names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[user.id])
     assert names[user.id] == "+27825550202"
@@ -82,7 +82,7 @@ async def test_falls_back_to_identifier_when_no_profile(
 async def test_identifier_fallback_prefers_phone_over_email(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """When several identifiers exist, phone wins over email."""
+    """Verify a customer's phone number is preferred over their email as a display name"""
     user = await _make_user(
         db_session,
         test_tenant,
@@ -96,7 +96,7 @@ async def test_identifier_fallback_prefers_phone_over_email(
 async def test_omitted_when_no_profile_and_no_identifier(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A user with neither a profile nor an identifier is absent from the map."""
+    """Verify a customer with no name and no identifier has no display name"""
     user = await _make_user(db_session, test_tenant)
     names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[user.id])
     assert user.id not in names
@@ -104,7 +104,7 @@ async def test_omitted_when_no_profile_and_no_identifier(
 
 @pytest.mark.asyncio
 async def test_unknown_user_id_is_omitted(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """A user id that does not exist simply does not appear in the result."""
+    """Verify a customer who does not exist has no display name"""
     names = await resolve_user_names(db_session, tenant_id=test_tenant.id, user_ids=[uuid4()])
     assert names == {}
 
@@ -113,7 +113,7 @@ async def test_unknown_user_id_is_omitted(db_session: AsyncSession, test_tenant:
 async def test_tenant_scoped_does_not_resolve_other_tenant_user(
     db_session: AsyncSession, test_tenant: Tenant, other_tenant: Tenant
 ) -> None:
-    """A user in another tenant never resolves, even by id (NFR-0220)."""
+    """Verify a customer in another tenant has no display name here"""
     user = await _make_user(
         db_session,
         other_tenant,
@@ -127,7 +127,7 @@ async def test_tenant_scoped_does_not_resolve_other_tenant_user(
 
 @pytest.mark.asyncio
 async def test_batches_mixed_users(db_session: AsyncSession, test_tenant: Tenant) -> None:
-    """One call resolves profile-named, identifier-only, and nameless users."""
+    """Verify display names resolve correctly for many customers at once"""
     named = await _make_user(db_session, test_tenant, first_name="Amara", last_name="N")
     ident_only = await _make_user(db_session, test_tenant, identifiers=[("phone", "+27825550505")])
     nameless = await _make_user(db_session, test_tenant)

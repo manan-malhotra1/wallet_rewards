@@ -1,4 +1,4 @@
-"""Tests for the Phase F.2 PIN/OTP/session flow.
+"""PIN, one-time code, and session — the customer sign-up and sign-in journey.
 
 Covers every scenario from the F.2 threat model §5 — happy paths, expiry,
 single-use, lockout, session lifecycle.
@@ -30,7 +30,7 @@ PHONE = "+27 82 555 9001"
 async def test_otp_send_happy_path_returns_otp_in_dev(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """OTP send returns the OTP in dev mode."""
+    """Verify a customer can request a one-time code"""
     response = await async_client.post(
         "/api/v1/identity/otp/send",
         json={"tenant_id": str(test_tenant.id), "phone": PHONE},
@@ -47,7 +47,7 @@ async def test_otp_send_happy_path_returns_otp_in_dev(
 async def test_otp_send_autocreates_unknown_phone(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """An OTP request for a phone not in the tenant auto-creates the user."""
+    """Verify requesting a code for a new phone starts a new customer account"""
     new_phone = "+27 82 555 9002"
     response = await async_client.post(
         "/api/v1/identity/otp/send",
@@ -60,7 +60,7 @@ async def test_otp_send_autocreates_unknown_phone(
 async def test_otp_send_rate_limit_60s_window(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Second OTP for the same phone within 60s → 429."""
+    """Verify a customer cannot request another one-time code too soon"""
     payload = {"tenant_id": str(test_tenant.id), "phone": "+27 82 555 9003"}
     first = await async_client.post("/api/v1/identity/otp/send", json=payload)
     assert first.status_code == 202
@@ -71,7 +71,7 @@ async def test_otp_send_rate_limit_60s_window(
 
 @pytest.mark.asyncio
 async def test_otp_send_unknown_tenant(async_client: AsyncClient) -> None:
-    """OTP send with bad tenant_id → 404."""
+    """Verify requesting a code under an unknown tenant is rejected"""
     response = await async_client.post(
         "/api/v1/identity/otp/send",
         json={"tenant_id": str(uuid4()), "phone": PHONE},
@@ -99,7 +99,7 @@ async def _send_and_get_otp(async_client: AsyncClient, tenant: Tenant, phone: st
 async def test_otp_verify_happy_path_returns_registration_token(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Verify a correct OTP → registration_token."""
+    """Verify entering the correct one-time code lets the customer continue registration"""
     phone = "+27 82 555 9010"
     otp = await _send_and_get_otp(async_client, test_tenant, phone)
     response = await async_client.post(
@@ -116,7 +116,7 @@ async def test_otp_verify_happy_path_returns_registration_token(
 async def test_otp_verify_wrong_otp_returns_401(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Wrong OTP → 401 invalid_otp (same error as expired/used)."""
+    """Verify a wrong one-time code is rejected"""
     phone = "+27 82 555 9011"
     await _send_and_get_otp(async_client, test_tenant, phone)
     response = await async_client.post(
@@ -131,7 +131,7 @@ async def test_otp_verify_wrong_otp_returns_401(
 async def test_otp_verify_unknown_phone_returns_401(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Verifying for a phone that never received an OTP → 401 (no enumeration leak)."""
+    """Verify a one-time code for a phone that never requested one is rejected"""
     response = await async_client.post(
         "/api/v1/identity/otp/verify",
         json={
@@ -145,7 +145,7 @@ async def test_otp_verify_unknown_phone_returns_401(
 
 @pytest.mark.asyncio
 async def test_otp_verify_single_use(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """Same OTP can't be verified twice."""
+    """Verify a one-time code cannot be used twice"""
     phone = "+27 82 555 9012"
     otp = await _send_and_get_otp(async_client, test_tenant, phone)
     payload = {"tenant_id": str(test_tenant.id), "phone": phone, "otp": otp}
@@ -182,13 +182,13 @@ async def _register_user_with_pin(
 
 @pytest.mark.asyncio
 async def test_pin_set_with_valid_token(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """PIN set with valid registration_token → 204."""
+    """Verify a customer can set their PIN after verifying their code"""
     await _register_user_with_pin(async_client, test_tenant, "+27 82 555 9020")
 
 
 @pytest.mark.asyncio
 async def test_pin_set_with_invalid_token(async_client: AsyncClient) -> None:
-    """Bad/expired registration_token → 401."""
+    """Verify a PIN cannot be set with an invalid registration token"""
     response = await async_client.post(
         "/api/v1/identity/pin/set",
         json={"registration_token": "totally-fake-token-12345", "pin": "1234"},
@@ -199,7 +199,7 @@ async def test_pin_set_with_invalid_token(async_client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_pin_set_token_single_use(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """registration_token works once — second /pin/set with the same token → 401."""
+    """Verify a registration token can only set a PIN once"""
     phone = "+27 82 555 9021"
     otp = await _send_and_get_otp(async_client, test_tenant, phone)
     verify = await async_client.post(
@@ -223,7 +223,7 @@ async def test_pin_set_token_single_use(async_client: AsyncClient, test_tenant: 
 
 @pytest.mark.asyncio
 async def test_pin_set_rejects_non_numeric(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """Non-digit PIN → 422 invalid_pin_format."""
+    """Verify a non-numeric PIN is rejected"""
     phone = "+27 82 555 9022"
     otp = await _send_and_get_otp(async_client, test_tenant, phone)
     verify = await async_client.post(
@@ -240,7 +240,7 @@ async def test_pin_set_rejects_non_numeric(async_client: AsyncClient, test_tenan
 
 @pytest.mark.asyncio
 async def test_pin_set_rejects_already_set(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """Trying to set PIN twice for the same user → 409 pin_already_set."""
+    """Verify a customer cannot set a PIN when one is already set"""
     phone = "+27 82 555 9023"
     await _register_user_with_pin(async_client, test_tenant, phone)
 
@@ -272,7 +272,7 @@ async def test_pin_set_rejects_already_set(async_client: AsyncClient, test_tenan
 
 @pytest.mark.asyncio
 async def test_auth_pin_happy_path(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """Successful auth returns a session_token + TTL."""
+    """Verify a customer can sign in with their correct PIN"""
     phone = "+27 82 555 9030"
     await _register_user_with_pin(async_client, test_tenant, phone, pin="1234")
 
@@ -290,7 +290,7 @@ async def test_auth_pin_happy_path(async_client: AsyncClient, test_tenant: Tenan
 async def test_auth_pin_wrong_pin_returns_401(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Wrong PIN → 401 invalid_credentials."""
+    """Verify signing in with a wrong PIN is rejected"""
     phone = "+27 82 555 9031"
     await _register_user_with_pin(async_client, test_tenant, phone, pin="1234")
 
@@ -306,7 +306,7 @@ async def test_auth_pin_wrong_pin_returns_401(
 async def test_auth_pin_lockout_after_max_attempts(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """After PIN_MAX_ATTEMPTS consecutive wrong PINs → 423 account_locked."""
+    """Verify a customer is locked out after too many wrong PIN attempts"""
     phone = "+27 82 555 9032"
     await _register_user_with_pin(async_client, test_tenant, phone, pin="1234")
 
@@ -334,7 +334,7 @@ async def test_auth_pin_lockout_after_max_attempts(
 async def test_auth_pin_unknown_phone_returns_invalid_credentials(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """Unknown phone → 401 invalid_credentials (no enumeration leak)."""
+    """Verify signing in with an unknown phone number is rejected without revealing it exists"""
     response = await async_client.post(
         "/api/v1/identity/auth/pin",
         json={
@@ -351,7 +351,7 @@ async def test_auth_pin_unknown_phone_returns_invalid_credentials(
 async def test_auth_pin_user_without_pin_returns_pin_not_set(
     async_client: AsyncClient, test_tenant: Tenant
 ) -> None:
-    """User exists (auto-created via /otp/send) but PIN never set → 401 pin_not_set."""
+    """Verify a customer who has not set a PIN cannot sign in with one"""
     phone = "+27 82 555 9033"
     # Send OTP to auto-register the phone, but don't verify + don't set PIN.
     await _send_and_get_otp(async_client, test_tenant, phone)
@@ -371,7 +371,7 @@ async def test_auth_pin_user_without_pin_returns_pin_not_set(
 
 @pytest.mark.asyncio
 async def test_logout_invalidates_session(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """After logout, the session token no longer works."""
+    """Verify signing out ends the customer's session"""
     phone = "+27 82 555 9040"
     await _register_user_with_pin(async_client, test_tenant, phone, pin="1234")
     auth = await async_client.post(
@@ -403,7 +403,7 @@ async def test_logout_invalidates_session(async_client: AsyncClient, test_tenant
 async def test_logout_without_authorization_header_is_noop(
     async_client: AsyncClient,
 ) -> None:
-    """Logout without Authorization header still returns ok=True (idempotent)."""
+    """Verify signing out without an active session still succeeds"""
     response = await async_client.post("/api/v1/identity/auth/logout")
     assert response.status_code == 200
     assert response.json()["ok"] is True

@@ -1,4 +1,4 @@
-"""Tests for confirm + fail lifecycle of a redemption.
+"""Completing or failing a redemption — the admin lifecycle.
 
 Phase F.4: confirm + fail are admin-only. Initiate (used in setup) is
 user-only — the helper mints a session token for the test user.
@@ -96,7 +96,7 @@ async def test_confirm_marks_completed_and_drops_balance(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Confirm: PENDING entries flip to COMPLETED, balance permanently drops."""
+    """Verify confirming a redemption permanently deducts the customer's points"""
     redemption_id = await _credit_and_initiate(
         async_client,
         db_session,
@@ -135,7 +135,7 @@ async def test_fail_restores_balance(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Fail: PENDING entries flip to REVERSED, balance restored."""
+    """Verify a failed redemption returns the held points to the customer"""
     redemption_id = await _credit_and_initiate(
         async_client,
         db_session,
@@ -173,7 +173,7 @@ async def test_confirm_response_carries_user_name(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """The admin confirm override resolves user_name (phone fallback here).
+    """Verify a confirmed redemption shows which customer it belongs to
 
     `test_user` has a phone identifier but no profile, so the resolved name is
     the normalised phone value rather than a bare id.
@@ -204,7 +204,7 @@ async def test_fail_response_carries_user_name(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """The admin fail override also resolves and returns user_name."""
+    """Verify a failed redemption shows which customer it belongs to"""
     redemption_id = await _credit_and_initiate(
         async_client,
         db_session,
@@ -231,7 +231,7 @@ async def test_confirm_then_confirm_rejects(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Cannot confirm a redemption that's already terminal."""
+    """Verify a redemption cannot be confirmed twice"""
     redemption_id = await _credit_and_initiate(
         async_client,
         db_session,
@@ -259,7 +259,7 @@ async def test_confirm_cross_tenant_rejects(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Cross-tenant confirm → 404 (no existence leak)."""
+    """Verify one business cannot confirm another business's redemption"""
     redemption_id = await _credit_and_initiate(
         async_client,
         db_session,
@@ -288,7 +288,7 @@ async def test_fail_cross_tenant_rejects(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Cross-tenant fail → 404 (mirror of cross-tenant confirm)."""
+    """Verify one business cannot fail another business's redemption"""
     redemption_id = await _credit_and_initiate(
         async_client,
         db_session,
@@ -319,7 +319,7 @@ async def test_confirm_then_fail_rejects(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Once COMPLETED a redemption is terminal — cannot transition to FAILED."""
+    """Verify a completed redemption can no longer be marked as failed"""
     redemption_id = await _credit_and_initiate(
         async_client,
         db_session,

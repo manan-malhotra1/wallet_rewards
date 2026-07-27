@@ -1,4 +1,4 @@
-"""Four-eyes (required_approvals=1): a distinct checker approval APPLIES the op.
+"""User changes: a second admin's approval applies them.
 
 Covers the create + update effects, self-approval rejection, checker role gating,
 double-apply protection, and the unknown-request 404.
@@ -28,7 +28,7 @@ async def test_create_user_applies_on_approval(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """A distinct checker approving a create → APPLIED, user actually created."""
+    """Verify a second admin's approval actually creates the new user"""
     before = await user_count(db_session, test_tenant)
     payload = create_user_payload()
     proposed = await propose(async_client, test_tenant, maker_header, "create_user", payload)
@@ -65,7 +65,7 @@ async def test_update_user_applies_on_approval(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """Approving an update edits the target's status, type, and profile name."""
+    """Verify a second admin's approval applies the edits to the user"""
     proposed = await propose(
         async_client,
         test_tenant,
@@ -101,7 +101,7 @@ async def test_self_approval_forbidden(
     maker_header: dict[str, str],
     maker_who_can_approve: dict[str, str],
 ) -> None:
-    """The maker cannot approve their own request even holding user-approver."""
+    """Verify the admin who proposed a user change cannot approve their own change"""
     before = await user_count(db_session, test_tenant)
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
@@ -119,7 +119,7 @@ async def test_approve_requires_user_approver_role(
     maker_header: dict[str, str],
     make_admin_token,
 ) -> None:
-    """A plain platform-admin (no user-approver) approving → 403."""
+    """Verify only an admin with user approval rights can approve a user change"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )
@@ -138,7 +138,7 @@ async def test_second_approve_after_applied_is_409_no_double_create(
     checker_header: dict[str, str],
     checker2_header: dict[str, str],
 ) -> None:
-    """Re-approving an APPLIED request → 409, and NO second user is created."""
+    """Verify an already-applied user change cannot be approved again to create a duplicate"""
     before = await user_count(db_session, test_tenant)
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
@@ -159,7 +159,7 @@ async def test_approve_unknown_request_404(
     test_tenant: Tenant,
     checker_header: dict[str, str],
 ) -> None:
-    """Approving a non-existent request → 404."""
+    """Verify approving a user change that does not exist is reported as not found"""
     from uuid import uuid4
 
     resp = await approve(async_client, test_tenant, str(uuid4()), checker_header)

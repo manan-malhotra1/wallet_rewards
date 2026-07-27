@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/identity/auth/start — anonymous phone lookup.
+"""Sign-in start — deciding whether a phone number needs a PIN or a one-time code.
 
 The endpoint is a pure read-only check the mobile app calls right after
 the user enters a phone number. It branches the auth flow:
@@ -38,7 +38,7 @@ async def test_auth_start_returns_needs_pin_for_known_phone(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Phone that belongs to a user in the tenant → needs_pin."""
+    """Verify a returning customer is asked for their PIN"""
     # test_user has exactly one phone identifier (see conftest).
     phone = test_user.identifiers[0].identifier_value
 
@@ -57,7 +57,7 @@ async def test_auth_start_returns_needs_otp_for_unknown_phone(
     test_tenant: Tenant,
     db_session: AsyncSession,
 ) -> None:
-    """Phone not in the tenant → needs_otp and NO side effects.
+    """Verify a new phone number is routed to one-time-code registration without creating an account
 
     Asserts that no `users` or `user_identifiers` row is created — this
     is what differentiates /auth/start from /otp/send.
@@ -91,7 +91,7 @@ async def test_auth_start_normalises_phone_whitespace(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """`+27 82 ...` and `+2782...` lookups resolve to the same user.
+    """Verify a phone number is recognised regardless of spacing
 
     The canonical form on disk is the normalised version (no spaces). A
     client that submits the visually-formatted version must still get
@@ -122,7 +122,7 @@ async def test_auth_start_does_not_leak_across_tenants(
     test_tenant: Tenant,
     other_tenant: Tenant,
 ) -> None:
-    """A phone registered in tenant B is invisible from tenant A.
+    """Verify a phone known in another tenant is treated as new here
 
     Per NFR-0220, cross-tenant existence checks must return the
     "doesn't exist" answer — `needs_otp`. If we returned `needs_pin`
@@ -162,7 +162,7 @@ async def test_auth_start_does_not_leak_across_tenants(
 async def test_auth_start_unknown_tenant_returns_404(
     async_client: AsyncClient,
 ) -> None:
-    """Unknown tenant_id → 404 tenant_not_found (mirrors /otp/send)."""
+    """Verify signing in against an unknown tenant is rejected"""
     response = await async_client.post(
         "/api/v1/identity/auth/start",
         json={"tenant_id": str(uuid4()), "phone": "+27 82 555 0000"},
@@ -177,7 +177,7 @@ async def test_auth_start_rejects_malformed_phone(
     async_client: AsyncClient,
     test_tenant: Tenant,
 ) -> None:
-    """Empty / too-short phone → 422 validation error.
+    """Verify a malformed phone number is rejected
 
     Matches the Field(min_length=5) constraint used by every other public
     identity endpoint — no per-endpoint divergence in phone validation.
@@ -195,7 +195,7 @@ async def test_auth_start_missing_phone_returns_422(
     async_client: AsyncClient,
     test_tenant: Tenant,
 ) -> None:
-    """Missing `phone` field → 422 (Pydantic required-field)."""
+    """Verify signing in without a phone number is rejected"""
     response = await async_client.post(
         "/api/v1/identity/auth/start",
         json={"tenant_id": str(test_tenant.id)},

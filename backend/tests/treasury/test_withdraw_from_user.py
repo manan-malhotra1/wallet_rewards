@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/treasury/withdraw (admin pull-back).
+"""Pulling funds back from a customer.
 
 Epic 18: withdraw now PROPOSES a money operation; the debit posts only after a
 distinct treasury-approver approves it. Body-level validation (amount/withdraw_all
@@ -130,7 +130,7 @@ async def test_withdraw_happy_path(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """Propose+approve a 200 withdraw from a 500-balance wallet → new balance 300."""
+    """Verify an admin can pull funds from a customer's wallet once a second admin approves it"""
     wallet = await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
@@ -163,7 +163,7 @@ async def test_withdraw_credits_chosen_bank_mirror(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """The counter-leg lands on the operator-selected mirror, not any other."""
+    """Verify a pulled-back amount lands on the bank record the operator chose"""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
@@ -195,7 +195,7 @@ async def test_withdraw_unknown_mirror_returns_404_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """A bank_mirror_account_id that doesn't exist → 404 on approval."""
+    """Verify pulling funds against a bank record that does not exist is refused"""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
@@ -224,7 +224,7 @@ async def test_withdraw_foreign_tenant_mirror_returns_404_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """A mirror belonging to another tenant is not resolvable → 404 on approval."""
+    """Verify pulling funds against another tenant's bank record is refused"""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
@@ -253,7 +253,7 @@ async def test_withdraw_mirror_currency_mismatch_returns_422_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """A USD mirror can't be the counter-leg of a ZAR withdraw → 422 on approval."""
+    """Verify pulling funds must use a bank record in the same currency"""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
@@ -283,7 +283,7 @@ async def test_withdraw_rejects_insufficient_balance_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """Pulling more than the wallet holds → 409 insufficient_funds on approval."""
+    """Verify an admin cannot pull back more than a customer's wallet holds"""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("50")
     )
@@ -313,7 +313,7 @@ async def test_withdraw_missing_wallet_returns_404_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """User without a wallet for the currency → 404 on approval."""
+    """Verify pulling funds from a customer with no wallet in that currency is refused"""
     mirror = await _seed_bank_mirror(db_session, test_tenant)
     proposed = await _propose_withdraw(
         async_client,
@@ -334,7 +334,7 @@ async def test_withdraw_missing_wallet_returns_404_at_apply(
 async def test_withdraw_requires_auth(
     async_client: AsyncClient, test_tenant: Tenant, test_user: User
 ) -> None:
-    """Anonymous withdraw → 401 at propose."""
+    """Verify an unauthenticated user cannot pull funds from a customer"""
     resp = await async_client.post(
         "/api/v1/treasury/withdraw",
         json={
@@ -358,7 +358,7 @@ async def test_withdraw_missing_bank_mirror_is_validation_error(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Omitting bank_mirror_account_id is a 422 at propose — the field is required."""
+    """Verify pulling funds must name which bank record to use"""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("100")
     )
@@ -386,7 +386,7 @@ async def test_withdraw_ignores_user_pin_field(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """A stray 'pin' field is ignored; the propose+approve still completes."""
+    """Verify a stray PIN field does not affect an admin fund pull-back"""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
@@ -417,7 +417,9 @@ async def test_withdraw_cross_tenant_returns_404_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """User in tenant A, withdraw scoped to tenant B → 404 on approval.
+    """Verify an admin cannot pull funds from a customer in another tenant
+
+    User in tenant A, withdraw scoped to tenant B → 404 on approval.
 
     The proposal is created under tenant B (which exists); the user can't be
     resolved there, so the failure surfaces when the operation executes.
@@ -450,7 +452,7 @@ async def test_withdraw_all_empties_the_wallet(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """withdraw_all with no amount pulls the full available balance (E18-S1)."""
+    """Verify pulling back everything empties a customer's wallet"""
     wallet = await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("500")
     )
@@ -480,7 +482,7 @@ async def test_withdraw_all_with_amount_is_rejected(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Sending both amount and withdraw_all is a validation error at propose."""
+    """Verify an admin cannot ask to pull back everything and a fixed amount at once"""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("100")
     )
@@ -504,7 +506,7 @@ async def test_withdraw_without_amount_or_all_is_rejected(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Neither amount nor withdraw_all → validation error at propose."""
+    """Verify an admin must say how much to pull back"""
     await _seed_user_wallet_with_balance(
         db_session, test_tenant, test_user, starting_balance=Decimal("100")
     )
@@ -527,7 +529,7 @@ async def test_withdraw_all_on_empty_wallet_is_rejected_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """withdraw_all on a zero-balance wallet → 409 nothing_to_withdraw on approval."""
+    """Verify pulling back everything from an empty wallet is refused"""
     wallet = Account(
         tenant_id=test_tenant.id,
         user_id=test_user.id,

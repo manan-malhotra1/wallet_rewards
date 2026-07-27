@@ -1,4 +1,4 @@
-"""Tests for the user-types foundation on POST /api/v1/identity/users
+"""Customer types and hierarchy — creating agents, merchants, and their parents.
 and GET /api/v1/identity/users/{id} (Epic 12).
 
 Covers the default type, explicit types, and the parent-compatibility rules
@@ -44,7 +44,7 @@ async def test_create_user_defaults_to_consumer(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Omitting user_type creates a consumer with no parent (backwards compatible)."""
+    """Verify a new customer is a consumer by default"""
     status, body = await _create_user(
         async_client, admin_auth_header, test_tenant, phone="+27 82 555 1000"
     )
@@ -59,7 +59,7 @@ async def test_create_super_agent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A super_agent is a top-level type — created with no parent."""
+    """Verify a super agent can be created"""
     status, body = await _create_user(
         async_client,
         admin_auth_header,
@@ -77,7 +77,7 @@ async def test_create_agent_without_parent_allowed(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A parent is optional for agent — creation without one succeeds."""
+    """Verify an agent can be created without a parent"""
     status, body = await _create_user(
         async_client,
         admin_auth_header,
@@ -96,7 +96,7 @@ async def test_create_agent_under_super_agent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An agent may hang under a super_agent parent in the same tenant."""
+    """Verify an agent can be created under a super agent"""
     _, parent = await _create_user(
         async_client,
         admin_auth_header,
@@ -122,7 +122,7 @@ async def test_create_merchant_under_head_merchant(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A merchant may hang under a head_merchant parent."""
+    """Verify a merchant can be created under a head merchant"""
     _, parent = await _create_user(
         async_client,
         admin_auth_header,
@@ -148,7 +148,7 @@ async def test_agent_parent_must_be_super_agent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An agent whose parent is a consumer is rejected 422."""
+    """Verify an agent cannot be placed under a consumer"""
     _, parent = await _create_user(
         async_client, admin_auth_header, test_tenant, phone="+27 82 555 1007"
     )  # consumer
@@ -170,7 +170,7 @@ async def test_consumer_cannot_have_parent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A consumer given any parent is rejected 422 (no hierarchy slot)."""
+    """Verify a consumer cannot be given a parent"""
     _, parent = await _create_user(
         async_client,
         admin_auth_header,
@@ -197,7 +197,7 @@ async def test_parent_must_be_same_tenant(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A cross-tenant parent is rejected 422 (no cross-tenant hierarchy)."""
+    """Verify a customer cannot be placed under a parent in another tenant"""
     _, foreign_parent = await _create_user(
         async_client,
         admin_auth_header,
@@ -223,7 +223,7 @@ async def test_missing_parent_reference_rejected(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An agent pointing at a non-existent parent id is rejected 422."""
+    """Verify a customer cannot be placed under a parent that does not exist"""
     status, body = await _create_user(
         async_client,
         admin_auth_header,
@@ -242,7 +242,7 @@ async def test_invalid_user_type_rejected(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An unknown user_type fails Pydantic Literal validation (422)."""
+    """Verify creating a customer with an unknown type is rejected"""
     status, _ = await _create_user(
         async_client,
         admin_auth_header,
@@ -259,7 +259,7 @@ async def test_user_detail_exposes_type_and_parent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """GET /users/{id} surfaces user_type + parent_user_id for the admin drawer."""
+    """Verify a customer's type and parent show on their profile"""
     _, parent = await _create_user(
         async_client,
         admin_auth_header,
@@ -293,7 +293,7 @@ async def test_user_detail_parent_name_uses_profile(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """`parent_name` is the parent's profile full name when a profile exists."""
+    """Verify a customer's parent is shown by their full name"""
     parent_resp = await async_client.post(
         "/api/v1/identity/users",
         headers=admin_auth_header,
@@ -331,7 +331,7 @@ async def test_user_detail_parent_name_falls_back_to_identifier(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """With no parent profile, `parent_name` is the parent's phone identifier."""
+    """Verify a customer's parent is shown by their phone number when they have no profile"""
     _, parent = await _create_user(
         async_client,
         admin_auth_header,
@@ -364,7 +364,7 @@ async def test_user_detail_parent_name_null_without_parent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A top-level user (no parent) has `parent_name` null."""
+    """Verify a top-level customer shows no parent name"""
     _, user = await _create_user(
         async_client,
         admin_auth_header,

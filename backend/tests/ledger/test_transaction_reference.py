@@ -1,4 +1,4 @@
-"""Tests for the customer-facing transaction `reference`.
+"""Customer transaction receipts.
 
 Every transaction gets a human reference `S_<YYYYMMDDHHMMSS><NNNNNN>` where the
 14-digit timestamp is the creation instant (UTC) and NNNNNN a per-tenant running
@@ -105,19 +105,19 @@ async def _system_pair(session: AsyncSession, tenant: Tenant) -> tuple[Account, 
 
 
 def test_build_reference_format() -> None:
-    """`S_` + 14-digit UTC timestamp + zero-padded 6-digit running number."""
+    """Verify a transaction receipt number follows the expected format"""
     ts = datetime(2026, 7, 15, 14, 30, 22, tzinfo=UTC)
     assert build_reference(ts, 42) == "S_20260715143022000042"
 
 
 def test_build_reference_matches_pattern() -> None:
-    """Any (ts, seq) produces a string matching the documented pattern."""
+    """Verify every generated receipt number follows the expected format"""
     ts = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
     assert _REFERENCE_RE.match(build_reference(ts, 1))
 
 
 def test_build_reference_keeps_large_numbers() -> None:
-    """A running number wider than 6 digits keeps all its digits."""
+    """Verify a receipt number keeps all its digits for high transaction counts"""
     ts = datetime(2026, 7, 15, 14, 30, 22, tzinfo=UTC)
     assert build_reference(ts, 1234567) == "S_202607151430221234567"
 
@@ -130,7 +130,7 @@ async def test_new_transaction_gets_reference(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """A transaction posted through the chokepoint carries a valid reference."""
+    """Verify every new transaction is given a customer receipt number"""
     src, dst = await _system_pair(db_session, test_tenant)
     txn = await post_transaction(
         db_session,
@@ -151,7 +151,7 @@ async def test_reference_number_increments_within_tenant(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """A second transaction in the same tenant advances the running number."""
+    """Verify each new transaction gets the next receipt number in sequence"""
     src, dst = await _system_pair(db_session, test_tenant)
     first = await post_transaction(
         db_session,
@@ -186,7 +186,7 @@ async def test_two_tenants_number_independently(
     test_tenant: Tenant,
     other_tenant: Tenant,
 ) -> None:
-    """Each tenant runs its own sequence — both start at 1."""
+    """Verify each tenant numbers its own transaction receipts independently"""
     src_a, dst_a = await _system_pair(db_session, test_tenant)
     src_b, dst_b = await _system_pair(db_session, other_tenant)
 
@@ -221,7 +221,7 @@ async def test_idempotent_replay_keeps_reference_and_number(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """Replaying the same key returns the SAME reference — no number burned."""
+    """Verify resubmitting a transaction keeps the same receipt number without skipping any"""
     src, dst = await _system_pair(db_session, test_tenant)
     request = PostTransactionRequest(
         tenant_id=test_tenant.id,
@@ -256,7 +256,7 @@ async def test_reference_unique_within_tenant(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """No two transactions in a tenant share a reference (unique index)."""
+    """Verify no two transactions within a tenant share a receipt number"""
     src, dst = await _system_pair(db_session, test_tenant)
     for i in range(5):
         await post_transaction(

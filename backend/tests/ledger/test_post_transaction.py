@@ -1,4 +1,4 @@
-"""Tests for the internal ledger service `post_transaction`.
+"""Core ledger posting.
 
 The ledger is the single chokepoint for every state-mutating write to
 `ledger_entries`. These tests cover the invariants enforced by the
@@ -51,7 +51,7 @@ async def test_post_transaction_happy_path(
     system_points_account: Account,
     user_wallet: Account,
 ) -> None:
-    """A balanced 2-entry transaction commits and the entries are visible."""
+    """Verify a balanced transaction is recorded and its entries appear"""
     txn = await post_transaction(
         db_session,
         PostTransactionRequest(
@@ -81,7 +81,7 @@ async def test_post_transaction_rejects_unbalanced_entries(
     system_points_account: Account,
     user_wallet: Account,
 ) -> None:
-    """Sum of credits MUST equal sum of debits (NFR-0100)."""
+    """Verify a transaction whose credits and debits do not match is refused"""
     with pytest.raises(UnbalancedTransaction):
         await post_transaction(
             db_session,
@@ -112,7 +112,7 @@ async def test_post_transaction_rejects_single_entry(
     test_tenant: Tenant,
     user_wallet: Account,
 ) -> None:
-    """A transaction needs ≥ 2 entries — single-entry can't balance to zero."""
+    """Verify a transaction with only one side is refused"""
     with pytest.raises(UnbalancedTransaction):
         await post_transaction(
             db_session,
@@ -138,7 +138,7 @@ async def test_post_transaction_rejects_unknown_account(
     test_tenant: Tenant,
     user_wallet: Account,
 ) -> None:
-    """Referenced accounts must exist in the same tenant."""
+    """Verify a transaction naming an account that does not exist is refused"""
     with pytest.raises(AccountNotFound):
         await post_transaction(
             db_session,
@@ -170,7 +170,9 @@ async def test_post_transaction_idempotent_returns_existing(
     system_points_account: Account,
     user_wallet: Account,
 ) -> None:
-    """Replaying the same idempotency_key returns the first transaction.
+    """Verify submitting the same transaction twice records it only once
+
+    Replaying the same idempotency_key returns the first transaction.
 
     Per Pay-PRD-0200, duplicate requests must NOT create new ledger entries.
     """
@@ -206,7 +208,7 @@ async def test_post_transaction_rejects_zero_sum_zero_amounts(
     system_points_account: Account,
     user_wallet: Account,
 ) -> None:
-    """All-zero entries don't qualify as a real transaction."""
+    """Verify a transaction that moves no money is refused"""
     with pytest.raises(UnbalancedTransaction):
         await post_transaction(
             db_session,

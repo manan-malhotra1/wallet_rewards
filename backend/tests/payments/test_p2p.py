@@ -1,4 +1,4 @@
-"""Tests for the `earned_points` field on POST /api/v1/payments/p2p.
+"""Points earned on transfers.
 
 Mirrors the fund pattern (`tests/payments/test_fund.py` where applicable):
 the rules engine writes `reward_events` rows keyed by `triggering_event_id`
@@ -185,7 +185,9 @@ async def test_p2p_response_includes_earned_points_field(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """A normal P2P (no rules fired) returns `earned_points: null`.
+    """Verify a transfer that earns no reward points shows none earned
+
+    A normal P2P (no rules fired) returns `earned_points: null`.
 
     The mobile app reads `body["earned_points"]` to decide whether to
     show the "+ X PTS earned" toast. The field must be present on every
@@ -236,7 +238,9 @@ async def test_p2p_earned_points_reflects_rule_issuance(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """A `RewardEvent` keyed to the txn surfaces as `earned_points` on replay.
+    """Verify a transfer that earns reward points shows the points earned
+
+    A `RewardEvent` keyed to the txn surfaces as `earned_points` on replay.
 
     Flow:
       1. Send a P2P (txn id T, response says earned_points=null).

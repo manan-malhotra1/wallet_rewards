@@ -1,4 +1,4 @@
-"""Tenant isolation: a request is invisible / un-actionable from another tenant."""
+"""User changes stay within one tenant."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ async def test_get_from_other_tenant_404(
     other_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """Fetching a request under the wrong tenant_id → 404 (no cross-tenant leak)."""
+    """Verify one tenant cannot see another tenant's user change"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )
@@ -39,7 +39,7 @@ async def test_approve_from_other_tenant_404(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """Approving a request under the wrong tenant_id → 404."""
+    """Verify one tenant cannot approve another tenant's user change"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )

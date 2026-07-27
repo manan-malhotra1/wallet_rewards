@@ -1,4 +1,4 @@
-"""Tests for /api/v1/services — Phase 2 catalog surface.
+"""Managing the service catalog.
 
 Covers list (tenant-scoped + status filter), create (happy + dup-code +
 auth + validation), patch (display_name + status + 404), and soft-delete
@@ -36,7 +36,7 @@ async def _seed_service(
 
 @pytest.mark.asyncio
 async def test_list_services_requires_auth(async_client: AsyncClient, test_tenant: Tenant) -> None:
-    """Anonymous list → 401."""
+    """Verify a signed-out user cannot list services"""
     resp = await async_client.get("/api/v1/services", params={"tenant_id": str(test_tenant.id)})
     assert resp.status_code == 401
 
@@ -48,7 +48,7 @@ async def test_list_services_returns_active_and_disabled(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """No status filter → both active and disabled rows."""
+    """Verify the catalog lists both active and disabled services by default"""
     await _seed_service(db_session, str(test_tenant.id), "p2p")
     await _seed_service(db_session, str(test_tenant.id), "legacy_fund", status="disabled")
 
@@ -69,7 +69,7 @@ async def test_list_services_status_filter(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """status=active → only active rows."""
+    """Verify filtering the catalog by active status shows only active services"""
     await _seed_service(db_session, str(test_tenant.id), "p2p")
     await _seed_service(db_session, str(test_tenant.id), "legacy", status="disabled")
     resp = await async_client.get(
@@ -90,7 +90,7 @@ async def test_list_services_tenant_isolated(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A request for tenant A doesn't surface tenant B's catalog."""
+    """Verify one tenant cannot see another tenant's service catalog"""
     await _seed_service(db_session, str(test_tenant.id), "p2p")
     await _seed_service(db_session, str(other_tenant.id), "p2p")
     resp = await async_client.get(
@@ -109,7 +109,7 @@ async def test_create_service_happy_path(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """POST returns 201 + the persisted row."""
+    """Verify an admin can add a new service to the catalog"""
     resp = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
@@ -133,7 +133,7 @@ async def test_create_service_duplicate_code_409(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Two services with the same code → 409."""
+    """Verify a service code cannot be reused within the same tenant"""
     await _seed_service(db_session, str(test_tenant.id), "p2p")
     resp = await async_client.post(
         "/api/v1/services",
@@ -154,7 +154,7 @@ async def test_create_service_rejects_invalid_code(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Codes must match ^[a-z][a-z0-9_]*$ — 'P2P' is rejected."""
+    """Verify a service code must follow the allowed format"""
     resp = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
@@ -174,7 +174,7 @@ async def test_patch_service_display_name_and_status(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """PATCH updates display_name and status; code stays put."""
+    """Verify an admin can rename a service and change its status without changing its code"""
     svc = await _seed_service(db_session, str(test_tenant.id), "p2p", "P2P")
     resp = await async_client.patch(
         f"/api/v1/services/{svc.id}",
@@ -195,7 +195,7 @@ async def test_patch_unknown_service_returns_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """PATCH on a non-existent id → 404."""
+    """Verify editing a service that does not exist is reported as not found"""
     resp = await async_client.patch(
         f"/api/v1/services/{uuid4()}",
         params={"tenant_id": str(test_tenant.id)},
@@ -212,7 +212,7 @@ async def test_patch_rejects_code_field(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """extra='forbid' blocks accidental code changes."""
+    """Verify an admin cannot change a service's code through an edit"""
     svc = await _seed_service(db_session, str(test_tenant.id), "p2p")
     resp = await async_client.patch(
         f"/api/v1/services/{svc.id}",
@@ -230,7 +230,7 @@ async def test_delete_service_removes_from_list(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Soft-deleted services don't appear in GET."""
+    """Verify a deleted service no longer appears in the catalog"""
     svc = await _seed_service(db_session, str(test_tenant.id), "p2p")
     delete_resp = await async_client.delete(
         f"/api/v1/services/{svc.id}",
@@ -255,7 +255,7 @@ async def test_delete_then_recreate_same_code_succeeds(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Partial-unique index allows re-adding a deleted code."""
+    """Verify a deleted service code can be added again"""
     svc = await _seed_service(db_session, str(test_tenant.id), "p2p")
     await async_client.delete(
         f"/api/v1/services/{svc.id}",

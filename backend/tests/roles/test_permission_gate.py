@@ -1,4 +1,4 @@
-"""Tests for the role-permission gate on P2P + redemption (Phase F.3).
+"""Role-permission gate on transfers and redemptions.
 
 These verify step 1 of the Pay-PRD-0260 orchestration sequence — the role
 check rejects unauthorized users BEFORE any wallet lookup, lock, or ledger
@@ -22,6 +22,7 @@ from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     Account,
     Role,
+    StepUpPolicy,
     Tenant,
     User,
     UserIdentifier,
@@ -78,7 +79,7 @@ async def test_p2p_rejects_user_with_no_role(
     test_tenant: Tenant,
     default_user_role: Role,
 ) -> None:
-    """User without any role → 403 not_authorised at step 1. No ledger write."""
+    """Verify a customer with no role assigned cannot send money."""
     alice = await _make_user_with_phone(db_session, test_tenant, phone="+27 82 999 1001")
     await _make_user_with_phone(
         db_session,
@@ -118,7 +119,7 @@ async def test_p2p_rejects_user_whose_role_lacks_p2p_permission(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """User has a role, but the role doesn't permit p2p → 403."""
+    """Verify a customer whose role does not allow transfers is blocked."""
     from app.shared.models import RolePermission
 
     redemption_only = Role(
@@ -178,7 +179,7 @@ async def test_p2p_rejects_when_role_is_inactive(
     test_tenant: Tenant,
     default_user_role: Role,
 ) -> None:
-    """User has the default role but it's inactive → 403."""
+    """Verify a customer whose role has been deactivated cannot transfer."""
     default_user_role.status = "inactive"
     await db_session.commit()
 
@@ -225,7 +226,7 @@ async def test_p2p_allowed_when_any_role_grants_permission(
     test_tenant: Tenant,
     default_user_role: Role,
 ) -> None:
-    """User holds multiple roles — any one granting p2p is enough."""
+    """Verify a customer can transfer when any one of their roles allows it."""
     # Invariant #12: the pricing+limit gate is unconditional, so this success
     # path needs both configs seeded (the 403 tests fail earlier, at the role
     # check, so they need no config). Zero fee — this test asserts only status.
@@ -254,6 +255,19 @@ async def test_p2p_allowed_when_any_role_grants_permission(
             daily_count_cap=10,
         ),
     )
+    # Step-up is fail-closed: with no policy any amount demands a PIN. This test
+    # exercises the role gate, not step-up, and its users carry no PIN — so seed
+    # a p2p policy whose threshold sits above the ZAR 10 transfer to wave it
+    # through (matches tests/step_up/_seed_p2p_policy).
+    db_session.add(
+        StepUpPolicy(
+            tenant_id=test_tenant.id,
+            transaction_type="p2p",
+            currency="ZAR",
+            threshold_amount=Decimal("1000"),
+        )
+    )
+    await db_session.commit()
     viewer = Role(tenant_id=test_tenant.id, name="viewer")
     db_session.add(viewer)
     await db_session.flush()
@@ -306,7 +320,7 @@ async def test_redemption_initiate_also_gated(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Redemption initiate also runs the role check at step 1.
+    """Verify a customer without redemption permission cannot redeem points.
 
     A user without a 'redemption' permission is rejected before any
     points-account lookup happens.

@@ -1,4 +1,4 @@
-"""Propose: a user operation lands PENDING and changes NOTHING until approved.
+"""Proposing a user change holds it until approved.
 
 Also covers propose-time validation (invalid payload, unknown operation, missing
 email/phone), role gating, and the update_user target-existence check.
@@ -29,7 +29,7 @@ async def test_propose_create_user_is_pending_and_creates_nothing(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """Proposing create_user → PENDING; no user row is created yet."""
+    """Verify proposing to create a user creates no user until approved"""
     before = await user_count(db_session, test_tenant)
     body = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
@@ -52,7 +52,7 @@ async def test_propose_update_user_is_pending_and_changes_nothing(
     test_user: User,
     maker_header: dict[str, str],
 ) -> None:
-    """Proposing update_user → PENDING; the target user is left untouched."""
+    """Verify proposing to edit a user leaves the user unchanged until approved"""
     body = await propose(
         async_client,
         test_tenant,
@@ -79,7 +79,7 @@ async def test_propose_update_unknown_target_404(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """An update_user for a target that doesn't exist in this tenant → 404."""
+    """Verify proposing an edit to a user who does not exist is reported as not found"""
     from uuid import uuid4
 
     resp = await async_client.post(
@@ -101,7 +101,7 @@ async def test_propose_create_without_email_or_phone_422(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """A create_user payload lacking any email/phone identifier → 422."""
+    """Verify a new user must have at least an email or phone number"""
     resp = await async_client.post(
         ops_url(test_tenant),
         content=json.dumps(
@@ -125,7 +125,7 @@ async def test_propose_unknown_operation_422(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """An unrecognised operation name → 422."""
+    """Verify an unrecognised user change type is rejected"""
     resp = await async_client.post(
         ops_url(test_tenant),
         content=json.dumps({"operation": "delete_user", "payload": {}}),
@@ -140,7 +140,7 @@ async def test_propose_requires_platform_admin_role(
     test_tenant: Tenant,
     make_admin_token,
 ) -> None:
-    """A caller without platform-admin cannot propose → 403."""
+    """Verify only a platform admin can propose a user change"""
     token = make_admin_token(roles=["user-approver"], sub="99999999-9999-4000-8000-000000000009")
     resp = await async_client.post(
         ops_url(test_tenant),

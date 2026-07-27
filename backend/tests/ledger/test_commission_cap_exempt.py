@@ -1,4 +1,4 @@
-"""Commission cap-exemption on the balance guard (Story 20.3).
+"""Agent commission payouts.
 
 A commission CREDIT to an agent at max_balance is an earned payout and must
 land; `skip_receive_cap` exempts credit legs from the ceiling (like a reversal)
@@ -38,7 +38,7 @@ async def test_commission_credit_lands_at_max_balance(
     test_user: User,
     user_wallet: Account,
 ) -> None:
-    """A commission credit with skip_receive_cap lands even at the cap."""
+    """Verify an agent receives earned commission even at their wallet's maximum balance"""
     await _set_zar_cap(db_session, test_tenant, "100")
     pool = await get_or_create_system_commission(
         db_session, tenant_id=test_tenant.id, currency="ZAR"
@@ -77,7 +77,7 @@ async def test_normal_credit_over_cap_still_rejected(
     test_user: User,
     user_wallet: Account,
 ) -> None:
-    """Without the flag, a credit over the cap is still rejected (guard intact)."""
+    """Verify an ordinary top-up over the wallet maximum is still refused"""
     await _set_zar_cap(db_session, test_tenant, "100")
     pool = await get_or_create_system_commission(
         db_session, tenant_id=test_tenant.id, currency="ZAR"

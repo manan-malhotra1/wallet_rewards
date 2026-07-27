@@ -1,4 +1,4 @@
-"""Tests for rewards.service.issue_points_reward.
+"""Earning points rewards — crediting customers when they qualify.
 
 Validates the ledger structure of a reward (DEBIT system, CREDIT user),
 idempotency on replay, and the structural double-issuance guard.
@@ -45,7 +45,7 @@ async def test_issue_reward_creates_correct_ledger_entries(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """DEBIT system_points_issuance, CREDIT user.points_account."""
+    """Verify a customer's points balance increases when they earn a reward"""
     rule = _make_first_time_rule(test_tenant)
     db_session.add(rule)
     await db_session.commit()
@@ -81,7 +81,7 @@ async def test_issue_reward_is_idempotent_on_replay(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Same (user, rule, triggering_event_id) replayed → no second reward."""
+    """Verify a repeated reward event does not award points twice"""
     rule = _make_first_time_rule(test_tenant)
     db_session.add(rule)
     await db_session.commit()
@@ -131,7 +131,7 @@ async def test_issue_reward_fails_when_points_account_missing(
     test_user: User,
     system_points_account: Account,
 ) -> None:
-    """User without a points_account → UserPointsAccountMissing."""
+    """Verify a reward cannot be granted to a customer without a points account"""
     rule = _make_first_time_rule(test_tenant)
     db_session.add(rule)
     await db_session.commit()

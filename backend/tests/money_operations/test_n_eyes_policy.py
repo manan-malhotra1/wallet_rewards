@@ -1,4 +1,4 @@
-"""Six-eyes (required_approvals=2) + ApprovalPolicy resolution (Epic 18).
+"""Treasury moves: how many approvals the policy requires.
 
 With an ApprovalPolicy requiring 2 approvals: the first approval leaves the
 request PENDING (1 of 2); a second DISTINCT approval executes; the SAME approver
@@ -43,7 +43,7 @@ async def test_six_eyes_needs_two_distinct_approvals(
     checker_header: dict[str, str],
     checker2_header: dict[str, str],
 ) -> None:
-    """required_approvals=2: first approval PENDING (1 of 2), second executes."""
+    """Verify a move requiring two approvals only happens after two different admins approve"""
     await _seed_policy(db_session, test_tenant, operation=None, required=2)
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror_payload("Six")
@@ -69,7 +69,7 @@ async def test_six_eyes_same_approver_twice_is_duplicate_409(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """The same checker cannot supply both required approvals → 409 duplicate."""
+    """Verify one admin cannot supply both required approvals for a move"""
     await _seed_policy(db_session, test_tenant, operation=None, required=2)
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror_payload("Dup")
@@ -90,7 +90,7 @@ async def test_six_eyes_maker_approve_is_self_approval_409(
     maker_header: dict[str, str],
     maker_who_can_approve: dict[str, str],
 ) -> None:
-    """Under six-eyes the maker still cannot approve their own request → 409."""
+    """Verify the proposing admin cannot count as one of the two required approvers"""
     await _seed_policy(db_session, test_tenant, operation=None, required=2)
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror_payload("SelfSix")
@@ -107,7 +107,7 @@ async def test_policy_op_specific_beats_tenant_default(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """An op-specific policy wins over the tenant-wide default row."""
+    """Verify an approval rule set for a specific move overrides the tenant-wide default"""
     await _seed_policy(db_session, test_tenant, operation=None, required=1)
     await _seed_policy(
         db_session, test_tenant, operation="create_bank_mirror", required=2
@@ -125,7 +125,7 @@ async def test_policy_tenant_default_applies_when_no_op_specific(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """The tenant-wide default (operation NULL) applies to ops lacking a row."""
+    """Verify the tenant-wide approval rule applies to moves without their own rule"""
     await _seed_policy(db_session, test_tenant, operation=None, required=2)
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror_payload("Default")
@@ -139,7 +139,7 @@ async def test_policy_defaults_to_one_when_absent(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """No policy row → code default of 1 (two-eyes)."""
+    """Verify a move needs one approval when no approval rule is configured"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror_payload("None")
     )
@@ -154,7 +154,7 @@ async def test_first_of_two_approvals_moves_no_money(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """A single approval under six-eyes must not create the account early."""
+    """Verify a single approval does not move money when two are required"""
     await _seed_policy(db_session, test_tenant, operation=None, required=2)
     from tests.money_operations.conftest import account_count
 

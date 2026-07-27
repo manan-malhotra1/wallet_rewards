@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/catalog/me/points-history (Pay-PRD-0980).
+"""Customer points-activity history.
 
 Phase F.4 made the route `/me/` — user_id + tenant_id come from the
 session token. Cross-tenant isolation is now structural (a tenant-A session
@@ -18,6 +18,7 @@ from app.modules.rewards.service import issue_points_reward
 from app.shared.models import (
     Account,
     Rule,
+    StepUpPolicy,
     Tenant,
     User,
     UserIdentifier,
@@ -69,7 +70,7 @@ async def test_points_history_empty_for_user_without_account(
     async_client: AsyncClient,
     test_user: User,
 ) -> None:
-    """User has no points_account → empty array, NOT 404."""
+    """Verify a customer with no points sees an empty history, not an error."""
     response = await async_client.get(
         "/api/v1/catalog/me/points-history",
         headers=await _user_header(test_user),
@@ -87,7 +88,7 @@ async def test_points_history_includes_rule_name_for_rewards(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Reward-issuance entries surface the firing rule's name."""
+    """Verify each earned-points entry shows the reward that granted it."""
     await _seed_reward(
         db_session,
         test_tenant,
@@ -123,7 +124,7 @@ async def test_points_history_orders_newest_first(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Two rewards then a redemption → 3 entries, newest first."""
+    """Verify a customer's points history lists the most recent activity first."""
     await _seed_reward(
         db_session,
         test_tenant,
@@ -143,6 +144,20 @@ async def test_points_history_orders_newest_first(
 
     # Fail-closed gate (invariant #12): seed redemption pricing + limit config.
     await seed_redemption_service_config(db_session, test_tenant)
+
+    # Step-up is fail-closed: with no policy every redemption demands a PIN, and
+    # test_user carries none. This test exercises history ordering, not step-up,
+    # so seed a redemption policy whose threshold sits above the 30-point redeem
+    # to wave it through (matches tests/step_up policy seeding).
+    db_session.add(
+        StepUpPolicy(
+            tenant_id=test_tenant.id,
+            transaction_type="redemption",
+            currency="PTS",
+            threshold_amount=Decimal("1000"),
+        )
+    )
+    await db_session.commit()
 
     # Provider register (admin) + initiate (user).
     pr = await async_client.post(
@@ -189,7 +204,7 @@ async def test_points_history_cross_tenant_isolated(
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """A user in other_tenant cannot see rewards earned in test_tenant.
+    """Verify a customer never sees points activity from another tenant.
 
     Phase F.4 makes this structural — tenant comes from the session, so
     a tenant-B user simply has no rewards in their own tenant's history.

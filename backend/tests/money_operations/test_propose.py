@@ -1,4 +1,4 @@
-"""Propose each of the four money operations → PENDING, NOTHING executed.
+"""Proposing a treasury move holds it until approved.
 
 A proposal records the request + a `submitted` review, resolves
 required_approvals, and moves no money / creates no account until approved.
@@ -33,7 +33,7 @@ async def test_propose_fund_user_is_pending_no_money_moved(
     test_user: User,
     maker_header: dict[str, str],
 ) -> None:
-    """fund_user propose → PENDING, no transaction posted."""
+    """Verify proposing to fund a user moves no money until approved"""
     await seed_user_wallet(db_session, test_tenant, test_user)
     body = await propose(
         async_client,
@@ -66,7 +66,7 @@ async def test_propose_withdraw_user_is_pending_no_money_moved(
     funded_wallet: Account,
     maker_header: dict[str, str],
 ) -> None:
-    """withdraw_user propose → PENDING; the 500 balance is untouched."""
+    """Verify proposing a withdrawal leaves the user's balance untouched until approved"""
     mirror = await seed_bank_mirror(db_session, test_tenant)
     body = await propose(
         async_client,
@@ -94,7 +94,7 @@ async def test_propose_adjust_system_wallet_is_pending(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """adjust_system_wallet propose → PENDING, no transaction posted."""
+    """Verify proposing a system-wallet top-up moves no money until approved"""
     target = await seed_system_wallet(db_session, test_tenant)
     mirror = await seed_bank_mirror(db_session, test_tenant)
     body = await propose(
@@ -120,7 +120,7 @@ async def test_propose_create_bank_mirror_is_pending_no_account(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """create_bank_mirror propose → PENDING, NO account created yet."""
+    """Verify proposing a bank mirror creates no account until approved"""
     before = await account_count(db_session, test_tenant)
     body = await propose(
         async_client,
@@ -139,7 +139,7 @@ async def test_propose_invalid_payload_422(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """A payload failing the operation schema (negative amount) → 422."""
+    """Verify a move with an invalid amount is rejected before it is recorded"""
     resp = await async_client.post(
         ops_url(test_tenant),
         content=json.dumps(
@@ -164,7 +164,7 @@ async def test_propose_unknown_operation_422(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """An unrecognised operation → 422."""
+    """Verify an unrecognised move type is rejected"""
     resp = await async_client.post(
         ops_url(test_tenant),
         content=json.dumps({"operation": "delete_everything", "payload": {}}),
@@ -179,7 +179,7 @@ async def test_propose_requires_platform_admin(
     test_tenant: Tenant,
     checker_header: dict[str, str],
 ) -> None:
-    """A treasury-approver (no platform-admin) cannot propose → 403."""
+    """Verify only a platform admin can propose a treasury move"""
     resp = await async_client.post(
         ops_url(test_tenant),
         content=json.dumps(
@@ -195,7 +195,7 @@ async def test_propose_unknown_tenant_404(
     async_client: AsyncClient,
     maker_header: dict[str, str],
 ) -> None:
-    """Proposing against an unknown tenant → 404."""
+    """Verify proposing a move for an unknown tenant is reported as not found"""
     from uuid import uuid4
 
     resp = await async_client.post(

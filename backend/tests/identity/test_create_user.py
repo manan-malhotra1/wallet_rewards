@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/identity/users (admin-only after Phase F.4).
+"""Creating a customer — registering a new customer with an identifier.
 
 Covers happy path, validation, duplicate identifier rejection (Pay-PRD-0070),
 and cross-tenant identifier reuse (allowed — Pay-PRD-0070 is per-tenant).
@@ -20,7 +20,7 @@ async def test_create_user_happy_path(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A valid payload creates a user with the requested identifier."""
+    """Verify an admin can create a customer with a phone number"""
     response = await async_client.post(
         "/api/v1/identity/users",
         headers=admin_auth_header,
@@ -49,7 +49,7 @@ async def test_create_user_rejects_unknown_tenant(
     async_client: AsyncClient,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown tenant_id returns 404 tenant_not_found."""
+    """Verify creating a customer under an unknown tenant is rejected"""
     response = await async_client.post(
         "/api/v1/identity/users",
         headers=admin_auth_header,
@@ -68,7 +68,7 @@ async def test_create_user_validates_empty_identifiers(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Empty identifiers list fails Pydantic validation (422)."""
+    """Verify creating a customer with no identifier is rejected"""
     response = await async_client.post(
         "/api/v1/identity/users",
         headers=admin_auth_header,
@@ -83,7 +83,7 @@ async def test_create_user_validates_identifier_type(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown identifier_type fails Pydantic Literal validation."""
+    """Verify creating a customer with an unknown identifier kind is rejected"""
     response = await async_client.post(
         "/api/v1/identity/users",
         headers=admin_auth_header,
@@ -101,7 +101,7 @@ async def test_create_user_rejects_duplicate_phone_in_same_tenant(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Re-registering the same phone within one tenant returns 409 (Pay-PRD-0070)."""
+    """Verify a phone number already registered in the tenant cannot be reused"""
     payload = {
         "tenant_id": str(test_tenant.id),
         "identifiers": [{"identifier_type": "phone", "identifier_value": "+27 82 555 0001"}],
@@ -126,7 +126,7 @@ async def test_create_user_allows_same_phone_in_different_tenant(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """The unique constraint is per-tenant, not global."""
+    """Verify the same phone number can be registered in a different tenant"""
     phone = "+27 82 555 0002"
     a = await async_client.post(
         "/api/v1/identity/users",
@@ -156,7 +156,7 @@ async def test_create_user_with_profile(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Optional profile data is accepted and persisted."""
+    """Verify a customer can be created with profile details"""
     response = await async_client.post(
         "/api/v1/identity/users",
         headers=admin_auth_header,
@@ -178,7 +178,7 @@ async def test_create_user_rejects_unauthenticated_caller(
     async_client: AsyncClient,
     test_tenant: Tenant,
 ) -> None:
-    """No Authorization header → 401 (Phase F.4 admin gate)."""
+    """Verify creating a customer requires signing in"""
     response = await async_client.post(
         "/api/v1/identity/users",
         json={

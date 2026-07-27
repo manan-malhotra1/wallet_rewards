@@ -1,4 +1,4 @@
-"""Tests for the treasury read endpoints — list system wallets + transactions."""
+"""Viewing the operator wallets."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ async def test_list_system_wallets_returns_system_accounts(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """The list returns every account where user_id IS NULL, with balances."""
+    """Verify an admin can see every operator wallet with its balance"""
     db_session.add(
         Account(
             tenant_id=test_tenant.id,
@@ -59,7 +59,7 @@ async def test_list_system_wallets_excludes_user_owned(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """User-owned accounts must NOT appear in the system wallets list."""
+    """Verify customer wallets do not appear in the operator wallet list"""
     db_session.add(
         Account(
             tenant_id=test_tenant.id,
@@ -92,7 +92,7 @@ async def test_system_wallet_transactions_drill_down(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """After a fund, system_cash_inflow should have a DEBIT row visible."""
+    """Verify an admin can drill into an operator wallet's transactions"""
     db_session.add(
         Account(
             tenant_id=test_tenant.id,
@@ -144,7 +144,7 @@ async def test_transactions_cross_tenant_returns_404(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Querying another tenant's system account returns 404."""
+    """Verify an admin cannot view another tenant's operator wallet transactions"""
     acct = Account(
         tenant_id=test_tenant.id,
         user_id=None,
@@ -169,7 +169,7 @@ async def test_transactions_unknown_account_returns_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown account id → 404."""
+    """Verify viewing transactions for an account that does not exist is refused"""
     response = await async_client.get(
         f"/api/v1/treasury/system-wallets/{uuid4()}/transactions",
         params={"tenant_id": str(test_tenant.id)},

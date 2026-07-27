@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/identity/users/{user_id}/identifiers/{id}/verify (Epic 27, Story 27.3).
+"""Verifying an identifier — an admin marking a customer's account number as confirmed.
 
 Covers the manual admin verification of an `account_number` identifier: happy
 path (unverified → verified, one audit row, no raw value in it), type guard
@@ -84,7 +84,7 @@ async def test_verify_account_number_happy_path(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verifying an unverified account_number returns 200, verified=true, one audit row."""
+    """Verify an admin can mark a customer's account number as verified"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 4000")
     identifier = await _add_identifier(
         async_client,
@@ -141,7 +141,7 @@ async def test_verify_rejects_phone_identifier(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verifying a phone identifier via this endpoint is 422 and leaves it unchanged."""
+    """Verify a phone number cannot be manually marked as verified through this action"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 4001")
     # The phone identifier created with the user (verified=False) is the target.
     phone_id = user["identifiers"][0]["id"]
@@ -169,7 +169,7 @@ async def test_verify_already_verified_is_idempotent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A second verify is a no-op (200, still verified) and writes NO second audit row."""
+    """Verify re-verifying an already-verified identifier makes no further change"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 4002")
     identifier = await _add_identifier(
         async_client,
@@ -217,7 +217,7 @@ async def test_verify_unknown_identifier_is_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An unknown identifier id returns 404 user_not_found."""
+    """Verify verifying an identifier that does not exist is rejected"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 4003")
     status, body = await _verify_identifier(
         async_client,
@@ -236,7 +236,7 @@ async def test_verify_identifier_of_wrong_user_is_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An identifier that belongs to a DIFFERENT user is 404 under the given user_id."""
+    """Verify an identifier cannot be verified against the wrong customer"""
     owner = await _create_user(
         async_client, admin_auth_header, test_tenant, phone="+27 82 555 4004"
     )
@@ -270,7 +270,7 @@ async def test_verify_cross_tenant_identifier_is_404(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An identifier in another tenant is invisible — 404, no existence leak (NFR-0220)."""
+    """Verify an admin cannot verify an identifier in another tenant"""
     user = await _create_user(
         async_client, admin_auth_header, other_tenant, phone="+27 82 555 4006"
     )
@@ -301,7 +301,7 @@ async def test_verify_identifier_forbids_non_admin(
     admin_auth_header: dict[str, str],
     make_admin_token,
 ) -> None:
-    """A caller without the platform-admin role is 403."""
+    """Verify only a platform administrator can verify an identifier"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 4007")
     identifier = await _add_identifier(
         async_client,
@@ -328,7 +328,7 @@ async def test_verify_identifier_requires_auth(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """No Authorization header → 401."""
+    """Verify verifying an identifier requires signing in"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 4008")
     identifier = await _add_identifier(
         async_client,

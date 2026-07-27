@@ -1,4 +1,4 @@
-"""No-overdraft floor on the operator cash float (`system_cash_inflow`).
+"""Operator float safeguards.
 
 The cash float is a POSITIVE balance topped up from the bank; float-sourced
 funding (admin `fund` / external partner fund — both DEBIT the float) may run
@@ -149,7 +149,7 @@ async def _count_txns(session: AsyncSession, tenant: Tenant) -> int:
 
 @pytest.mark.asyncio
 async def test_fund_rejected_when_float_empty(db_session: AsyncSession) -> None:
-    """A fund against a zero float is rejected 409 insufficient_float — nothing lands."""
+    """Verify a payout is blocked when the operator float has run out"""
     tenant = await _fresh_tenant(db_session)
     user, wallet = await _user_with_wallet(db_session, tenant)
     txns_before = await _count_txns(db_session, tenant)
@@ -172,7 +172,7 @@ async def test_fund_rejected_when_float_empty(db_session: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_fund_succeeds_after_float_topped_up(db_session: AsyncSession) -> None:
-    """After the bank tops up the float via adjust_system_wallet, the fund lands."""
+    """Verify a payout succeeds once the operator float has been topped up from the bank"""
     tenant = await _fresh_tenant(db_session)
     user, wallet = await _user_with_wallet(db_session, tenant)
     await _top_up_float_via_bank(db_session, tenant, Decimal("500"))
@@ -197,7 +197,9 @@ async def test_fund_succeeds_after_float_topped_up(db_session: AsyncSession) -> 
 
 @pytest.mark.asyncio
 async def test_external_partner_fund_floored_on_empty_float(db_session: AsyncSession) -> None:
-    """The external partner fund path is ALSO floored — it DEBITs the same float.
+    """Verify a partner top-up is turned away without revealing that the operator float is empty
+
+    The external partner fund path is ALSO floored — it DEBITs the same float.
 
     But the partner MUST NOT see the operator-facing `insufficient_float` message
     (it leaks operator liquidity state, security review): the float error is
@@ -234,7 +236,9 @@ async def test_external_partner_fund_floored_on_empty_float(db_session: AsyncSes
 
 @pytest.mark.asyncio
 async def test_fund_reversal_credits_float_and_is_not_blocked(db_session: AsyncSession) -> None:
-    """A fund REVERSAL credits the float back — a net credit to the float is never
+    """Verify reversing a payout returns the money to the operator float
+
+    A fund REVERSAL credits the float back — a net credit to the float is never
     blocked by the floor (crediting the float can only raise it)."""
     tenant = await _fresh_tenant(db_session)
     user, wallet = await _user_with_wallet(db_session, tenant)
@@ -282,7 +286,9 @@ async def test_fund_reversal_credits_float_and_is_not_blocked(db_session: AsyncS
 async def test_financial_wallet_overdraft_still_insufficient_funds(
     db_session: AsyncSession,
 ) -> None:
-    """A user-wallet overdraft still raises the ordinary InsufficientFunds — the
+    """Verify a customer overdraft is reported as insufficient funds, not as an empty float
+
+    A user-wallet overdraft still raises the ordinary InsufficientFunds — the
     new InsufficientFloat is reserved for the cash float only."""
     tenant = await _fresh_tenant(db_session)
     _user, wallet = await _user_with_wallet(db_session, tenant)
@@ -311,7 +317,9 @@ async def test_financial_wallet_overdraft_still_insufficient_funds(
 
 @pytest.mark.asyncio
 async def test_concurrent_funds_cannot_overdraw_float(db_session: AsyncSession) -> None:
-    """M-01 (float axis): two concurrent funds that TOGETHER exceed the float — the
+    """Verify two payouts at once can never drain the operator float below zero
+
+    M-01 (float axis): two concurrent funds that TOGETHER exceed the float — the
     FOR UPDATE lock on the single float row serialises them, exactly one succeeds,
     and the float never goes negative.
 

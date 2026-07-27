@@ -1,4 +1,4 @@
-"""Four-eyes (required_approvals=1): a distinct checker approval EXECUTES the op.
+"""Treasury moves: a second admin's approval makes them happen.
 
 Covers the money-moving effect + `applied_transaction_id` for each operation,
 self-approval rejection, checker role gating, and the deterministic-idempotency
@@ -37,7 +37,7 @@ async def test_fund_user_applies_on_approval(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """A distinct checker approving a fund → APPLIED, wallet credited, txn linked."""
+    """Verify a second admin's approval credits the user's wallet with the funded amount"""
     wallet = await seed_user_wallet(db_session, test_tenant, test_user)
     # fund_user DEBITs the cash float on apply; pre-fund it (no-overdraft floor).
     await seed_float(db_session, test_tenant, Decimal("1000"))
@@ -75,7 +75,7 @@ async def test_withdraw_user_applies_on_approval(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """Approving a withdraw debits the wallet and credits the chosen mirror."""
+    """Verify an approved withdrawal moves money out of the user's wallet"""
     mirror = await seed_bank_mirror(db_session, test_tenant)
     proposed = await propose(
         async_client,
@@ -109,7 +109,7 @@ async def test_adjust_system_wallet_applies_on_approval(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """Approving a positive adjust funds the target system wallet."""
+    """Verify an approved top-up adds money to the operator's system wallet"""
     target = await seed_system_wallet(db_session, test_tenant)
     mirror = await seed_bank_mirror(db_session, test_tenant)
     proposed = await propose(
@@ -140,7 +140,7 @@ async def test_create_bank_mirror_applies_on_approval(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """Approving a create_bank_mirror creates the operator_adjustment account.
+    """Verify an approved request creates the new bank mirror account
 
     No `applied_transaction_id` — creating an account posts no ledger txn.
     """
@@ -177,7 +177,7 @@ async def test_self_approval_forbidden(
     maker_header: dict[str, str],
     maker_who_can_approve: dict[str, str],
 ) -> None:
-    """The maker cannot approve their own request even holding treasury-approver."""
+    """Verify the admin who proposed a move cannot approve their own move"""
     proposed = await propose(
         async_client,
         test_tenant,
@@ -198,7 +198,7 @@ async def test_approve_requires_treasury_approver_role(
     maker_header: dict[str, str],
     make_admin_token,
 ) -> None:
-    """A plain platform-admin (no treasury-approver) approving → 403."""
+    """Verify only an admin with treasury approval rights can approve a move"""
     proposed = await propose(
         async_client,
         test_tenant,
@@ -223,7 +223,7 @@ async def test_second_approve_after_applied_is_409_no_double_post(
     checker_header: dict[str, str],
     checker2_header: dict[str, str],
 ) -> None:
-    """Re-approving an APPLIED request → 409, and NO second transaction posts.
+    """Verify an already-completed move cannot be approved again to move money twice
 
     Guards invariant #2: the deterministic idempotency key plus the terminal
     state check together prevent a double execution.
@@ -265,7 +265,7 @@ async def test_approve_unknown_request_404(
     test_tenant: Tenant,
     checker_header: dict[str, str],
 ) -> None:
-    """Approving a non-existent request → 404."""
+    """Verify approving a move that does not exist is reported as not found"""
     from uuid import uuid4
 
     resp = await approve(async_client, test_tenant, str(uuid4()), checker_header)

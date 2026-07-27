@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/identity/users/{user_id}/pin/reset (admin-only)."""
+"""Admin PIN reset — an administrator issuing a customer a fresh PIN."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ async def test_pin_reset_happy_path(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Resetting writes a new bcrypt hash + returns the plaintext PIN."""
+    """Verify an admin can reset a customer's PIN and receive the new one"""
     response = await async_client.post(
         f"/api/v1/identity/users/{test_user.id}/pin/reset",
         params={"tenant_id": str(test_tenant.id)},
@@ -47,7 +47,7 @@ async def test_pin_reset_unknown_user_returns_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown user_id → 404."""
+    """Verify resetting the PIN of a customer who does not exist is rejected"""
     response = await async_client.post(
         f"/api/v1/identity/users/{uuid4()}/pin/reset",
         params={"tenant_id": str(test_tenant.id)},
@@ -65,7 +65,7 @@ async def test_pin_reset_cross_tenant_returns_404(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Resetting another tenant's user must 404 — no existence leak."""
+    """Verify an admin cannot reset the PIN of a customer in another tenant"""
     response = await async_client.post(
         f"/api/v1/identity/users/{test_user.id}/pin/reset",
         params={"tenant_id": str(other_tenant.id)},
@@ -82,7 +82,7 @@ async def test_pin_reset_each_call_produces_different_pin(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Two consecutive resets should (almost always) produce different PINs.
+    """Verify each PIN reset produces a freshly generated PIN
 
     There's a 1/10000 chance the CSPRNG happens to repeat a 4-digit value,
     but the realistic assertion is that the hash changes — a deterministic

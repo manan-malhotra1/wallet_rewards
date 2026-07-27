@@ -1,4 +1,4 @@
-"""Request-changes → revise → resubmit loop, and withdraw.
+"""User changes: request changes, revise, resubmit, withdraw.
 
 Covers the mandatory-comment guard, the CHANGES_REQUESTED transition, that a
 resubmit resets the approval round (an approval before it doesn't count), and
@@ -31,7 +31,7 @@ async def test_request_changes_moves_to_changes_requested(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """A checker requesting changes (with comment) → CHANGES_REQUESTED."""
+    """Verify a checker can send a user change back to the proposer with a comment"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )
@@ -52,7 +52,7 @@ async def test_request_changes_requires_comment(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """Request-changes with a blank comment → 422 (schema enforces min length)."""
+    """Verify asking for changes on a user change requires a comment explaining why"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )
@@ -73,7 +73,7 @@ async def test_revise_then_resubmit_resets_round(
     checker_header: dict[str, str],
     checker2_header: dict[str, str],
 ) -> None:
-    """After changes → revise → resubmit, the earlier checker may approve afresh.
+    """Verify resubmitting a revised user change clears earlier approvals and starts fresh
 
     A resubmit starts a new round, so `checker` (who acted only as change
     requester before) approving after the resubmit applies the op cleanly.
@@ -118,7 +118,7 @@ async def test_withdraw_is_terminal_and_applies_nothing(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """The maker withdrawing a PENDING request → WITHDRAWN; approve then 409."""
+    """Verify a withdrawn user change can no longer be approved or applied"""
     before = await user_count(db_session, test_tenant)
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
@@ -141,7 +141,7 @@ async def test_withdraw_only_by_maker(
     maker_header: dict[str, str],
     make_admin_token,
 ) -> None:
-    """A different platform-admin cannot withdraw someone else's request → 403."""
+    """Verify only the admin who proposed a user change can withdraw it"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )

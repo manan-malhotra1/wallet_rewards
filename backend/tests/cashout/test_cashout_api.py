@@ -1,4 +1,4 @@
-"""Integration tests for the subscriber cash-out API.
+"""Customer cash-out to an agent.
 
 POST /api/v1/cashout: a subscriber (consumer) sends money to an agent — the
 mirror of agent cash-in. The subscriber is debited (principal + fee), the agent
@@ -64,7 +64,7 @@ async def test_cash_out_happy_path_matches_worked_example(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """Full E2E: subscriber debited principal+fee, agent credited, legs balance."""
+    """Verify a customer cashing out to an agent moves money and commission to the right places"""
     await seed_cashout_step_up_policy(db_session, test_tenant)
     resp = await async_client.post(
         "/api/v1/cashout",
@@ -99,7 +99,7 @@ async def test_cash_out_happy_path_matches_worked_example(
 async def test_cash_out_requires_auth(
     async_client: AsyncClient, worked_example_configs: None
 ) -> None:
-    """No session token -> 401."""
+    """Verify an unauthenticated customer cannot cash out"""
     resp = await async_client.post(
         "/api/v1/cashout",
         content=json.dumps(cash_out_body()),
@@ -116,7 +116,7 @@ async def test_cash_out_permission_denied(
     agent_wallet: Account,
     worked_example_configs: None,
 ) -> None:
-    """A user without the cashout permission -> 403."""
+    """Verify a user without cash-out permission cannot cash out"""
     from app.auth.sessions import create_session
     from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET, User
 
@@ -150,7 +150,7 @@ async def test_cash_out_missing_idempotency_key_422(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """Missing Idempotency-Key header -> 422."""
+    """Verify a cash-out must carry an idempotency key"""
     resp = await async_client.post(
         "/api/v1/cashout",
         content=json.dumps(cash_out_body()),
@@ -166,7 +166,7 @@ async def test_cash_out_unknown_agent_404(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """An unregistered agent identifier -> 404."""
+    """Verify cashing out to an unknown agent is refused"""
     resp = await async_client.post(
         "/api/v1/cashout",
         content=json.dumps(cash_out_body(phone="+27 82 000 0000")),
@@ -184,7 +184,7 @@ async def test_cash_out_recipient_not_agent_422(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """A recipient that resolves to a consumer (not an agent) -> 422."""
+    """Verify a customer can only cash out to an agent, not another customer"""
     from app.shared.models import USER_TYPE_CONSUMER, User, UserIdentifier
 
     other_consumer = User(tenant_id=test_tenant.id, user_type=USER_TYPE_CONSUMER)
@@ -217,7 +217,7 @@ async def test_cash_out_to_self_422(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """A subscriber cashing out to their own identifier -> 422 self_transfer."""
+    """Verify a customer cannot cash out to themselves"""
     resp = await async_client.post(
         "/api/v1/cashout",
         content=json.dumps(cash_out_body(phone=SUBSCRIBER_PHONE)),
@@ -237,7 +237,7 @@ async def test_cash_out_idempotent_replay(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """Same Idempotency-Key returns the original txn; money moves only once."""
+    """Verify sending the same cash-out twice moves money only once"""
     # Fail-closed step-up: seed a high-threshold policy so R100 needs no PIN.
     await seed_cashout_step_up_policy(db_session, test_tenant)
     headers = cash_out_headers(subscriber_auth_header, idem="cashout-replay-1")
@@ -266,7 +266,7 @@ async def test_cash_out_overdraft_on_subscriber_409(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """An amount beyond the subscriber's R500 wallet -> 409 insufficient funds."""
+    """Verify a customer cannot cash out more than their wallet holds"""
     # High-threshold policy so the amount takes the below-threshold (no-PIN)
     # path and reaches the overdraft check rather than a step-up 401.
     await seed_cashout_step_up_policy(db_session, test_tenant)
@@ -287,7 +287,7 @@ async def test_cash_out_tenant_isolation(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """An agent identifier that lives in another tenant -> 404 (isolation)."""
+    """Verify a customer cannot cash out to an agent belonging to another tenant"""
     from app.shared.models import USER_TYPE_AGENT, User, UserIdentifier
 
     other_agent = User(tenant_id=other_tenant.id, user_type=USER_TYPE_AGENT)
@@ -327,7 +327,7 @@ async def test_cash_out_step_up_required_without_pin(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """Cash-out over the step-up threshold without a PIN -> 401 step_up_required."""
+    """Verify a large cash-out asks the customer for their PIN"""
     from app.shared.models import StepUpPolicy
 
     db_session.add(
@@ -359,7 +359,7 @@ async def test_cash_out_step_up_verified_with_pin(
     worked_example_configs: None,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """Cash-out over the threshold WITH the correct PIN -> 201."""
+    """Verify a large cash-out completes when the customer enters the correct PIN"""
     from app.shared.models import StepUpPolicy
 
     db_session.add(
@@ -395,7 +395,7 @@ async def test_cash_out_fails_closed_when_no_config_at_all(
     agent_wallet: Account,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """No pricing/limit config → 422, no money moves (invariant #12)."""
+    """Verify a cash-out is refused and no money moves when the service is unconfigured"""
     assert test_tenant.require_config_to_transact is False  # flag plays no role
     before, _ = await derive_balance(db_session, subscriber_wallet.id)
 
@@ -419,7 +419,7 @@ async def test_cash_out_fails_closed_when_pricing_present_but_limit_missing(
     agent_wallet: Account,
     subscriber_auth_header: dict[str, str],
 ) -> None:
-    """Pricing present but NO cashout limit config → 422, no money moves."""
+    """Verify a cash-out is refused when limits are missing even if pricing exists"""
     from app.modules.pricing.schemas import PricingConfigCreateRequest
     from app.modules.pricing.service import create_pricing_config
     from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET

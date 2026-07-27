@@ -1,4 +1,4 @@
-"""Integration tests for the agent cash-in API (Pricing v2 Epic 21).
+"""Agent cash-in.
 
 POST /api/v1/cashin: an agent funds a customer's wallet from the agent's float
 and earns a commission; fee + tax settle into the system wallets. Covers the
@@ -56,7 +56,7 @@ async def test_cash_in_happy_path_matches_worked_example(
     worked_example_configs: None,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """Full E2E: all five balances match the design spec's worked example."""
+    """Verify an agent cashing in a customer moves money and commission to the right places"""
     resp = await async_client.post(
         "/api/v1/cashin",
         content=json.dumps(cash_in_body(amount="100")),
@@ -91,7 +91,7 @@ async def test_cash_in_happy_path_matches_worked_example(
 async def test_cash_in_requires_auth(
     async_client: AsyncClient, worked_example_configs: None
 ) -> None:
-    """No session token -> 401."""
+    """Verify an unauthenticated agent cannot cash in a customer"""
     resp = await async_client.post(
         "/api/v1/cashin",
         content=json.dumps(cash_in_body()),
@@ -108,7 +108,7 @@ async def test_cash_in_permission_denied(
     customer_wallet: Account,
     worked_example_configs: None,
 ) -> None:
-    """A user without the cash_in permission -> 403."""
+    """Verify a user without cash-in permission cannot cash in a customer"""
     from app.auth.sessions import create_session
     from app.shared.models import ACCOUNT_TYPE_FINANCIAL_WALLET, User
 
@@ -143,7 +143,7 @@ async def test_cash_in_missing_idempotency_key_422(
     worked_example_configs: None,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """Missing Idempotency-Key header -> 422."""
+    """Verify a cash-in must carry an idempotency key"""
     resp = await async_client.post(
         "/api/v1/cashin",
         content=json.dumps(cash_in_body()),
@@ -159,7 +159,7 @@ async def test_cash_in_unknown_customer_404(
     worked_example_configs: None,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """An unregistered customer identifier -> 404."""
+    """Verify cashing in an unknown customer is refused"""
     resp = await async_client.post(
         "/api/v1/cashin",
         content=json.dumps(cash_in_body(phone="+27 82 000 0000")),
@@ -177,7 +177,7 @@ async def test_cash_in_idempotent_replay(
     worked_example_configs: None,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """Same Idempotency-Key returns the original txn; money moves only once."""
+    """Verify sending the same cash-in twice moves money only once"""
     headers = cash_in_headers(agent_auth_header, idem="cashin-replay-1")
     first = await async_client.post(
         "/api/v1/cashin", content=json.dumps(cash_in_body(amount="100")), headers=headers
@@ -200,7 +200,7 @@ async def test_cash_in_overdraft_on_agent_float_409(
     worked_example_configs: None,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """An amount beyond the agent's R500 float -> 409 insufficient funds."""
+    """Verify an agent cannot cash in more than their float holds"""
     resp = await async_client.post(
         "/api/v1/cashin",
         content=json.dumps(cash_in_body(amount="100000")),
@@ -218,7 +218,7 @@ async def test_cash_in_tenant_isolation(
     worked_example_configs: None,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """A customer identifier that lives in another tenant -> 404 (isolation)."""
+    """Verify an agent cannot cash in a customer belonging to another tenant"""
     from app.shared.models import User, UserIdentifier
 
     other_user = User(tenant_id=other_tenant.id)
@@ -257,7 +257,9 @@ async def test_cash_in_fails_closed_when_no_config_at_all(
     customer_wallet: Account,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """No pricing/limit config (and flag NOT set) → 422, no money moves.
+    """Verify a cash-in is refused and no money moves when the service is unconfigured
+
+    No pricing/limit config (and flag NOT set) → 422, no money moves.
 
     Invariant #12: the cash_in charge path fails closed unconditionally when a
     pricing config is missing — before any ledger work.
@@ -285,7 +287,9 @@ async def test_cash_in_fails_closed_when_pricing_present_but_limit_missing(
     customer_wallet: Account,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """Pricing present but NO cash_in limit config → 422, no money moves.
+    """Verify a cash-in is refused when limits are missing even if pricing exists
+
+    Pricing present but NO cash_in limit config → 422, no money moves.
 
     Invariant #12 requires BOTH configs; a limit gap alone fails the charge
     closed (this is the M-01 gap: cash_in used to fail closed on missing pricing
@@ -332,7 +336,7 @@ async def test_cash_in_succeeds_when_both_configs_present(
     worked_example_configs: None,
     agent_auth_header: dict[str, str],
 ) -> None:
-    """Pricing AND a cash_in limit config present (via fixture) → cash-in proceeds."""
+    """Verify a cash-in completes when pricing and limits are configured"""
     resp = await async_client.post(
         "/api/v1/cashin",
         content=json.dumps(cash_in_body(amount="100")),

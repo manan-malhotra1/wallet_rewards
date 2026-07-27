@@ -1,4 +1,4 @@
-"""The treasury money-moving endpoints now PROPOSE a money operation (Epic 18).
+"""Treasury buttons propose instead of moving money directly.
 
 POST /treasury/{fund-user,withdraw,adjust-system-wallet,bank-mirrors} return a
 PENDING money-operation request and execute nothing until a distinct checker
@@ -33,7 +33,7 @@ async def test_treasury_fund_user_proposes_not_executes(
     test_user: User,
     maker_header: dict[str, str],
 ) -> None:
-    """POST /treasury/fund-user returns a PENDING money operation; no money moved."""
+    """Verify using the fund-user button proposes a move instead of paying out immediately"""
     wallet = await seed_user_wallet(db_session, test_tenant, test_user)
     resp = await async_client.post(
         "/api/v1/treasury/fund-user",
@@ -66,7 +66,7 @@ async def test_treasury_fund_user_executes_after_approval(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """The proposal created via the treasury endpoint applies once approved."""
+    """Verify a fund-user move made from the treasury screen pays out once approved"""
     wallet = await seed_user_wallet(db_session, test_tenant, test_user)
     # The approved fund_user DEBITs the cash float; pre-fund it (no-overdraft floor).
     await seed_float(db_session, test_tenant, Decimal("1000"))
@@ -98,7 +98,7 @@ async def test_treasury_bank_mirror_proposes_not_executes(
     test_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """POST /treasury/bank-mirrors proposes; the account isn't created yet."""
+    """Verify using the bank-mirror button proposes a move instead of creating the account"""
     from tests.money_operations.conftest import account_count
 
     before = await account_count(db_session, test_tenant)
@@ -119,7 +119,7 @@ async def test_treasury_fund_user_requires_auth(
     test_tenant: Tenant,
     test_user: User,
 ) -> None:
-    """Anonymous propose via the treasury endpoint → 401."""
+    """Verify a signed-out user cannot propose a treasury move"""
     resp = await async_client.post(
         "/api/v1/treasury/fund-user",
         json={

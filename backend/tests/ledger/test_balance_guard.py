@@ -1,4 +1,4 @@
-"""Balance-guard tests for `post_transaction` (invariant #11).
+"""Wallet balance limits.
 
 The guard locks every user `financial_wallet` leg and enforces overdraft (net
 debit) + max_balance (net credit) UNDER that lock — the single authoritative
@@ -53,7 +53,7 @@ async def _set_zar_cap(session: AsyncSession, tenant: Tenant, cap: str) -> None:
 async def test_guard_rejects_credit_over_max_balance(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """A normal credit that would breach max_balance is rejected; nothing lands."""
+    """Verify a customer cannot hold more than their wallet's maximum balance"""
     inflow = await _zar_inflow(db_session, test_tenant)
     await _set_zar_cap(db_session, test_tenant, "100")
 
@@ -84,7 +84,9 @@ async def test_guard_rejects_credit_over_max_balance(
 async def test_guard_allows_reversal_over_max_balance(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """A reversal / refund is cap-exempt (invariant #11b): restoring funds may push
+    """Verify a refund can be received even when it pushes a wallet past its maximum balance
+
+    A reversal / refund is cap-exempt (invariant #11b): restoring funds may push
     a wallet over max_balance and must never be blocked."""
     inflow = await _zar_inflow(db_session, test_tenant)
     await _set_zar_cap(db_session, test_tenant, "100")
@@ -117,7 +119,9 @@ async def test_guard_allows_reversal_over_max_balance(
 async def test_guard_skips_collection_account_credit(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """A credit to a merchant collection account is never cap-checked, even with a
+    """Verify a merchant collection account has no balance ceiling
+
+    A credit to a merchant collection account is never cap-checked, even with a
     currency cap configured — pool accounts have no ceiling (invariant #11a)."""
     inflow = await _zar_inflow(db_session, test_tenant)
     await _set_zar_cap(db_session, test_tenant, "100")
@@ -156,7 +160,7 @@ async def test_guard_skips_collection_account_credit(
 async def test_guard_rejects_debit_over_available_balance(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
 ) -> None:
-    """A debit that would overdraw the wallet is rejected; nothing lands."""
+    """Verify a customer cannot spend more than their wallet balance"""
     inflow = await _zar_inflow(db_session, test_tenant)
     # user_wallet opens at 0 — debiting 50 must fail overdraft.
     with pytest.raises(InsufficientFunds):

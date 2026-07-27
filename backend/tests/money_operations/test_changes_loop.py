@@ -1,4 +1,4 @@
-"""Request-changes / revise / resubmit / withdraw loop + approval-round reset.
+"""Treasury moves: request changes, revise, resubmit, withdraw.
 
 Covers the mandatory request-changes comment, the maker-only revise/resubmit/
 withdraw guard, and — the key N-eyes property — that a resubmit RESETS the
@@ -45,7 +45,7 @@ async def test_request_changes_requires_comment(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """request-changes with a blank comment → 422."""
+    """Verify asking for changes on a move requires a comment explaining why"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror("C")
     )
@@ -64,7 +64,7 @@ async def test_request_changes_moves_to_changes_requested(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """A checker's request-changes → CHANGES_REQUESTED with the comment recorded."""
+    """Verify a checker can send a move back to the proposer with a comment"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror("C")
     )
@@ -87,7 +87,9 @@ async def test_revise_resubmit_resets_approval_round(
     checker_header: dict[str, str],
     checker2_header: dict[str, str],
 ) -> None:
-    """A resubmit resets the round: a prior approval no longer counts, and the
+    """Verify resubmitting a revised move clears earlier approvals and starts fresh
+
+    A resubmit resets the round: a prior approval no longer counts, and the
     same checker may approve the fresh round."""
     db_session.add(
         ApprovalPolicy(tenant_id=test_tenant.id, operation=None, required_approvals=2)
@@ -137,7 +139,7 @@ async def test_revise_by_non_maker_forbidden(
     checker_header: dict[str, str],
     make_admin_token,
 ) -> None:
-    """Only the original maker may revise a CHANGES_REQUESTED request → 403."""
+    """Verify only the admin who proposed a move can revise it"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror("C")
     )
@@ -163,7 +165,7 @@ async def test_withdraw_is_terminal_no_execution(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """Maker withdraws → WITHDRAWN; a later approve → 409, nothing executed."""
+    """Verify a withdrawn move can no longer be approved or executed"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror("Gone")
     )
@@ -186,7 +188,7 @@ async def test_withdraw_by_non_maker_forbidden(
     maker_header: dict[str, str],
     make_admin_token,
 ) -> None:
-    """Only the original maker may withdraw a request → 403."""
+    """Verify only the admin who proposed a move can withdraw it"""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror("C")
     )
@@ -205,7 +207,9 @@ async def test_review_thread_records_whole_loop(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """The append-only thread captures submitted → changes → revised → resubmitted
+    """Verify the move keeps a full history of every step from proposal to completion
+
+    The append-only thread captures submitted → changes → revised → resubmitted
     → approved → applied for a two-eyes op."""
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror("Thread")

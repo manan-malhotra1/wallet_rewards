@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/redemption/initiate.
+"""Starting a points redemption — reserving points to spend.
 
 Covers the overdraft-prevention scenarios from Phase D threat model §5.
 Phase F.4 removed `tenant_id` + `user_id` from the body — both come from
@@ -154,7 +154,7 @@ async def test_initiate_happy_path(
     redemption_configs: None,
     idempotency_header: dict[str, str],
 ) -> None:
-    """Alice 150 pts → redeem 100 → PENDING redemption, available drops to 50."""
+    """Verify a customer can start redeeming points and the spent points are held aside"""
     await _credit_user_points(db_session, test_tenant, test_user, Decimal("150"), seed_key="happy")
     provider_id = await _register_provider(async_client, test_tenant)
 
@@ -189,7 +189,7 @@ async def test_initiate_rejects_insufficient_points(
     redemption_configs: None,
     idempotency_header: dict[str, str],
 ) -> None:
-    """Redeeming more than available → 409 insufficient_funds, no ledger write."""
+    """Verify a customer cannot redeem more points than they have"""
     await _credit_user_points(db_session, test_tenant, test_user, Decimal("50"), seed_key="insuf")
     provider_id = await _register_provider(async_client, test_tenant)
 
@@ -219,7 +219,7 @@ async def test_initiate_rejects_unknown_provider(
     system_points_account: Account,
     idempotency_header: dict[str, str],
 ) -> None:
-    """Unknown provider_id → 404."""
+    """Verify a customer cannot redeem through a provider that does not exist"""
     await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"), seed_key="up")
     response = await async_client.post(
         "/api/v1/redemption/initiate",
@@ -243,7 +243,7 @@ async def test_initiate_idempotent_replay(
     system_points_account: Account,
     redemption_configs: None,
 ) -> None:
-    """Same Idempotency-Key returns same redemption_id — no double-debit."""
+    """Verify retrying the same redemption request does not spend points twice"""
     await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"), seed_key="idem")
     provider_id = await _register_provider(async_client, test_tenant)
     user_header = await _user_auth_header(test_user)
@@ -282,7 +282,7 @@ async def test_initiate_concurrent_double_spend_blocked(
     system_points_account: Account,
     redemption_configs: None,
 ) -> None:
-    """Two simultaneous full-balance redemptions: only ONE succeeds."""
+    """Verify two redemptions submitted at once cannot spend the same points twice"""
     await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"), seed_key="race")
     provider_id = await _register_provider(async_client, test_tenant)
     user_header = await _user_auth_header(test_user)
@@ -315,7 +315,7 @@ async def test_initiate_cross_tenant_provider_rejects(
     system_points_account: Account,
     idempotency_header: dict[str, str],
 ) -> None:
-    """Provider exists in other_tenant; test_tenant user → 404 (no leak).
+    """Verify a customer cannot redeem through another business's provider
 
     Tenant comes from Alice's session (test_tenant). She references a
     provider_id that belongs to other_tenant — the tenant-scoped lookup
@@ -355,7 +355,7 @@ async def test_initiate_fails_closed_when_no_config(
     system_points_account: Account,
     idempotency_header: dict[str, str],
 ) -> None:
-    """No redemption pricing/limit config → 422, no points reserved."""
+    """Verify a redemption is refused when the service has not been set up"""
     await _credit_user_points(db_session, test_tenant, test_user, Decimal("150"), seed_key="fc")
     provider_id = await _register_provider(async_client, test_tenant)
 
@@ -383,7 +383,7 @@ async def test_initiate_fails_closed_when_only_limit(
     system_points_account: Account,
     idempotency_header: dict[str, str],
 ) -> None:
-    """Limit present but pricing missing → still 422 (BOTH required)."""
+    """Verify a redemption is refused when its pricing has not been set up"""
     await _credit_user_points(db_session, test_tenant, test_user, Decimal("150"), seed_key="fcl")
     await _seed_redemption_configs(db_session, test_tenant, with_pricing=False)
     provider_id = await _register_provider(async_client, test_tenant)

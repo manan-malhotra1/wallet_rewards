@@ -1,4 +1,4 @@
-"""Audit-trail test for PATCH /api/v1/tenants/{id} (NFR-0160 / NFR-0250).
+"""Editing a tenant is recorded in the audit trail.
 
 Editing a tenant's identity card is an administrator action and must land an
 immutable `audit_log` row with the before/after snapshot.
@@ -25,6 +25,7 @@ async def test_patch_tenant_writes_audit(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
+    """Verify editing a tenant is recorded in the audit trail with the old and new values"""
     new_name = f"renamed-{uuid4().hex[:8]}"
     old_name = test_tenant.name
     resp = await async_client.patch(

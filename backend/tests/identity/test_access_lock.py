@@ -1,4 +1,4 @@
-"""Tests for the admin access-lock endpoint (migration 0045).
+"""Admin access lock — locking and unlocking a customer's account.
 
 POST /api/v1/identity/users/{user_id}/access — an immediate, audited
 platform-admin override that sets a user's access level (active /
@@ -58,7 +58,7 @@ async def test_set_access_level_flips_status(
     level: str,
     expected_status: str,
 ) -> None:
-    """Each level maps to the right user.status and is echoed back."""
+    """Verify an admin can set a customer to active, login-locked, or transactions-locked"""
     resp = await async_client.post(
         _access_url(test_user.id),
         params={"tenant_id": str(test_tenant.id)},
@@ -78,7 +78,7 @@ async def test_login_lock_kills_live_session(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A live user session is dead immediately after the admin sets login_locked."""
+    """Verify locking a customer's login immediately ends their active session"""
     token = await create_session_token_for_user(test_user.id, test_tenant.id)
     # Session works before the lock.
     before = await async_client.get(
@@ -111,7 +111,7 @@ async def test_transactions_lock_does_not_kill_session(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """transactions_locked keeps the session alive — the user can still read."""
+    """Verify blocking a customer's transactions still lets them stay signed in"""
     token = await create_session_token_for_user(test_user.id, test_tenant.id)
     await async_client.post(
         _access_url(test_user.id),
@@ -133,7 +133,7 @@ async def test_access_requires_platform_admin(
     test_user: User,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A token without platform-admin is forbidden (403)."""
+    """Verify only a platform administrator can change a customer's access"""
     token = make_admin_token(roles=["support-agent"])
     resp = await async_client.post(
         _access_url(test_user.id),
@@ -151,7 +151,7 @@ async def test_access_invalid_level_is_422(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An unknown level (e.g. 'closed') fails schema validation (422)."""
+    """Verify an unrecognised access level is rejected"""
     resp = await async_client.post(
         _access_url(test_user.id),
         params={"tenant_id": str(test_tenant.id)},
@@ -167,7 +167,7 @@ async def test_access_unknown_user_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Unknown user_id → 404 user_not_found."""
+    """Verify locking a customer who does not exist is rejected"""
     resp = await async_client.post(
         _access_url(uuid4()),
         params={"tenant_id": str(test_tenant.id)},
@@ -185,7 +185,7 @@ async def test_access_cross_tenant_404(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Locking a user in another tenant must 404 — no existence leak."""
+    """Verify an admin cannot lock a customer belonging to another tenant"""
     resp = await async_client.post(
         _access_url(test_user.id),
         params={"tenant_id": str(other_tenant.id)},
@@ -203,7 +203,7 @@ async def test_access_writes_audit_row_with_before_after(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """The change is audited as admin.user_access_changed with before/after."""
+    """Verify every access change is recorded in the audit trail"""
     await create_session_token_for_user(test_user.id, test_tenant.id)
     await async_client.post(
         _access_url(test_user.id),
@@ -236,7 +236,7 @@ async def test_user_detail_surfaces_access_level(
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """The user-detail payload derives access_level from status."""
+    """Verify a customer's current access level shows on their profile"""
     # Active by default.
     detail = await async_client.get(
         f"/api/v1/identity/users/{test_user.id}",

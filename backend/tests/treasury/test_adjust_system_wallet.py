@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/treasury/adjust-system-wallet (fund/withdraw float).
+"""Adjusting the operator float.
 
 Epic 18: adjust now PROPOSES a money operation; the transaction posts only after
 a distinct treasury-approver approves it. Body-level validation (required bank
@@ -111,7 +111,7 @@ async def test_fund_float_credits_target_and_debits_chosen_mirror(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """Positive amount: target balance goes up, the chosen mirror goes down."""
+    """Verify topping up the operator float raises it and lowers the chosen bank record"""
     target = await _seed_system_cash_inflow(db_session, test_tenant)
     mirror = await _seed_bank_mirror(db_session, test_tenant)
 
@@ -144,7 +144,7 @@ async def test_adjust_posts_counter_leg_to_the_chosen_mirror(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """The counter-leg lands on the selected mirror, leaving others untouched."""
+    """Verify a float adjustment affects only the bank record the operator chose"""
     target = await _seed_system_cash_inflow(db_session, test_tenant)
     chosen = await _seed_bank_mirror(db_session, test_tenant, name="Standard Bank")
     other = await _seed_bank_mirror(db_session, test_tenant, name="Nedbank")
@@ -173,7 +173,7 @@ async def test_withdraw_float_debits_target_and_credits_mirror(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """Negative amount: target goes down, the chosen mirror goes up."""
+    """Verify drawing down the operator float lowers it and raises the chosen bank record"""
     target = await _seed_system_cash_inflow(db_session, test_tenant)
     mirror = await _seed_bank_mirror(db_session, test_tenant)
 
@@ -213,7 +213,7 @@ async def test_adjust_zero_amount_rejected(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Zero adjustment is meaningless → 422 at propose (payload validation)."""
+    """Verify an operator cannot make a float adjustment of zero"""
     target = await _seed_system_cash_inflow(db_session, test_tenant)
     mirror = await _seed_bank_mirror(db_session, test_tenant)
 
@@ -239,7 +239,7 @@ async def test_adjust_cross_tenant_returns_404_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """Adjusting another tenant's account resolves to 404 on approval."""
+    """Verify an operator cannot adjust another tenant's float"""
     target = await _seed_system_cash_inflow(db_session, test_tenant)
     mirror = await _seed_bank_mirror(db_session, other_tenant)
     proposed = await _propose_adjust(
@@ -266,7 +266,7 @@ async def test_cannot_adjust_bank_mirror_as_target_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """A bank mirror is only ever a counter-leg; targeting one → 422 on approval."""
+    """Verify a bank record cannot itself be the target of a float adjustment"""
     target_mirror = await _seed_bank_mirror(db_session, test_tenant, name="Target")
     counter_mirror = await _seed_bank_mirror(db_session, test_tenant, name="Counter")
 
@@ -295,7 +295,7 @@ async def test_adjust_unknown_account_returns_404_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """Unknown account_id → 404 on approval."""
+    """Verify adjusting an account that does not exist is refused"""
     mirror = await _seed_bank_mirror(db_session, test_tenant)
     proposed = await _propose_adjust(
         async_client,
@@ -321,7 +321,7 @@ async def test_adjust_unknown_mirror_returns_404_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """A bank_mirror_account_id that doesn't exist → 404 on approval."""
+    """Verify adjusting the float against a bank record that does not exist is refused"""
     target = await _seed_system_cash_inflow(db_session, test_tenant)
     proposed = await _propose_adjust(
         async_client,
@@ -347,7 +347,7 @@ async def test_adjust_mirror_currency_mismatch_returns_422_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """A mirror in a different currency than the target → 422 on approval."""
+    """Verify a float adjustment must use a bank record in the same currency"""
     target = await _seed_system_cash_inflow(db_session, test_tenant, currency="ZAR")
     usd_mirror = await _seed_bank_mirror(db_session, test_tenant, name="USD", currency="USD")
     proposed = await _propose_adjust(
@@ -373,7 +373,7 @@ async def test_adjust_requires_auth(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """Anonymous adjust → 401 at propose."""
+    """Verify an unauthenticated user cannot adjust the operator float"""
     target = await _seed_system_cash_inflow(db_session, test_tenant)
     mirror = await _seed_bank_mirror(db_session, test_tenant)
     response = await async_client.post(
@@ -396,7 +396,7 @@ async def test_adjust_missing_bank_mirror_is_validation_error(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Omitting bank_mirror_account_id is a 422 at propose — the field is required."""
+    """Verify a float adjustment must name which bank record to use"""
     target = await _seed_system_cash_inflow(db_session, test_tenant)
     response = await async_client.post(
         "/api/v1/treasury/adjust-system-wallet",

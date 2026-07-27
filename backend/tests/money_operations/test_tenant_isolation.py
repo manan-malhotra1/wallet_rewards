@@ -1,4 +1,4 @@
-"""Tenant isolation + ledger balance preserved on apply (Epic 18)."""
+"""Treasury moves stay within one tenant."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ async def test_request_not_visible_across_tenants(
     other_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """A request proposed in tenant A is 404 when fetched under tenant B."""
+    """Verify one tenant cannot see another tenant's treasury move"""
     proposed = await propose(
         async_client,
         test_tenant,
@@ -49,7 +49,7 @@ async def test_approve_across_tenants_404(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """Approving a tenant-A request while scoped to tenant B → 404 (no leak)."""
+    """Verify one tenant cannot approve another tenant's treasury move"""
     proposed = await propose(
         async_client,
         test_tenant,
@@ -68,7 +68,7 @@ async def test_list_is_tenant_scoped(
     other_tenant: Tenant,
     maker_header: dict[str, str],
 ) -> None:
-    """The list endpoint returns only the querying tenant's operations."""
+    """Verify the moves list shows only the current tenant's moves"""
     await propose(
         async_client,
         test_tenant,
@@ -90,7 +90,7 @@ async def test_ledger_balances_to_zero_after_apply(
     maker_header: dict[str, str],
     checker_header: dict[str, str],
 ) -> None:
-    """After a withdraw applies, the tenant's ledger still sums to zero (invariant #1).
+    """Verify the books still balance after a treasury move is applied
 
     A withdraw posts a balanced 2-leg transaction through `post_transaction`, so
     debits and credits net to zero across the tenant's accounts.

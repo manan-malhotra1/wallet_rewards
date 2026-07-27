@@ -1,4 +1,4 @@
-"""Tests for bank-mirror admin endpoints.
+"""Managing bank records.
 
   - POST  /api/v1/treasury/bank-mirrors            PROPOSE a named mirror (Epic 18)
   - PATCH /api/v1/treasury/bank-mirrors/{id}       rename a mirror (direct — no money)
@@ -89,7 +89,7 @@ async def test_create_bank_mirror_happy_path(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """Propose+approve creates a named operator_adjustment account."""
+    """Verify an operator can add a named bank record once a second operator approves it"""
     proposed = await _propose_create(
         async_client, test_tenant, admin_auth_header, name="Standard Bank"
     )
@@ -123,7 +123,7 @@ async def test_create_bank_mirror_duplicate_name_returns_409_at_apply(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """A name already used in this (tenant, currency) is rejected 409 on approval."""
+    """Verify a bank record cannot reuse a name already taken in the same currency"""
     await _seed_bank_mirror(db_session, test_tenant, name="Standard Bank")
     proposed = await _propose_create(
         async_client, test_tenant, admin_auth_header, name="Standard Bank"
@@ -144,7 +144,7 @@ async def test_two_mirrors_with_different_names_coexist(
     admin_auth_header: dict[str, str],
     approver_header: dict[str, str],
 ) -> None:
-    """Two differently-named mirrors coexist for the same currency."""
+    """Verify two differently named bank records can exist for the same currency"""
     for name in ("Standard Bank", "Nedbank"):
         proposed = await _propose_create(async_client, test_tenant, admin_auth_header, name=name)
         assert proposed.status_code == 201, proposed.text
@@ -174,7 +174,7 @@ async def test_create_bank_mirror_requires_auth(
     async_client: AsyncClient,
     test_tenant: Tenant,
 ) -> None:
-    """Anonymous create → 401 at propose."""
+    """Verify an unauthenticated user cannot add a bank record"""
     resp = await async_client.post(
         "/api/v1/treasury/bank-mirrors",
         params={"tenant_id": str(test_tenant.id)},
@@ -189,7 +189,7 @@ async def test_create_bank_mirror_wrong_role_returns_403(
     test_tenant: Tenant,
     make_admin_token: Callable[..., str],
 ) -> None:
-    """A token without platform-admin → 403 at propose."""
+    """Verify a user without administrator rights cannot add a bank record"""
     token = make_admin_token(roles=["support-agent"])
     resp = await async_client.post(
         "/api/v1/treasury/bank-mirrors",
@@ -206,7 +206,7 @@ async def test_create_bank_mirror_blank_name_returns_422(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An empty name fails body validation → 422 at propose."""
+    """Verify a bank record must be given a name"""
     resp = await async_client.post(
         "/api/v1/treasury/bank-mirrors",
         headers=admin_auth_header,
@@ -228,7 +228,7 @@ async def test_rename_bank_mirror_happy_path(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Renames the mirror; the response reflects the new name."""
+    """Verify an operator can rename a bank record"""
     mirror = await _seed_bank_mirror(db_session, test_tenant, name="Old Name")
     resp = await async_client.patch(
         f"/api/v1/treasury/bank-mirrors/{mirror.id}",
@@ -247,7 +247,7 @@ async def test_rename_bank_mirror_collision_returns_409(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Renaming onto an existing mirror's name in the same scope → 409."""
+    """Verify a bank record cannot be renamed to a name already in use"""
     await _seed_bank_mirror(db_session, test_tenant, name="Standard Bank")
     other = await _seed_bank_mirror(db_session, test_tenant, name="Nedbank")
     resp = await async_client.patch(
@@ -266,7 +266,7 @@ async def test_rename_unknown_mirror_returns_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Renaming an id that doesn't exist → 404."""
+    """Verify renaming a bank record that does not exist is refused"""
     resp = await async_client.patch(
         f"/api/v1/treasury/bank-mirrors/{uuid4()}",
         headers=admin_auth_header,
@@ -283,7 +283,7 @@ async def test_rename_non_operator_adjustment_account_returns_404(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A non-bank-mirror system account can't be renamed via this surface."""
+    """Verify only bank records can be renamed through this screen"""
     inflow = Account(
         tenant_id=test_tenant.id,
         user_id=None,
@@ -311,7 +311,7 @@ async def test_rename_cross_tenant_returns_404(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A mirror belonging to another tenant is not renamable → 404."""
+    """Verify an operator cannot rename another tenant's bank record"""
     foreign = await _seed_bank_mirror(db_session, other_tenant, name="Theirs")
     resp = await async_client.patch(
         f"/api/v1/treasury/bank-mirrors/{foreign.id}",
@@ -328,7 +328,7 @@ async def test_rename_bank_mirror_requires_auth(
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """Anonymous rename → 401."""
+    """Verify an unauthenticated user cannot rename a bank record"""
     mirror = await _seed_bank_mirror(db_session, test_tenant, name="Old")
     resp = await async_client.patch(
         f"/api/v1/treasury/bank-mirrors/{mirror.id}",

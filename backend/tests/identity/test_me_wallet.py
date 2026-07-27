@@ -1,4 +1,4 @@
-"""Tests for GET /api/v1/identity/me/wallet (user-facing wallet view).
+"""My wallet — the account view a signed-in customer sees.
 
 The mobile-simulator and the eventual real mobile app call this endpoint
 to render the user's accounts + recent transactions. Auth is the user's
@@ -34,7 +34,7 @@ async def test_me_wallet_returns_caller_accounts(
     test_user: User,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Auth as test_user → response carries that user's id + accounts."""
+    """Verify a signed-in customer sees their own accounts"""
     # Give the user a ZAR financial wallet so accounts is non-empty.
     db_session.add(
         Account(
@@ -72,7 +72,7 @@ async def test_me_wallet_transaction_exposes_fee_commission_tax(
     test_user: User,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Each recent-transaction row carries fee/commission/tax (Epic 25 sim display)."""
+    """Verify each recent transaction shows its fee, commission, and tax"""
     from decimal import Decimal
 
     from app.modules.payments.service import fund
@@ -115,7 +115,7 @@ async def test_me_wallet_transaction_exposes_reference(
     test_user: User,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Each recent-transaction row carries the customer-facing `reference`."""
+    """Verify each recent transaction shows its customer-facing reference"""
     import re
     from decimal import Decimal
 
@@ -149,14 +149,14 @@ async def test_me_wallet_transaction_exposes_reference(
 
 @pytest.mark.asyncio
 async def test_me_wallet_no_token_is_401(async_client: AsyncClient) -> None:
-    """Missing Authorization header → 401."""
+    """Verify viewing the wallet requires signing in"""
     response = await async_client.get("/api/v1/identity/me/wallet")
     assert response.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_me_wallet_bad_token_is_401(async_client: AsyncClient) -> None:
-    """Unknown bearer token → 401."""
+    """Verify an invalid session cannot view the wallet"""
     response = await async_client.get(
         "/api/v1/identity/me/wallet",
         headers={"Authorization": "Bearer not-a-real-session-token"},
@@ -172,7 +172,7 @@ async def test_me_wallet_does_not_leak_other_users_accounts(
     test_user: User,
     alice_auth_header: dict[str, str],
 ) -> None:
-    """Another user's accounts in the same tenant must NOT appear."""
+    """Verify a customer never sees another customer's accounts"""
     other = User(tenant_id=test_tenant.id)
     db_session.add(other)
     await db_session.commit()

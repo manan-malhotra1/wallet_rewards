@@ -1,4 +1,4 @@
-"""Tests for PATCH /api/v1/identity/users/{user_id}/type (Epic 12).
+"""Changing a customer's type — promoting or reclassifying a customer.
 
 Covers the happy path, Decision-D4 parent rules on type change, mandatory
 reason, RBAC (401/403), tenant isolation (404), and state-based idempotency
@@ -68,7 +68,7 @@ async def test_change_type_happy_path(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A consumer can be promoted to super_agent."""
+    """Verify a customer can be promoted to a super agent"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 2000")
     status, body = await _patch_type(
         async_client,
@@ -88,7 +88,7 @@ async def test_change_type_attaches_valid_parent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Changing a user to agent under a super_agent parent succeeds."""
+    """Verify a customer can become an agent under a super agent"""
     parent = await _create_user(
         async_client,
         admin_auth_header,
@@ -116,7 +116,7 @@ async def test_change_type_rejects_incompatible_parent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Changing to agent under a consumer parent is rejected 422."""
+    """Verify an agent cannot be placed under an incompatible parent"""
     consumer_parent = await _create_user(
         async_client, admin_auth_header, test_tenant, phone="+27 82 555 2003"
     )
@@ -139,7 +139,7 @@ async def test_change_to_toplevel_type_rejects_parent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Changing to consumer while supplying a parent is rejected 422."""
+    """Verify a top-level customer cannot be given a parent"""
     parent = await _create_user(
         async_client,
         admin_auth_header,
@@ -166,7 +166,7 @@ async def test_change_type_rejects_self_parent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """A user cannot be set as its own parent (422), even if types would match."""
+    """Verify a customer cannot be made their own parent"""
     user = await _create_user(
         async_client,
         admin_auth_header,
@@ -192,7 +192,7 @@ async def test_change_type_requires_reason(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An empty reason fails validation (422) — reason is mandatory for audit."""
+    """Verify changing a customer's type requires a reason"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 2008")
     status, _ = await _patch_type(
         async_client,
@@ -211,7 +211,7 @@ async def test_change_type_rejects_invalid_type(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An unknown new_type fails Pydantic Literal validation (422)."""
+    """Verify changing to an unknown customer type is rejected"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 2009")
     status, _ = await _patch_type(
         async_client,
@@ -229,7 +229,7 @@ async def test_change_type_requires_auth(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """No Authorization header → 401."""
+    """Verify changing a customer's type requires signing in"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 2010")
     status, _ = await _patch_type(
         async_client,
@@ -248,7 +248,7 @@ async def test_change_type_forbids_non_admin(
     admin_auth_header: dict[str, str],
     make_admin_token,
 ) -> None:
-    """A token without the platform-admin role → 403."""
+    """Verify only a platform administrator can change a customer's type"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 2011")
     non_admin = {"Authorization": f"Bearer {make_admin_token(roles=['viewer'])}"}
     status, _ = await _patch_type(
@@ -268,7 +268,7 @@ async def test_change_type_tenant_isolation(
     other_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Changing a user via the wrong tenant_id returns 404 (no existence leak)."""
+    """Verify an admin cannot change the type of a customer in another tenant"""
     user = await _create_user(
         async_client, admin_auth_header, other_tenant, phone="+27 82 555 2012"
     )
@@ -289,7 +289,7 @@ async def test_change_type_unknown_user(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """An unknown user_id returns 404."""
+    """Verify changing the type of a customer who does not exist is rejected"""
     status, body = await _patch_type(
         async_client,
         admin_auth_header,
@@ -308,7 +308,7 @@ async def test_change_type_is_idempotent(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Repeating the same change is a no-op — exactly one audit row is written."""
+    """Verify repeating the same type change makes no further recorded change"""
     user = await _create_user(async_client, admin_auth_header, test_tenant, phone="+27 82 555 2013")
     first = await _patch_type(
         async_client,

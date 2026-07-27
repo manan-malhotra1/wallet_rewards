@@ -16,9 +16,12 @@ TRUNCATE-between-tests pattern avoids that entirely.
 
 from __future__ import annotations
 
+import json
+import os
 import time
 from collections.abc import AsyncIterator, Callable
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -603,3 +606,53 @@ async def alice_session_token(test_user) -> str:
 async def alice_auth_header(alice_session_token: str) -> dict[str, str]:
     """Authorization header dict bound to test_user's session."""
     return {"Authorization": f"Bearer {alice_session_token}"}
+
+
+# ---------------------------------------------------------------------------
+# Test-report recorder (opt-in) — see scripts/build_test_report.py
+#
+# When SASAI_TEST_REPORT=1, record each test's outcome + duration to
+# test-reports/backend-run.json. The report generator joins this with each
+# test's docstring/section (via AST) and git history to render the HTML report.
+# Gated by the env var so a normal `make test` / CI run writes nothing.
+# ---------------------------------------------------------------------------
+_REPORT_RESULTS: dict[str, dict[str, object]] = {}
+
+
+def _report_enabled() -> bool:
+    """True when the run should emit the report sidecar (SASAI_TEST_REPORT=1)."""
+    return os.getenv("SASAI_TEST_REPORT") == "1"
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Capture each test's result for the report sidecar.
+
+    Records the `call` phase outcome (the assertion result), plus any non-passing
+    `setup`/`teardown` phase so collection/fixture errors surface as failures.
+    No-op unless SASAI_TEST_REPORT=1.
+    """
+    if not _report_enabled():
+        return
+    if report.when == "call" or (report.when != "call" and report.outcome != "passed"):
+        prior = _REPORT_RESULTS.get(report.nodeid, {})
+        # A prior non-passing phase (e.g. failed setup) wins over a later skip.
+        if prior.get("outcome") in ("failed", "error"):
+            return
+        _REPORT_RESULTS[report.nodeid] = {
+            "outcome": report.outcome,
+            "duration": round(report.duration, 3),
+        }
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Write the collected results to test-reports/backend-run.json.
+
+    No-op unless SASAI_TEST_REPORT=1. Path is repo-root/test-reports so the
+    combined report generator can find backend + frontend runs side by side.
+    """
+    if not _report_enabled():
+        return
+    repo_root = Path(__file__).resolve().parents[2]
+    out = repo_root / "test-reports" / "backend-run.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(_REPORT_RESULTS, indent=2, sort_keys=True))

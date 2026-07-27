@@ -44,8 +44,8 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("CreateStepUpDialog edit mode seeds the policy's real transaction_type", () => {
-  it("submits an update carrying transaction_type 'cash_in' (not collapsed to p2p)", async () => {
+describe("Step-up PIN policy form", () => {
+  it("Editing a policy keeps that policy's own service instead of resetting it", async () => {
     const user = userEvent.setup();
     render(<CreateStepUpDialog tenantId="tenant-1" open editPolicy={cashInPolicy} />);
 
@@ -61,10 +61,8 @@ describe("CreateStepUpDialog edit mode seeds the policy's real transaction_type"
       threshold_amount: "500",
     });
   });
-});
 
-describe("CreateStepUpDialog create path derives currency per transaction type", () => {
-  it("defaults a money type (p2p) to ZAR", async () => {
+  it("A money transfer policy defaults to Rand (ZAR)", async () => {
     const user = userEvent.setup();
     render(<CreateStepUpDialog tenantId="tenant-1" open />);
 
@@ -77,7 +75,7 @@ describe("CreateStepUpDialog create path derives currency per transaction type",
     });
   });
 
-  it("derives PTS when the transaction type is redemption", async () => {
+  it("A rewards redemption policy uses points, not currency", async () => {
     const user = userEvent.setup();
     render(<CreateStepUpDialog tenantId="tenant-1" open />);
 

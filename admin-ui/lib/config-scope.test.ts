@@ -7,14 +7,14 @@ import { describe, expect, it } from "vitest";
 
 import { configScopeKey } from "@/lib/config-scope";
 
-describe("configScopeKey builds the right tuple per config type", () => {
-  it("keys step_up on (transaction_type, currency)", () => {
+describe("Configuration identity rules", () => {
+  it("A step-up policy is identified by its service and currency", () => {
     expect(
       configScopeKey("step_up", { transaction_type: "cash_in", currency: "zar" }),
     ).toBe("step_up|cash_in|ZAR");
   });
 
-  it("distinguishes two step_up policies that differ only by transaction_type", () => {
+  it("Step-up policies for different services are treated as separate configs", () => {
     const cashIn = configScopeKey("step_up", {
       transaction_type: "cash_in",
       currency: "ZAR",
@@ -26,17 +26,17 @@ describe("configScopeKey builds the right tuple per config type", () => {
     expect(cashIn).not.toBe(p2p);
   });
 
-  it("keys tax on currency alone", () => {
+  it("A tax configuration is identified by currency alone", () => {
     expect(configScopeKey("tax", { currency: "ZAR" })).toBe("tax|ZAR");
   });
 
-  it("keys wallet_limit on (currency, user_type) and collapses null user_type to 'all'", () => {
+  it("A wallet limit is identified by currency and customer type, defaulting to all customers when unspecified", () => {
     expect(configScopeKey("wallet_limit", { currency: "ZAR", user_type: null })).toBe(
       "wallet_limit|ZAR|all",
     );
   });
 
-  it("keys commission on (transaction_type, currency, user_type)", () => {
+  it("A commission is identified by service, currency and customer type", () => {
     expect(
       configScopeKey("commission", {
         transaction_type: "cashout",
@@ -46,7 +46,7 @@ describe("configScopeKey builds the right tuple per config type", () => {
     ).toBe("commission|cashout|ZAR|agent");
   });
 
-  it("keys pricing on the full (transaction_type, account_type, currency, user_type) tuple", () => {
+  it("Two pricing configs count as the same only when service, account type, currency and customer type all match", () => {
     expect(
       configScopeKey("pricing", {
         transaction_type: "cash_in",
@@ -57,7 +57,7 @@ describe("configScopeKey builds the right tuple per config type", () => {
     ).toBe("pricing|cash_in|financial_wallet|ZAR|all");
   });
 
-  it("reads a band config's scope from its first band", () => {
+  it("A tiered pricing config takes its identity from its first tier", () => {
     expect(
       configScopeKey("pricing", {
         bands: [

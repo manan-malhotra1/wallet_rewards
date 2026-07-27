@@ -79,8 +79,8 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("ConfigViewButton version history — synthesized baseline", () => {
-  it("renders a lone synthesized baseline as 'Current (baseline)' with no restore", async () => {
+describe("Config version history", () => {
+  it("A config created during setup shows its current values as a baseline version", async () => {
     loadConfigHistoryAction.mockResolvedValue({
       ok: true,
       versions: [version({ id: "live-limit-1", synthesized: true })],
@@ -105,7 +105,7 @@ describe("ConfigViewButton version history — synthesized baseline", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("still offers restore on prior versions when real applied history exists", async () => {
+  it("When a config has approved edit history, older versions can be restored", async () => {
     loadConfigHistoryAction.mockResolvedValue({
       ok: true,
       versions: [

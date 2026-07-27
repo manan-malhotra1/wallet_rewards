@@ -1,0 +1,10 @@
+# Regenerated on every report build — not source of truth.
+index.html
+backend-run.json
+frontend-run.json
+latest.json
+.date-cache.json
+
+# Committed (last-3-run history + friendly labels) are tracked explicitly:
+!history.json
+!section-labels.json

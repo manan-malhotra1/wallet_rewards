@@ -34,19 +34,19 @@ function entry(overrides: Partial<AuditEntry>): AuditEntry {
   };
 }
 
-describe("auditActionLabel maps known codes and access transitions", () => {
-  it("returns the friendly label for a known action code", () => {
+describe("Audit log wording", () => {
+  it("A known admin action reads as plain language in the audit log", () => {
     expect(auditActionLabel(entry({ action: "pin.changed" }))).toBe("PIN changed");
   });
 
-  it("humanizes an unknown code instead of leaking the raw dotted code", () => {
+  it("An unrecognised action is still shown as readable words, never a raw code", () => {
     const label = auditActionLabel(entry({ action: "widget.frobnicated" }));
     expect(label).toBe("Widget frobnicated");
     expect(label).not.toContain(".");
     expect(label).not.toContain("_");
   });
 
-  it("reads active→suspended as 'Login locked'", () => {
+  it("Suspending a user is described as 'Login locked' in the audit log", () => {
     const label = auditActionLabel(
       entry({
         action: "admin.user_access_changed",
@@ -57,7 +57,7 @@ describe("auditActionLabel maps known codes and access transitions", () => {
     expect(label).toBe("Login locked");
   });
 
-  it("reads suspended→active as 'Login access restored'", () => {
+  it("Restoring a suspended user is described as 'Login access restored'", () => {
     const label = auditActionLabel(
       entry({
         action: "admin.user_access_changed",
@@ -68,7 +68,7 @@ describe("auditActionLabel maps known codes and access transitions", () => {
     expect(label).toBe("Login access restored");
   });
 
-  it("reads any →txn_locked as 'Transactions locked'", () => {
+  it("Blocking a user's transactions is described as 'Transactions locked'", () => {
     const label = auditActionLabel(
       entry({
         action: "admin.user_access_changed",
@@ -79,7 +79,7 @@ describe("auditActionLabel maps known codes and access transitions", () => {
     expect(label).toBe("Transactions locked");
   });
 
-  it("falls back to the base access label when no transition can be derived", () => {
+  it("A general access change reads as 'User access changed' when the before and after are unknown", () => {
     const label = auditActionLabel(
       entry({
         action: "admin.user_access_changed",
@@ -89,38 +89,32 @@ describe("auditActionLabel maps known codes and access transitions", () => {
     );
     expect(label).toBe("User access changed");
   });
-});
 
-describe("humanizeStatus renders raw status codes", () => {
-  it("maps txn_locked to 'Transactions locked'", () => {
+  it("A transaction-locked account is shown as 'Transactions locked'", () => {
     expect(humanizeStatus("txn_locked")).toBe("Transactions locked");
   });
 
-  it("maps active to 'Active'", () => {
+  it("An active account is shown as 'Active'", () => {
     expect(humanizeStatus("active")).toBe("Active");
   });
 
-  it("humanizes an unknown status token", () => {
+  it("An unrecognised account status is still shown as readable words", () => {
     expect(humanizeStatus("pending_review")).toBe("Pending review");
   });
-});
 
-describe("actor role and location labels", () => {
-  it("labels admin/user/system roles", () => {
+  it("Admin, user and system actors are named in plain language", () => {
     expect(actorRoleLabel("admin")).toBe("Admin");
     expect(actorRoleLabel("user")).toBe("User");
     expect(actorRoleLabel("system")).toBe("System");
   });
 
-  it("labels where the action originated", () => {
+  it("The audit log shows where an action came from, such as the admin portal or the mobile app", () => {
     expect(actorLocationLabel("admin")).toBe("Admin portal");
     expect(actorLocationLabel("user")).toBe("Mobile app");
     expect(actorLocationLabel("system")).toBe("System");
   });
-});
 
-describe("diffStates emits one line per changed key only", () => {
-  it("skips unchanged keys and keeps only what differs", () => {
+  it("A change shows only the fields that actually changed", () => {
     const lines = diffStates(
       { first_name: "Bob", last_name: "Jones" },
       { first_name: "Bob", last_name: "Smith" },
@@ -131,19 +125,19 @@ describe("diffStates emits one line per changed key only", () => {
     expect(lines[0].to).toBe("Smith");
   });
 
-  it("humanizes a status value on both sides of the diff", () => {
+  it("A status change is shown in plain words on both the old and new values", () => {
     const [line] = diffStates({ status: "active" }, { status: "txn_locked" });
     expect(line.from).toBe("Active");
     expect(line.to).toBe("Transactions locked");
   });
 
-  it("renders booleans as Yes/No", () => {
+  it("True and false values are shown as Yes and No", () => {
     const [line] = diffStates({ verified: false }, { verified: true });
     expect(line.from).toBe("No");
     expect(line.to).toBe("Yes");
   });
 
-  it("labels a nullish previous value as an em dash", () => {
+  it("A previously empty value is shown as a dash next to its readable field name", () => {
     const [line] = diffStates(null, { first_name: "Bob" });
     expect(line.from).toBe("—");
     expect(line.to).toBe("Bob");

@@ -34,18 +34,16 @@ function op(overrides: Partial<MoneyOperation>): MoneyOperation {
   } as MoneyOperation;
 }
 
-describe("moneyOperationLabel maps codes and falls back safely", () => {
-  it("labels withdraw_user as 'Withdraw from user'", () => {
+describe("Treasury operation wording", () => {
+  it("Withdrawing from a user is labelled 'Withdraw from user'", () => {
     expect(moneyOperationLabel("withdraw_user")).toBe("Withdraw from user");
   });
 
-  it("returns the raw code for an unknown operation", () => {
+  it("An unrecognised treasury operation is shown as-is rather than hidden", () => {
     expect(moneyOperationLabel("teleport_funds")).toBe("teleport_funds");
   });
-});
 
-describe("moneyOperationSummary renders a compact one-liner", () => {
-  it("summarizes fund_user with amount, currency and resolved name", () => {
+  it("Funding a user reads as the amount, currency and recipient name on one line", () => {
     const summary = moneyOperationSummary(
       op({
         operation: "fund_user",
@@ -56,7 +54,7 @@ describe("moneyOperationSummary renders a compact one-liner", () => {
     expect(summary).toBe("ZAR 150.00 → Bob Jones");
   });
 
-  it("summarizes adjust_system_wallet with a signed amount", () => {
+  it("Adjusting a treasury wallet shows whether the amount is added or removed, and on which account", () => {
     const summary = moneyOperationSummary(
       op({
         operation: "adjust_system_wallet",

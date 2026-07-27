@@ -17,19 +17,22 @@ const ALL_CONFIG_TYPES: ConfigType[] = [
   "step_up",
 ];
 
-describe("configTypeLabel covers every config type", () => {
-  it.each(ALL_CONFIG_TYPES)("returns a non-code label for %s", (type) => {
-    const label = configTypeLabel(type);
-    expect(label).toBeTruthy();
-    expect(label).not.toBe(type);
-    expect(label).not.toContain("_");
-  });
+describe("Configuration type names", () => {
+  it.each(ALL_CONFIG_TYPES)(
+    "Every configuration type shows a readable name, not a raw code (%s)",
+    (type) => {
+      const label = configTypeLabel(type);
+      expect(label).toBeTruthy();
+      expect(label).not.toBe(type);
+      expect(label).not.toContain("_");
+    },
+  );
 
-  it("labels step_up as 'Step-up PIN policy'", () => {
+  it("Step-up policies are labelled 'Step-up PIN policy'", () => {
     expect(configTypeLabel("step_up")).toBe("Step-up PIN policy");
   });
 
-  it("labels pricing as 'Service charge'", () => {
+  it("Pricing configurations are labelled 'Service charge'", () => {
     expect(configTypeLabel("pricing")).toBe("Service charge");
   });
 });

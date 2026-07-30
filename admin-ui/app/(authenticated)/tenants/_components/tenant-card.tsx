@@ -8,7 +8,11 @@
  *
  * On save, posts to the updateTenantAction server action and surfaces
  * the API error message in-card on failure (e.g. duplicate name → 409).
+ *
+ * When `canManageBranding` is set (platform-admins only), the card also
+ * exposes a "Customize theme" trigger opening the {@link BrandingDialog}.
  */
+import { Palette } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import type { BusinessType, Tenant } from "@/lib/api-types";
@@ -28,6 +32,7 @@ import {
 import { StatusPill } from "@/components/ui/status-pill";
 
 import { updateTenantAction } from "../_actions";
+import { BrandingDialog } from "./branding-dialog";
 
 const BUSINESS_TYPE_LABEL: Record<BusinessType, string> = {
   wallet: "Wallet",
@@ -35,7 +40,13 @@ const BUSINESS_TYPE_LABEL: Record<BusinessType, string> = {
   both: "Both",
 };
 
-export function TenantCard({ tenant }: { tenant: Tenant }) {
+export function TenantCard({
+  tenant,
+  canManageBranding = false,
+}: {
+  tenant: Tenant;
+  canManageBranding?: boolean;
+}) {
   const [name, setName] = useState(tenant.name);
   const [businessType, setBusinessType] = useState<BusinessType>(
     tenant.business_type,
@@ -83,11 +94,24 @@ export function TenantCard({ tenant }: { tenant: Tenant }) {
             disabled={pending}
           />
         </div>
-        <div className="text-right">
-          <div className="text-[10px] uppercase tracking-wide text-[--color-text-3]">
-            Status
+        <div className="flex items-start gap-3">
+          {canManageBranding && (
+            <BrandingDialog
+              tenant={tenant}
+              trigger={
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Palette className="h-3.5 w-3.5" />
+                  Customize theme
+                </Button>
+              }
+            />
+          )}
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wide text-[--color-text-3]">
+              Status
+            </div>
+            <StatusPill status={tenant.status.toUpperCase()} variant="dense" />
           </div>
-          <StatusPill status={tenant.status.toUpperCase()} variant="dense" />
         </div>
       </div>
 

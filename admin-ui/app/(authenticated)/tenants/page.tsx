@@ -7,6 +7,7 @@
  */
 import { Settings2 } from "lucide-react";
 
+import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
 import { listTenants } from "@/lib/api-endpoints";
 
@@ -19,6 +20,12 @@ import { TenantCard } from "./_components/tenant-card";
 export const dynamic = "force-dynamic";
 
 export default async function TenantsPage() {
+  const session = await auth();
+  // Only platform-admins may edit a tenant's branding; the backend also 403s,
+  // this just hides the affordance for other admins.
+  const canManageBranding =
+    session?.user?.roles?.includes("platform-admin") ?? false;
+
   let tenants: Awaited<ReturnType<typeof listTenants>> = [];
   let error: ApiError | null = null;
   try {
@@ -48,7 +55,13 @@ export default async function TenantsPage() {
             description="Run the backend seed script to create the first tenant."
           />
         ) : (
-          tenants.map((tenant) => <TenantCard key={tenant.id} tenant={tenant} />)
+          tenants.map((tenant) => (
+            <TenantCard
+              key={tenant.id}
+              tenant={tenant}
+              canManageBranding={canManageBranding}
+            />
+          ))
         )}
       </div>
     </div>

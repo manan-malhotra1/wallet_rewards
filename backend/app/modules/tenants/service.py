@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
 from app.modules.audit.service import record_audit_for_admin
-from app.modules.tenants.schemas import TenantUpdateRequest
+from app.modules.tenants.schemas import TenantBrandingUpdate, TenantUpdateRequest
 from app.shared.exceptions import TenantNameAlreadyExists, TenantNotFound
 from app.shared.models import Tenant
 
@@ -122,5 +122,64 @@ async def update_tenant(
         tenant_id=str(tenant.id),
         before=before,
         after={"name": tenant.name, "business_type": tenant.business_type},
+    )
+    return tenant
+
+
+async def get_tenant_branding(tenant_id: uuid.UUID, session: AsyncSession) -> Tenant:
+    """Return the tenant so the router can read its branding fields.
+
+    Args:
+        tenant_id: Tenant UUID from the URL path.
+        session: Async DB session.
+
+    Returns:
+        The Tenant row (the router serialises its three branding columns).
+
+    Raises:
+        TenantNotFound: tenant_id doesn't map to any active row.
+    """
+    return await get_tenant_by_id(tenant_id, session)
+
+
+async def update_tenant_branding(
+    tenant_id: uuid.UUID,
+    payload: TenantBrandingUpdate,
+    session: AsyncSession,
+) -> Tenant:
+    """Set a tenant's cosmetic branding fields in place (upsert-style).
+
+    This is a *direct* edit — branding is purely cosmetic, so it is NOT
+    routed through maker-checker and writes no audit trail. The PUT is
+    idempotent by construction: it assigns the three fields to exactly the
+    values in the payload (a provided value sets it, an explicit `null`
+    clears it), so replaying the same body yields the same row.
+
+    Args:
+        tenant_id: Target tenant id.
+        payload: TenantBrandingUpdate — the desired branding state.
+        session: Async DB session, committed before returning.
+
+    Returns:
+        The refreshed Tenant row with updated branding columns.
+
+    Raises:
+        TenantNotFound: tenant_id doesn't map to any active row.
+    """
+    tenant = await get_tenant_by_id(tenant_id, session)
+
+    tenant.brand_accent_color = payload.brand_accent_color
+    tenant.brand_light_color = payload.brand_light_color
+    tenant.brand_icon_url = payload.brand_icon_url
+
+    await session.commit()
+    await session.refresh(tenant)
+
+    log.info(
+        "tenant_branding_updated",
+        tenant_id=str(tenant.id),
+        has_accent=tenant.brand_accent_color is not None,
+        has_light=tenant.brand_light_color is not None,
+        has_icon=tenant.brand_icon_url is not None,
     )
     return tenant

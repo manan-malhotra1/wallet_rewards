@@ -86,6 +86,13 @@ from app.shared.models import (  # noqa: E402
 TENANT_NAME = "Sasai-ZA"
 TENANT_CURRENCY = "ZAR"
 
+# Default per-tenant brand anchors for the seeded tenant. These two colours seed
+# the admin UI's derived theme palette; the logo URL is left null so the UI falls
+# back to its default mark. Applied only when the tenant has no brand set yet —
+# a tenant with a custom brand is never overwritten (see _get_or_create_tenant).
+DEFAULT_BRAND_ACCENT_COLOR = "#243B8F"  # Blueberry
+DEFAULT_BRAND_LIGHT_COLOR = "#FFF0C9"  # Cream Soda
+
 # The merchant_cashin funding merchant (bound to the dev API key below).
 CASHIN_MERCHANT_PHONE = "+27825557001"
 
@@ -131,12 +138,23 @@ async def _get_or_create_tenant(session: AsyncSession) -> Tenant:
     result = await session.execute(select(Tenant).where(Tenant.name == TENANT_NAME))
     tenant = result.scalar_one_or_none()
     if tenant is not None:
+        # Backfill the default brand for a pre-existing tenant that predates the
+        # branding fields, but NEVER overwrite a tenant that already carries a
+        # custom brand. Only fill in colours that are still null; the logo URL
+        # stays as-is (default is null anyway). Keeps re-runs idempotent.
+        if tenant.brand_accent_color is None:
+            tenant.brand_accent_color = DEFAULT_BRAND_ACCENT_COLOR
+        if tenant.brand_light_color is None:
+            tenant.brand_light_color = DEFAULT_BRAND_LIGHT_COLOR
+        await session.commit()
         return tenant
 
     tenant = Tenant(
         name=TENANT_NAME,
         business_type="both",
         base_currency=TENANT_CURRENCY,
+        brand_accent_color=DEFAULT_BRAND_ACCENT_COLOR,
+        brand_light_color=DEFAULT_BRAND_LIGHT_COLOR,
     )
     session.add(tenant)
     await session.commit()

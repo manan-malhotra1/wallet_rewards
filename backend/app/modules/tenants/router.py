@@ -1,12 +1,15 @@
 """Tenants module FastAPI router (Phase 1 — admin-gated identity card).
 
 Phase 1 endpoints:
-  GET    /api/v1/tenants            — list (existing, Phase F.5)
-  GET    /api/v1/tenants/{id}       — single tenant (admin identity card)
-  PATCH  /api/v1/tenants/{id}       — edit name / business_type
+  GET    /api/v1/tenants                   — list (existing, Phase F.5)
+  GET    /api/v1/tenants/{id}              — single tenant (admin identity card)
+  PATCH  /api/v1/tenants/{id}              — edit name / business_type
+  GET    /api/v1/tenants/{id}/branding     — read cosmetic branding (platform-admin)
+  PUT    /api/v1/tenants/{id}/branding     — set cosmetic branding (platform-admin)
 
 The UI's tenant switcher uses LIST; the new tenants admin page uses GET
-and PATCH for the per-tenant identity card.
+and PATCH for the per-tenant identity card, and GET/PUT branding for the
+per-tenant theme. Branding is a direct edit (cosmetic, not maker-checker).
 """
 
 import uuid
@@ -17,9 +20,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
 from app.database import get_async_session
-from app.dependencies import get_current_admin
-from app.modules.tenants.schemas import TenantOut, TenantUpdateRequest
-from app.modules.tenants.service import get_tenant_by_id, update_tenant
+from app.dependencies import get_current_admin, require_admin_role
+from app.modules.tenants.schemas import (
+    TenantBrandingOut,
+    TenantBrandingUpdate,
+    TenantOut,
+    TenantUpdateRequest,
+)
+from app.modules.tenants.service import (
+    get_tenant_branding,
+    get_tenant_by_id,
+    update_tenant,
+    update_tenant_branding,
+)
 from app.shared.models import Tenant
 
 router = APIRouter(prefix="/api/v1/tenants", tags=["tenants"])
@@ -70,3 +83,28 @@ async def patch_tenant(
         ip_address=fastapi_request.client.host if fastapi_request.client else None,
     )
     return TenantOut.model_validate(tenant)
+
+
+@router.get("/{tenant_id}/branding", response_model=TenantBrandingOut)
+async def get_branding(
+    tenant_id: uuid.UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> TenantBrandingOut:
+    """Return a tenant's branding for the admin UI theme (platform-admin only)."""
+    _ = admin
+    tenant = await get_tenant_branding(tenant_id, session)
+    return TenantBrandingOut.model_validate(tenant)
+
+
+@router.put("/{tenant_id}/branding", response_model=TenantBrandingOut)
+async def put_branding(
+    tenant_id: uuid.UUID,
+    payload: TenantBrandingUpdate,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> TenantBrandingOut:
+    """Set a tenant's branding directly (cosmetic — not maker-checker)."""
+    _ = admin
+    tenant = await update_tenant_branding(tenant_id, payload, session)
+    return TenantBrandingOut.model_validate(tenant)

@@ -11,7 +11,7 @@
  */
 import "server-only";
 
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 
 import type {
   AddUserIdentifierPayload,
@@ -52,6 +52,7 @@ import type {
   SystemWalletTransaction,
   TaxConfig,
   Tenant,
+  TenantBranding,
   User,
   UserDetail,
   UserIdentifier,
@@ -75,6 +76,16 @@ export interface UpdateTenantPayload {
 
 export const updateTenant = (tenant_id: string, payload: UpdateTenantPayload) =>
   apiPatch<Tenant>(`/api/v1/tenants/${tenant_id}`, payload);
+
+/** Read a tenant's cosmetic branding (platform-admin only). */
+export const getTenantBranding = (tenant_id: string) =>
+  apiGet<TenantBranding>(`/api/v1/tenants/${tenant_id}/branding`);
+
+/** Set a tenant's cosmetic branding directly (not maker-checker). */
+export const updateTenantBranding = (
+  tenant_id: string,
+  payload: TenantBranding,
+) => apiPut<TenantBranding>(`/api/v1/tenants/${tenant_id}/branding`, payload);
 
 // ---- Services catalog (Phase 2) -----------------------------------------
 

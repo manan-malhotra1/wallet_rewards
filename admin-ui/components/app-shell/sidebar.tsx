@@ -206,9 +206,11 @@ function NavGroup({ title, items }: { title: string; items: NavEntry[] }) {
 export function Sidebar({
   pendingCount,
   approvalsPendingCount,
+  brandIconUrl,
 }: {
   pendingCount?: number;
   approvalsPendingCount?: number;
+  brandIconUrl?: string | null;
 }) {
   const operations = OPERATIONS.map((item) =>
     item.href === "/reconciliation" && pendingCount
@@ -228,7 +230,18 @@ export function Sidebar({
     <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         <Link href="/dashboard" aria-label="Sasai Wallet Admin home" className="flex items-center">
-          <SasaiLogo height={28} />
+          {brandIconUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={brandIconUrl}
+              alt="Tenant logo"
+              width={28}
+              height={28}
+              className="h-7 w-7 rounded-md object-contain"
+            />
+          ) : (
+            <SasaiLogo height={28} />
+          )}
         </Link>
         <span className="rounded-full bg-sidebar-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-sidebar-accent-foreground">
           Admin

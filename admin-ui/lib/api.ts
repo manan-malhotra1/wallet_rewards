@@ -122,6 +122,9 @@ export const apiGet = <T>(path: string, opts?: FetchOptions) =>
 export const apiPost = <T>(path: string, body?: unknown, opts?: FetchOptions) =>
   apiFetch<T>(path, { ...opts, method: "POST", body });
 
+export const apiPut = <T>(path: string, body?: unknown, opts?: FetchOptions) =>
+  apiFetch<T>(path, { ...opts, method: "PUT", body });
+
 export const apiPatch = <T>(path: string, body?: unknown, opts?: FetchOptions) =>
   apiFetch<T>(path, { ...opts, method: "PATCH", body });
 

@@ -29,12 +29,14 @@ export default function RootLayout({
     >
       <body className="min-h-screen bg-background font-sans antialiased">
         {/* next-themes injects `.dark` on <html>; globals.css token block
-            overrides on that class. `system` follows the OS preference;
-            users can override per-session via a toggle (future). */}
+            overrides on that class. Dark is the product default (deep navy);
+            `enableSystem` is off so a viewer's OS preference never silently
+            forces light. `<html suppressHydrationWarning>` above absorbs the
+            class next-themes stamps pre-hydration, so there's no theme flash. */}
         <ThemeProvider
           attribute="class"
-          defaultTheme="light"
-          enableSystem
+          defaultTheme="dark"
+          enableSystem={false}
           disableTransitionOnChange
         >
           <Toaster>

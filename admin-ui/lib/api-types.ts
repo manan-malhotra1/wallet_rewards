@@ -47,6 +47,22 @@ export interface Tenant {
   base_currency: string | null;
   status: string;
   created_at: string;
+  /**
+   * Per-tenant runtime branding. All nullable — absence means "fall back to
+   * the app default palette / Sasai mark". `brand_accent_color` /
+   * `brand_light_color` are hex strings the palette engine derives tokens
+   * from; `brand_icon_url` is an http(s) URL for the sidebar brand mark.
+   */
+  brand_accent_color: string | null;
+  brand_light_color: string | null;
+  brand_icon_url: string | null;
+}
+
+/** The three cosmetic branding fields, read/written via `/branding`. */
+export interface TenantBranding {
+  brand_accent_color: string | null;
+  brand_light_color: string | null;
+  brand_icon_url: string | null;
 }
 
 /** One row in the per-tenant instruments catalog (Phase 3). */

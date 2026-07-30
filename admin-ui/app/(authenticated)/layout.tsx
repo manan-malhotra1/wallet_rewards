@@ -10,6 +10,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { ServiceUnavailable } from "@/components/branding/service-unavailable";
+import { TenantThemeStyle } from "@/components/branding/tenant-theme-style";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import {
@@ -53,6 +54,10 @@ export default async function AuthenticatedLayout({
   const activeTenantId =
     (await getActiveTenantId()) ?? tenants[0]?.id ?? null;
 
+  // Resolve the active tenant's branding from the already-fetched list so the
+  // runtime theme + sidebar mark render without an extra round trip.
+  const activeTenant = tenants.find((t) => t.id === activeTenantId) ?? null;
+
   // Sidebar "Approvals" badge: total PENDING requests awaiting review across
   // the queues this admin can see. A platform-admin sees every queue; everyone
   // else sees only queues matching an approver role they hold — so the badge
@@ -93,6 +98,12 @@ export default async function AuthenticatedLayout({
 
   return (
     <TooltipProvider delayDuration={200}>
+      {/* Per-tenant palette override — no flash: emitted server-side ahead of
+          the shell. Renders nothing when the active tenant has no colours. */}
+      <TenantThemeStyle
+        accent={activeTenant?.brand_accent_color ?? null}
+        light={activeTenant?.brand_light_color ?? null}
+      />
       <AppShell
         tenants={tenants.map((t) => ({
           id: t.id,
@@ -100,6 +111,7 @@ export default async function AuthenticatedLayout({
           baseCurrency: t.base_currency ?? "—",
         }))}
         activeTenantId={activeTenantId}
+        brandIconUrl={activeTenant?.brand_icon_url ?? null}
         approvalsPendingCount={approvalsPendingCount}
         user={{
           username: session.user.username ?? session.user.email ?? session.user.id,

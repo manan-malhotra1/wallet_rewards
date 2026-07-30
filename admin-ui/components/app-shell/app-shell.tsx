@@ -12,6 +12,8 @@ export interface AppShellProps {
   tenants: TopbarTenant[];
   activeTenantId: string | null;
   user: TopbarUser;
+  /** Active tenant's logo URL, or null to fall back to the Sasai mark. */
+  brandIconUrl?: string | null;
   pendingReconciliationCount?: number;
   approvalsPendingCount?: number;
   children: React.ReactNode;
@@ -21,6 +23,7 @@ export function AppShell({
   tenants,
   activeTenantId,
   user,
+  brandIconUrl,
   pendingReconciliationCount,
   approvalsPendingCount,
   children,
@@ -30,6 +33,7 @@ export function AppShell({
       <Sidebar
         pendingCount={pendingReconciliationCount}
         approvalsPendingCount={approvalsPendingCount}
+        brandIconUrl={brandIconUrl}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar tenants={tenants} activeTenantId={activeTenantId} user={user} />

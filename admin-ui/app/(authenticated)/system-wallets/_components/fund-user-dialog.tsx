@@ -57,33 +57,41 @@ interface FormState {
   reason: string;
 }
 
-const INITIAL: FormState = {
-  identifier_type: "phone",
-  identifier_value: "",
-  amount: "",
-  currency: "ZAR",
-  reason: "",
-};
+/** Fresh form seeded with the active tenant's currency (never a hardcoded "ZAR"). */
+function initialState(defaultCurrency: string): FormState {
+  return {
+    identifier_type: "phone",
+    identifier_value: "",
+    amount: "",
+    currency: defaultCurrency,
+    reason: "",
+  };
+}
 
 export function FundUserDialog({
   tenantId,
+  defaultCurrency,
   trigger,
 }: {
   tenantId: string;
+  /** The active tenant's base currency — the currency field's default. */
+  defaultCurrency: string;
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>(INITIAL);
+  const [form, setForm] = React.useState<FormState>(() =>
+    initialState(defaultCurrency),
+  );
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
 
   React.useEffect(() => {
     if (!open) {
-      setForm(INITIAL);
+      setForm(initialState(defaultCurrency));
       setError(null);
     }
-  }, [open]);
+  }, [open, defaultCurrency]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));

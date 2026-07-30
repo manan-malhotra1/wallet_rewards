@@ -5,7 +5,7 @@
 import { Banknote, Landmark, Minus, Plus } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
-import { getActiveTenantId } from "@/lib/active-tenant";
+import { getActiveTenant } from "@/lib/active-tenant";
 import { listSystemWallets } from "@/lib/api-endpoints";
 
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,8 +20,8 @@ import { WithdrawFromUserDialog } from "./_components/withdraw-from-user-dialog"
 export const dynamic = "force-dynamic";
 
 export default async function SystemWalletsPage() {
-  const activeTenantId = await getActiveTenantId();
-  if (!activeTenantId) {
+  const activeTenant = await getActiveTenant();
+  if (!activeTenant) {
     return (
       <div className="p-6">
         <EmptyState
@@ -33,6 +33,7 @@ export default async function SystemWalletsPage() {
     );
   }
 
+  const activeTenantId = activeTenant.id;
   let wallets: Awaited<ReturnType<typeof listSystemWallets>> = [];
   let error: ApiError | null = null;
   try {
@@ -46,6 +47,10 @@ export default async function SystemWalletsPage() {
   // "New bank mirror" dialog offers the currencies already in play.
   const mirrors = wallets.filter((w) => w.account_type === "operator_adjustment");
   const currencies = Array.from(new Set(wallets.map((w) => w.currency))).sort();
+  // Default currency for the fund/withdraw/bank-mirror dialogs: the tenant's
+  // own base currency, else a currency already in play, else ZAR as a last
+  // resort. Never hardcode ZAR as the primary default.
+  const defaultCurrency = activeTenant.base_currency ?? currencies[0] ?? "ZAR";
 
   return (
     <div>
@@ -57,6 +62,7 @@ export default async function SystemWalletsPage() {
             <NewBankMirrorDialog
               tenantId={activeTenantId}
               currencies={currencies}
+              defaultCurrency={defaultCurrency}
               trigger={
                 <button
                   type="button"
@@ -69,6 +75,7 @@ export default async function SystemWalletsPage() {
             />
             <WithdrawFromUserDialog
               tenantId={activeTenantId}
+              defaultCurrency={defaultCurrency}
               mirrors={mirrors}
               trigger={
                 <button
@@ -82,6 +89,7 @@ export default async function SystemWalletsPage() {
             />
             <FundUserDialog
               tenantId={activeTenantId}
+              defaultCurrency={defaultCurrency}
               trigger={
                 <button
                   type="button"

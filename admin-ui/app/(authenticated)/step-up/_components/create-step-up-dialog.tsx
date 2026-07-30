@@ -57,9 +57,12 @@ const TXN_TYPE_LABELS: Record<TxnType, string> = {
 
 const TXN_TYPES = Object.keys(TXN_TYPE_LABELS) as TxnType[];
 
-/** Redemption settles in points; every other guarded type is fiat (ZAR). */
-function defaultCurrencyFor(txn: TxnType): string {
-  return txn === "redemption" ? "PTS" : "ZAR";
+/**
+ * Redemption settles in points; every other guarded type is fiat, defaulting
+ * to the active tenant's own currency (never a hardcoded "ZAR").
+ */
+function defaultCurrencyFor(txn: TxnType, fiatCurrency: string): string {
+  return txn === "redemption" ? "PTS" : fiatCurrency;
 }
 
 /** Coerce an arbitrary stored value to a known TxnType (default p2p if unknown). */
@@ -73,18 +76,13 @@ interface FormState {
   threshold_amount: string;
 }
 
-const INITIAL: FormState = {
-  transaction_type: "p2p",
-  currency: "ZAR",
-  threshold_amount: "200",
-};
-
 function str(value: unknown, fallback = ""): string {
   return value === null || value === undefined ? fallback : String(value);
 }
 
 /** Derive the initial form from a revise proposal, an edited live policy, or defaults. */
 function initialForm(
+  fiatCurrency: string,
   reviseRequest?: ConfigChangeRequest,
   editPolicy?: StepUpPolicy,
 ): FormState {
@@ -97,15 +95,21 @@ function initialForm(
     // edit of a cashout/cash_in/airtime policy would submit p2p and scope-mismatch.
     return {
       transaction_type: toTxnType(source.transaction_type),
-      currency: str(source.currency, "ZAR"),
+      currency: str(source.currency, fiatCurrency),
       threshold_amount: str(source.threshold_amount, "0"),
     };
   }
-  return INITIAL;
+  // A fresh create: p2p seeded with the tenant's fiat currency.
+  return {
+    transaction_type: "p2p",
+    currency: fiatCurrency,
+    threshold_amount: "200",
+  };
 }
 
 export function CreateStepUpDialog({
   tenantId,
+  defaultCurrency = "ZAR",
   trigger,
   reviseRequest,
   editPolicy,
@@ -113,6 +117,12 @@ export function CreateStepUpDialog({
   onOpenChange,
 }: {
   tenantId: string;
+  /**
+   * The active tenant's base currency — the create path's fiat default. Only
+   * used when creating a fresh policy; edit/revise take the currency from the
+   * source policy, so it falls back to "ZAR" where unthreaded.
+   */
+  defaultCurrency?: string;
   /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
   trigger?: React.ReactNode;
   reviseRequest?: ConfigChangeRequest;
@@ -131,7 +141,7 @@ export function CreateStepUpDialog({
   // its identity. A create revise keeps scope editable.
   const scopeLocked = editMode || reviseRequest?.operation === "update";
   const [form, setForm] = React.useState<FormState>(() =>
-    initialForm(reviseRequest, editPolicy),
+    initialForm(defaultCurrency, reviseRequest, editPolicy),
   );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
@@ -139,10 +149,10 @@ export function CreateStepUpDialog({
 
   React.useEffect(() => {
     if (!open) {
-      setForm(initialForm(reviseRequest, editPolicy));
+      setForm(initialForm(defaultCurrency, reviseRequest, editPolicy));
       setErrorBanner(null);
     }
-  }, [open, reviseRequest, editPolicy]);
+  }, [open, defaultCurrency, reviseRequest, editPolicy]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -152,12 +162,12 @@ export function CreateStepUpDialog({
   // locked scope is fixed).
   React.useEffect(() => {
     if (scopeLocked) return;
-    const expected = defaultCurrencyFor(form.transaction_type);
+    const expected = defaultCurrencyFor(form.transaction_type, defaultCurrency);
     if (form.currency !== expected) {
       update("currency", expected);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.transaction_type, scopeLocked]);
+  }, [form.transaction_type, scopeLocked, defaultCurrency]);
 
   const onSubmit = async () => {
     setErrorBanner(null);

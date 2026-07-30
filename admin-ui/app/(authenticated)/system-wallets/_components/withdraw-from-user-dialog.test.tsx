@@ -33,12 +33,24 @@ const zarMirror: SystemWallet = {
   name: "Standard Bank — main float",
 };
 
-async function openDialog() {
+/** A USD bank mirror for a USD-currency tenant (e.g. Sasai-ZW). */
+const usdMirror: SystemWallet = {
+  ...zarMirror,
+  id: "mirror-usd-1",
+  currency: "USD",
+  name: "Chase — USD settlement",
+};
+
+async function openDialog(
+  defaultCurrency = "ZAR",
+  mirrors: SystemWallet[] = [zarMirror],
+) {
   const user = userEvent.setup();
   render(
     <WithdrawFromUserDialog
       tenantId="tenant-1"
-      mirrors={[zarMirror]}
+      defaultCurrency={defaultCurrency}
+      mirrors={mirrors}
       trigger={<button type="button">Withdraw from user</button>}
     />,
   );
@@ -81,6 +93,30 @@ describe("Withdraw from a user wallet", () => {
       bank_mirror_account_id: "mirror-zar-1",
     });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("Verify a USD tenant's withdraw dialog defaults to USD, not ZAR", async () => {
+    const user = await openDialog("USD", [usdMirror]);
+
+    // The currency field is seeded from the active tenant's currency, so the
+    // USD bank mirror is eligible without the operator retyping the currency.
+    expect(screen.getByLabelText("Currency")).toHaveValue("USD");
+
+    await user.type(screen.getByPlaceholderText("+27 82 555 0001"), "+27 82 555 0001");
+    await user.type(screen.getByLabelText("Amount"), "200");
+    const mirrorSelect = screen.getAllByRole("combobox")[1];
+    await user.click(mirrorSelect);
+    await user.click(
+      await screen.findByRole("option", { name: "Chase — USD settlement" }),
+    );
+    await user.type(screen.getByLabelText("Reason (audit)"), "Cash-out at agent counter");
+    await user.click(screen.getByRole("button", { name: "Withdraw" }));
+
+    await waitFor(() => expect(withdrawFromUserAction).toHaveBeenCalledTimes(1));
+    expect(withdrawFromUserAction.mock.calls[0][0]).toMatchObject({
+      currency: "USD",
+      bank_mirror_account_id: "mirror-usd-1",
+    });
   });
 
   it("Verify a withdrawal is blocked until a bank mirror is chosen", async () => {

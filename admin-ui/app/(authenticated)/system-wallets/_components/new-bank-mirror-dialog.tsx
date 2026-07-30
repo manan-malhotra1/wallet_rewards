@@ -33,20 +33,26 @@ import { useToast } from "@/components/ui/toast";
 export function NewBankMirrorDialog({
   tenantId,
   currencies,
+  defaultCurrency,
   trigger,
 }: {
   tenantId: string;
   /** Distinct currencies present among the wallets; offered in the select. */
   currencies: string[];
+  /** The active tenant's base currency — the select's preferred default. */
+  defaultCurrency: string;
   trigger: React.ReactNode;
 }) {
-  // Fall back to ZAR when no currencies were passed; always default to ZAR when present.
-  const options = currencies.length > 0 ? currencies : ["ZAR"];
-  const defaultCurrency = options.includes("ZAR") ? "ZAR" : options[0];
+  // Offer the wallets' currencies; when none exist yet, offer the tenant's own.
+  // Default to the tenant's base currency when it's on offer, else the first.
+  const options = currencies.length > 0 ? currencies : [defaultCurrency];
+  const initialCurrency = options.includes(defaultCurrency)
+    ? defaultCurrency
+    : options[0];
 
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState("");
-  const [currency, setCurrency] = React.useState(defaultCurrency);
+  const [currency, setCurrency] = React.useState(initialCurrency);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
@@ -54,11 +60,11 @@ export function NewBankMirrorDialog({
   React.useEffect(() => {
     if (!open) {
       setName("");
-      setCurrency(defaultCurrency);
+      setCurrency(initialCurrency);
       setError(null);
       setSubmitting(false);
     }
-  }, [open, defaultCurrency]);
+  }, [open, initialCurrency]);
 
   async function onSubmit() {
     setError(null);

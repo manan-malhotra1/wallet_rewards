@@ -10,7 +10,7 @@ import { ShieldAlert, Plus } from "lucide-react";
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
 import { listConfigRequests, listStepUpPolicies } from "@/lib/api-endpoints";
-import { getActiveTenantId } from "@/lib/active-tenant";
+import { getActiveTenant } from "@/lib/active-tenant";
 import type { ConfigChangeRequest, StepUpPolicy } from "@/lib/api-types";
 import { changeProposedScopeKeys } from "@/lib/config-scope";
 
@@ -31,8 +31,8 @@ export default async function StepUpPage() {
   const canPropose = session?.user?.roles?.includes("platform-admin") ?? false;
   const currentAdminId = session?.user?.id ?? "";
 
-  const activeTenantId = await getActiveTenantId();
-  if (!activeTenantId) {
+  const activeTenant = await getActiveTenant();
+  if (!activeTenant) {
     return (
       <div className="p-6">
         <EmptyState
@@ -43,6 +43,9 @@ export default async function StepUpPage() {
       </div>
     );
   }
+  const activeTenantId = activeTenant.id;
+  // Fiat step-up policies default to the tenant's own currency, not "ZAR".
+  const defaultCurrency = activeTenant.base_currency ?? "ZAR";
 
   let policies: StepUpPolicy[] = [];
   let openRequests: ConfigChangeRequest[] = [];
@@ -72,6 +75,7 @@ export default async function StepUpPage() {
           canPropose ? (
             <CreateStepUpDialog
               tenantId={activeTenantId}
+              defaultCurrency={defaultCurrency}
               trigger={
                 <button
                   type="button"

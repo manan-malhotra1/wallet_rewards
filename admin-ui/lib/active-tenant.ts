@@ -10,6 +10,7 @@ import { cookies } from "next/headers";
 
 import { ApiError } from "@/lib/api";
 import { listTenants } from "@/lib/api-endpoints";
+import type { Tenant } from "@/lib/api-types";
 
 const TENANT_COOKIE = "sasai_active_tenant";
 
@@ -36,6 +37,37 @@ export async function getActiveTenantId(): Promise<string | null> {
   try {
     const tenants = await listTenants();
     return tenants[0]?.id ?? null;
+  } catch (err) {
+    if (err instanceof ApiError) return null;
+    throw err;
+  }
+}
+
+/**
+ * Resolve the full active Tenant for the current operator.
+ *
+ * Same resolution rule as {@link getActiveTenantId} (cookie first, else the
+ * operator's first tenant) but returns the whole record so callers can read
+ * per-tenant fields such as `base_currency` — e.g. money/config dialogs that
+ * must default the currency to the tenant's own currency, never a hardcoded
+ * "ZAR".
+ *
+ * Returns:
+ *   The active Tenant, or null when the operator has no tenants (or the
+ *   backend is unreachable).
+ */
+export async function getActiveTenant(): Promise<Tenant | null> {
+  const store = await cookies();
+  const fromCookie = store.get(TENANT_COOKIE)?.value;
+
+  // Swallow API errors so a backend hiccup degrades to "no tenant" rather
+  // than crashing every authenticated page (mirrors getActiveTenantId).
+  try {
+    const tenants = await listTenants();
+    if (fromCookie) {
+      return tenants.find((t) => t.id === fromCookie) ?? tenants[0] ?? null;
+    }
+    return tenants[0] ?? null;
   } catch (err) {
     if (err instanceof ApiError) return null;
     throw err;

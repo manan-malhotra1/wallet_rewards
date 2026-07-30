@@ -20,11 +20,12 @@ vi.mock("@/app/(authenticated)/system-wallets/_actions", () => ({
 }));
 
 /** Open the dialog and return the configured userEvent instance. */
-async function openDialog() {
+async function openDialog(defaultCurrency = "ZAR") {
   const user = userEvent.setup();
   render(
     <FundUserDialog
       tenantId="tenant-1"
+      defaultCurrency={defaultCurrency}
       trigger={<button type="button">Fund a user</button>}
     />,
   );
@@ -57,6 +58,21 @@ describe("Fund a user wallet", () => {
     });
     // A successful proposal closes the dialog.
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("Verify a USD tenant's fund dialog defaults to USD, not ZAR", async () => {
+    const user = await openDialog("USD");
+
+    // The currency field is seeded from the active tenant's currency.
+    expect(screen.getByLabelText("Currency")).toHaveValue("USD");
+
+    await user.type(screen.getByPlaceholderText("+27 82 555 0001"), "+27 82 555 0001");
+    await user.type(screen.getByLabelText("Amount"), "500");
+    await user.type(screen.getByLabelText("Reason (audit)"), "Refund for failed fund");
+    await user.click(screen.getByRole("button", { name: "Fund user" }));
+
+    await waitFor(() => expect(fundUserAction).toHaveBeenCalledTimes(1));
+    expect(fundUserAction.mock.calls[0][0]).toMatchObject({ currency: "USD" });
   });
 
   it("Verify funding is blocked when the amount is empty", async () => {

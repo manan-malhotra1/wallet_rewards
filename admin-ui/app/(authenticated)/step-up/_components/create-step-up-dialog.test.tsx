@@ -64,7 +64,7 @@ describe("Step-up PIN policy form", () => {
 
   it("Verify a money transfer policy defaults to Rand (ZAR)", async () => {
     const user = userEvent.setup();
-    render(<CreateStepUpDialog tenantId="tenant-1" open />);
+    render(<CreateStepUpDialog tenantId="tenant-1" defaultCurrency="ZAR" open />);
 
     await user.click(screen.getByRole("button", { name: "Propose change" }));
 
@@ -72,6 +72,38 @@ describe("Step-up PIN policy form", () => {
     expect(proposeStepUpChangeAction.mock.calls[0][0]).toMatchObject({
       transaction_type: "p2p",
       currency: "ZAR",
+    });
+  });
+
+  it("Verify a USD tenant's money policy defaults to USD, not ZAR", async () => {
+    const user = userEvent.setup();
+    render(<CreateStepUpDialog tenantId="tenant-1" defaultCurrency="USD" open />);
+
+    // The fiat default follows the active tenant's currency.
+    expect(screen.getByLabelText("Currency")).toHaveValue("USD");
+
+    await user.click(screen.getByRole("button", { name: "Propose change" }));
+
+    await waitFor(() => expect(proposeStepUpChangeAction).toHaveBeenCalledTimes(1));
+    expect(proposeStepUpChangeAction.mock.calls[0][0]).toMatchObject({
+      transaction_type: "p2p",
+      currency: "USD",
+    });
+  });
+
+  it("Verify a USD tenant's redemption policy still settles in points, not USD", async () => {
+    const user = userEvent.setup();
+    render(<CreateStepUpDialog tenantId="tenant-1" defaultCurrency="USD" open />);
+
+    // Redemption is points regardless of the tenant's fiat currency.
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "Redemption (points)" }));
+    await user.click(screen.getByRole("button", { name: "Propose change" }));
+
+    await waitFor(() => expect(proposeStepUpChangeAction).toHaveBeenCalledTimes(1));
+    expect(proposeStepUpChangeAction.mock.calls[0][0]).toMatchObject({
+      transaction_type: "redemption",
+      currency: "PTS",
     });
   });
 

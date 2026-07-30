@@ -41,6 +41,7 @@ from app.modules.payments.service import fund  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
 from app.modules.redemption.service import register_provider  # noqa: E402
 from app.modules.step_up.schemas import STEP_UP_TRANSACTION_TYPES  # noqa: E402
+from app.modules.tenants.service import provision_tenant_defaults  # noqa: E402
 from app.modules.treasury.service import (  # noqa: E402
     BANK_MIRROR_PRIMARY_NAME,
     adjust_system_wallet,
@@ -64,7 +65,6 @@ from app.shared.models import (  # noqa: E402
     ApiKey,
     CommissionConfig,
     ExternalEventSource,
-    Instrument,
     LimitConfig,
     MerchantProfile,
     PricingConfig,
@@ -72,7 +72,6 @@ from app.shared.models import (  # noqa: E402
     Role,
     RolePermission,
     Rule,
-    Service,
     StepUpPolicy,
     TaxConfig,
     Tenant,
@@ -169,117 +168,6 @@ async def _get_or_create_tenant(session: AsyncSession) -> Tenant:
 
     print(f"  + Created tenant: {tenant.name} ({tenant.id})")
     return tenant
-
-
-async def _seed_instruments_catalog(session: AsyncSession, tenant: Tenant) -> None:
-    """Idempotently insert the Phase-3 baseline instruments for the tenant.
-
-    Mirrors the migration 0018 backfill so freshly-created tenants get the
-    ZAR + PTS catalog entries existing tenants got at upgrade time.
-    """
-    baseline = [
-        ("ZAR", "R", "South African Rand", "Fiat wallet currency.", "financial_wallet"),
-        (
-            "PTS",
-            "Rewards",
-            "Rewards Points",
-            "Loyalty points credited by the rules engine.",
-            "points_account",
-        ),
-    ]
-    for code, symbol, display_name, description, account_type in baseline:
-        result = await session.execute(
-            select(Instrument).where(
-                Instrument.tenant_id == tenant.id,
-                Instrument.code == code,
-                Instrument.deleted_at.is_(None),
-            )
-        )
-        if result.scalar_one_or_none() is not None:
-            continue
-        session.add(
-            Instrument(
-                tenant_id=tenant.id,
-                code=code,
-                symbol=symbol,
-                display_name=display_name,
-                description=description,
-                account_type=account_type,
-            )
-        )
-        print(f"  + Instrument: {code} ({display_name})")
-    await session.commit()
-
-
-async def _seed_services_catalog(session: AsyncSession, tenant: Tenant) -> None:
-    """Idempotently insert the Phase-2 baseline services for the tenant.
-
-    Mirrors the migration 0017 backfill so freshly-created tenants get the
-    same catalog entries existing tenants got at upgrade time.
-    """
-    baseline = [
-        ("p2p", "Peer-to-Peer", "Send funds from one wallet to another."),
-        (
-            "airtime_recharge",
-            "Airtime Recharge",
-            "Recharge a mobile number via a registered airtime merchant.",
-        ),
-        (
-            "redemption",
-            "Redemption",
-            "Redeem reward points with a registered redemption provider.",
-        ),
-        (
-            "fund",
-            "Fund",
-            "Admin credits a user's wallet from the operator cash pool.",
-        ),
-        (
-            "withdraw",
-            "Withdraw",
-            "Admin debits a user's wallet and returns funds to the operator cash pool.",
-        ),
-        (
-            "cash_in",
-            "Cash In",
-            "An agent funds a customer's wallet from the agent's e-float and earns a commission.",
-        ),
-        (
-            "cashout",
-            "Cash Out",
-            "A subscriber sends money to an agent; the agent earns a commission.",
-        ),
-        (
-            "change_pin",
-            "Change PIN",
-            "A user changes their own PIN; a charged self-service operation.",
-        ),
-        (
-            "merchant_cashin",
-            "Merchant Cash-In",
-            "An external partner merchant funds a consumer's wallet via API.",
-        ),
-    ]
-    for code, display_name, description in baseline:
-        result = await session.execute(
-            select(Service).where(
-                Service.tenant_id == tenant.id,
-                Service.code == code,
-                Service.deleted_at.is_(None),
-            )
-        )
-        if result.scalar_one_or_none() is not None:
-            continue
-        session.add(
-            Service(
-                tenant_id=tenant.id,
-                code=code,
-                display_name=display_name,
-                description=description,
-            )
-        )
-        print(f"  + Service: {code} ({display_name})")
-    await session.commit()
 
 
 async def _get_or_create_user(
@@ -1124,13 +1012,11 @@ async def seed() -> None:
     async with SessionLocal() as session:
         tenant = await _get_or_create_tenant(session)
 
-        # Instruments catalog — the dropdown source for currency fields
-        # on Limits / Pricing. Idempotent.
-        await _seed_instruments_catalog(session, tenant)
-
-        # Services catalog — the dropdown source for Limits / Pricing /
-        # Campaigns admin pages. Idempotent.
-        await _seed_services_catalog(session, tenant)
+        # Baseline instruments + services — the ONE provisioning path, shared
+        # with the POST /api/v1/tenants create-tenant endpoint. Idempotent.
+        # The fiat instrument's code is the tenant's OWN base_currency (ZAR
+        # here for the seeded tenant); PTS is always added.
+        await provision_tenant_defaults(session, tenant)
 
         # Default end-user role so seeded users can actually transact.
         standard_role = await _get_or_create_standard_user_role(session, tenant)

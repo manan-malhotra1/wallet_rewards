@@ -57,6 +57,22 @@ class Tenant(Base):
     require_config_to_transact: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    # Per-tenant branding. These three fields drive the admin UI's per-tenant
+    # theme and sidebar logo: `brand_accent_color` and `brand_light_color` are
+    # the two anchor colours the UI interpolates into a derived palette, and
+    # `brand_icon_url` points at the tenant's hosted logo. All three are
+    # nullable — an unbranded tenant falls back to the app's default theme, so
+    # absence is meaningful (do not backfill a non-null default at the DB level).
+    #
+    # brand_accent_color: primary anchor hex, e.g. "#243B8F" (Blueberry). 9 chars
+    #   accommodates "#RRGGBBAA"; the UI validates format, the column just stores.
+    brand_accent_color: Mapped[str | None] = mapped_column(String(9), nullable=True)
+    # brand_light_color: light anchor hex, e.g. "#FFF0C9" (Cream Soda). Pairs with
+    #   the accent to seed the derived palette (backgrounds, tints).
+    brand_light_color: Mapped[str | None] = mapped_column(String(9), nullable=True)
+    # brand_icon_url: hosted image URL for the tenant logo shown in the sidebar.
+    #   Text (not String(n)) because signed/CDN URLs can be long.
+    brand_icon_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)

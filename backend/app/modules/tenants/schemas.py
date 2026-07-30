@@ -45,6 +45,59 @@ class TenantOut(BaseModel):
     brand_icon_url: str | None = None
 
 
+class TenantCreate(BaseModel):
+    """Create body for a brand-new tenant (platform-admin only).
+
+    A tenant is created with its identity fields plus optional branding. On
+    insert the service provisions the tenant's baseline instruments (a fiat
+    wallet instrument keyed to `base_currency`, plus the PTS points instrument)
+    and its baseline services, so a fresh tenant is never left un-provisioned.
+    Colours must be "#RRGGBB" / "#RRGGBBAA" hex and the icon an http(s) URL —
+    validated with the same rules as `TenantBrandingUpdate`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Display name. Must be unique across all tenants.",
+    )
+    business_type: BusinessType = Field(
+        description="Which services are switched on for this tenant.",
+    )
+    base_currency: str = Field(
+        min_length=3,
+        max_length=10,
+        description="ISO-like currency code for the tenant's fiat wallet (e.g. 'USD').",
+    )
+    brand_accent_color: Annotated[str | None, Field(default=None, max_length=9)] = None
+    brand_light_color: Annotated[str | None, Field(default=None, max_length=9)] = None
+    brand_icon_url: Annotated[str | None, Field(default=None, max_length=2048)] = None
+
+    @field_validator("base_currency")
+    @classmethod
+    def _normalise_currency(cls, value: str) -> str:
+        """Upper-case the currency code so instrument/account codes stay canonical."""
+        return value.strip().upper()
+
+    @field_validator("brand_accent_color", "brand_light_color")
+    @classmethod
+    def _validate_hex_color(cls, value: str | None) -> str | None:
+        """Reject any non-null colour that isn't 6- or 8-digit hex."""
+        if value is not None and not HEX_COLOR_PATTERN.match(value):
+            raise ValueError("must be a hex colour like '#243B8F' or '#243B8FCC'")
+        return value
+
+    @field_validator("brand_icon_url")
+    @classmethod
+    def _validate_icon_url(cls, value: str | None) -> str | None:
+        """Reject any non-null icon URL that isn't http(s)."""
+        if value is not None and not HTTP_URL_PATTERN.match(value):
+            raise ValueError("must be an http(s) URL")
+        return value
+
+
 class TenantUpdateRequest(BaseModel):
     """Patch body for tenant identity-card edits.
 

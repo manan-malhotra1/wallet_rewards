@@ -9,10 +9,14 @@
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 
 afterEach(() => {
   cleanup();
+  // Restore real timers between tests: a test that opts into fake timers must
+  // not leave them installed for the next file (that makes userEvent hang and
+  // unrelated tests time out). This is a no-op for tests using real timers.
+  vi.useRealTimers();
 });
 
 // Radix relies on these; jsdom does not implement them. No-op shims are enough

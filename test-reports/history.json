@@ -5525,21 +5525,289 @@
   ],
   "frontend::admin-ui/app/(authenticated)/_components/config-view-button.test.tsx::Config version history Verify a config created during setup shows a baseline version": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/_components/config-view-button.test.tsx::Config version history Verify older versions can be restored when a config has approved edit history": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/api-keys/_components/create-api-key-dialog.test.tsx::Create an API key Verify a failed key creation shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/api-keys/_components/create-api-key-dialog.test.tsx::Create an API key Verify an admin can bind a merchant so the key can call cash-in": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/api-keys/_components/create-api-key-dialog.test.tsx::Create an API key Verify an admin can mint a partner API key and see its one-time secret": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/api-keys/_components/create-api-key-dialog.test.tsx::Create an API key Verify minting is blocked when the looked-up user is not a merchant": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/audit/_components/audit-filters.test.tsx::Audit log \u2014 filtering Verify an admin can clear the audit log filters": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/audit/_components/audit-filters.test.tsx::Audit log \u2014 filtering Verify an admin can filter the audit log by entity type": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/audit/_components/audit-filters.test.tsx::Audit log \u2014 filtering Verify an admin can filter the audit log by entity type and ID together": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/budgets/_components/create-budget-dialog.test.tsx::Managing reward budgets \u2014 creating a budget Verify a budget cannot be created without a positive cap": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/budgets/_components/create-budget-dialog.test.tsx::Managing reward budgets \u2014 creating a budget Verify a rejected budget shows the reason and keeps the form open": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/budgets/_components/create-budget-dialog.test.tsx::Managing reward budgets \u2014 creating a budget Verify an admin can create a tenant-wide reward budget": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/campaign-detail-drawer.test.tsx::Managing reward campaigns \u2014 viewing a campaign Verify a campaign with no recorded activity shows placeholders": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/campaign-detail-drawer.test.tsx::Managing reward campaigns \u2014 viewing a campaign Verify an admin can review a campaign's full configuration and performance": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/campaign-detail-drawer.test.tsx::Managing reward campaigns \u2014 viewing a campaign Verify closing the detail panel dismisses it": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/campaigns-table.test.tsx::Campaigns \u2014 table row actions Verify an admin can open a campaign's details from its row": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/campaigns-table.test.tsx::Campaigns \u2014 table row actions Verify an admin can open the deactivate dialog for a campaign from its row": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/campaigns-table.test.tsx::Campaigns \u2014 table row actions Verify an admin can open the edit dialog for a campaign from its row": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/create-campaign-dialog.test.tsx::Managing reward campaigns \u2014 creating a campaign Verify a campaign is blocked without a name and reward value": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/create-campaign-dialog.test.tsx::Managing reward campaigns \u2014 creating a campaign Verify a failed campaign creation shows the backend error": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/create-campaign-dialog.test.tsx::Managing reward campaigns \u2014 creating a campaign Verify an admin can create a first-time reward rule": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/create-campaign-dialog.test.tsx::Managing reward campaigns \u2014 creating a campaign Verify an admin can create a milestone reward rule": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/delete-campaign-dialog.test.tsx::Managing reward campaigns \u2014 deactivating a campaign Verify a failed deactivation shows the reason and keeps the dialog open": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/delete-campaign-dialog.test.tsx::Managing reward campaigns \u2014 deactivating a campaign Verify an admin can deactivate a campaign after confirming": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/delete-campaign-dialog.test.tsx::Managing reward campaigns \u2014 deactivating a campaign Verify deactivating a campaign asks for confirmation first": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/edit-campaign-dialog.test.tsx::Managing reward campaigns \u2014 editing a campaign Verify a rejected edit shows the reason and keeps the form open": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/edit-campaign-dialog.test.tsx::Managing reward campaigns \u2014 editing a campaign Verify an admin can rename a campaign and change its reward value": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/campaigns/_components/edit-campaign-dialog.test.tsx::Managing reward campaigns \u2014 editing a campaign Verify editing is blocked when the reward value is not positive": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5547,11 +5815,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/commissions/_components/commission-changes-requested.test.tsx::Commission open requests Verify the maker can reopen a returned commission change to edit it": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5559,11 +5843,77 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/commissions/_components/create-commission-dialog.test.tsx::Propose a commission schedule Verify a commission proposal is blocked when a band's amounts are inverted": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/commissions/_components/create-commission-dialog.test.tsx::Propose a commission schedule Verify a rejected commission proposal shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/commissions/_components/create-commission-dialog.test.tsx::Propose a commission schedule Verify an admin can propose a new agent commission for a service": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/config-requests/_components/config-requests-table.test.tsx::Config requests \u2014 table row actions Verify a failed request load shows an error and leaves the drawer closed": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/config-requests/_components/config-requests-table.test.tsx::Config requests \u2014 table row actions Verify an admin can open a config request's details from the table": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/config-requests/_components/request-detail-drawer.test.tsx::Config change approval drawer Verify a rejected approval attempt on a config change shows the reason": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5571,11 +5921,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/config-requests/_components/request-detail-drawer.test.tsx::Config change approval drawer Verify requesting changes on a config change needs a comment": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5583,11 +5949,177 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/events/_components/register-event-source-dialog.test.tsx::Register an event source Verify a failed registration shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/events/_components/register-event-source-dialog.test.tsx::Register an event source Verify a malformed field mapping is refused before anything is sent": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/events/_components/register-event-source-dialog.test.tsx::Register an event source Verify a too-short HMAC secret is refused before anything is sent": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/events/_components/register-event-source-dialog.test.tsx::Register an event source Verify an admin can register an external event source": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/events/_components/register-event-source-dialog.test.tsx::Register an event source Verify registration is blocked when the name and source key are missing": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/instruments/_components/create-instrument-dialog.test.tsx::Create an instrument Verify a failed instrument creation shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/instruments/_components/create-instrument-dialog.test.tsx::Create an instrument Verify an admin can add a new instrument to the tenant catalog": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/instruments/_components/create-instrument-dialog.test.tsx::Create an instrument Verify an admin can backfill accounts for existing users when adding an instrument": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/instruments/_components/create-instrument-dialog.test.tsx::Create an instrument Verify an invalid instrument code is rejected before anything is sent": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/limits/_components/create-limit-dialog.test.tsx::Propose a service limit Verify a limit proposal is blocked when no cap is set": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/limits/_components/create-limit-dialog.test.tsx::Propose a service limit Verify a rejected limit proposal shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/limits/_components/create-limit-dialog.test.tsx::Propose a service limit Verify an admin can propose a per-transaction cap for a service": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/limits/_components/create-wallet-limit-dialog.test.tsx::Propose a wallet limit Verify a rejected wallet-limit proposal shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/limits/_components/create-wallet-limit-dialog.test.tsx::Propose a wallet limit Verify a wallet-limit proposal is blocked when nothing is set": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/limits/_components/create-wallet-limit-dialog.test.tsx::Propose a wallet limit Verify an admin can propose a max wallet balance and a send cap": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/limits/_components/limit-changes-requested.test.tsx::Limit change open requests Verify the maker can reopen a returned spending limit to edit it": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5595,11 +6127,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/limits/_components/limit-changes-requested.test.tsx::Limit change open requests Verify the maker can withdraw a pending limit change": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5607,11 +6155,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/money-operations/_components/money-operation-detail-drawer.test.tsx::Treasury move approval drawer Verify a second admin can approve a pending treasury move": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5619,11 +6183,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/money-operations/_components/money-operation-detail-drawer.test.tsx::Treasury move approval drawer Verify the maker can revise and resubmit a returned treasury move": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5631,11 +6211,57 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/pricing/_components/create-pricing-dialog.test.tsx::Propose a pricing schedule Verify a fee proposal is blocked when a band's amounts are inverted": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/pricing/_components/create-pricing-dialog.test.tsx::Propose a pricing schedule Verify a rejected fee proposal shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/pricing/_components/create-pricing-dialog.test.tsx::Propose a pricing schedule Verify an admin can propose a new fee for a service": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/pricing/_components/pricing-changes-requested.test.tsx::Fee change open requests Verify the maker can reopen a returned fee change to edit it": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5643,35 +6269,205 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/reconciliation/_components/sweep-button.test.tsx::Run a reconciliation sweep Verify an admin can run a reconciliation sweep": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/reconciliation/_components/sweep-button.test.tsx::Run a reconciliation sweep Verify an admin sees an error when a reconciliation sweep fails": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/redemption/_components/manual-review-table.test.tsx::Review the manual-review queue Verify an admin sees a stuck redemption held for review with its details": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/redemption/_components/manual-review-table.test.tsx::Review the manual-review queue Verify an admin sees every queued redemption listed for review": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/redemption/_components/manual-review-table.test.tsx::Review the manual-review queue Verify an admin still sees a redemption when the user's name is unavailable": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/redemption/_components/register-provider-dialog.test.tsx::Register a redemption provider Verify a failed provider registration shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/redemption/_components/register-provider-dialog.test.tsx::Register a redemption provider Verify a too-short HMAC secret is refused before anything is sent": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/redemption/_components/register-provider-dialog.test.tsx::Register a redemption provider Verify an admin can register an airtime redemption provider": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/redemption/_components/register-provider-dialog.test.tsx::Register a redemption provider Verify registration is blocked when the provider name is missing": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/segments/_components/create-segment-dialog.test.tsx::Managing reward segments \u2014 creating a segment Verify a rejected segment shows the reason and keeps the form open": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/segments/_components/create-segment-dialog.test.tsx::Managing reward segments \u2014 creating a segment Verify a segment cannot be created without a name": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/segments/_components/create-segment-dialog.test.tsx::Managing reward segments \u2014 creating a segment Verify an admin can create a customer segment": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/services/_components/create-service-dialog.test.tsx::Create a service Verify a rejected service creation shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/services/_components/create-service-dialog.test.tsx::Create a service Verify a service with a malformed code is blocked": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/services/_components/create-service-dialog.test.tsx::Create a service Verify an admin can add a new service to the catalog": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/step-up/_components/create-step-up-dialog.test.tsx::Step-up PIN policy form Verify a money transfer policy defaults to Rand (ZAR)": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/step-up/_components/create-step-up-dialog.test.tsx::Step-up PIN policy form Verify a rewards redemption policy uses points, not currency": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/step-up/_components/create-step-up-dialog.test.tsx::Step-up PIN policy form Verify editing a policy keeps its own service instead of resetting it": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5679,11 +6475,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/step-up/_components/step-up-changes-requested.test.tsx::Step-up change open requests Verify the maker can withdraw a pending PIN step-up change": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5691,11 +6503,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/adjust-system-wallet-dialog.test.tsx::Adjust a system wallet Verify an adjustment is blocked when the amount is empty": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5703,11 +6531,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/adjust-system-wallet-dialog.test.tsx::Adjust a system wallet Verify an admin can draw float down from a system wallet": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5715,11 +6559,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/fund-user-dialog.test.tsx::Fund a user wallet Verify an admin can top up a customer's wallet from the operator float": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5727,11 +6587,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/new-bank-mirror-dialog.test.tsx::Create a bank mirror Verify a duplicate bank mirror name shows the error to the admin": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5739,11 +6615,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/new-bank-mirror-dialog.test.tsx::Create a bank mirror Verify an admin can create a named bank mirror": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5751,11 +6643,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/rename-bank-mirror-dialog.test.tsx::Rename a bank mirror Verify a rename collision shows the error to the admin": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5763,11 +6671,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/rename-bank-mirror-dialog.test.tsx::Rename a bank mirror Verify renaming is blocked when the name is cleared": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5775,11 +6699,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/transactions-dialog.test.tsx::Review system-wallet transactions Verify an admin sees a clear message when a wallet has no transactions yet": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5787,11 +6727,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/withdraw-from-user-dialog.test.tsx::Withdraw from a user wallet Verify a rejected withdrawal shows the error to the admin": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5799,11 +6755,57 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/system-wallets/_components/withdraw-from-user-dialog.test.tsx::Withdraw from a user wallet Verify an admin can pull funds back from a customer into a bank mirror": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/taxes/_components/create-tax-dialog.test.tsx::Propose a tax config Verify a rejected tax proposal shows the error to the admin": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/taxes/_components/create-tax-dialog.test.tsx::Propose a tax config Verify a tax proposal with an invalid rate is rejected with a reason": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/app/(authenticated)/taxes/_components/create-tax-dialog.test.tsx::Propose a tax config Verify an admin can propose tax rates for a currency": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5811,11 +6813,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/taxes/_components/tax-changes-requested.test.tsx::Tax change open requests Verify the maker can withdraw a pending tax change": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5823,11 +6841,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/user-operations/_components/user-operation-detail-drawer.test.tsx::User change approval drawer Verify a second admin can approve a pending user change": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5835,11 +6869,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/user-operations/_components/user-operation-detail-drawer.test.tsx::User change approval drawer Verify the maker can revise and resubmit a returned user change": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5847,11 +6897,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/access-lock-control.test.tsx::Managing customers \u2014 access lock Verify a failed access change shows the reason and keeps the dialog open": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5859,11 +6925,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/access-lock-control.test.tsx::Managing customers \u2014 access lock Verify locking a customer's login asks for confirmation first": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5871,11 +6953,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/add-identifier-dialog.test.tsx::Managing customers \u2014 adding an identifier Verify adding an identifier with no value is blocked": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5883,11 +6981,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/create-user-dialog.test.tsx::Managing customers \u2014 registering a customer Verify a rejected registration shows the reason and does not leave the form": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5895,11 +7009,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/create-user-dialog.test.tsx::Managing customers \u2014 registering a customer Verify registering a customer with no identifier is blocked": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5907,11 +7037,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/edit-user-drawer.test.tsx::Managing customers \u2014 editing a customer Verify a rejected edit shows the reason": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5919,11 +7065,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/edit-user-drawer.test.tsx::Managing customers \u2014 editing a customer Verify submitting an edit with no changes is blocked": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5931,11 +7093,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/reset-pin-button.test.tsx::Managing customers \u2014 PIN reset Verify a PIN reset can be triggered for a customer and reveals the new PIN": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5943,11 +7121,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/unlock-button.test.tsx::Managing customers \u2014 clearing a PIN lockout Verify a failed unlock shows the reason": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5955,11 +7149,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/unlock-button.test.tsx::Managing customers \u2014 clearing a PIN lockout Verify unlocking a customer asks for confirmation first": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5967,11 +7177,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/user-lookup-form.test.tsx::Managing customers \u2014 customer lookup Verify an admin can look up a customer by email address": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5979,11 +7205,27 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/app/(authenticated)/users/_components/verify-identifier-button.test.tsx::Managing customers \u2014 verifying an account number Verify a rejected verification shows the reason": [
     {
       "date": "2026-07-30T16:48:31",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
@@ -5991,345 +7233,519 @@
     {
       "date": "2026-07-30T16:48:31",
       "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/components/command-palette/command-palette.test.tsx::Command palette Verify an admin can search the command palette to find a command": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/components/command-palette/command-palette.test.tsx::Command palette Verify an admin can switch tenant from the command palette": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
+    }
+  ],
+  "frontend::admin-ui/components/command-palette/command-palette.test.tsx::Command palette Verify the command palette opens and runs a command": [
+    {
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
+      "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a change shows only the fields that actually changed": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a general access change reads as 'User access changed' when the before and after are unknown": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a known admin action reads as plain language in the audit log": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a previously empty value is shown as a dash next to its readable field name": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a status change is shown in plain words on both the old and new values": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify a transaction-locked account is shown as 'Transactions locked'": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify admin, user and system actors are named in plain language": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify an active account is shown as 'Active'": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify an unrecognised account status is still shown as readable words": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify an unrecognised action still shows as readable words, never a raw code": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify blocking a user's transactions is recorded as 'Transactions locked'": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify restoring a suspended user is recorded as 'Login access restored'": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify suspending a user is recorded as 'Login locked' in the audit log": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify the audit log shows where an action came from (admin portal or mobile app)": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/audit-labels.test.ts::Audit log wording Verify true/false values are shown as Yes and No": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a commission cannot be duplicated for the same service, currency and customer type": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a step-up policy cannot be duplicated for the same service and currency": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a tax configuration cannot be duplicated for the same currency": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a tiered pricing config is scoped by its first tier": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify a wallet limit is scoped by currency and customer type, defaulting to all customers": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify step-up policies for different services are kept as separate configs": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-scope.test.ts::Configuration identity rules Verify two pricing configs count as the same only when service, account type, currency and customer type all match": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify a step-up policy shows as 'Step-up PIN policy'": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify admins see 'Service charge' instead of a raw pricing code": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (commission)": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (limit)": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (pricing)": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (step_up)": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (tax)": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/config-type-label.test.ts::Configuration type names Verify every configuration type shows a readable name, not a raw code (wallet_limit)": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/money-operation-label.test.ts::Treasury operation wording Verify adjusting a treasury wallet shows whether the amount is added or removed, and on which account": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/money-operation-label.test.ts::Treasury operation wording Verify an unrecognised treasury operation is shown as-is rather than hidden": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/money-operation-label.test.ts::Treasury operation wording Verify funding a user reads as the amount, currency and recipient on one line": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ],
   "frontend::admin-ui/lib/money-operation-label.test.ts::Treasury operation wording Verify withdrawing from a user is labelled 'Withdraw from user'": [
     {
-      "date": "2026-07-27T23:56:17",
+      "date": "2026-07-30T16:48:31",
       "outcome": "passed"
     },
     {
-      "date": "2026-07-30T16:48:31",
+      "date": "2026-07-30T16:58:02",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-07-30T17:09:58",
       "outcome": "passed"
     }
   ]

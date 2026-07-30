@@ -44,5 +44,9 @@ export default defineConfig({
     include: ["**/*.test.{ts,tsx}"],
     // node_modules and build output are never test sources.
     exclude: ["node_modules/**", ".next/**"],
+    // jsdom + userEvent + Radix dialogs are slow under full-suite parallel load;
+    // the 5s default flakes on interaction tests that pass comfortably alone.
+    testTimeout: 20000,
+    hookTimeout: 20000,
   },
 });

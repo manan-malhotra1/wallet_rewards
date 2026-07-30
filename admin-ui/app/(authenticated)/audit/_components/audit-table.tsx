@@ -138,12 +138,9 @@ export function AuditTable({ entries }: { entries: AuditEntry[] }) {
                   <dt className="text-[--color-text-3]">IP</dt>
                   <dd className="font-mono">{selected.ip_address ?? "—"}</dd>
                 </div>
-                <div>
-                  <dt className="text-[--color-text-3]">Actor ID</dt>
-                  <dd className="font-mono text-[11px] text-[--color-text-2]">
-                    {selected.actor_id}
-                  </dd>
-                </div>
+                {/* The actor's name + role is shown under "Who"; the raw actor_id
+                    UUID is internal plumbing (still in "Show raw JSON" for
+                    forensics), so it isn't surfaced as a user-facing field. */}
                 {selected.note && (
                   <div className="col-span-2">
                     <dt className="text-[--color-text-3]">Note</dt>

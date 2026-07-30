@@ -13,7 +13,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.sasai.wallet"
@@ -37,7 +39,12 @@
       "typedRoutes": true
     },
     "extra": {
-      "backendUrl": "http://localhost:8000"
-    }
+      "backendUrl": "http://localhost:8000",
+      "router": {},
+      "eas": {
+        "projectId": "e602c0b8-0daf-477f-9851-477b8b26b76f"
+      }
+    },
+    "owner": "manan.malhotra1"
   }
 }

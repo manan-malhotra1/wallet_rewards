@@ -228,6 +228,24 @@ export function ramp(accent: string, light: string, t: number): string {
 }
 
 /**
+ * Darken the accent toward black in OKLab (black is the origin, so this scales
+ * every OKLab component by `1 - s`). Used for the dark theme's surfaces: because
+ * OKLab is roughly perceptually uniform, scaling toward the origin drops both
+ * lightness AND chroma together, so a deep surface stays a calm navy. Deriving
+ * these surfaces by extrapolating the accent→light line past the accent (`t < 0`)
+ * instead PUSHES chroma up and yields an electric indigo — hence this separate path.
+ *
+ * @param accent - the deep brand hex colour (`s = 0` returns it unchanged)
+ * @param s - darkening amount in [0, 1]; `s = 1` is black
+ * @returns the darkened colour as an in-gamut `#RRGGBB` hex string
+ */
+export function darken(accent: string, s: number): string {
+  const a = hexToOklab(accent);
+  const k = 1 - s;
+  return oklabToHex({ L: a.L * k, a: a.a * k, b: a.b * k });
+}
+
+/**
  * The seven golden-ratio stop positions along the accent→light line.
  *
  * Derived from powers of the golden ratio φ ≈ 1.618: the four interior stops
@@ -333,10 +351,9 @@ export interface DerivedTokens {
  * Derive the full dark + light shadcn token set from a tenant's two brand
  * colours.
  *
- * Each token is a fixed sample of {@link ramp}: the dark theme anchors surfaces
- * below the accent (extrapolated `t < 0`) with the light colour as foreground,
- * while the light theme anchors surfaces at/above the light colour with the
- * accent as foreground. `chart-5` is a fixed amber accent (warm counterpoint to
+ * The dark theme darkens the accent toward black for surfaces (see {@link darken})
+ * with the light colour as foreground; the light theme anchors surfaces at/above
+ * the light colour (via {@link ramp}) with the accent as foreground. `chart-5` is a fixed amber accent (warm counterpoint to
  * the brand hue) in each theme, and the semantic `--destructive` pair is
  * deliberately not produced here — status colours stay constant across tenants.
  *
@@ -349,37 +366,40 @@ export function deriveTokens(
   light: string = DEFAULT_LIGHT,
 ): DerivedTokens {
   const r = (t: number) => ramp(accent, light, t);
+  // Dark surfaces darken the accent toward black (keeps the navy calm); dark
+  // accents/text sample the accent→light ramp.
+  const d = (s: number) => darken(accent, s);
 
   const dark: TokenMap = {
-    background: r(-0.35),
+    background: d(0.55),
     foreground: r(1),
-    card: r(-0.18),
+    card: d(0.42),
     "card-foreground": r(1),
-    popover: r(-0.18),
+    popover: d(0.42),
     "popover-foreground": r(1),
     primary: r(1),
     "primary-foreground": r(0),
-    secondary: r(-0.05),
+    secondary: d(0.3),
     "secondary-foreground": r(1),
-    muted: r(-0.1),
+    muted: d(0.38),
     "muted-foreground": r(0.618),
     accent: r(0.1459),
     "accent-foreground": r(1),
-    border: r(-0.05),
-    input: r(-0.05),
+    border: d(0.3),
+    input: d(0.3),
     ring: r(0.382),
     "chart-1": r(1),
     "chart-2": r(0.618),
     "chart-3": r(0.382),
     "chart-4": r(0.236),
     "chart-5": "#E7B24B",
-    sidebar: r(-0.45),
+    sidebar: d(0.62),
     "sidebar-foreground": r(1),
     "sidebar-primary": r(1),
     "sidebar-primary-foreground": r(0),
     "sidebar-accent": r(0.1459),
     "sidebar-accent-foreground": r(1),
-    "sidebar-border": r(-0.25),
+    "sidebar-border": d(0.46),
     "sidebar-ring": r(0.382),
   };
 

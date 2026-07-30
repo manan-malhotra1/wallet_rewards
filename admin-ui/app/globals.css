@@ -56,76 +56,85 @@
 }
 
 /* Light — default */
+/*
+ * Default palette = the Sasai brand (Blueberry #243B8F + Cream #FFF0C9) derived
+ * via the golden-ratio OKLab engine in lib/brand-palette.ts (deriveTokens with
+ * the defaults). A tenant with custom brand colours overrides these at runtime
+ * via a <style> block injected in the authenticated layout — so this block is the
+ * fallback/default brand. Keep it in sync with deriveTokens(DEFAULT_ACCENT,
+ * DEFAULT_LIGHT); --destructive stays semantic (not brand-derived).
+ */
 :root {
   --radius: 0.5rem;
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #1e3a5f;
-  --primary-foreground: #f8fafc;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #1e293b;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #e0f2fe;
-  --accent-foreground: #0c4a6e;
+  --background: #fff0c9;
+  --foreground: #0f1882;
+  --card: #ffffcc;
+  --card-foreground: #0f1882;
+  --popover: #ffffcc;
+  --popover-foreground: #0f1882;
+  --primary: #243b8f;
+  --primary-foreground: #fff0c9;
+  --secondary: #e7dec6;
+  --secondary-foreground: #243b8f;
+  --muted: #e2dac5;
+  --muted-foreground: #5167a1;
+  --accent: #dad5c4;
+  --accent-foreground: #243b8f;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #1e3a5f;
-  --chart-1: #1e3a5f;
-  --chart-2: #0ea5e9;
-  --chart-3: #10b981;
-  --chart-4: #f59e0b;
-  --chart-5: #ef4444;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #1e293b;
-  --sidebar-primary: #1e3a5f;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1f5f9;
-  --sidebar-accent-foreground: #1e293b;
-  --sidebar-border: #e2e8f0;
-  --sidebar-ring: #1e3a5f;
+  --border: #cfccc1;
+  --input: #cfccc1;
+  --ring: #5167a1;
+  --chart-1: #243b8f;
+  --chart-2: #5167a1;
+  --chart-3: #7081ab;
+  --chart-4: #a4abb9;
+  --chart-5: #b7791f;
+  --sidebar: #243b8f;
+  --sidebar-foreground: #fff0c9;
+  --sidebar-primary: #fff0c9;
+  --sidebar-primary-foreground: #243b8f;
+  --sidebar-accent: #3f579a;
+  --sidebar-accent-foreground: #fff0c9;
+  --sidebar-border: #0f1882;
+  --sidebar-ring: #5167a1;
 }
 
-/* Dark — toggled via .dark class */
+/* Dark — the default theme (toggled via .dark class). Deep Blueberry surfaces,
+   Cream ink. Surfaces are darken()-ed toward black so they stay calm navy. */
 .dark {
-  --background: #0f172a;
-  --foreground: #f8fafc;
-  --card: #1e293b;
-  --card-foreground: #f8fafc;
-  --popover: #1e293b;
-  --popover-foreground: #f8fafc;
-  --primary: #38bdf8;
-  --primary-foreground: #0f172a;
-  --secondary: #334155;
-  --secondary-foreground: #f8fafc;
-  --muted: #334155;
-  --muted-foreground: #94a3b8;
-  --accent: #1e3a5f;
-  --accent-foreground: #bae6fd;
+  --background: #050d2c;
+  --foreground: #fff0c9;
+  --card: #0b1741;
+  --card-foreground: #fff0c9;
+  --popover: #0b1741;
+  --popover-foreground: #fff0c9;
+  --primary: #fff0c9;
+  --primary-foreground: #243b8f;
+  --secondary: #122157;
+  --secondary-foreground: #fff0c9;
+  --muted: #0d1a48;
+  --muted-foreground: #a4abb9;
+  --accent: #3f579a;
+  --accent-foreground: #fff0c9;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #334155;
-  --input: #334155;
-  --ring: #38bdf8;
-  --chart-1: #38bdf8;
-  --chart-2: #34d399;
-  --chart-3: #fbbf24;
-  --chart-4: #a78bfa;
-  --chart-5: #f87171;
-  --sidebar: #111827;
-  --sidebar-foreground: #e2e8f0;
-  --sidebar-primary: #38bdf8;
-  --sidebar-primary-foreground: #0f172a;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #e2e8f0;
-  --sidebar-border: #1e293b;
-  --sidebar-ring: #38bdf8;
+  --border: #122157;
+  --input: #122157;
+  --ring: #7081ab;
+  --chart-1: #fff0c9;
+  --chart-2: #a4abb9;
+  --chart-3: #7081ab;
+  --chart-4: #5167a1;
+  --chart-5: #e7b24b;
+  --sidebar: #030821;
+  --sidebar-foreground: #fff0c9;
+  --sidebar-primary: #fff0c9;
+  --sidebar-primary-foreground: #243b8f;
+  --sidebar-accent: #3f579a;
+  --sidebar-accent-foreground: #fff0c9;
+  --sidebar-border: #09143b;
+  --sidebar-ring: #7081ab;
 }
 
 * {

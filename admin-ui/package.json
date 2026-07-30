@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:report": "vitest run --reporter=default --reporter=json --outputFile=../test-reports/frontend-run.json; python3 ../scripts/build_test_report.py",

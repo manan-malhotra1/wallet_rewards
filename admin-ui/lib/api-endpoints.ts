@@ -69,6 +69,24 @@ export const listTenants = () => apiGet<Tenant[]>("/api/v1/tenants");
 export const getTenant = (tenant_id: string) =>
   apiGet<Tenant>(`/api/v1/tenants/${tenant_id}`);
 
+/**
+ * Body for provisioning a new tenant. The backend upper-cases `base_currency`
+ * and auto-provisions the tenant's baseline instruments/services. Optional
+ * branding fields seed the runtime palette; omit / null to inherit defaults.
+ */
+export interface CreateTenantPayload {
+  name: string;
+  business_type: "wallet" | "rewards" | "both";
+  base_currency: string;
+  brand_accent_color?: string | null;
+  brand_light_color?: string | null;
+  brand_icon_url?: string | null;
+}
+
+/** Create a tenant (platform-admin). Returns the created Tenant (201). */
+export const createTenant = (payload: CreateTenantPayload) =>
+  apiPost<Tenant>("/api/v1/tenants", payload);
+
 export interface UpdateTenantPayload {
   name?: string;
   business_type?: "wallet" | "rewards" | "both";

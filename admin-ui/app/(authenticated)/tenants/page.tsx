@@ -5,7 +5,7 @@
  * are editable inline; tenant id, Keycloak realm, currency and status
  * are read-only. PATCH lands via the server action in `_actions.ts`.
  */
-import { Settings2 } from "lucide-react";
+import { Plus, Settings2 } from "lucide-react";
 
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
@@ -15,7 +15,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
+import { CreateTenantDialog } from "./_components/create-tenant-dialog";
 import { TenantCard } from "./_components/tenant-card";
+
+const NEW_BUTTON_CLASS =
+  "inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +44,18 @@ export default async function TenantsPage() {
       <PageHeader
         title="Tenants"
         subtitle="Per-tenant identity. Edit name and business type; ID and Keycloak realm are managed elsewhere."
+        actions={
+          canManageBranding ? (
+            <CreateTenantDialog
+              trigger={
+                <button type="button" className={NEW_BUTTON_CLASS}>
+                  <Plus className="h-3.5 w-3.5" />
+                  New tenant
+                </button>
+              }
+            />
+          ) : undefined
+        }
       />
       <div className="space-y-4 px-6 py-6">
         {error && (

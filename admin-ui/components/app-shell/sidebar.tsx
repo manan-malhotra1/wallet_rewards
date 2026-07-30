@@ -232,15 +232,15 @@ export function Sidebar({
         <Link href="/dashboard" aria-label="Sasai Wallet Admin home" className="flex items-center">
           {brandIconUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
+            // Height-constrained, width-auto (capped) so a wide wordmark logo
+            // shows in full instead of being squished into a small square.
             <img
               src={brandIconUrl}
               alt="Tenant logo"
-              width={28}
-              height={28}
-              className="h-7 w-7 rounded-md object-contain"
+              className="h-9 w-auto max-w-[150px] rounded-md object-contain"
             />
           ) : (
-            <SasaiLogo height={28} />
+            <SasaiLogo height={34} />
           )}
         </Link>
         <span className="rounded-full bg-sidebar-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-sidebar-accent-foreground">

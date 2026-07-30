@@ -163,7 +163,7 @@ export default function AmountScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#e8eef5">
+    <View flex={1} backgroundColor="#ccd8e8">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader paddingBottom={22}>
@@ -300,7 +300,7 @@ export default function AmountScreen() {
           </YStack>
 
           <NumericKeypad onPress={handleKey} />
-          <View backgroundColor="#e8eef5" paddingHorizontal={18} paddingBottom={18} paddingTop={4}>
+          <View backgroundColor="#ccd8e8" paddingHorizontal={18} paddingBottom={18} paddingTop={4}>
             <ClayButton
               onPress={onContinue}
               disabled={!canContinue}

@@ -69,7 +69,7 @@ export default function PinScreen() {
 
   if (lockedOut) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#e8eef5' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }}>
         <YStack flex={1} padding={26} gap="$4" alignItems="center" justifyContent="center">
           <Text
             fontFamily="PlusJakartaSans-ExtraBold"
@@ -106,7 +106,7 @@ export default function PinScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#e8eef5' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }} edges={['bottom']}>
       <YStack flex={1}>
         <GradientHeader paddingBottom={32}>
           <View paddingTop={16}>

@@ -61,7 +61,7 @@ export default function SuccessScreen() {
   const reference = typeof params.reference === 'string' ? params.reference : '—';
 
   return (
-    <View flex={1} backgroundColor="#e8eef5">
+    <View flex={1} backgroundColor="#ccd8e8">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader variant="success" paddingBottom={38}>

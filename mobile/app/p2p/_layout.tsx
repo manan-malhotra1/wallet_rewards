@@ -11,7 +11,7 @@ export default function P2PLayout() {
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_bottom',
-        contentStyle: { backgroundColor: '#e8eef5' },
+        contentStyle: { backgroundColor: '#ccd8e8' },
       }}
     />
   );

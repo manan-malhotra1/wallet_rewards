@@ -1,26 +1,17 @@
 /**
- * ClayPill — a small rounded pill with a teal LinearGradient face.
+ * ClayPill — a small rounded pill with a teal clay face.
  *
- * Used for the teal accents (points pill, "verified" badge, quick chips). It's
- * a fully-rounded clay chip: teal gradient face, soft drop shadow, a hairline
- * light rim, and a rounded highlight sheen. Presentational only — wrap it in a
- * Pressable at the call site if it needs to be tappable.
+ * Used for the teal accents (points pill, "verified" badge, quick chips). It
+ * paints a Skia clay `Box` behind its content: a teal gradient face, the raised
+ * inner highlight/depth shadows and a soft outer drop. Presentational only —
+ * wrap it in a Pressable at the call site if it needs to be tappable. Public
+ * props are unchanged.
  */
 import { ComponentProps } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
 import { View } from 'tamagui';
 
-import {
-  clayRimLight,
-  elevation,
-  highlightColors,
-  highlightEnd,
-  highlightLocations,
-  highlightStart,
-  overlayFill,
-  shadowSoft,
-  tealGradient,
-} from './recipe';
+import { ClayShape, useClaySize } from './ClayShape';
+import { tealGradient } from './recipe';
 
 interface ClayPillProps extends ComponentProps<typeof View> {
   /** Corner radius. Defaults to a fully-rounded pill. */
@@ -39,33 +30,31 @@ export function ClayPill({
   paddingVertical = 6,
   ...rest
 }: ClayPillProps) {
+  const [size, onLayout] = useClaySize();
+  // A fully-rounded pill: clamp the Skia corner radius to half the shortest
+  // side so the rounded box matches the CSS `borderRadius: 999` capsule.
+  const skiaRadius = size ? Math.min(radius, Math.min(size.w, size.h) / 2) : radius;
   return (
     <View
+      onLayout={onLayout}
       borderRadius={radius}
       paddingHorizontal={paddingHorizontal}
       paddingVertical={paddingVertical}
-      backgroundColor="#2EB6C8"
-      borderWidth={1}
-      borderColor={clayRimLight}
-      {...shadowSoft}
-      style={[{ elevation: elevation.soft }, style]}
+      backgroundColor={size ? 'transparent' : colors[0]}
+      style={style}
       {...rest}
     >
-      <LinearGradient
-        colors={colors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        pointerEvents="none"
-        style={overlayFill(radius)}
-      />
-      <LinearGradient
-        colors={highlightColors}
-        locations={highlightLocations}
-        start={highlightStart}
-        end={highlightEnd}
-        pointerEvents="none"
-        style={overlayFill(radius)}
-      />
+      {size ? (
+        <ClayShape
+          width={size.w}
+          height={size.h}
+          radius={skiaRadius}
+          fill={colors[0]}
+          variant="raised"
+          drop="soft"
+          gradient={colors}
+        />
+      ) : null}
       {children}
     </View>
   );

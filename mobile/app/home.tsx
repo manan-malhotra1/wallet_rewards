@@ -122,7 +122,7 @@ export default function HomeScreen() {
   })();
 
   return (
-    <View flex={1} backgroundColor="#e8eef5">
+    <View flex={1} backgroundColor="#ccd8e8">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           {/* Header — navy gradient with user info + points + bell, plus

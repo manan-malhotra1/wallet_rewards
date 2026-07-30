@@ -2,9 +2,11 @@
  * Clay design-language primitives barrel.
  *
  * The claymorphism surface kit: soft low-contrast clay surfaces, big rounded
- * corners, a puffy dual-shadow look (navy drop below-right + white sheen
- * above-left), and pressed-in states on keys/buttons. Screens compose these so
- * the shadow + gradient recipe lives in one place (`recipe.ts`).
+ * corners, and true puffy depth rendered with `@shopify/react-native-skia` — a
+ * clay `Box` painted behind each primitive's content with real inner
+ * (highlight + depth) and outer drop shadows (see `ClayShape.tsx`), plus
+ * pressed-in states on keys/buttons. The shadow + colour recipe lives in one
+ * place (`recipe.ts`).
  */
 export { ClaySurface, ClayCard } from './ClaySurface';
 export { ClayButton } from './ClayButton';

@@ -1,29 +1,18 @@
 /**
  * ClayIconTile — a raised clay action tile (home quick actions, icon chips).
  *
- * A small rounded clay square that lifts off the page, with the top-left white
- * sheen. Optionally tappable: when `onPress` is given it renders inside a
- * Pressable and reads pushed-in on press. Children are the icon/emoji; any
- * label sits outside the tile at the call site.
+ * A small rounded clay square that lifts off the page via a Skia clay `Box`
+ * behind its content (raised inner shadows + soft outer drop). Optionally
+ * tappable: when `onPress` is given it renders inside a Pressable and reads
+ * pushed-in on press (the Skia `pressed` variant — recessed, no outer drop).
+ * Children are the icon/emoji; any label sits outside the tile at the call
+ * site. Public props are unchanged.
  */
 import { Pressable } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { View } from 'tamagui';
 
-import {
-  claySurface,
-  clayRimLight,
-  elevation,
-  highlightColors,
-  highlightEnd,
-  highlightLocations,
-  highlightStart,
-  insetShadeColors,
-  insetShadeLocations,
-  overlayFill,
-  shadowPressed,
-  shadowSoft,
-} from './recipe';
+import { ClayShape, useClaySize } from './ClayShape';
+import { claySurface } from './recipe';
 
 interface ClayIconTileProps {
   onPress?: () => void;
@@ -48,6 +37,8 @@ function TileFace({
   pressed: boolean;
   children: React.ReactNode;
 }) {
+  // Size is fixed and known up-front, so the Skia canvas can render on the
+  // first pass — no `onLayout` round-trip needed for this primitive.
   return (
     <View
       width={size}
@@ -55,34 +46,16 @@ function TileFace({
       borderRadius={radius}
       alignItems="center"
       justifyContent="center"
-      backgroundColor={fill}
-      borderWidth={1}
-      borderColor={pressed ? claySurface.inset : clayRimLight}
-      {...(pressed ? shadowPressed : shadowSoft)}
-      style={{
-        elevation: pressed ? elevation.pressed : elevation.soft,
-        transform: [{ translateY: pressed ? 1 : 0 }],
-      }}
+      backgroundColor="transparent"
     >
-      {pressed ? (
-        <LinearGradient
-          colors={insetShadeColors}
-          locations={insetShadeLocations}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          pointerEvents="none"
-          style={overlayFill(radius)}
-        />
-      ) : (
-        <LinearGradient
-          colors={highlightColors}
-          locations={highlightLocations}
-          start={highlightStart}
-          end={highlightEnd}
-          pointerEvents="none"
-          style={overlayFill(radius)}
-        />
-      )}
+      <ClayShape
+        width={size}
+        height={size}
+        radius={radius}
+        fill={fill}
+        variant={pressed ? 'pressed' : 'raised'}
+        drop="soft"
+      />
       {children}
     </View>
   );

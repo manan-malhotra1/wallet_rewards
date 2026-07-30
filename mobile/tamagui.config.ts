@@ -73,7 +73,7 @@ const brand = {
   // Soft cool off-white app background (the clay "table" everything sits on),
   // the raised clay surface (cards, keys, tiles), and the recessed inset fill
   // (amount displays, sunken fields).
-  clayBg: '#e8eef5',
+  clayBg: '#ccd8e8',
   claySurface: '#f2f6fb',
   clayInset: '#e9eff6',
 

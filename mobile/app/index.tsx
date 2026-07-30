@@ -16,7 +16,7 @@ export default function Index() {
   const { loading, signedIn } = useSession();
   if (loading) {
     // Render nothing until we know — splash already covers this.
-    return <View flex={1} backgroundColor="#e8eef5" />;
+    return <View flex={1} backgroundColor="#ccd8e8" />;
   }
   return signedIn ? <Redirect href="/home" /> : <Redirect href="/auth/phone" />;
 }

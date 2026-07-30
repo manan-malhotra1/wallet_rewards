@@ -66,9 +66,9 @@ export default function PhoneScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#e8eef5' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }} edges={['bottom']}>
       <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: '#e8eef5' }}
+        style={{ flex: 1, backgroundColor: '#ccd8e8' }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>

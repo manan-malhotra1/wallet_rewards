@@ -117,7 +117,7 @@ export default function OtpScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#e8eef5' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

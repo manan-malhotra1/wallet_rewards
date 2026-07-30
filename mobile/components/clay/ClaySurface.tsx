@@ -1,42 +1,30 @@
 /**
  * ClaySurface / ClayCard — the raised puffy clay surface primitive.
  *
- * A single Tamagui `View` that carries the clay recipe: a clay fill, a big
- * rounded corner, the navy drop shadow (iOS shadow props + Android elevation),
- * a hairline light rim, and a rounded white highlight sheen overlaid top-left.
- * The overlay is a `LinearGradient` given the same `borderRadius` so its
- * corners clip to the surface WITHOUT `overflow: 'hidden'` — which would clip
- * the drop shadow on iOS. Children paint above the sheen (later in JSX).
+ * A Tamagui `View` that measures itself and paints a Skia clay `Box` behind its
+ * content (`ClayShape`): a clay fill + inner highlight/depth shadows + a soft
+ * navy outer drop, giving true inflated-clay depth. Content paints on top on a
+ * transparent background so the inner shadows stay visible. Before first layout
+ * the view shows a plain rounded fill so there's no flash.
  *
  * Layout props (margin, width, flex, padding, …) pass straight through to the
- * underlying View, so screens use it as a drop-in card wrapper.
+ * underlying View, so screens use it as a drop-in card wrapper. The public
+ * props are unchanged from the previous RN-shadow implementation.
  */
 import { ComponentProps } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
 import { View } from 'tamagui';
 
-import {
-  clayRadius,
-  claySurface,
-  clayRimLight,
-  elevation,
-  highlightColors,
-  highlightEnd,
-  highlightLocations,
-  highlightStart,
-  overlayFill,
-  shadowRaised,
-  shadowSoft,
-} from './recipe';
+import { ClayShape, useClaySize } from './ClayShape';
+import { clayRadius, claySurface } from './recipe';
 
 interface ClaySurfaceProps extends ComponentProps<typeof View> {
   /** Shadow depth. `raised` (default) is the puffy card; `soft` is denser. */
   depth?: 'raised' | 'soft';
-  /** Corner radius. Defaults to the medium clay radius (24). */
+  /** Corner radius. Defaults to the medium clay radius. */
   radius?: number;
   /** Surface fill. Defaults to the raised clay off-white. */
   fill?: string;
-  /** Show the top-left white highlight sheen. Defaults to true. */
+  /** Kept for API compatibility (the Skia inner highlight replaces the sheen). */
   sheen?: boolean;
 }
 
@@ -45,31 +33,34 @@ export function ClaySurface({
   depth = 'raised',
   radius = clayRadius.md,
   fill = claySurface.raised,
-  sheen = true,
+  // `sheen` is accepted for backwards-compat but no longer used — the Skia
+  // inner highlight now provides the top-left sheen. Destructured so it isn't
+  // forwarded to the View.
+  sheen: _sheen = true,
   children,
   style,
   ...rest
 }: ClaySurfaceProps) {
-  const shadow = depth === 'raised' ? shadowRaised : shadowSoft;
-  const elev = depth === 'raised' ? elevation.raised : elevation.soft;
+  const [size, onLayout] = useClaySize();
+  const drop = depth === 'raised' ? 'raised' : 'soft';
   return (
     <View
-      backgroundColor={fill}
+      onLayout={onLayout}
       borderRadius={radius}
-      borderWidth={1}
-      borderColor={clayRimLight}
-      {...shadow}
-      style={[{ elevation: elev }, style]}
+      // Transparent once measured so the Skia fill + inner shadows show; a plain
+      // rounded fill until then so there's no flash of unstyled content.
+      backgroundColor={size ? 'transparent' : fill}
+      style={style}
       {...rest}
     >
-      {sheen ? (
-        <LinearGradient
-          colors={highlightColors}
-          locations={highlightLocations}
-          start={highlightStart}
-          end={highlightEnd}
-          pointerEvents="none"
-          style={overlayFill(radius)}
+      {size ? (
+        <ClayShape
+          width={size.w}
+          height={size.h}
+          radius={radius}
+          fill={fill}
+          variant="raised"
+          drop={drop}
         />
       ) : null}
       {children}

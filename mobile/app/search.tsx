@@ -13,7 +13,7 @@ import { BottomTabBar } from '@/components/ui/BottomTabBar';
 /** Placeholder for the Search tab. */
 export default function SearchScreen() {
   return (
-    <View flex={1} backgroundColor="#e8eef5">
+    <View flex={1} backgroundColor="#ccd8e8">
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
         <YStack flex={1} alignItems="center" justifyContent="center" gap={12} paddingHorizontal={32}>
           <Text fontSize={56}>🔍</Text>

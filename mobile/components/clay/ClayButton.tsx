@@ -1,34 +1,21 @@
 /**
  * ClayButton — the clay CTA primitive.
  *
- *   - `primary`  — a navy LinearGradient face, white label, strong drop shadow.
- *   - `neutral`  — a raised clay face, ink label, soft drop shadow.
+ *   - `primary`  — a navy gradient face, white label, strong clay lift.
+ *   - `neutral`  — a raised clay face, ink label, soft clay lift.
  *
- * Pressed state reads as pushed-in: the shadow shrinks + pulls close, the face
- * nudges down 1px, and a faint downward dark sheen is overlaid. The gradient
- * faces carry their own `borderRadius` (not `overflow: 'hidden'`) so the drop
- * shadow survives on iOS. Logic stays with the caller — this is presentation.
+ * The clay depth is a Skia `Box` painted behind the content (`ClayShape`): a
+ * raised inner highlight/depth + an outer drop at rest, swapping to the
+ * recessed `pressed` variant (no outer drop) while pressed, plus a 1px nudge
+ * down. The primary face is a Skia linear gradient so the inner shadows read on
+ * top of it. Logic stays with the caller — this is presentation. Public props
+ * are unchanged.
  */
 import { ActivityIndicator, Pressable } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Text, View } from 'tamagui';
 
-import {
-  claySurface,
-  clayRimLight,
-  elevation,
-  highlightColors,
-  highlightEnd,
-  highlightLocations,
-  highlightStart,
-  insetShadeColors,
-  insetShadeLocations,
-  navyGradient,
-  overlayFill,
-  shadowPressed,
-  shadowSoft,
-  shadowStrong,
-} from './recipe';
+import { ClayShape, useClaySize } from './ClayShape';
+import { claySurface, navyGradient } from './recipe';
 
 interface ClayButtonProps {
   /** Tap handler. Ignored while `disabled` or `loading`. */
@@ -60,6 +47,9 @@ export function ClayButton({
 }: ClayButtonProps) {
   const isPrimary = variant === 'primary';
   const inert = disabled || loading;
+  const [size, onLayout] = useClaySize();
+  // Primary uses the navy gradient (dark base); neutral uses the clay off-white.
+  const fallbackFill = isPrimary ? navyGradient[1] : claySurface.raised;
   return (
     <Pressable
       onPress={inert ? undefined : onPress}
@@ -68,55 +58,42 @@ export function ClayButton({
       accessibilityLabel={accessibilityLabel}
       style={{ width: fullWidth ? '100%' : undefined, opacity: disabled ? 0.5 : 1 }}
     >
-      {({ pressed }) => {
-        const shadow = pressed ? shadowPressed : isPrimary ? shadowStrong : shadowSoft;
-        const elev = pressed ? elevation.pressed : isPrimary ? elevation.strong : elevation.soft;
-        return (
-          <View
-            height={height}
-            borderRadius={radius}
-            alignItems="center"
-            justifyContent="center"
-            backgroundColor={isPrimary ? '#013a6b' : claySurface.raised}
-            borderWidth={1}
-            borderColor={isPrimary ? 'rgba(255,255,255,0.18)' : clayRimLight}
-            {...shadow}
-            style={{ elevation: elev, transform: [{ translateY: pressed ? 1 : 0 }] }}
-          >
-            <LinearGradient
-              colors={isPrimary ? navyGradient : highlightColors}
-              locations={isPrimary ? undefined : highlightLocations}
-              start={isPrimary ? { x: 0, y: 0 } : highlightStart}
-              end={isPrimary ? { x: 1, y: 1 } : highlightEnd}
-              pointerEvents="none"
-              style={overlayFill(radius)}
+      {({ pressed }) => (
+        <View
+          onLayout={onLayout}
+          height={height}
+          borderRadius={radius}
+          alignItems="center"
+          justifyContent="center"
+          backgroundColor={size ? 'transparent' : fallbackFill}
+          style={{ transform: [{ translateY: pressed ? 1 : 0 }] }}
+        >
+          {size ? (
+            <ClayShape
+              width={size.w}
+              height={size.h}
+              radius={radius}
+              fill={fallbackFill}
+              variant={pressed ? 'pressed' : 'raised'}
+              drop={isPrimary ? 'strong' : 'soft'}
+              gradient={isPrimary ? navyGradient : undefined}
             />
-            {pressed ? (
-              <LinearGradient
-                colors={insetShadeColors}
-                locations={insetShadeLocations}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                pointerEvents="none"
-                style={overlayFill(radius)}
-              />
-            ) : null}
-            {loading ? (
-              <ActivityIndicator color={isPrimary ? '#ffffff' : '#00508F'} />
-            ) : typeof children === 'string' ? (
-              <Text
-                fontFamily="PlusJakartaSans-Bold"
-                fontSize={16}
-                color={isPrimary ? '#ffffff' : '#00508F'}
-              >
-                {children}
-              </Text>
-            ) : (
-              children
-            )}
-          </View>
-        );
-      }}
+          ) : null}
+          {loading ? (
+            <ActivityIndicator color={isPrimary ? '#ffffff' : '#00508F'} />
+          ) : typeof children === 'string' ? (
+            <Text
+              fontFamily="PlusJakartaSans-Bold"
+              fontSize={16}
+              color={isPrimary ? '#ffffff' : '#00508F'}
+            >
+              {children}
+            </Text>
+          ) : (
+            children
+          )}
+        </View>
+      )}
     </Pressable>
   );
 }

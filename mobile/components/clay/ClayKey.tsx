@@ -1,29 +1,18 @@
 /**
  * ClayKey — a tappable clay key for numeric keypads (amount pad, PIN pad).
  *
- * Raised clay tile at rest; on press it reads pushed-IN: the shadow collapses,
- * the tile nudges down 1px, the white sheen is dropped, and a downward dark
- * sheen is overlaid. Children are the glyph (a digit, "⌫", a biometric icon).
- * The parent owns what the key does — this only renders + reports the press.
+ * Raised clay tile at rest; on press it reads pushed-IN via the Skia `pressed`
+ * variant (recessed inner shadows, no outer drop) and the tile nudges down 1px.
+ * Because a key can be `flex` (width unknown until layout) it measures itself
+ * and paints the Skia clay `Box` behind its content once sized. Children are
+ * the glyph (a digit, "⌫", a biometric icon). The parent owns what the key
+ * does — this only renders + reports the press. Public props are unchanged.
  */
 import { Pressable } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { View } from 'tamagui';
 
-import {
-  claySurface,
-  clayRimLight,
-  elevation,
-  highlightColors,
-  highlightEnd,
-  highlightLocations,
-  highlightStart,
-  insetShadeColors,
-  insetShadeLocations,
-  overlayFill,
-  shadowPressed,
-  shadowSoft,
-} from './recipe';
+import { ClayShape, useClaySize } from './ClayShape';
+import { claySurface } from './recipe';
 
 interface ClayKeyProps {
   onPress?: () => void;
@@ -52,6 +41,7 @@ export function ClayKey({
   children,
 }: ClayKeyProps) {
   const inert = disabled || hidden;
+  const [size, onLayout] = useClaySize();
   return (
     <Pressable
       onPress={inert ? undefined : onPress}
@@ -62,39 +52,25 @@ export function ClayKey({
     >
       {({ pressed }) => (
         <View
+          onLayout={onLayout}
           width={flex ? '100%' : width}
           height={height}
           borderRadius={radius}
           alignItems="center"
           justifyContent="center"
-          backgroundColor={claySurface.raised}
-          borderWidth={1}
-          borderColor={pressed ? claySurface.inset : clayRimLight}
-          {...(pressed ? shadowPressed : shadowSoft)}
-          style={{
-            elevation: pressed ? elevation.pressed : elevation.soft,
-            transform: [{ translateY: pressed ? 1 : 0 }],
-          }}
+          backgroundColor={size ? 'transparent' : claySurface.raised}
+          style={{ transform: [{ translateY: pressed ? 1 : 0 }] }}
         >
-          {pressed ? (
-            <LinearGradient
-              colors={insetShadeColors}
-              locations={insetShadeLocations}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              pointerEvents="none"
-              style={overlayFill(radius)}
+          {size ? (
+            <ClayShape
+              width={size.w}
+              height={size.h}
+              radius={radius}
+              fill={claySurface.raised}
+              variant={pressed ? 'pressed' : 'raised'}
+              drop="soft"
             />
-          ) : (
-            <LinearGradient
-              colors={highlightColors}
-              locations={highlightLocations}
-              start={highlightStart}
-              end={highlightEnd}
-              pointerEvents="none"
-              style={overlayFill(radius)}
-            />
-          )}
+          ) : null}
           {children}
         </View>
       )}

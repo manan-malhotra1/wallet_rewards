@@ -6,12 +6,13 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "ios": "expo start --ios",
-    "android": "expo start --android",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@shopify/react-native-skia": "2.2.12",
     "@tamagui/babel-plugin": "^1.118.0",
     "@tamagui/config": "^1.118.0",
     "@tamagui/portal": "^1.144.4",
@@ -20,6 +21,7 @@
     "expo": "~54.0.0",
     "expo-asset": "~12.0.13",
     "expo-constants": "~18.0.13",
+    "expo-dev-client": "~6.0.21",
     "expo-font": "~14.0.12",
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.12",

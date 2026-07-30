@@ -130,7 +130,7 @@ export function EditUserDrawer({
         variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
-        className="gap-1.5 border-white/30 bg-white/10 text-white hover:bg-white/20"
+        className="gap-1.5 border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
       >
         <Pencil className="h-3.5 w-3.5" />
         Edit

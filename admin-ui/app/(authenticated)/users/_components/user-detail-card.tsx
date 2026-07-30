@@ -167,11 +167,13 @@ export function UserDetailCard({
 
   return (
     <div className="space-y-4">
-      {/* Navy hero header (Sasai navy #144989) */}
-      <div className="rounded-xl bg-[#144989] p-6 text-white shadow-sm">
+      {/* Brand hero header — uses the tenant-derived primary tokens so it
+          recolours per tenant and stays readable in light (navy/cream) and
+          dark (cream/navy), matching how primary buttons render. */}
+      <div className="rounded-xl bg-primary p-6 text-primary-foreground shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white/15">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary-foreground/15">
               <UserCircle className="h-7 w-7" />
             </div>
             <div>
@@ -186,7 +188,7 @@ export function UserDetailCard({
                 )}
                 <AccessLevelPill level={detail.access_level} />
               </div>
-              <p className="mt-2 font-mono text-sm text-white/80">
+              <p className="mt-2 font-mono text-sm text-primary-foreground/80">
                 {primaryIdentifier}
               </p>
             </div>

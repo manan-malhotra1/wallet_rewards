@@ -532,18 +532,24 @@ async def _get_or_create_merchant_cashin_charges(session: AsyncSession, tenant: 
     configured row (invariant #12 forbids a silent zero-fee fall-through), so
     merchant-cashin works out of the box. Idempotent.
     """
-    exists = (
-        await session.execute(
-            select(PricingConfig).where(
-                PricingConfig.tenant_id == tenant.id,
-                PricingConfig.transaction_type == "merchant_cashin",
-                PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
-                PricingConfig.currency == "ZAR",
-                PricingConfig.user_type.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-    if exists is None:
+    # Get-or-create pricing and limit INDEPENDENTLY, each with `.limit(1).first()`
+    # (not `scalar_one_or_none()`): an operator may clear one via the UI while the
+    # other survives, or the DB may already hold duplicate rows — `scalar_one_or_none`
+    # raises MultipleResultsFound on those and aborts the whole seed. Mirrors
+    # `_get_or_create_cashin_charges`.
+    async def _has(model: type, *conds: object) -> bool:
+        row = (await session.execute(select(model).where(*conds).limit(1))).scalars().first()
+        return row is not None
+
+    added: list[str] = []
+    if not await _has(
+        PricingConfig,
+        PricingConfig.tenant_id == tenant.id,
+        PricingConfig.transaction_type == "merchant_cashin",
+        PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+        PricingConfig.currency == "ZAR",
+        PricingConfig.user_type.is_(None),
+    ):
         session.add(
             PricingConfig(
                 tenant_id=tenant.id,
@@ -553,6 +559,15 @@ async def _get_or_create_merchant_cashin_charges(session: AsyncSession, tenant: 
                 fixed_fee=Decimal("0"),  # explicit zero fee (not an implicit default)
             )
         )
+        added.append("R0 fee")
+    if not await _has(
+        LimitConfig,
+        LimitConfig.tenant_id == tenant.id,
+        LimitConfig.transaction_type == "merchant_cashin",
+        LimitConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+        LimitConfig.currency == "ZAR",
+        LimitConfig.user_type.is_(None),
+    ):
         session.add(
             LimitConfig(
                 tenant_id=tenant.id,
@@ -563,8 +578,10 @@ async def _get_or_create_merchant_cashin_charges(session: AsyncSession, tenant: 
                 max_amount=Decimal("50000"),
             )
         )
+        added.append("R1-R50000 limit")
+    if added:
         await session.commit()
-        print("  + Merchant cash-in charges: R0 fee, R1-R50000 limit (default)")
+        print(f"  + Merchant cash-in charges: {', '.join(added)} (default)")
 
 
 async def _get_or_create_rule(

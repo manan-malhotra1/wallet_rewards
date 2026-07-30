@@ -7,7 +7,7 @@
  * we just surface a friendly screen on 429.
  */
 import { useRef, useState } from 'react';
-import { Animated, Pressable } from 'react-native';
+import { Animated } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -15,6 +15,7 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { SasaiPayLogo } from '@/components/brand/SasaiPayLogo';
 import { PinInput } from '@/components/forms/PinInput';
+import { ClayButton } from '@/components/clay';
 import { authPin } from '@/lib/api/auth';
 import { ApiError, RateLimited } from '@/lib/api/errors';
 import { getTenantId } from '@/lib/bootstrap';
@@ -68,7 +69,7 @@ export default function PinScreen() {
 
   if (lockedOut) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#e8eef5' }}>
         <YStack flex={1} padding={26} gap="$4" alignItems="center" justifyContent="center">
           <Text
             fontFamily="PlusJakartaSans-ExtraBold"
@@ -87,36 +88,25 @@ export default function PinScreen() {
             For your safety we have temporarily blocked sign-in attempts.
             Try again in a few minutes.
           </Text>
-          <Pressable
-            onPress={() => router.replace('/auth/phone')}
-            accessibilityRole="button"
-            accessibilityLabel="Use a different number"
-            style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, marginTop: 12 })}
-          >
-            <View
+          <View marginTop={12}>
+            <ClayButton
+              onPress={() => router.replace('/auth/phone')}
+              fullWidth={false}
               height={50}
-              paddingHorizontal={20}
-              borderRadius={14}
-              backgroundColor="#00508F"
-              alignItems="center"
-              justifyContent="center"
+              accessibilityLabel="Use a different number"
             >
-              <Text
-                fontFamily="PlusJakartaSans-Bold"
-                fontSize={14}
-                color="#ffffff"
-              >
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#ffffff" paddingHorizontal={20}>
                 Use a different number
               </Text>
-            </View>
-          </Pressable>
+            </ClayButton>
+          </View>
         </YStack>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#e8eef5' }} edges={['bottom']}>
       <YStack flex={1}>
         <GradientHeader paddingBottom={32}>
           <View paddingTop={16}>

@@ -8,7 +8,9 @@
  *
  * Tint colors per category are chosen to look soft against the white card.
  */
-import { Text, View, XStack, YStack } from 'tamagui';
+import { Text, XStack, YStack } from 'tamagui';
+
+import { ClayIconTile } from '@/components/clay';
 
 type Category = 'received' | 'sent' | 'bill' | 'airtime' | 'reward' | 'reward-redeem' | 'referral' | 'generic';
 
@@ -59,18 +61,11 @@ export function ActivityRow({
       gap={12}
       paddingVertical={13}
       borderBottomWidth={noBorder ? 0 : 1}
-      borderBottomColor="#f1f4f7"
+      borderBottomColor="rgba(1,46,84,0.06)"
     >
-      <View
-        width={42}
-        height={42}
-        borderRadius={13}
-        backgroundColor={tile.bg}
-        alignItems="center"
-        justifyContent="center"
-      >
+      <ClayIconTile size={42} radius={14} fill={tile.bg}>
         <Text fontSize={18}>{tile.emoji}</Text>
-      </View>
+      </ClayIconTile>
       <YStack flex={1} gap={2}>
         <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a" numberOfLines={1}>
           {title}

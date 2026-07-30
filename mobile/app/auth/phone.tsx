@@ -11,11 +11,9 @@
  */
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
@@ -26,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { SasaiPayLogo } from '@/components/brand/SasaiPayLogo';
 import { PhoneInput } from '@/components/forms/PhoneInput';
+import { ClayButton } from '@/components/clay';
 import { authStart, otpSend } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/errors';
 import { getTenantId } from '@/lib/bootstrap';
@@ -67,9 +66,9 @@ export default function PhoneScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#e8eef5' }} edges={['bottom']}>
       <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: '#ffffff' }}
+        style={{ flex: 1, backgroundColor: '#e8eef5' }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -120,39 +119,14 @@ export default function PhoneScreen() {
 
               <View flex={1} minHeight={20} />
 
-              <Pressable
+              <ClayButton
                 onPress={onContinue}
                 disabled={!canContinue}
-                accessibilityRole="button"
+                loading={loading}
                 accessibilityLabel="Continue"
-                style={({ pressed }) => ({
-                  opacity: !canContinue ? 0.5 : pressed ? 0.85 : 1,
-                })}
               >
-                <View
-                  height={54}
-                  borderRadius={14}
-                  backgroundColor="#00508F"
-                  alignItems="center"
-                  justifyContent="center"
-                  shadowColor="#00508F"
-                  shadowOpacity={0.28}
-                  shadowRadius={24}
-                  shadowOffset={{ width: 0, height: 10 }}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#ffffff" />
-                  ) : (
-                    <Text
-                      fontFamily="PlusJakartaSans-Bold"
-                      fontSize={16}
-                      color="#ffffff"
-                    >
-                      Continue
-                    </Text>
-                  )}
-                </View>
-              </Pressable>
+                Continue
+              </ClayButton>
 
               <XStack justifyContent="center" marginTop={6}>
                 <Text

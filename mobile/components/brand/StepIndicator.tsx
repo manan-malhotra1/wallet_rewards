@@ -19,16 +19,22 @@ export function StepIndicator({ step, total = 3, caption }: Props) {
   return (
     <YStack gap={8} marginTop={18}>
       <XStack gap={6} alignItems="center">
-        {Array.from({ length: total }).map((_, i) => (
-          <View
-            // eslint-disable-next-line react/no-array-index-key
-            key={i}
-            flex={1}
-            height={4}
-            borderRadius={3}
-            backgroundColor={i < step ? '#50C0D0' : 'rgba(255,255,255,0.25)'}
-          />
-        ))}
+        {Array.from({ length: total }).map((_, i) => {
+          const done = i < step;
+          return (
+            <View
+              // eslint-disable-next-line react/no-array-index-key
+              key={i}
+              flex={1}
+              height={6}
+              borderRadius={4}
+              backgroundColor={done ? '#50C0D0' : 'rgba(255,255,255,0.22)'}
+              // A hairline light top rim gives the active dot a puffy clay edge.
+              borderTopWidth={done ? 1 : 0}
+              borderTopColor="rgba(255,255,255,0.55)"
+            />
+          );
+        })}
       </XStack>
       <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12} color="#9fd9e2">
         {caption}

@@ -8,12 +8,12 @@
  * above the action row. Done routes back to /home with the wallet
  * query already invalidated by the PIN screen.
  */
-import { Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
 
 import { GradientHeader } from '@/components/brand/GradientHeader';
+import { ClayButton, ClaySurface } from '@/components/clay';
 import { maskPhone } from '@/lib/format';
 
 /** Format a Date as "DD MMM YYYY · HH:mm". */
@@ -61,7 +61,7 @@ export default function SuccessScreen() {
   const reference = typeof params.reference === 'string' ? params.reference : '—';
 
   return (
-    <View flex={1} backgroundColor="#ffffff">
+    <View flex={1} backgroundColor="#e8eef5">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader variant="success" paddingBottom={38}>
@@ -100,19 +100,13 @@ export default function SuccessScreen() {
           </GradientHeader>
 
           {/* Receipt card */}
-          <View
+          <ClaySurface
+            depth="soft"
+            radius={18}
             marginHorizontal={18}
             marginTop={18}
-            backgroundColor="#ffffff"
-            borderColor="#eef2f6"
-            borderWidth={1}
-            borderRadius={18}
             paddingHorizontal={16}
             paddingVertical={6}
-            shadowColor="#0c1b2a"
-            shadowOpacity={0.05}
-            shadowRadius={16}
-            shadowOffset={{ width: 0, height: 6 }}
           >
             <ReceiptRow label="Recipient" value={maskPhone(phone)} />
             <ReceiptRow label="Mobile" value={maskPhone(phone)} />
@@ -120,7 +114,7 @@ export default function SuccessScreen() {
             <ReceiptRow label="Fee" value="R 0.00" />
             <ReceiptRow label="Reference" value={`SASAI-${reference}`} />
             <ReceiptRow label="Date" value={nowFormatted()} last />
-          </View>
+          </ClaySurface>
 
           {earned > 0 ? (
             <XStack
@@ -139,44 +133,30 @@ export default function SuccessScreen() {
           <View flex={1} />
 
           <XStack gap={12} padding={18}>
-            <Pressable
-              onPress={() => {}}
-              accessibilityLabel="Share receipt"
-              style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}
-            >
-              <View
+            <View flex={1}>
+              <ClayButton
+                variant="neutral"
+                onPress={() => {}}
                 height={50}
-                borderRadius={14}
-                borderWidth={1.5}
-                borderColor="#e2e8ef"
-                alignItems="center"
-                justifyContent="center"
-                flexDirection="row"
-                gap={7}
+                accessibilityLabel="Share receipt"
               >
-                <Text fontSize={15}>⤓</Text>
-                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a">
-                  Share
-                </Text>
-              </View>
-            </Pressable>
-            <Pressable
-              onPress={() => router.replace('/home')}
-              accessibilityLabel="Done"
-              style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.85 : 1 })}
-            >
-              <View
+                <XStack alignItems="center" gap={7}>
+                  <Text fontSize={15}>⤓</Text>
+                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#00508F">
+                    Share
+                  </Text>
+                </XStack>
+              </ClayButton>
+            </View>
+            <View flex={1}>
+              <ClayButton
+                onPress={() => router.replace('/home')}
                 height={50}
-                borderRadius={14}
-                backgroundColor="#00508F"
-                alignItems="center"
-                justifyContent="center"
+                accessibilityLabel="Done"
               >
-                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#ffffff">
-                  Done
-                </Text>
-              </View>
-            </Pressable>
+                Done
+              </ClayButton>
+            </View>
           </XStack>
         </YStack>
       </SafeAreaView>

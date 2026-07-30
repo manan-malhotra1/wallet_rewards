@@ -14,7 +14,6 @@
  */
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -30,6 +29,7 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { PhoneInput } from '@/components/forms/PhoneInput';
+import { ClayButton, ClaySurface } from '@/components/clay';
 import { authStart } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/errors';
 import { getTenantId } from '@/lib/bootstrap';
@@ -70,7 +70,7 @@ export default function RecipientScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#f4f7fa">
+    <View flex={1} backgroundColor="#e8eef5">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -97,31 +97,15 @@ export default function RecipientScreen() {
                   </Text>
                 ) : null}
 
-                <Pressable
+                <ClayButton
                   onPress={() => lookupAndGoToAmount(phone)}
                   disabled={!canContinue}
-                  accessibilityRole="button"
+                  loading={loading}
+                  height={50}
                   accessibilityLabel="Continue"
-                  style={({ pressed }) => ({
-                    opacity: !canContinue ? 0.5 : pressed ? 0.85 : 1,
-                  })}
                 >
-                  <View
-                    height={50}
-                    borderRadius={14}
-                    backgroundColor="#00508F"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#ffffff" />
-                    ) : (
-                      <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color="#ffffff">
-                        Continue
-                      </Text>
-                    )}
-                  </View>
-                </Pressable>
+                  Continue
+                </ClayButton>
 
                 {/* Recent payments — header */}
                 <XStack justifyContent="space-between" alignItems="center" marginTop={6}>
@@ -172,16 +156,12 @@ export default function RecipientScreen() {
               </ScrollView>
 
               {/* Selectable list */}
-              <View
+              <ClaySurface
+                depth="soft"
+                radius={18}
                 marginHorizontal={18}
                 marginTop={14}
-                backgroundColor="#ffffff"
-                borderRadius={18}
                 paddingHorizontal={14}
-                shadowColor="#0c1b2a"
-                shadowOpacity={0.05}
-                shadowRadius={16}
-                shadowOffset={{ width: 0, height: 6 }}
               >
                 {RECENTS.map((r, i) => (
                   <Pressable
@@ -195,7 +175,7 @@ export default function RecipientScreen() {
                       gap={12}
                       paddingVertical={12}
                       borderBottomWidth={i === RECENTS.length - 1 ? 0 : 1}
-                      borderBottomColor="#f1f4f7"
+                      borderBottomColor="rgba(1,46,84,0.06)"
                     >
                       <View
                         width={42}
@@ -221,7 +201,7 @@ export default function RecipientScreen() {
                     </XStack>
                   </Pressable>
                 ))}
-              </View>
+              </ClaySurface>
             </ScrollView>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>

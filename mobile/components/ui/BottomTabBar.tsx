@@ -13,6 +13,8 @@ import { useRouter } from 'expo-router';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ClayIconTile } from '@/components/clay';
+
 type TabKey = 'pay' | 'transactions' | 'search';
 
 interface Props {
@@ -35,16 +37,17 @@ export function BottomTabBar({ active }: Props) {
       bottom={0}
       left={0}
       right={0}
-      backgroundColor="#ffffff"
+      backgroundColor="#f2f6fb"
       borderTopWidth={1}
-      borderTopColor="#eceff3"
-      shadowColor="#0c1b2a"
-      shadowOpacity={0.05}
-      shadowRadius={20}
-      shadowOffset={{ width: 0, height: -6 }}
+      borderTopColor="rgba(255,255,255,0.85)"
+      shadowColor="#012e54"
+      shadowOpacity={0.1}
+      shadowRadius={24}
+      shadowOffset={{ width: 0, height: -8 }}
+      style={{ elevation: 16 }}
       paddingBottom={Math.max(insets.bottom - 4, 12)}
     >
-      <XStack height={66} alignItems="center" justifyContent="space-around" paddingHorizontal={18}>
+      <XStack height={70} alignItems="center" justifyContent="space-around" paddingHorizontal={18}>
         {TABS.map((tab) => {
           const isActive = tab.key === active;
           return (
@@ -56,9 +59,18 @@ export function BottomTabBar({ active }: Props) {
               style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
             >
               <YStack alignItems="center" gap={5} paddingHorizontal={4}>
-                <Text fontSize={21} opacity={isActive ? 1 : 0.45}>
-                  {tab.icon}
-                </Text>
+                {isActive ? (
+                  // Raised clay tile marks the active tab.
+                  <ClayIconTile size={38} radius={13}>
+                    <Text fontSize={19}>{tab.icon}</Text>
+                  </ClayIconTile>
+                ) : (
+                  <View width={38} height={38} alignItems="center" justifyContent="center">
+                    <Text fontSize={21} opacity={0.45}>
+                      {tab.icon}
+                    </Text>
+                  </View>
+                )}
                 <Text
                   fontFamily={
                     isActive ? 'PlusJakartaSans-Bold' : 'PlusJakartaSans-SemiBold'

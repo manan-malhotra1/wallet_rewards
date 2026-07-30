@@ -9,6 +9,8 @@ import { useMemo } from 'react';
 import { Pressable } from 'react-native';
 import { Input, Text, XStack, YStack } from 'tamagui';
 
+import { ClayInset } from '@/components/clay';
+
 interface Props {
   /** Decimal-string amount; "" when empty. */
   value: string;
@@ -40,25 +42,32 @@ export function AmountInput({ value, onChange, quickAmounts }: Props) {
 
   return (
     <YStack gap="$4" alignItems="center">
-      <XStack alignItems="baseline" gap="$2">
-        <Text fontFamily="Inter-Medium" fontSize={28} color="$muted">
-          R
-        </Text>
-        <Input
-          value={value}
-          onChangeText={setText}
-          placeholder="0.00"
-          keyboardType="decimal-pad"
-          fontSize={48}
-          fontFamily="Inter-Bold"
-          color="$ink"
-          textAlign="center"
-          borderWidth={0}
-          backgroundColor="transparent"
-          minWidth={180}
-          maxLength={10}
-        />
-      </XStack>
+      {/* Recessed clay display so the amount reads carved into the surface. */}
+      <ClayInset
+        alignSelf="stretch"
+        paddingVertical={18}
+        paddingHorizontal={20}
+      >
+        <XStack alignItems="baseline" gap="$2" justifyContent="center">
+          <Text fontFamily="PlusJakartaSans-Medium" fontSize={28} color="#94a2b1">
+            R
+          </Text>
+          <Input
+            value={value}
+            onChangeText={setText}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            fontSize={48}
+            fontFamily="PlusJakartaSans-ExtraBold"
+            color="#0c1b2a"
+            textAlign="center"
+            borderWidth={0}
+            backgroundColor="transparent"
+            minWidth={180}
+            maxLength={10}
+          />
+        </XStack>
+      </ClayInset>
       {chips.length > 0 && (
         <XStack gap="$2" flexWrap="wrap" justifyContent="center">
           {chips.map((n) => {
@@ -73,11 +82,11 @@ export function AmountInput({ value, onChange, quickAmounts }: Props) {
                   paddingHorizontal="$3"
                   paddingVertical="$2"
                   borderRadius={16}
-                  backgroundColor={selected ? '$sasaiNavy' : 'rgba(20,73,137,0.08)'}
+                  backgroundColor={selected ? '#00508F' : '#e9f1f9'}
                 >
                   <Text
-                    fontFamily="Inter-Medium"
-                    color={selected ? 'white' : '$sasaiNavy'}
+                    fontFamily="PlusJakartaSans-SemiBold"
+                    color={selected ? '#ffffff' : '#00508F'}
                   >
                     R {n}
                   </Text>

@@ -22,6 +22,7 @@ import { ActivityRow } from '@/components/ui/ActivityRow';
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
 import { SideDrawer } from '@/components/ui/SideDrawer';
 import { GradientHeader } from '@/components/brand/GradientHeader';
+import { ClaySurface, ClayIconTile } from '@/components/clay';
 import { signOut } from '@/lib/auth';
 import { SessionExpired } from '@/lib/api/errors';
 import {
@@ -121,7 +122,7 @@ export default function HomeScreen() {
   })();
 
   return (
-    <View flex={1} backgroundColor="#f4f7fa">
+    <View flex={1} backgroundColor="#e8eef5">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           {/* Header — navy gradient with user info + points + bell, plus
@@ -234,17 +235,13 @@ export default function HomeScreen() {
             paddingBottom={96}
           >
             {/* Overlapping balance card. Margin-top -58 lifts it into the
-                gradient region so the card "floats" on the navy. */}
-            <View
+                gradient region so the clay card "floats" on the navy. */}
+            <ClaySurface
+              depth="raised"
+              radius={24}
               marginTop={-58}
               marginHorizontal={18}
-              backgroundColor="#ffffff"
-              borderRadius={22}
               padding={20}
-              shadowColor="#0c1b2a"
-              shadowOpacity={0.12}
-              shadowRadius={34}
-              shadowOffset={{ width: 0, height: 14 }}
             >
               <XStack justifyContent="space-between" alignItems="center">
                 <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#6a7888">
@@ -299,7 +296,7 @@ export default function HomeScreen() {
                 marginTop={14}
                 paddingTop={14}
                 borderTopWidth={1}
-                borderTopColor="#eef2f6"
+                borderTopColor="rgba(1,46,84,0.06)"
                 alignItems="center"
               >
                 <YStack flex={1}>
@@ -331,7 +328,7 @@ export default function HomeScreen() {
                   </View>
                 </Pressable>
               </XStack>
-            </View>
+            </ClaySurface>
 
             {/* Quick actions. Four tiles spaced evenly across the row. */}
             <XStack justifyContent="space-between" paddingHorizontal={22} paddingTop={22}>
@@ -344,20 +341,9 @@ export default function HomeScreen() {
                   style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, width: 62 })}
                 >
                   <YStack alignItems="center" gap={8}>
-                    <View
-                      width={54}
-                      height={54}
-                      borderRadius={18}
-                      backgroundColor="#ffffff"
-                      shadowColor="#0c1b2a"
-                      shadowOpacity={0.07}
-                      shadowRadius={16}
-                      shadowOffset={{ width: 0, height: 6 }}
-                      alignItems="center"
-                      justifyContent="center"
-                    >
+                    <ClayIconTile size={54} radius={18}>
                       <Text fontSize={22}>{action.icon}</Text>
-                    </View>
+                    </ClayIconTile>
                     <Text
                       fontFamily="PlusJakartaSans-SemiBold"
                       fontSize={11}
@@ -375,10 +361,15 @@ export default function HomeScreen() {
               marginTop={14}
               marginHorizontal={18}
               backgroundColor="#00538f"
-              borderRadius={20}
+              borderRadius={24}
               padding={18}
               overflow="hidden"
               position="relative"
+              shadowColor="#012e54"
+              shadowOpacity={0.24}
+              shadowRadius={20}
+              shadowOffset={{ width: 0, height: 12 }}
+              style={{ elevation: 10 }}
             >
               {/* Decorative ring at the bottom-right. */}
               <View
@@ -437,15 +428,11 @@ export default function HomeScreen() {
                 </Text>
               </Pressable>
             </XStack>
-            <View
+            <ClaySurface
+              depth="soft"
+              radius={20}
               marginHorizontal={18}
-              backgroundColor="#ffffff"
-              borderRadius={18}
               paddingHorizontal={14}
-              shadowColor="#0c1b2a"
-              shadowOpacity={0.05}
-              shadowRadius={16}
-              shadowOffset={{ width: 0, height: 6 }}
             >
               {isLoading ? (
                 <View paddingVertical={24} alignItems="center">
@@ -497,7 +484,7 @@ export default function HomeScreen() {
                     );
                   })
               )}
-            </View>
+            </ClaySurface>
           </YStack>
         </YStack>
       </SafeAreaView>

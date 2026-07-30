@@ -79,15 +79,16 @@ export function PhoneInput({
         alignItems="center"
         gap={10}
         borderWidth={1.5}
-        borderColor={focused ? '#00508F' : '#e2e8ef'}
-        borderRadius={14}
+        borderColor={focused ? '#00508F' : 'rgba(1,46,84,0.08)'}
+        borderRadius={16}
         paddingHorizontal={14}
         height={54}
-        backgroundColor={focused ? '#ffffff' : '#f8fafc'}
-        shadowColor={focused ? '#00508F' : 'transparent'}
-        shadowOpacity={focused ? 0.08 : 0}
-        shadowRadius={focused ? 16 : 0}
-        shadowOffset={{ width: 0, height: 6 }}
+        backgroundColor={focused ? '#f2f6fb' : '#e9eff6'}
+        shadowColor={focused ? '#012e54' : 'transparent'}
+        shadowOpacity={focused ? 0.16 : 0}
+        shadowRadius={focused ? 18 : 0}
+        shadowOffset={{ width: 0, height: 10 }}
+        style={{ elevation: focused ? 6 : 0 }}
       >
         <Pressable
           onPress={() => setPickerOpen((v) => !v)}
@@ -105,7 +106,7 @@ export function PhoneInput({
             </Text>
           </XStack>
         </Pressable>
-        <View width={1} height={22} backgroundColor="#e2e8ef" />
+        <View width={1} height={22} backgroundColor="rgba(1,46,84,0.10)" />
         <TextInput
           value={national}
           onChangeText={handleNationalChange}
@@ -125,12 +126,17 @@ export function PhoneInput({
       </XStack>
       {pickerOpen ? (
         <YStack
-          marginTop={2}
+          marginTop={6}
           borderWidth={1}
-          borderColor="#e2e8ef"
-          borderRadius={14}
-          backgroundColor="#ffffff"
+          borderColor="rgba(255,255,255,0.85)"
+          borderRadius={18}
+          backgroundColor="#f2f6fb"
           overflow="hidden"
+          shadowColor="#012e54"
+          shadowOpacity={0.16}
+          shadowRadius={22}
+          shadowOffset={{ width: 0, height: 10 }}
+          style={{ elevation: 8 }}
         >
           {COUNTRIES.map((c) => (
             <Pressable
@@ -144,7 +150,7 @@ export function PhoneInput({
                 gap={10}
                 alignItems="center"
                 backgroundColor={
-                  c.code === country.code ? '#f4f7fa' : '#ffffff'
+                  c.code === country.code ? '#e3ecf5' : 'transparent'
                 }
               >
                 <Text fontSize={18}>{c.flag}</Text>

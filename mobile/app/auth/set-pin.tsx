@@ -87,7 +87,7 @@ export default function SetPinScreen() {
 
   if (submitting) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#e8eef5' }}>
         <YStack flex={1} alignItems="center" justifyContent="center" gap="$3">
           <ActivityIndicator size="large" color="#144989" />
           <Text fontFamily="Inter-Medium" color="$muted">
@@ -99,7 +99,7 @@ export default function SetPinScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#e8eef5' }}>
       <YStack flex={1} padding="$5" gap="$5">
         <YStack gap="$2" marginTop="$4">
           <Text fontFamily="Inter-Bold" fontSize={26} color="$ink">

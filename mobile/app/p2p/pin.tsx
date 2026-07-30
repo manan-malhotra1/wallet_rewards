@@ -20,6 +20,7 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { PinInput } from '@/components/forms/PinInput';
+import { ClaySurface } from '@/components/clay';
 import { ApiError, InvalidStepUpPin, RateLimited } from '@/lib/api/errors';
 import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
 import { qk } from '@/lib/query';
@@ -103,7 +104,7 @@ export default function PinConfirmScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#f4f7fa">
+    <View flex={1} backgroundColor="#e8eef5">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader paddingBottom={22}>
@@ -112,16 +113,12 @@ export default function PinConfirmScreen() {
           </GradientHeader>
 
           {/* Summary card */}
-          <View
+          <ClaySurface
+            depth="raised"
+            radius={20}
             marginHorizontal={18}
             marginTop={18}
-            backgroundColor="#ffffff"
-            borderRadius={18}
             padding={18}
-            shadowColor="#0c1b2a"
-            shadowOpacity={0.05}
-            shadowRadius={16}
-            shadowOffset={{ width: 0, height: 6 }}
             alignItems="center"
           >
             <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
@@ -142,7 +139,7 @@ export default function PinConfirmScreen() {
                 {maskPhone(recipientPhone)}
               </Text>
             </Text>
-          </View>
+          </ClaySurface>
 
           {/* PIN entry + encryption note */}
           <YStack flex={1} alignItems="center" justifyContent="center" gap={22}>

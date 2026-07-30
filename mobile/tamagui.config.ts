@@ -13,6 +13,15 @@
  *   - Status colors are reserved for receipts: `#0a8a5f → #067a52` for the
  *     success header, `#c0392b → #a52e22` for the failed-receipt header.
  *
+ * The app also ships a **claymorphism** surface language layered on top of
+ * the brand palette: soft cool off-white surfaces, big rounded corners, and a
+ * puffy dual-shadow look (dark navy drop below-right + a white highlight sheen
+ * above-left). The `clay*` color tokens and the `clay*` radius tokens below are
+ * the theme half of that recipe; the shadow + gradient half lives in
+ * `components/clay/recipe.ts` (raw values are mirrored there because
+ * expo-linear-gradient can't consume Tamagui `$tokens`). Screens compose the
+ * look through the primitives in `components/clay/`.
+ *
  * `defaultTheme="light"` is locked at the root — every screen is authored
  * against the light surface.
  */
@@ -59,6 +68,34 @@ const brand = {
   errorTop: '#c0392b',
   errorBot: '#a52e22',
   warnText: '#c98a00',
+
+  // ─── Claymorphism surfaces ──────────────────────────────────────────────
+  // Soft cool off-white app background (the clay "table" everything sits on),
+  // the raised clay surface (cards, keys, tiles), and the recessed inset fill
+  // (amount displays, sunken fields).
+  clayBg: '#e8eef5',
+  claySurface: '#f2f6fb',
+  clayInset: '#e9eff6',
+
+  // Clay depth cues. `clayShadowDark` is the navy drop shadow (below-right);
+  // `clayHighlight` is the white sheen (above-left); `clayRimLight` is the
+  // hairline light top border that finishes the raised edge.
+  clayShadowDark: 'rgba(1,46,84,0.20)',
+  clayHighlight: 'rgba(255,255,255,0.95)',
+  clayRimLight: 'rgba(255,255,255,0.85)',
+  clayRimShade: 'rgba(1,46,84,0.06)',
+} as const;
+
+/**
+ * Clay corner radii — the big-rounded scale the claymorphism language uses.
+ * Mirrored as numeric constants in `components/clay/recipe.ts` for the
+ * primitives (which also feed the value to expo-linear-gradient overlays so
+ * their corners clip to match the surface).
+ */
+const clayRadius = {
+  claySm: 18,
+  clay: 24,
+  clayLg: 32,
 } as const;
 
 export const tamaguiConfig = createTamagui({
@@ -68,6 +105,10 @@ export const tamaguiConfig = createTamagui({
     color: {
       ...v3.tokens.color,
       ...brand,
+    },
+    radius: {
+      ...v3.tokens.radius,
+      ...clayRadius,
     },
   },
 });

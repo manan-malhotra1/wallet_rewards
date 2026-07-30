@@ -8,7 +8,7 @@
  * pinned to the bottom. Continue routes to /p2p/pin.
  */
 import { useState } from 'react';
-import { ActivityIndicator, Pressable } from 'react-native';
+import { Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
+import { ClayButton, ClayInset, ClaySurface } from '@/components/clay';
 import { ApiError, RateLimited, StepUpRequired } from '@/lib/api/errors';
 import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
 import { quoteServiceFee } from '@/lib/api/pricing';
@@ -162,7 +163,7 @@ export default function AmountScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#f4f7fa">
+    <View flex={1} backgroundColor="#e8eef5">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader paddingBottom={22}>
@@ -171,18 +172,15 @@ export default function AmountScreen() {
           </GradientHeader>
 
           {/* Recipient pill — overlaps the header slightly. */}
-          <XStack
+          <ClaySurface
+            depth="soft"
+            radius={16}
+            flexDirection="row"
             marginHorizontal={18}
             marginTop={16}
             alignItems="center"
             gap={11}
-            backgroundColor="#ffffff"
-            borderRadius={14}
             padding={11}
-            shadowColor="#0c1b2a"
-            shadowOpacity={0.05}
-            shadowRadius={16}
-            shadowOffset={{ width: 0, height: 6 }}
           >
             <View
               width={40}
@@ -214,39 +212,47 @@ export default function AmountScreen() {
                 Verified
               </Text>
             </View>
-          </XStack>
+          </ClaySurface>
 
           {/* Big amount display + balance hint + chips. */}
           <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal={22}>
             <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
               ZAR wallet · R {available.toFixed(2)} available
             </Text>
-            <XStack alignItems="flex-start" gap={4} marginTop={10}>
-              <Text
-                fontFamily="PlusJakartaSans-Bold"
-                fontSize={26}
-                color="#94a2b1"
-                marginTop={8}
-              >
-                R
-              </Text>
-              <Text
-                fontFamily="PlusJakartaSans-ExtraBold"
-                fontSize={56}
-                color="#0c1b2a"
-                lineHeight={56}
-                letterSpacing={-1}
-              >
-                {display.whole}
+            <ClayInset
+              radius={24}
+              marginTop={10}
+              paddingVertical={16}
+              paddingHorizontal={28}
+              alignItems="center"
+            >
+              <XStack alignItems="flex-start" gap={4}>
+                <Text
+                  fontFamily="PlusJakartaSans-Bold"
+                  fontSize={26}
+                  color="#94a2b1"
+                  marginTop={8}
+                >
+                  R
+                </Text>
                 <Text
                   fontFamily="PlusJakartaSans-ExtraBold"
                   fontSize={56}
-                  color="#cfd9e3"
+                  color="#0c1b2a"
+                  lineHeight={56}
+                  letterSpacing={-1}
                 >
-                  {display.cents}
+                  {display.whole}
+                  <Text
+                    fontFamily="PlusJakartaSans-ExtraBold"
+                    fontSize={56}
+                    color="#cfd9e3"
+                  >
+                    {display.cents}
+                  </Text>
                 </Text>
-              </Text>
-            </XStack>
+              </XStack>
+            </ClayInset>
             <XStack gap={8} marginTop={18} flexWrap="wrap" justifyContent="center">
               {CHIPS.map((n) => {
                 const value = n.toFixed(2);
@@ -294,36 +300,15 @@ export default function AmountScreen() {
           </YStack>
 
           <NumericKeypad onPress={handleKey} />
-          <View backgroundColor="#ffffff" paddingHorizontal={18} paddingBottom={18}>
-            <Pressable
+          <View backgroundColor="#e8eef5" paddingHorizontal={18} paddingBottom={18} paddingTop={4}>
+            <ClayButton
               onPress={onContinue}
               disabled={!canContinue}
-              accessibilityRole="button"
+              loading={busy}
               accessibilityLabel="Continue"
-              style={({ pressed }) => ({
-                opacity: !canContinue ? 0.5 : pressed ? 0.85 : 1,
-              })}
             >
-              <View
-                height={54}
-                borderRadius={14}
-                backgroundColor="#00508F"
-                alignItems="center"
-                justifyContent="center"
-                shadowColor="#00508F"
-                shadowOpacity={0.28}
-                shadowRadius={24}
-                shadowOffset={{ width: 0, height: 10 }}
-              >
-                {busy ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={16} color="#ffffff">
-                    Send R {parsed.toFixed(2)}
-                  </Text>
-                )}
-              </View>
-            </Pressable>
+              {`Send R ${parsed.toFixed(2)}`}
+            </ClayButton>
           </View>
         </YStack>
       </SafeAreaView>

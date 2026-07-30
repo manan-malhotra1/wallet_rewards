@@ -7,12 +7,12 @@
  * Cancel returns to /home; Try again pops back to /p2p/recipient so
  * the user can re-enter the flow cleanly.
  */
-import { Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
 
 import { GradientHeader } from '@/components/brand/GradientHeader';
+import { ClayButton, ClaySurface } from '@/components/clay';
 import { maskPhone } from '@/lib/format';
 
 /** Single row in the receipt card. */
@@ -47,7 +47,7 @@ export default function FailedScreen() {
       : 'Payment failed';
 
   return (
-    <View flex={1} backgroundColor="#ffffff">
+    <View flex={1} backgroundColor="#e8eef5">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader variant="failed" paddingBottom={38}>
@@ -115,68 +115,50 @@ export default function FailedScreen() {
           </XStack>
 
           {/* Receipt-style details for support reference. */}
-          <View
+          <ClaySurface
+            depth="soft"
+            radius={18}
             marginHorizontal={18}
             marginTop={14}
-            backgroundColor="#ffffff"
-            borderColor="#eef2f6"
-            borderWidth={1}
-            borderRadius={18}
             paddingHorizontal={16}
             paddingVertical={6}
-            shadowColor="#0c1b2a"
-            shadowOpacity={0.05}
-            shadowRadius={16}
-            shadowOffset={{ width: 0, height: 6 }}
           >
             <ReceiptRow label="Recipient" value={maskPhone(phone)} />
             <ReceiptRow label="Amount" value={`R ${parseFloat(amount).toFixed(2)}`} />
             <ReceiptRow label="Status" value="Failed" last />
-          </View>
+          </ClaySurface>
 
           <View flex={1} />
 
           <XStack gap={12} padding={18}>
-            <Pressable
-              onPress={() => router.replace('/home')}
-              accessibilityLabel="Cancel"
-              style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}
-            >
-              <View
+            <View flex={1}>
+              <ClayButton
+                variant="neutral"
+                onPress={() => router.replace('/home')}
                 height={50}
-                borderRadius={14}
-                borderWidth={1.5}
-                borderColor="#e2e8ef"
-                alignItems="center"
-                justifyContent="center"
+                accessibilityLabel="Cancel"
               >
-                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a">
+                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#00508F">
                   Cancel
                 </Text>
-              </View>
-            </Pressable>
-            <Pressable
-              onPress={() => router.replace('/p2p/recipient')}
-              accessibilityLabel="Try again"
-              style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.85 : 1 })}
-            >
-              <View
+              </ClayButton>
+            </View>
+            <View flex={1}>
+              <ClayButton
+                onPress={() => router.replace('/p2p/recipient')}
                 height={50}
-                borderRadius={14}
-                backgroundColor="#00508F"
-                alignItems="center"
-                justifyContent="center"
-                flexDirection="row"
-                gap={7}
+                accessibilityLabel="Try again"
               >
-                <Text color="#ffffff" fontSize={15}>
-                  ↻
-                </Text>
-                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#ffffff">
-                  Try again
-                </Text>
-              </View>
-            </Pressable>
+                <XStack alignItems="center" gap={7}>
+                  <Text color="#ffffff" fontSize={15}>
+                    ↻
+                  </Text>
+                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#ffffff">
+                    Try again
+                  </Text>
+                </XStack>
+              </ClayButton>
+            </View>
           </XStack>
         </YStack>
       </SafeAreaView>

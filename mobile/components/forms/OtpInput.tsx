@@ -94,16 +94,16 @@ export function OtpInput({ onComplete, resetSignal }: Props) {
             textContentType="oneTimeCode"
             autoComplete="sms-otp"
             style={{
-              width: 44,
-              height: 56,
-              borderWidth: 1,
-              borderColor: d ? '#144989' : '#E5EAF0',
-              borderRadius: 12,
+              width: 46,
+              height: 58,
+              borderWidth: 1.5,
+              borderColor: d ? '#00508F' : 'rgba(1,46,84,0.10)',
+              borderRadius: 16,
               textAlign: 'center',
               fontSize: 24,
-              fontFamily: 'Inter-SemiBold',
-              color: '#0B1726',
-              backgroundColor: '#FFFFFF',
+              fontFamily: 'PlusJakartaSans-SemiBold',
+              color: '#0c1b2a',
+              backgroundColor: d ? '#f2f6fb' : '#e9eff6',
             }}
             accessibilityLabel={`OTP digit ${i + 1}`}
           />

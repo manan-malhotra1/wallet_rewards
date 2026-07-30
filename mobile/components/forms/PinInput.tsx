@@ -14,8 +14,10 @@
  * widths collapse to 0 on iOS — the keypad would render at zero height
  * with no visible buttons.
  */
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
+
+import { ClayKey } from '@/components/clay';
 
 interface Props {
   value: string;
@@ -121,40 +123,39 @@ export function PinInput({
                 ? onBottomLeftPress
                 : () => press(k as Exclude<KeypadKey, 'side'>);
               return (
-                <Pressable
+                <View
                   // eslint-disable-next-line react/no-array-index-key
                   key={ci}
-                  onPress={dim ? undefined : handlePress}
-                  disabled={dim}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    isBack
-                      ? 'Delete'
-                      : isSide
-                        ? bottomLeftIcon
-                          ? 'Biometric login'
-                          : 'empty'
-                        : `Digit ${k}`
-                  }
-                  style={({ pressed }) => [
-                    styles.key,
-                    ci < row.length - 1 && { marginRight: KEY_GAP },
-                    pressed && !dim ? { opacity: 0.55 } : null,
-                    dim ? { opacity: 0 } : null,
-                  ]}
+                  style={ci < row.length - 1 ? { marginRight: KEY_GAP } : undefined}
                 >
-                  <Text
-                    fontFamily={
-                      isBack || isSide
-                        ? 'PlusJakartaSans-Medium'
-                        : 'PlusJakartaSans-SemiBold'
+                  <ClayKey
+                    width={KEY_WIDTH}
+                    height={KEY_HEIGHT}
+                    hidden={dim}
+                    onPress={handlePress}
+                    accessibilityLabel={
+                      isBack
+                        ? 'Delete'
+                        : isSide
+                          ? bottomLeftIcon
+                            ? 'Biometric login'
+                            : 'empty'
+                          : `Digit ${k}`
                     }
-                    fontSize={isBack || isSide ? 22 : 26}
-                    color={isSide || isBack ? '#8a98a6' : '#0c1b2a'}
                   >
-                    {label}
-                  </Text>
-                </Pressable>
+                    <Text
+                      fontFamily={
+                        isBack || isSide
+                          ? 'PlusJakartaSans-Medium'
+                          : 'PlusJakartaSans-SemiBold'
+                      }
+                      fontSize={isBack || isSide ? 22 : 26}
+                      color={isSide || isBack ? '#5a6b7b' : '#0c1b2a'}
+                    >
+                      {label}
+                    </Text>
+                  </ClayKey>
+                </View>
               );
             })}
           </View>
@@ -169,11 +170,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
-  },
-  key: {
-    width: KEY_WIDTH,
-    height: KEY_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

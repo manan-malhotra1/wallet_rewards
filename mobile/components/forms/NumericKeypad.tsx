@@ -4,8 +4,9 @@
  * structured events so the parent owns the actual amount-string state
  * (allowing it to enforce max digits, decimal places, etc.).
  */
-import { Pressable } from 'react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
+import { Text, XStack, YStack } from 'tamagui';
+
+import { ClayKey, clay } from '@/components/clay';
 
 interface Props {
   /** Fires with one of: '0'..'9', '.', 'back'. */
@@ -21,42 +22,43 @@ const ROWS: ReadonlyArray<ReadonlyArray<'0' | '1' | '2' | '3' | '4' | '5' | '6' 
   ['.', '0', 'back'],
 ];
 
-/** White numeric keypad with optional decimal point and a backspace. */
+/** Clay numeric keypad with optional decimal point and a backspace. */
 export function NumericKeypad({ onPress, decimalsAllowed = true }: Props) {
   return (
-    <YStack backgroundColor="#ffffff" paddingHorizontal={22} paddingTop={8} paddingBottom={4}>
+    <YStack
+      backgroundColor={clay.claySurface.bg}
+      paddingHorizontal={18}
+      paddingTop={10}
+      paddingBottom={6}
+      gap={10}
+    >
       {ROWS.map((row, ri) => (
         <XStack
           // eslint-disable-next-line react/no-array-index-key
           key={ri}
-          gap={2}
+          gap={10}
         >
           {row.map((k) => {
             const isBack = k === 'back';
             const isDot = k === '.';
             const hidden = isDot && !decimalsAllowed;
             return (
-              <Pressable
+              <ClayKey
                 key={k}
-                onPress={hidden ? undefined : () => onPress(k)}
-                disabled={hidden}
-                accessibilityRole="button"
+                flex
+                height={52}
+                hidden={hidden}
+                onPress={() => onPress(k)}
                 accessibilityLabel={isBack ? 'Delete' : `Key ${k}`}
-                style={({ pressed }) => ({
-                  flex: 1,
-                  opacity: hidden ? 0 : pressed ? 0.5 : 1,
-                })}
               >
-                <View height={48} alignItems="center" justifyContent="center">
-                  <Text
-                    fontFamily="PlusJakartaSans-SemiBold"
-                    fontSize={isBack ? 22 : 24}
-                    color={isBack ? '#8a98a6' : '#0c1b2a'}
-                  >
-                    {isBack ? '⌫' : k}
-                  </Text>
-                </View>
-              </Pressable>
+                <Text
+                  fontFamily="PlusJakartaSans-SemiBold"
+                  fontSize={isBack ? 22 : 24}
+                  color={isBack ? '#5a6b7b' : '#0c1b2a'}
+                >
+                  {isBack ? '⌫' : k}
+                </Text>
+              </ClayKey>
             );
           })}
         </XStack>

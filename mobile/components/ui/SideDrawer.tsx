@@ -113,7 +113,7 @@ export function SideDrawer({
       >
         <View
           flex={1}
-          backgroundColor="#ffffff"
+          backgroundColor="#eef3f9"
           paddingTop={insets.top + 12}
           paddingBottom={insets.bottom + 12}
           paddingHorizontal={20}
@@ -202,7 +202,7 @@ export function SideDrawer({
               paddingVertical={12}
               paddingHorizontal={4}
               borderTopWidth={1}
-              borderTopColor="#eef2f6"
+              borderTopColor="rgba(1,46,84,0.08)"
             >
               <Text fontSize={18}>↪️</Text>
               <Text

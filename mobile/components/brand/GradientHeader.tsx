@@ -53,6 +53,10 @@ export function GradientHeader({
         paddingTop: insets.top + 6,
         paddingBottom,
         paddingHorizontal: 22,
+        // Big rounded bottom corners turn the navy hero into a clay "slab"
+        // that the clay surfaces below tuck under.
+        borderBottomLeftRadius: 32,
+        borderBottomRightRadius: 32,
         overflow: 'hidden',
         position: 'relative',
       }}

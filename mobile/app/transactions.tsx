@@ -18,6 +18,7 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { ActivityRow } from '@/components/ui/ActivityRow';
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
 import { GradientHeader } from '@/components/brand/GradientHeader';
+import { ClaySurface } from '@/components/clay';
 import {
   activityCategory,
   getMyWallet,
@@ -150,7 +151,7 @@ export default function TransactionsScreen() {
   }, [filtered]);
 
   return (
-    <View flex={1} backgroundColor="#f4f7fa">
+    <View flex={1} backgroundColor="#e8eef5">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <GradientHeader paddingBottom={22}>
           <Text
@@ -207,40 +208,22 @@ export default function TransactionsScreen() {
         >
           {/* Summary strip — money in vs out, computed from real data. */}
           <XStack gap={12} paddingHorizontal={18} paddingTop={16}>
-            <View
-              flex={1}
-              backgroundColor="#ffffff"
-              borderRadius={16}
-              padding={13}
-              shadowColor="#0c1b2a"
-              shadowOpacity={0.05}
-              shadowRadius={16}
-              shadowOffset={{ width: 0, height: 6 }}
-            >
+            <ClaySurface depth="soft" radius={16} flex={1} padding={13}>
               <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
                 Money in
               </Text>
               <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color="#1aa06b" marginTop={3}>
                 +{formatZAR(moneyIn)}
               </Text>
-            </View>
-            <View
-              flex={1}
-              backgroundColor="#ffffff"
-              borderRadius={16}
-              padding={13}
-              shadowColor="#0c1b2a"
-              shadowOpacity={0.05}
-              shadowRadius={16}
-              shadowOffset={{ width: 0, height: 6 }}
-            >
+            </ClaySurface>
+            <ClaySurface depth="soft" radius={16} flex={1} padding={13}>
               <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
                 Money out
               </Text>
               <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color="#c0392b" marginTop={3}>
                 −{formatZAR(moneyOut)}
               </Text>
-            </View>
+            </ClaySurface>
           </XStack>
 
           {groups.length === 0 ? (
@@ -266,15 +249,11 @@ export default function TransactionsScreen() {
                 >
                   {day}
                 </Text>
-                <View
+                <ClaySurface
+                  depth="soft"
+                  radius={18}
                   marginHorizontal={18}
-                  backgroundColor="#ffffff"
-                  borderRadius={18}
                   paddingHorizontal={14}
-                  shadowColor="#0c1b2a"
-                  shadowOpacity={0.05}
-                  shadowRadius={16}
-                  shadowOffset={{ width: 0, height: 6 }}
                 >
                   {items.map((t, i) => {
                     const amt = displayAmount(t);
@@ -290,7 +269,7 @@ export default function TransactionsScreen() {
                       />
                     );
                   })}
-                </View>
+                </ClaySurface>
               </YStack>
             ))
           )}

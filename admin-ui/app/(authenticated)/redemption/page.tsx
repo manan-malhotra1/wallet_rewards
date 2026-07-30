@@ -56,7 +56,7 @@ export default async function RedemptionPage() {
             trigger={
               <button
                 type="button"
-                className="inline-flex h-8 items-center gap-2 rounded-md bg-[--color-brand] px-3 text-[13px] font-medium text-white hover:opacity-90"
+                className="inline-flex h-8 items-center gap-2 rounded-md bg-[--color-brand] px-3 text-[13px] font-medium text-[--color-brand-foreground] hover:opacity-90"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Register provider

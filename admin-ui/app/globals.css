@@ -49,6 +49,19 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Legacy token aliases: several pages use an older --color-{brand,surface-N,
+     text-N,danger} scheme. Map them onto the semantic shadcn tokens so those
+     components theme correctly (light + dark + per-tenant) instead of falling
+     back to undefined vars (which rendered transparent / inherited). */
+  --color-brand: var(--primary);
+  --color-brand-foreground: var(--primary-foreground);
+  --color-danger: var(--destructive);
+  --color-surface-0: var(--background);
+  --color-surface-1: var(--card);
+  --color-surface-2: var(--muted);
+  --color-text-1: var(--foreground);
+  --color-text-2: var(--muted-foreground);
+  --color-text-3: var(--muted-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

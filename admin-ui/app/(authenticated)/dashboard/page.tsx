@@ -53,7 +53,19 @@ export default async function DashboardPage({
 
   return (
     <div className="h-full overflow-y-auto p-6">
-      <DashboardClient initial={initial} initialRange={range} initialGranularity={granularity} />
+      {/*
+        key on the tenant id forces a full remount when the active tenant
+        changes. Without it, router.refresh() re-renders this server component
+        with the new tenant's `initial` prop but DashboardClient's useState
+        (data + selected currencies) keeps the PREVIOUS tenant's values, showing
+        one tenant's currencies/figures under another. Remounting resets state.
+      */}
+      <DashboardClient
+        key={activeTenantId ?? "none"}
+        initial={initial}
+        initialRange={range}
+        initialGranularity={granularity}
+      />
       <AttentionStrip tenantId={activeTenantId ?? ""} />
     </div>
   );

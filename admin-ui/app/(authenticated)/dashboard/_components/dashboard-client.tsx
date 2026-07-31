@@ -120,7 +120,8 @@ export function DashboardClient({ initial, initialRange, initialGranularity }: P
       {/* Revenue + rewards */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="p-4">
-          <h2 className="mb-2 text-sm font-semibold">Revenue by service</h2>
+          <h2 className="text-sm font-semibold">Charges by service</h2>
+          <p className="mb-2 text-xs text-muted-foreground">Fee (revenue) · tax (pass-through) · commission (agent cost)</p>
           {data.revenue ? <RevenueChart data={data.revenue} /> : null}
         </Card>
         <Card className="p-4">

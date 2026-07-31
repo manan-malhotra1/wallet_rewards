@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.modules.analytics.service import resolve_window, validate_granularity
+from app.shared.exceptions import InvalidAnalyticsParameter
 
 
 def test_resolve_window_7d_gives_two_aligned_windows():
@@ -18,10 +19,10 @@ def test_resolve_window_7d_gives_two_aligned_windows():
 
 
 def test_resolve_window_rejects_unknown_range():
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidAnalyticsParameter):
         resolve_window("all-time", now=datetime(2026, 7, 31, tzinfo=UTC))
 
 
 def test_validate_granularity_rejects_unknown():
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidAnalyticsParameter):
         validate_granularity("hourly")

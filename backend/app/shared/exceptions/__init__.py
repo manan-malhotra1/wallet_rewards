@@ -1356,3 +1356,19 @@ class AirtimeRechargeAlreadySettled(AppHTTPException):
             "airtime_recharge_already_settled",
             f"Airtime recharge already in terminal state '{current_status}'.",
         )
+
+
+# --- Analytics -------------------------------------------------------------
+
+
+class InvalidAnalyticsParameter(AppHTTPException):
+    """Raised when an analytics `range`/`granularity` query param is unrecognised.
+
+    Surfaces as HTTP 422 so a bad client parameter never masks a genuine
+    server-side ValueError elsewhere in the app (e.g. internal `raise ValueError`
+    guards in budgets/service or rules/evaluator would otherwise be caught by an
+    app-global ValueError handler and mis-reported as client 422s).
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(422, "invalid_parameter", message)

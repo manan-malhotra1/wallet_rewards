@@ -32,7 +32,7 @@ from app.modules.analytics.schemas import (
     UsersTimeseries,
     UserTypeSlice,
 )
-from app.shared.exceptions import TenantNotFound
+from app.shared.exceptions import InvalidAnalyticsParameter, TenantNotFound
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
@@ -68,13 +68,16 @@ class Window:
 
 
 def validate_granularity(granularity: str) -> str:
-    """Return the granularity unchanged, or raise ValueError if unknown.
+    """Return the granularity unchanged, or raise if unknown.
 
     Guards the `date_trunc` argument — never interpolate an unvalidated
     string into a SQL function.
+
+    Raises:
+        InvalidAnalyticsParameter: granularity is not recognised (HTTP 422).
     """
     if granularity not in _GRANULARITIES:
-        raise ValueError(f"unknown granularity: {granularity}")
+        raise InvalidAnalyticsParameter(f"unknown granularity: {granularity}")
     return granularity
 
 
@@ -89,10 +92,10 @@ def resolve_window(range_key: str, *, now: datetime | None = None) -> tuple[Wind
         (current, previous) — previous.end == current.start.
 
     Raises:
-        ValueError: range_key is not recognised.
+        InvalidAnalyticsParameter: range_key is not recognised (HTTP 422).
     """
     if range_key not in _RANGE_DAYS:
-        raise ValueError(f"unknown range: {range_key}")
+        raise InvalidAnalyticsParameter(f"unknown range: {range_key}")
     now = now or datetime.now(UTC)
     days = _RANGE_DAYS[range_key]
     span = timedelta(days=days)

@@ -90,15 +90,6 @@ async def app_exception_handler(request: Request, exc: AppHTTPException) -> JSON
     )
 
 
-@app.exception_handler(ValueError)
-async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
-    """Surface analytics param validation (bad range/granularity) as 422."""
-    return JSONResponse(
-        status_code=422,
-        content={"error_code": "invalid_parameter", "message": str(exc)},
-    )
-
-
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Liveness probe — returns 200 if the process is running."""

@@ -18,11 +18,14 @@
  *      the OUTER drop shadow isn't clipped.
  *   2. Inner-shadow signs — see the convention note in `recipe.ts`: positive
  *      `dx,dy` puts an inner shadow on the TOP-LEFT interior (CSS-inset parity).
- *   3. The canvas is `pointerEvents="none"` so touches fall through to the
- *      wrapping Pressable/View.
+ *   3. The oversized canvas overflows into sibling controls, so it MUST be
+ *      inert to touch. It is wrapped in a plain RN `<View pointerEvents="none">`
+ *      because Android does not reliably honour `pointerEvents` on the Skia
+ *      `<Canvas>` itself — without the wrapper, an overflowing shadow steals
+ *      taps from the neighbour it covers (e.g. keypad `1` firing `5`).
  */
 import { useCallback, useState } from 'react';
-import { type LayoutChangeEvent } from 'react-native';
+import { type LayoutChangeEvent, View } from 'react-native';
 import { Box, BoxShadow, Canvas, LinearGradient, rect, rrect, vec } from '@shopify/react-native-skia';
 
 import {
@@ -121,8 +124,17 @@ export function ClayShape({
   // Only raised pieces lift; pressed/inset never carry an outer drop.
   const showOuter = variant === 'raised' && outer !== false;
 
+  // Wrap the Skia Canvas in a plain RN View with `pointerEvents="none"`.
+  // WHY: the canvas is oversized by PAD on every side to fit the outer drop
+  // shadow, so it overflows well into sibling controls (e.g. a keypad key's
+  // canvas covers its neighbours). On Android, react-native-skia's <Canvas>
+  // does NOT reliably honour its own `pointerEvents` prop, so that overflow
+  // steals taps meant for the neighbour and fires the wrong key. A RN <View>
+  // DOES honour `pointerEvents="none"` on Android, removing the whole
+  // decorative subtree from hit-testing. iOS was already correct; this keeps
+  // it correct and fixes Android. Visual output is unchanged.
   return (
-    <Canvas
+    <View
       pointerEvents="none"
       style={{
         position: 'absolute',
@@ -132,18 +144,20 @@ export function ClayShape({
         height: height + PAD * 2,
       }}
     >
-      <Box box={box} color={fill}>
-        {gradient ? (
-          <LinearGradient
-            start={vec(PAD, PAD)}
-            end={vec(PAD + width, PAD + height)}
-            colors={[...gradient]}
-          />
-        ) : null}
-        {showOuter ? shadow(claySkiaDrop[drop], 'drop') : null}
-        {shadow(inner.depth, 'depth')}
-        {shadow(inner.highlight, 'highlight')}
-      </Box>
-    </Canvas>
+      <Canvas pointerEvents="none" style={{ flex: 1 }}>
+        <Box box={box} color={fill}>
+          {gradient ? (
+            <LinearGradient
+              start={vec(PAD, PAD)}
+              end={vec(PAD + width, PAD + height)}
+              colors={[...gradient]}
+            />
+          ) : null}
+          {showOuter ? shadow(claySkiaDrop[drop], 'drop') : null}
+          {shadow(inner.depth, 'depth')}
+          {shadow(inner.highlight, 'highlight')}
+        </Box>
+      </Canvas>
+    </View>
   );
 }

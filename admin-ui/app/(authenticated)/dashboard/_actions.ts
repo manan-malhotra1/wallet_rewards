@@ -8,11 +8,14 @@
 import {
   getActiveUsers,
   getAnalyticsSummary,
+  getLiquidity,
+  getNetFlow,
   getRevenueByService,
   getRewardsTimeseries,
   getTransactionsByService,
   getTransactionsByStatus,
   getTransactionsTimeseries,
+  getUsersByType,
   getUsersTimeseries,
 } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
@@ -37,6 +40,9 @@ export async function loadDashboardData(
     activeUsers,
     revenue,
     rewards,
+    liquidity,
+    netFlow,
+    usersByType,
   ] = await Promise.allSettled([
     getAnalyticsSummary(tenantId, range),
     getTransactionsTimeseries(tenantId, range, granularity),
@@ -46,6 +52,9 @@ export async function loadDashboardData(
     getActiveUsers(tenantId),
     getRevenueByService(tenantId, range),
     getRewardsTimeseries(tenantId, range, granularity),
+    getLiquidity(tenantId),
+    getNetFlow(tenantId, range, granularity),
+    getUsersByType(tenantId),
   ]);
 
   const val = <T>(r: PromiseSettledResult<T>): T | null =>
@@ -60,6 +69,9 @@ export async function loadDashboardData(
     activeUsers: val(activeUsers),
     revenue: val(revenue),
     rewards: val(rewards),
+    liquidity: val(liquidity),
+    netFlow: val(netFlow),
+    usersByType: val(usersByType),
   };
 }
 

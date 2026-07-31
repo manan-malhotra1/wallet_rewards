@@ -914,3 +914,19 @@ export interface RewardsTimeseries {
 
 export type AnalyticsRange = "24h" | "7d" | "30d" | "quarter";
 export type AnalyticsGranularity = "day" | "week" | "month";
+
+export interface Liquidity {
+  wallet_liability: string;
+  cash_float_balance: string;
+}
+
+export interface NetFlowPoint {
+  bucket: string;
+  inflow: string;
+  outflow: string;
+}
+
+export interface UserTypeSlice {
+  user_type: string;
+  count: number;
+}

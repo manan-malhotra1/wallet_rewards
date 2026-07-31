@@ -18,6 +18,8 @@ import { StatusBreakdownChart } from "./status-breakdown-chart";
 import { UsersGrowthChart } from "./users-growth-chart";
 import { RevenueChart } from "./revenue-chart";
 import { RewardsChart } from "./rewards-chart";
+import { NetFlowChart } from "./net-flow-chart";
+import { UserTypeChart } from "./user-type-chart";
 import { Card } from "@/components/ui/card";
 import type { AnalyticsGranularity, AnalyticsRange } from "@/lib/api-types";
 
@@ -124,6 +126,32 @@ export function DashboardClient({ initial, initialRange, initialGranularity }: P
         <Card className="p-4">
           <h2 className="mb-2 text-sm font-semibold">Points issued vs redeemed</h2>
           {data.rewards ? <RewardsChart data={data.rewards} /> : null}
+        </Card>
+      </div>
+
+      {/* Liquidity + user mix */}
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 lg:col-span-1">
+          <div className="rounded-lg border bg-card p-4">
+            <div className="text-xs text-muted-foreground">Wallet liability</div>
+            <div className="text-xl font-bold tabular-nums">
+              {Number(data.liquidity?.wallet_liability ?? 0).toLocaleString()}
+            </div>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <div className="text-xs text-muted-foreground">Cash float</div>
+            <div className="text-xl font-bold tabular-nums">
+              {Number(data.liquidity?.cash_float_balance ?? 0).toLocaleString()}
+            </div>
+          </div>
+        </div>
+        <Card className="p-4 lg:col-span-1">
+          <h2 className="mb-2 text-sm font-semibold">Net flow (in vs out)</h2>
+          {data.netFlow ? <NetFlowChart data={data.netFlow} /> : null}
+        </Card>
+        <Card className="p-4 lg:col-span-1">
+          <h2 className="mb-2 text-sm font-semibold">Users by type</h2>
+          {data.usersByType ? <UserTypeChart data={data.usersByType} /> : null}
         </Card>
       </div>
     </div>

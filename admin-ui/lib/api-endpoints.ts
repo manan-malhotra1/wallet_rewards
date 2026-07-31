@@ -36,9 +36,11 @@ import type {
   ExternalEventSource,
   Instrument,
   LimitConfig,
+  Liquidity,
   ManualReviewItem,
   MoneyOperation,
   MoneyOperationStatus,
+  NetFlowPoint,
   PendingItem,
   PricingConfig,
   RedemptionProvider,
@@ -68,6 +70,7 @@ import type {
   UserOperation,
   UserOperationStatus,
   UserType,
+  UserTypeSlice,
   UsersTimeseries,
   WalletLimitConfig,
 } from "@/lib/api-types";
@@ -1085,4 +1088,21 @@ export const getRewardsTimeseries = (
 ) =>
   apiGet<RewardsTimeseries>("/api/v1/analytics/rewards/timeseries", {
     query: { tenant_id, range, granularity },
+  });
+
+export const getLiquidity = (tenant_id: string) =>
+  apiGet<Liquidity>("/api/v1/analytics/liquidity", { query: { tenant_id } });
+
+export const getNetFlow = (
+  tenant_id: string,
+  range: AnalyticsRange,
+  granularity: AnalyticsGranularity,
+) =>
+  apiGet<NetFlowPoint[]>("/api/v1/analytics/net-flow", {
+    query: { tenant_id, range, granularity },
+  });
+
+export const getUsersByType = (tenant_id: string) =>
+  apiGet<UserTypeSlice[]>("/api/v1/analytics/users/by-type", {
+    query: { tenant_id },
   });

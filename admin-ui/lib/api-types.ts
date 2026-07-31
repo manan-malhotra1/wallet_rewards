@@ -840,11 +840,25 @@ export interface ScalarWithPrevious {
   previous: string;
 }
 
+/** Per-currency scalar KPI: current vs previous period, kept separate per currency. */
+export interface CurrencyInfo {
+  code: string;
+  symbol: string;
+  display_name: string;
+}
+
+/** A money KPI for one currency — values are never summed across currencies. */
+export interface CurrencyScalar {
+  currency: string;
+  current: string;
+  previous: string;
+}
+
 export interface DashboardSummary {
   transaction_count: ScalarWithPrevious;
-  transaction_volume: ScalarWithPrevious;
-  avg_transaction_value: ScalarWithPrevious;
-  revenue_total: ScalarWithPrevious;
+  transaction_volume: CurrencyScalar[];
+  avg_transaction_value: CurrencyScalar[];
+  revenue_total: CurrencyScalar[];
   new_users: ScalarWithPrevious;
   total_users: string;
   active_users_period: string;
@@ -852,15 +866,36 @@ export interface DashboardSummary {
   points_redeemed: ScalarWithPrevious;
 }
 
-export interface TimeseriesPoint {
+/** One bucket of a per-currency money series (value is a string decimal). */
+export interface BucketAmount {
   bucket: string;
-  count: number;
-  volume: string;
+  value: string;
 }
 
-export interface TransactionsTimeseries {
-  current: TimeseriesPoint[];
-  previous: TimeseriesPoint[];
+/** A money series for one currency: current + previous period buckets. */
+export interface CurrencySeries {
+  currency: string;
+  current: BucketAmount[];
+  previous: BucketAmount[];
+}
+
+/** One bucket of a transaction-count series. */
+export interface CountPoint {
+  bucket: string;
+  count: number;
+}
+
+/** Transaction-count series: current + previous period buckets. */
+export interface CountSeries {
+  current: CountPoint[];
+  previous: CountPoint[];
+}
+
+/** The transactions timeseries: currency-agnostic count + per-currency volume/revenue. */
+export interface MetricsTimeseries {
+  count: CountSeries;
+  volume: CurrencySeries[];
+  revenue: CurrencySeries[];
 }
 
 export interface ServiceSlice {
@@ -893,8 +928,10 @@ export interface ActiveUsers {
   stickiness: string;
 }
 
-export interface RevenueSlice {
+/** Revenue broken down by service AND currency (never summed across currencies). */
+export interface RevenueServiceSlice {
   service_type: string;
+  currency: string;
   fee: string;
   tax: string;
   commission: string;
@@ -915,13 +952,16 @@ export interface RewardsTimeseries {
 export type AnalyticsRange = "24h" | "7d" | "30d" | "quarter";
 export type AnalyticsGranularity = "day" | "week" | "month";
 
-export interface Liquidity {
+/** Liquidity per currency: wallet liability vs cash-float balance. */
+export interface CurrencyLiquidity {
+  currency: string;
   wallet_liability: string;
   cash_float_balance: string;
 }
 
 export interface NetFlowPoint {
   bucket: string;
+  currency: string;
   inflow: string;
   outflow: string;
 }

@@ -32,12 +32,14 @@ import type {
   ConfigOperation,
   ConfigRequestStatus,
   ConfigType,
+  CurrencyInfo,
+  CurrencyLiquidity,
   DashboardSummary,
   ExternalEventSource,
   Instrument,
   LimitConfig,
-  Liquidity,
   ManualReviewItem,
+  MetricsTimeseries,
   MoneyOperation,
   MoneyOperationStatus,
   NetFlowPoint,
@@ -45,7 +47,7 @@ import type {
   PricingConfig,
   RedemptionProvider,
   ReferralTrigger,
-  RevenueSlice,
+  RevenueServiceSlice,
   RewardBudget,
   RewardsTimeseries,
   Rule,
@@ -63,7 +65,6 @@ import type {
   TaxConfig,
   Tenant,
   TenantBranding,
-  TransactionsTimeseries,
   User,
   UserDetail,
   UserIdentifier,
@@ -1034,6 +1035,12 @@ export const revokeApiKey = (key_pk: string, tenant_id: string) =>
 
 // ---- Analytics -----------------------------------------------------------
 
+/** The tenant's transacting currencies — drives the dashboard currency toggle. */
+export const getCurrencies = (tenant_id: string) =>
+  apiGet<CurrencyInfo[]>("/api/v1/analytics/currencies", {
+    query: { tenant_id },
+  });
+
 export const getAnalyticsSummary = (tenant_id: string, range: AnalyticsRange) =>
   apiGet<DashboardSummary>("/api/v1/analytics/summary", {
     query: { tenant_id, range },
@@ -1044,7 +1051,7 @@ export const getTransactionsTimeseries = (
   range: AnalyticsRange,
   granularity: AnalyticsGranularity,
 ) =>
-  apiGet<TransactionsTimeseries>("/api/v1/analytics/transactions/timeseries", {
+  apiGet<MetricsTimeseries>("/api/v1/analytics/transactions/timeseries", {
     query: { tenant_id, range, granularity },
   });
 
@@ -1077,7 +1084,7 @@ export const getActiveUsers = (tenant_id: string) =>
   });
 
 export const getRevenueByService = (tenant_id: string, range: AnalyticsRange) =>
-  apiGet<RevenueSlice[]>("/api/v1/analytics/revenue/by-service", {
+  apiGet<RevenueServiceSlice[]>("/api/v1/analytics/revenue/by-service", {
     query: { tenant_id, range },
   });
 
@@ -1091,7 +1098,9 @@ export const getRewardsTimeseries = (
   });
 
 export const getLiquidity = (tenant_id: string) =>
-  apiGet<Liquidity>("/api/v1/analytics/liquidity", { query: { tenant_id } });
+  apiGet<CurrencyLiquidity[]>("/api/v1/analytics/liquidity", {
+    query: { tenant_id },
+  });
 
 export const getNetFlow = (
   tenant_id: string,

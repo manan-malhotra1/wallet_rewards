@@ -8,6 +8,7 @@
 import {
   getActiveUsers,
   getAnalyticsSummary,
+  getCurrencies,
   getLiquidity,
   getNetFlow,
   getRevenueByService,
@@ -43,6 +44,7 @@ export async function loadDashboardData(
     liquidity,
     netFlow,
     usersByType,
+    currencies,
   ] = await Promise.allSettled([
     getAnalyticsSummary(tenantId, range),
     getTransactionsTimeseries(tenantId, range, granularity),
@@ -55,6 +57,7 @@ export async function loadDashboardData(
     getLiquidity(tenantId),
     getNetFlow(tenantId, range, granularity),
     getUsersByType(tenantId),
+    getCurrencies(tenantId),
   ]);
 
   const val = <T>(r: PromiseSettledResult<T>): T | null =>
@@ -72,6 +75,8 @@ export async function loadDashboardData(
     liquidity: val(liquidity),
     netFlow: val(netFlow),
     usersByType: val(usersByType),
+    // Default to [] (not null) so the currency toggle always gets an array.
+    currencies: val(currencies) ?? [],
   };
 }
 

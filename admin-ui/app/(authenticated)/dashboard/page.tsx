@@ -13,6 +13,7 @@ import { listTenants } from "@/lib/api-endpoints";
 import type { AnalyticsGranularity, AnalyticsRange } from "@/lib/api-types";
 import { loadDashboardData } from "./_actions";
 import { DashboardClient } from "./_components/dashboard-client";
+import { AttentionStrip } from "./_components/attention-strip";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,7 @@ export default async function DashboardPage({
   return (
     <div className="h-full overflow-y-auto p-6">
       <DashboardClient initial={initial} initialRange={range} initialGranularity={granularity} />
+      <AttentionStrip tenantId={activeTenantId ?? ""} />
     </div>
   );
 }

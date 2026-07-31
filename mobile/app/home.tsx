@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ActivityRow } from '@/components/ui/ActivityRow';
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
@@ -33,12 +34,15 @@ import {
 import { qk } from '@/lib/query';
 import { clearAll, getLastPhone } from '@/lib/storage';
 
-/** Quick-action tile metadata (icon + label + route). */
-const ACTIONS: ReadonlyArray<{ icon: string; label: string; href: string }> = [
-  { icon: '💸', label: 'Send', href: '/p2p/recipient' },
-  { icon: '📲', label: 'Airtime', href: '/home' }, // placeholder until /airtime ships
-  { icon: '🧾', label: 'Pay bills', href: '/home' }, // placeholder
-  { icon: '🌍', label: 'Remit', href: '/home' }, // placeholder
+/** Ionicons glyph name — a typed union so only valid glyphs compile. */
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+/** Quick-action tile metadata (Ionicons glyph + label + route). */
+const ACTIONS: ReadonlyArray<{ icon: IconName; label: string; href: string }> = [
+  { icon: 'paper-plane', label: 'Send', href: '/p2p/recipient' },
+  { icon: 'phone-portrait', label: 'Airtime', href: '/home' }, // placeholder until /airtime ships
+  { icon: 'receipt', label: 'Pay bills', href: '/home' }, // placeholder
+  { icon: 'globe', label: 'Remit', href: '/home' }, // placeholder
 ];
 
 /** Format a decimal-string amount as a 2-line "$1,284.50" with the cents
@@ -182,7 +186,7 @@ export default function HomeScreen() {
                     alignItems="center"
                     justifyContent="center"
                   >
-                    <Text fontSize={13}>⭐</Text>
+                    <Ionicons name="star" size={14} color="#ffffff" />
                   </View>
                   <YStack>
                     <Text
@@ -213,7 +217,7 @@ export default function HomeScreen() {
                   justifyContent="center"
                   position="relative"
                 >
-                  <Text fontSize={18}>🔔</Text>
+                  <Ionicons name="notifications" size={20} color="#ffffff" />
                   <View
                     position="absolute"
                     top={9}
@@ -286,9 +290,11 @@ export default function HomeScreen() {
                   style={{ marginLeft: 'auto', paddingBottom: 6 }}
                   accessibilityLabel="Toggle balance visibility"
                 >
-                  <Text fontSize={18} color="#94a2b1">
-                    👁
-                  </Text>
+                  <Ionicons
+                    name={masked ? 'eye-off' : 'eye'}
+                    size={20}
+                    color="#94a2b1"
+                  />
                 </Pressable>
               </XStack>
               <XStack
@@ -342,7 +348,7 @@ export default function HomeScreen() {
                 >
                   <YStack alignItems="center" gap={8}>
                     <ClayIconTile size={54} radius={18}>
-                      <Text fontSize={22}>{action.icon}</Text>
+                      <Ionicons name={action.icon} size={24} color="#00508F" />
                     </ClayIconTile>
                     <Text
                       fontFamily="PlusJakartaSans-SemiBold"

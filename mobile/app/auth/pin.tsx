@@ -11,6 +11,7 @@ import { Animated } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { SasaiPayLogo } from '@/components/brand/SasaiPayLogo';
@@ -162,7 +163,7 @@ export default function PinScreen() {
             gap={7}
             paddingBottom={6}
           >
-            <Text fontSize={14}>🔒</Text>
+            <Ionicons name="lock-closed" size={14} color="#8a98a6" />
             <Text
               fontFamily="PlusJakartaSans-Medium"
               fontSize={12.5}

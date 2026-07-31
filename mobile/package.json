@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "@shopify/react-native-skia": "2.2.12",
     "@tamagui/babel-plugin": "^1.118.0",
     "@tamagui/config": "^1.118.0",

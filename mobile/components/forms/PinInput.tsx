@@ -16,6 +16,7 @@
  */
 import { StyleSheet, View } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ClayKey } from '@/components/clay';
 
@@ -117,8 +118,7 @@ export function PinInput({
               const isSide = k === 'side';
               const isBack = k === 'back';
               const dim = isSide && !bottomLeftIcon;
-              const label =
-                isSide ? bottomLeftIcon ?? '' : isBack ? '⌫' : k;
+              const label = isSide ? bottomLeftIcon ?? '' : k;
               const handlePress = isSide
                 ? onBottomLeftPress
                 : () => press(k as Exclude<KeypadKey, 'side'>);
@@ -143,17 +143,21 @@ export function PinInput({
                           : `Digit ${k}`
                     }
                   >
-                    <Text
-                      fontFamily={
-                        isBack || isSide
-                          ? 'PlusJakartaSans-Medium'
-                          : 'PlusJakartaSans-SemiBold'
-                      }
-                      fontSize={isBack || isSide ? 22 : 26}
-                      color={isSide || isBack ? '#5a6b7b' : '#0c1b2a'}
-                    >
-                      {label}
-                    </Text>
+                    {isBack ? (
+                      <Ionicons name="backspace-outline" size={24} color="#5a6b7b" />
+                    ) : (
+                      <Text
+                        fontFamily={
+                          isSide
+                            ? 'PlusJakartaSans-Medium'
+                            : 'PlusJakartaSans-SemiBold'
+                        }
+                        fontSize={isSide ? 22 : 26}
+                        color={isSide ? '#5a6b7b' : '#0c1b2a'}
+                      >
+                        {label}
+                      </Text>
+                    )}
                   </ClayKey>
                 </View>
               );

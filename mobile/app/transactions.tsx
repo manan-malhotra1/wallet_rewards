@@ -14,6 +14,7 @@ import { ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ActivityRow } from '@/components/ui/ActivityRow';
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
@@ -173,7 +174,7 @@ export default function TransactionsScreen() {
               alignItems="center"
               gap={9}
             >
-              <Text fontSize={14} color="rgba(255,255,255,0.8)">🔍</Text>
+              <Ionicons name="search" size={17} color="rgba(255,255,255,0.8)" />
               <Text
                 fontFamily="PlusJakartaSans-Medium"
                 fontSize={13.5}
@@ -190,7 +191,7 @@ export default function TransactionsScreen() {
               alignItems="center"
               justifyContent="center"
             >
-              <Text fontSize={17}>⚙️</Text>
+              <Ionicons name="options-outline" size={20} color="#ffffff" />
             </View>
           </XStack>
           <XStack gap={8} marginTop={14}>

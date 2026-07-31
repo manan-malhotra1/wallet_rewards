@@ -18,9 +18,13 @@ import { useEffect, useRef } from 'react';
 import { Animated, Dimensions, Modal, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { SasaiPayLogo } from '@/components/brand/SasaiPayLogo';
 import { maskPhone } from '@/lib/format';
+
+/** Ionicons glyph name — a typed union so only valid glyphs compile. */
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const PANEL_WIDTH = 280;
 
@@ -159,12 +163,12 @@ export function SideDrawer({
           {/* Menu items. Only Sign out is wired today; the rest are
               labelled but inert so the surface looks complete. */}
           <YStack marginTop={32} gap={4}>
-            {[
-              { icon: '👤', label: 'Profile', disabled: true },
-              { icon: '🔒', label: 'Security', disabled: true },
-              { icon: '🛟', label: 'Help & support', disabled: true },
-              { icon: 'ℹ️', label: 'About Sasai Pay', disabled: true },
-            ].map((item) => (
+            {([
+              { icon: 'person', label: 'Profile', disabled: true },
+              { icon: 'lock-closed', label: 'Security', disabled: true },
+              { icon: 'help-buoy', label: 'Help & support', disabled: true },
+              { icon: 'information-circle', label: 'About Sasai Pay', disabled: true },
+            ] as ReadonlyArray<{ icon: IconName; label: string; disabled: boolean }>).map((item) => (
               <View
                 key={item.label}
                 paddingVertical={12}
@@ -174,7 +178,7 @@ export function SideDrawer({
                 gap={12}
                 opacity={item.disabled ? 0.45 : 1}
               >
-                <Text fontSize={18}>{item.icon}</Text>
+                <Ionicons name={item.icon} size={20} color="#013a6b" />
                 <Text
                   fontFamily="PlusJakartaSans-SemiBold"
                   fontSize={14.5}
@@ -204,7 +208,7 @@ export function SideDrawer({
               borderTopWidth={1}
               borderTopColor="rgba(1,46,84,0.08)"
             >
-              <Text fontSize={18}>↪️</Text>
+              <Ionicons name="log-out-outline" size={20} color="#c0392b" />
               <Text
                 fontFamily="PlusJakartaSans-Bold"
                 fontSize={14.5}

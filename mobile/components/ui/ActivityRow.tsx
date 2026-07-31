@@ -9,8 +9,12 @@
  * Tint colors per category are chosen to look soft against the white card.
  */
 import { Text, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ClayIconTile } from '@/components/clay';
+
+/** Ionicons glyph name — a typed union so only valid glyphs compile. */
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 type Category = 'received' | 'sent' | 'bill' | 'airtime' | 'reward' | 'reward-redeem' | 'referral' | 'generic';
 
@@ -31,15 +35,16 @@ interface Props {
   noBorder?: boolean;
 }
 
-const TILE: Record<Category, { bg: string; emoji: string }> = {
-  received: { bg: '#e6f6f8', emoji: '📥' },
-  sent: { bg: '#eef3fb', emoji: '💸' },
-  bill: { bg: '#fff0ef', emoji: '⚡' },
-  airtime: { bg: '#e6f6f8', emoji: '📲' },
-  reward: { bg: '#fff7e6', emoji: '🎁' },
-  'reward-redeem': { bg: '#f3f5f8', emoji: '🛍️' },
-  referral: { bg: '#eef0ff', emoji: '🤝' },
-  generic: { bg: '#f3f5f8', emoji: '•' },
+/** Per-category tile: tint background, Ionicons glyph, and glyph colour. */
+const TILE: Record<Category, { bg: string; icon: IconName; color: string }> = {
+  received: { bg: '#e6f6f8', icon: 'arrow-down', color: '#1aa06b' },
+  sent: { bg: '#eef3fb', icon: 'arrow-up', color: '#00508F' },
+  bill: { bg: '#fff0ef', icon: 'receipt', color: '#c0392b' },
+  airtime: { bg: '#e6f6f8', icon: 'phone-portrait', color: '#2EB6C8' },
+  reward: { bg: '#fff7e6', icon: 'gift', color: '#d99311' },
+  'reward-redeem': { bg: '#f3f5f8', icon: 'bag-handle', color: '#00508F' },
+  referral: { bg: '#eef0ff', icon: 'people', color: '#5b6ee0' },
+  generic: { bg: '#f3f5f8', icon: 'swap-horizontal', color: '#6a7888' },
 };
 
 /** Single row of the activity list. */
@@ -64,7 +69,7 @@ export function ActivityRow({
       borderBottomColor="rgba(1,46,84,0.06)"
     >
       <ClayIconTile size={42} radius={14} fill={tile.bg}>
-        <Text fontSize={18}>{tile.emoji}</Text>
+        <Ionicons name={tile.icon} size={19} color={tile.color} />
       </ClayIconTile>
       <YStack flex={1} gap={2}>
         <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a" numberOfLines={1}>

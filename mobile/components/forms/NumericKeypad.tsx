@@ -5,6 +5,7 @@
  * (allowing it to enforce max digits, decimal places, etc.).
  */
 import { Text, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ClayKey, clay } from '@/components/clay';
 
@@ -51,13 +52,17 @@ export function NumericKeypad({ onPress, decimalsAllowed = true }: Props) {
                 onPress={() => onPress(k)}
                 accessibilityLabel={isBack ? 'Delete' : `Key ${k}`}
               >
-                <Text
-                  fontFamily="PlusJakartaSans-SemiBold"
-                  fontSize={isBack ? 22 : 24}
-                  color={isBack ? '#5a6b7b' : '#0c1b2a'}
-                >
-                  {isBack ? '⌫' : k}
-                </Text>
+                {isBack ? (
+                  <Ionicons name="backspace-outline" size={24} color="#5a6b7b" />
+                ) : (
+                  <Text
+                    fontFamily="PlusJakartaSans-SemiBold"
+                    fontSize={24}
+                    color="#0c1b2a"
+                  >
+                    {k}
+                  </Text>
+                )}
               </ClayKey>
             );
           })}

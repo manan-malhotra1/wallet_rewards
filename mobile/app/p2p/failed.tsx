@@ -10,6 +10,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { ClayButton, ClaySurface } from '@/components/clay';
@@ -64,9 +65,7 @@ export default function FailedScreen() {
                 shadowRadius={30}
                 shadowOffset={{ width: 0, height: 12 }}
               >
-                <Text fontSize={40} color="#c0392b">
-                  ✕
-                </Text>
+                <Ionicons name="close" size={46} color="#c0392b" />
               </View>
               <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={20} color="#ffffff" marginTop={4}>
                 Payment failed
@@ -97,7 +96,7 @@ export default function FailedScreen() {
             gap={11}
             alignItems="flex-start"
           >
-            <Text fontSize={18}>⚠️</Text>
+            <Ionicons name="warning" size={20} color="#c0392b" />
             <YStack flex={1}>
               <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color="#a52e22">
                 {reason}
@@ -150,9 +149,7 @@ export default function FailedScreen() {
                 accessibilityLabel="Try again"
               >
                 <XStack alignItems="center" gap={7}>
-                  <Text color="#ffffff" fontSize={15}>
-                    ↻
-                  </Text>
+                  <Ionicons name="refresh" size={17} color="#ffffff" />
                   <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#ffffff">
                     Try again
                   </Text>

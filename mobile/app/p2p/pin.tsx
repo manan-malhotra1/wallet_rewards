@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
@@ -160,7 +161,7 @@ export default function PinConfirmScreen() {
               </Text>
             ) : (
               <XStack alignItems="center" gap={7}>
-                <Text fontSize={14}>🔒</Text>
+                <Ionicons name="lock-closed" size={14} color="#8a98a6" />
                 <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color="#8a98a6">
                   Secured with 256-bit encryption
                 </Text>

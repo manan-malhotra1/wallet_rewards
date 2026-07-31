@@ -7,6 +7,7 @@
  */
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
 
@@ -16,7 +17,7 @@ export default function SearchScreen() {
     <View flex={1} backgroundColor="#ccd8e8">
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
         <YStack flex={1} alignItems="center" justifyContent="center" gap={12} paddingHorizontal={32}>
-          <Text fontSize={56}>🔍</Text>
+          <Ionicons name="search" size={56} color="#00508F" />
           <Text
             fontFamily="PlusJakartaSans-ExtraBold"
             fontSize={22}

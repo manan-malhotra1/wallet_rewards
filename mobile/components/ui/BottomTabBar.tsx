@@ -5,15 +5,19 @@
  * tint + bolder weight; the others render grayscaled and dim. Search is
  * a stub for now — it routes to /search which renders a "Coming soon".
  *
- * Each tab uses a single emoji as its icon to avoid pulling in an icon
- * library; the design mock uses the same emojis so we're authentic.
+ * Each tab uses a single Ionicons glyph as its icon for a clean, consistent
+ * fintech look; the active tab sits in a raised clay tile.
  */
 import { Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ClayIconTile } from '@/components/clay';
+
+/** Ionicons glyph name — a typed union so only valid glyphs compile. */
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 type TabKey = 'pay' | 'transactions' | 'search';
 
@@ -21,10 +25,10 @@ interface Props {
   active: TabKey;
 }
 
-const TABS: ReadonlyArray<{ key: TabKey; icon: string; label: string; href: string }> = [
-  { key: 'pay', icon: '💳', label: 'Pay', href: '/home' },
-  { key: 'transactions', icon: '📊', label: 'Transactions', href: '/transactions' },
-  { key: 'search', icon: '🔍', label: 'Search', href: '/search' },
+const TABS: ReadonlyArray<{ key: TabKey; icon: IconName; label: string; href: string }> = [
+  { key: 'pay', icon: 'card', label: 'Pay', href: '/home' },
+  { key: 'transactions', icon: 'receipt', label: 'Transactions', href: '/transactions' },
+  { key: 'search', icon: 'search', label: 'Search', href: '/search' },
 ];
 
 /** Bottom tab bar. Renders the 3 Sasai Pay tabs and routes via expo-router. */
@@ -62,13 +66,11 @@ export function BottomTabBar({ active }: Props) {
                 {isActive ? (
                   // Raised clay tile marks the active tab.
                   <ClayIconTile size={38} radius={13}>
-                    <Text fontSize={19}>{tab.icon}</Text>
+                    <Ionicons name={tab.icon} size={22} color="#00508F" />
                   </ClayIconTile>
                 ) : (
                   <View width={38} height={38} alignItems="center" justifyContent="center">
-                    <Text fontSize={21} opacity={0.45}>
-                      {tab.icon}
-                    </Text>
+                    <Ionicons name={tab.icon} size={22} color="#9aa7b5" />
                   </View>
                 )}
                 <Text

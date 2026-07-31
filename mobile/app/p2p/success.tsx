@@ -11,6 +11,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
+import { Ionicons } from '@expo/vector-icons';
 
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { ClayButton, ClaySurface } from '@/components/clay';
@@ -78,9 +79,7 @@ export default function SuccessScreen() {
                 shadowRadius={30}
                 shadowOffset={{ width: 0, height: 12 }}
               >
-                <Text fontSize={40} color="#0a8a5f">
-                  ✓
-                </Text>
+                <Ionicons name="checkmark" size={44} color="#0a8a5f" />
               </View>
               <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={20} color="#ffffff" marginTop={4}>
                 Payment successful
@@ -123,7 +122,7 @@ export default function SuccessScreen() {
               gap={7}
               marginTop={14}
             >
-              <Text fontSize={14}>⭐</Text>
+              <Ionicons name="star" size={15} color="#0a8a5f" />
               <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#0a8a5f">
                 You earned {earned} reward points
               </Text>
@@ -141,7 +140,7 @@ export default function SuccessScreen() {
                 accessibilityLabel="Share receipt"
               >
                 <XStack alignItems="center" gap={7}>
-                  <Text fontSize={15}>⤓</Text>
+                  <Ionicons name="share-outline" size={17} color="#00508F" />
                   <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#00508F">
                     Share
                   </Text>

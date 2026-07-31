@@ -12,6 +12,21 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Respect the user's reduced-motion preference: keep feedback, drop movement.
+   tw-animate-css enter/exit (zoom/slide), pulse, spin, and any transform
+   transitions collapse to ~instant; opacity/color still change, just without
+   the travel. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

@@ -1,6 +1,6 @@
 # 003 — Replace button `transition-all` and add press feedback
 
-- **Status**: TODO
+- **Status**: DONE (34942a7)
 - **Commit**: c2e8746
 - **Severity**: MEDIUM
 - **Category**: Performance / Physicality & origin

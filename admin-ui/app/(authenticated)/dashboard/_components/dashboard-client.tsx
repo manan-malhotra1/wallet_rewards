@@ -113,7 +113,7 @@ export function DashboardClient({ initial, initialRange, initialGranularity }: P
   const stickiness = activeUsers ? Number(activeUsers.stickiness) : null;
 
   return (
-    <div className={pending ? "opacity-60 transition-opacity" : "transition-opacity"}>
+    <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold tracking-tight">Overview</h1>
         <div className="flex flex-wrap items-center gap-3">
@@ -131,8 +131,16 @@ export function DashboardClient({ initial, initialRange, initialGranularity }: P
         </div>
       </div>
 
-      {/* ---- Overview tiles ---- */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div
+        aria-busy={pending}
+        className={
+          pending
+            ? "pointer-events-none opacity-70 transition-opacity duration-200 ease-out"
+            : "transition-opacity duration-200 ease-out"
+        }
+      >
+        {/* ---- Overview tiles ---- */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           id="count"
           label="Transactions"
@@ -270,6 +278,7 @@ export function DashboardClient({ initial, initialRange, initialGranularity }: P
           <h2 className="mb-2 text-sm font-semibold">Points issued vs redeemed</h2>
           {data.rewards ? <RewardsChart data={data.rewards} /> : null}
         </Card>
+      </div>
       </div>
     </div>
   );

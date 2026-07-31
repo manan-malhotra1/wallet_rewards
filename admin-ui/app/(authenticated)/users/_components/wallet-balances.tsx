@@ -62,8 +62,8 @@ export function WalletBalances({ wallets }: { wallets: Wallet[] }) {
             type="button"
             aria-label={`Show ${w.currency} wallet`}
             onClick={() => goTo(i)}
-            className={`h-1.5 rounded-full transition-all ${
-              i === active ? "w-4 bg-foreground" : "w-1.5 bg-muted-foreground/40"
+            className={`h-1.5 w-4 origin-left rounded-full transition-[transform,background-color] duration-200 ease-out ${
+              i === active ? "scale-x-100 bg-foreground" : "scale-x-[0.375] bg-muted-foreground/40"
             }`}
           />
         ))}

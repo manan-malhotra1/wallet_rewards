@@ -1,6 +1,6 @@
 # 004 — Animate the wallet-balance indicator on the GPU, not `width`
 
-- **Status**: TODO
+- **Status**: DONE (ade59cb)
 - **Commit**: c2e8746
 - **Severity**: MEDIUM
 - **Category**: Performance

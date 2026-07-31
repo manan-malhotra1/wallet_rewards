@@ -17,14 +17,15 @@ from app.dependencies import get_current_admin
 from app.modules.analytics import service
 from app.modules.analytics.schemas import (
     ActiveUsers,
+    CurrencyInfo,
+    CurrencyLiquidity,
     DashboardSummary,
-    Liquidity,
+    MetricsTimeseries,
     NetFlowPoint,
-    RevenueSlice,
+    RevenueServiceSlice,
     RewardsTimeseries,
     ServiceSlice,
     StatusBucket,
-    TransactionsTimeseries,
     UsersTimeseries,
     UserTypeSlice,
 )
@@ -42,6 +43,16 @@ def _require_finance_or_admin(
     return admin
 
 
+@router.get("/currencies", response_model=list[CurrencyInfo])
+async def get_currencies(
+    tenant_id: UUID,
+    _admin: AdminPrincipal = Depends(_require_finance_or_admin),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[CurrencyInfo]:
+    """The tenant's spendable currencies (money instruments) for the toggle."""
+    return await service.list_currencies(session, tenant_id=tenant_id)
+
+
 @router.get("/summary", response_model=DashboardSummary)
 async def get_summary(
     tenant_id: UUID,
@@ -53,16 +64,16 @@ async def get_summary(
     return await service.dashboard_summary(session, tenant_id=tenant_id, range_key=range)
 
 
-@router.get("/transactions/timeseries", response_model=TransactionsTimeseries)
+@router.get("/transactions/timeseries", response_model=MetricsTimeseries)
 async def get_txn_timeseries(
     tenant_id: UUID,
     range: str = Query("7d"),
     granularity: str = Query("day"),
     _admin: AdminPrincipal = Depends(_require_finance_or_admin),
     session: AsyncSession = Depends(get_async_session),
-) -> TransactionsTimeseries:
-    """Bucketed transaction count + volume, current vs previous overlay."""
-    return await service.transactions_timeseries(
+) -> MetricsTimeseries:
+    """Agnostic count + per-currency volume & revenue, current vs previous."""
+    return await service.metrics_timeseries(
         session, tenant_id=tenant_id, range_key=range, granularity=granularity
     )
 
@@ -116,14 +127,14 @@ async def get_active_users(
     return await service.active_users(session, tenant_id=tenant_id)
 
 
-@router.get("/revenue/by-service", response_model=list[RevenueSlice])
+@router.get("/revenue/by-service", response_model=list[RevenueServiceSlice])
 async def get_revenue_by_service(
     tenant_id: UUID,
     range: str = Query("7d"),
     _admin: AdminPrincipal = Depends(_require_finance_or_admin),
     session: AsyncSession = Depends(get_async_session),
-) -> list[RevenueSlice]:
-    """Fee/tax/commission/total grouped by service type."""
+) -> list[RevenueServiceSlice]:
+    """Fee/tax/commission/total grouped by service type and currency."""
     return await service.revenue_by_service(session, tenant_id=tenant_id, range_key=range)
 
 
@@ -141,13 +152,13 @@ async def get_rewards_timeseries(
     )
 
 
-@router.get("/liquidity", response_model=Liquidity)
+@router.get("/liquidity", response_model=list[CurrencyLiquidity])
 async def get_liquidity(
     tenant_id: UUID,
     _admin: AdminPrincipal = Depends(_require_finance_or_admin),
     session: AsyncSession = Depends(get_async_session),
-) -> Liquidity:
-    """Wallet float liability + cash-float balance."""
+) -> list[CurrencyLiquidity]:
+    """Per-currency wallet float liability + cash-float balance."""
     return await service.liquidity(session, tenant_id=tenant_id)
 
 

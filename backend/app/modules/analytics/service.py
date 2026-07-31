@@ -14,20 +14,26 @@ from uuid import UUID
 
 from sqlalchemy import ColumnElement, Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from app.modules.analytics.schemas import (
     ActiveUsers,
+    BucketAmount,
+    CountPoint,
+    CountSeries,
+    CurrencyInfo,
+    CurrencyLiquidity,
+    CurrencyScalar,
+    CurrencySeries,
     DashboardSummary,
-    Liquidity,
+    MetricsTimeseries,
     NetFlowPoint,
-    RevenueSlice,
+    RevenueServiceSlice,
     RewardsPoint,
     RewardsTimeseries,
     ScalarWithPrevious,
     ServiceSlice,
     StatusBucket,
-    TimeseriesPoint,
-    TransactionsTimeseries,
     UserPoint,
     UsersTimeseries,
     UserTypeSlice,
@@ -39,12 +45,14 @@ from app.shared.models import (
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     ENTRY_STATUS_COMPLETED,
+    INSTRUMENT_STATUS_ACTIVE,
     REDEMPTION_STATUS_COMPLETED,
     REWARD_TYPE_POINTS,
     TXN_STATUS_COMPLETED,
     TXN_STATUS_FAILED,
     TXN_STATUS_PENDING,
     Account,
+    Instrument,
     LedgerEntry,
     Redemption,
     RewardEvent,
@@ -158,50 +166,123 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
         raise TenantNotFound()
 
 
-async def _txn_count_and_volume(
-    session: AsyncSession, tenant_id: UUID, window: Window
-) -> tuple[int, Decimal]:
-    """COMPLETED transaction count and summed amount for a tenant/window."""
-    stmt = select(
-        func.count(Transaction.id),
-        func.coalesce(func.sum(Transaction.amount), 0),
-    ).where(
-        Transaction.tenant_id == tenant_id,
-        Transaction.status == TXN_STATUS_COMPLETED,
-        Transaction.created_at >= window.start,
-        Transaction.created_at < window.end,
+async def list_currencies(session: AsyncSession, *, tenant_id: UUID) -> list[CurrencyInfo]:
+    """Return the tenant's spendable currencies (money instruments) for the toggle.
+
+    A MONEY currency is an active, non-deleted `Instrument` whose `account_type`
+    is `financial_wallet` — the account kind auto-provisioned for holding fiat
+    balance. Points units (`account_type == 'points_account'`) are deliberately
+    excluded: they are a reward unit, not a spendable currency, and never appear
+    in the money-metric currency toggle. Ordered by code for a stable toggle.
+
+    Raises:
+        TenantNotFound: tenant_id does not exist (HTTP 404).
+    """
+    await _assert_tenant_exists(session, tenant_id)
+    stmt = (
+        select(Instrument)
+        .where(
+            Instrument.tenant_id == tenant_id,
+            Instrument.status == INSTRUMENT_STATUS_ACTIVE,
+            Instrument.deleted_at.is_(None),
+            Instrument.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+        )
+        .order_by(Instrument.code)
     )
-    count, volume = (await session.execute(stmt)).one()
-    return int(count), Decimal(volume)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [
+        CurrencyInfo(code=i.code, symbol=i.symbol, display_name=i.display_name) for i in rows
+    ]
 
 
-async def transactions_timeseries(
+async def _txn_by_currency(
+    session: AsyncSession, tenant_id: UUID, window: Window
+) -> dict[str, tuple[int, Decimal, Decimal]]:
+    """Per-currency COMPLETED (count, volume, fee) for a tenant/window.
+
+    Grouped by `Transaction.currency` — money is NEVER summed across currencies
+    (invariant: ZAR and MGA share no denominator). Returns a mapping
+    currency -> (count, SUM(amount), SUM(fee_amount)). Unpacked positionally to
+    avoid the `Row.count` builtin-method collision.
+    """
+    stmt = (
+        select(
+            Transaction.currency,
+            func.count(Transaction.id),
+            func.coalesce(func.sum(Transaction.amount), 0),
+            func.coalesce(func.sum(Transaction.fee_amount), 0),
+        )
+        .where(
+            Transaction.tenant_id == tenant_id,
+            Transaction.status == TXN_STATUS_COMPLETED,
+            Transaction.created_at >= window.start,
+            Transaction.created_at < window.end,
+        )
+        .group_by(Transaction.currency)
+    )
+    rows = (await session.execute(stmt)).all()
+    return {
+        currency: (int(count), Decimal(volume), Decimal(fee))
+        for currency, count, volume, fee in rows
+    }
+
+
+def _build_currency_series(
+    cur_map: dict[str, dict[datetime, Decimal]],
+    prev_map: dict[str, dict[datetime, Decimal]],
+    cur_starts: list[datetime],
+    prev_starts: list[datetime],
+) -> list[CurrencySeries]:
+    """Assemble one dense CurrencySeries per currency present in either window.
+
+    Zero-fills each currency's buckets so `current` / `previous` are dense and
+    aligned to the generated bucket starts. Buckets are keyed by naive-UTC so a
+    subtly different PG tz representation still matches. Currencies ordered by
+    code for a stable render.
+    """
+    currencies = sorted(set(cur_map) | set(prev_map))
+    out: list[CurrencySeries] = []
+    for currency in currencies:
+        cur_b = cur_map.get(currency, {})
+        prev_b = prev_map.get(currency, {})
+        current = [
+            BucketAmount(bucket=start, value=cur_b.get(_utc_key(start), Decimal(0)))
+            for start in cur_starts
+        ]
+        previous = [
+            BucketAmount(bucket=start, value=prev_b.get(_utc_key(start), Decimal(0)))
+            for start in prev_starts
+        ]
+        out.append(CurrencySeries(currency=currency, current=current, previous=previous))
+    return out
+
+
+async def metrics_timeseries(
     session: AsyncSession,
     *,
     tenant_id: UUID,
     range_key: str,
     granularity: str,
     now: datetime | None = None,
-) -> TransactionsTimeseries:
-    """Bucketed COMPLETED transaction count + volume, current vs previous.
+) -> MetricsTimeseries:
+    """Trend data: agnostic COMPLETED count + per-currency volume & revenue.
 
-    Groups by date_trunc(granularity, created_at) and zero-fills every empty
-    bucket, so both series are DENSE and equal-length: `current[i]` and
-    `previous[i]` share the same relative offset in their windows, which is what
-    the previous-period overlay aligns on.
+    `count` is a single currency-agnostic dense series (current + aligned
+    previous). `volume` (SUM amount) and `revenue` (SUM fee) are each a list of
+    per-currency dense series — money is NEVER summed across currencies. Every
+    series zero-fills empty buckets so `current[i]` / `previous[i]` share the
+    same relative offset for the overlay.
     """
     await _assert_tenant_exists(session, tenant_id)
     granularity = validate_granularity(granularity)
     current, previous = resolve_window(range_key, now=now)
+    cur_starts = _bucket_starts(current, granularity)
+    prev_starts = _bucket_starts(previous, granularity)
 
-    async def _series(window: Window) -> list[TimeseriesPoint]:
+    async def _count_series(window: Window, starts: list[datetime]) -> list[CountPoint]:
         bucket = func.date_trunc(granularity, Transaction.created_at)
         stmt = (
-            select(
-                bucket.label("bucket"),
-                func.count(Transaction.id).label("count"),
-                func.coalesce(func.sum(Transaction.amount), 0).label("volume"),
-            )
+            select(bucket, func.count(Transaction.id))
             .where(
                 Transaction.tenant_id == tenant_id,
                 Transaction.status == TXN_STATUS_COMPLETED,
@@ -209,24 +290,51 @@ async def transactions_timeseries(
                 Transaction.created_at < window.end,
             )
             .group_by(bucket)
-            .order_by(bucket)
         )
         rows = (await session.execute(stmt)).all()
-        # Key by naive-UTC so a subtly different tz representation from PG still
-        # matches the generated bucket starts (both normalised the same way).
-        # Unpack positionally — `Row.count` is a builtin method, so attribute
-        # access would collide (mypy) and shadow the labelled column.
-        by_bucket = {
-            _utc_key(bucket_val): (int(count), Decimal(volume))
-            for bucket_val, count, volume in rows
-        }
-        out: list[TimeseriesPoint] = []
-        for start in _bucket_starts(window, granularity):
-            count, volume = by_bucket.get(_utc_key(start), (0, Decimal(0)))
-            out.append(TimeseriesPoint(bucket=start, count=count, volume=volume))
+        by_bucket = {_utc_key(bucket_val): int(count) for bucket_val, count in rows}
+        return [
+            CountPoint(bucket=start, count=by_bucket.get(_utc_key(start), 0)) for start in starts
+        ]
+
+    async def _money_by_currency(
+        window: Window, column: InstrumentedAttribute[float]
+    ) -> dict[str, dict[datetime, Decimal]]:
+        """Bucketed SUM(column) grouped by (currency, bucket) for the window."""
+        bucket = func.date_trunc(granularity, Transaction.created_at)
+        stmt = (
+            select(Transaction.currency, bucket, func.coalesce(func.sum(column), 0))
+            .where(
+                Transaction.tenant_id == tenant_id,
+                Transaction.status == TXN_STATUS_COMPLETED,
+                Transaction.created_at >= window.start,
+                Transaction.created_at < window.end,
+            )
+            .group_by(Transaction.currency, bucket)
+        )
+        rows = (await session.execute(stmt)).all()
+        out: dict[str, dict[datetime, Decimal]] = {}
+        for currency, bucket_val, value in rows:
+            out.setdefault(currency, {})[_utc_key(bucket_val)] = Decimal(value)
         return out
 
-    return TransactionsTimeseries(current=await _series(current), previous=await _series(previous))
+    count = CountSeries(
+        current=await _count_series(current, cur_starts),
+        previous=await _count_series(previous, prev_starts),
+    )
+    volume = _build_currency_series(
+        await _money_by_currency(current, Transaction.amount),
+        await _money_by_currency(previous, Transaction.amount),
+        cur_starts,
+        prev_starts,
+    )
+    revenue = _build_currency_series(
+        await _money_by_currency(current, Transaction.fee_amount),
+        await _money_by_currency(previous, Transaction.fee_amount),
+        cur_starts,
+        prev_starts,
+    )
+    return MetricsTimeseries(count=count, volume=volume, revenue=revenue)
 
 
 async def _new_user_count(session: AsyncSession, tenant_id: UUID, window: Window) -> int:
@@ -249,27 +357,6 @@ async def _distinct_transactors(session: AsyncSession, tenant_id: UUID, window: 
         Transaction.created_at < window.end,
     )
     return int((await session.execute(stmt)).scalar_one())
-
-
-async def _revenue_total(session: AsyncSession, tenant_id: UUID, window: Window) -> Decimal:
-    """Operator revenue = SUM(fee) on COMPLETED transactions in the window.
-
-    Revenue is the fee only. Tax is a pass-through (collected on behalf of the
-    authority, not operator income) and commission is a cost paid out to agents,
-    so neither counts toward operator revenue.
-    """
-    stmt = select(
-        func.coalesce(
-            func.sum(Transaction.fee_amount),
-            0,
-        )
-    ).where(
-        Transaction.tenant_id == tenant_id,
-        Transaction.status == TXN_STATUS_COMPLETED,
-        Transaction.created_at >= window.start,
-        Transaction.created_at < window.end,
-    )
-    return Decimal((await session.execute(stmt)).scalar_one())
 
 
 async def _points_issued(session: AsyncSession, tenant_id: UUID, window: Window) -> Decimal:
@@ -319,11 +406,9 @@ async def dashboard_summary(
     await _assert_tenant_exists(session, tenant_id)
     current, previous = resolve_window(range_key, now=now)
 
-    cur_count, cur_vol = await _txn_count_and_volume(session, tenant_id, current)
-    prev_count, prev_vol = await _txn_count_and_volume(session, tenant_id, previous)
-
-    cur_rev = await _revenue_total(session, tenant_id, current)
-    prev_rev = await _revenue_total(session, tenant_id, previous)
+    # Per-currency (count, volume, fee) — money is NEVER summed across currencies.
+    cur_by_ccy = await _txn_by_currency(session, tenant_id, current)
+    prev_by_ccy = await _txn_by_currency(session, tenant_id, previous)
 
     cur_new = await _new_user_count(session, tenant_id, current)
     prev_new = await _new_user_count(session, tenant_id, previous)
@@ -340,18 +425,36 @@ async def dashboard_summary(
     )
     active = await _distinct_transactors(session, tenant_id, current)
 
+    # transaction_count stays currency-agnostic: sum the per-currency counts.
+    cur_count = sum(c for c, _, _ in cur_by_ccy.values())
+    prev_count = sum(c for c, _, _ in prev_by_ccy.values())
+
     def _avg(vol: Decimal, count: int) -> Decimal:
         return (vol / count) if count else Decimal(0)
+
+    # One CurrencyScalar per currency with activity in EITHER window.
+    currencies = sorted(set(cur_by_ccy) | set(prev_by_ccy))
+    volume: list[CurrencyScalar] = []
+    avg: list[CurrencyScalar] = []
+    revenue: list[CurrencyScalar] = []
+    for ccy in currencies:
+        c_count, c_vol, c_fee = cur_by_ccy.get(ccy, (0, Decimal(0), Decimal(0)))
+        p_count, p_vol, p_fee = prev_by_ccy.get(ccy, (0, Decimal(0), Decimal(0)))
+        volume.append(CurrencyScalar(currency=ccy, current=c_vol, previous=p_vol))
+        avg.append(
+            CurrencyScalar(
+                currency=ccy, current=_avg(c_vol, c_count), previous=_avg(p_vol, p_count)
+            )
+        )
+        revenue.append(CurrencyScalar(currency=ccy, current=c_fee, previous=p_fee))
 
     return DashboardSummary(
         transaction_count=ScalarWithPrevious(
             current=Decimal(cur_count), previous=Decimal(prev_count)
         ),
-        transaction_volume=ScalarWithPrevious(current=cur_vol, previous=prev_vol),
-        avg_transaction_value=ScalarWithPrevious(
-            current=_avg(cur_vol, cur_count), previous=_avg(prev_vol, prev_count)
-        ),
-        revenue_total=ScalarWithPrevious(current=cur_rev, previous=prev_rev),
+        transaction_volume=volume,
+        avg_transaction_value=avg,
+        revenue_total=revenue,
         new_users=ScalarWithPrevious(current=Decimal(cur_new), previous=Decimal(prev_new)),
         total_users=Decimal(total_users),
         active_users_period=Decimal(active),
@@ -492,19 +595,21 @@ async def active_users(
 
 async def revenue_by_service(
     session: AsyncSession, *, tenant_id: UUID, range_key: str, now: datetime | None = None
-) -> list[RevenueSlice]:
-    """Charges breakdown grouped by transaction_type; total = operator revenue.
+) -> list[RevenueServiceSlice]:
+    """Charges breakdown grouped by (transaction_type, currency); total = revenue.
 
-    `total` reflects operator revenue, which is the fee only — tax is a
-    pass-through and commission is an agent cost, so neither is revenue. The
-    `fee`, `tax` and `commission` component fields remain available as a full
-    charges breakdown for the row.
+    Grouped by currency as well as service — money is NEVER summed across
+    currencies. `total` reflects operator revenue, which is the fee only — tax
+    is a pass-through and commission is an agent cost, so neither is revenue. The
+    `fee`, `tax` and `commission` component fields remain a full per-currency
+    charges breakdown for the row. Ordered by service then currency.
     """
     await _assert_tenant_exists(session, tenant_id)
     current, _ = resolve_window(range_key, now=now)
     stmt = (
         select(
             Transaction.transaction_type.label("service_type"),
+            Transaction.currency.label("currency"),
             func.coalesce(func.sum(Transaction.fee_amount), 0).label("fee"),
             func.coalesce(func.sum(Transaction.tax_amount), 0).label("tax"),
             func.coalesce(func.sum(Transaction.commission_amount), 0).label("commission"),
@@ -515,15 +620,17 @@ async def revenue_by_service(
             Transaction.created_at >= current.start,
             Transaction.created_at < current.end,
         )
-        .group_by(Transaction.transaction_type)
+        .group_by(Transaction.transaction_type, Transaction.currency)
+        .order_by(Transaction.transaction_type, Transaction.currency)
     )
     rows = (await session.execute(stmt)).all()
-    out: list[RevenueSlice] = []
-    for service_type, fee, tax, comm in rows:
+    out: list[RevenueServiceSlice] = []
+    for service_type, currency, fee, tax, comm in rows:
         fee_d, tax_d, comm_d = Decimal(fee), Decimal(tax), Decimal(comm)
         out.append(
-            RevenueSlice(
+            RevenueServiceSlice(
                 service_type=service_type,
+                currency=currency,
                 fee=fee_d,
                 tax=tax_d,
                 commission=comm_d,
@@ -632,20 +739,23 @@ def _signed_balance_expr() -> ColumnElement[Decimal]:
     )
 
 
-async def _account_type_balance(
+async def _account_type_balance_by_currency(
     session: AsyncSession, tenant_id: UUID, account_type: str
-) -> Decimal:
-    """Net COMPLETED balance across all accounts of a type for the tenant.
+) -> dict[str, Decimal]:
+    """Net COMPLETED balance per currency across all accounts of a type.
+
+    Grouped by `ledger_entries.currency` — balances are NEVER summed across
+    currencies.
 
     Args:
         account_type: e.g. `financial_wallet` (user float) or
             `system_cash_inflow` (operator cash float).
 
     Returns:
-        Signed Decimal balance (credits minus debits); 0 when no entries.
+        Mapping currency -> signed Decimal balance (credits minus debits).
     """
     stmt = (
-        select(_signed_balance_expr())
+        select(LedgerEntry.currency, _signed_balance_expr())
         .select_from(LedgerEntry)
         .join(Account, Account.id == LedgerEntry.account_id)
         .where(
@@ -653,26 +763,37 @@ async def _account_type_balance(
             Account.account_type == account_type,
             LedgerEntry.status == ENTRY_STATUS_COMPLETED,
         )
+        .group_by(LedgerEntry.currency)
     )
-    return Decimal((await session.execute(stmt)).scalar_one())
+    rows = (await session.execute(stmt)).all()
+    return {currency: Decimal(balance) for currency, balance in rows}
 
 
-async def liquidity(session: AsyncSession, *, tenant_id: UUID) -> Liquidity:
-    """Wallet float liability + cash-float balance (point in time).
+async def liquidity(session: AsyncSession, *, tenant_id: UUID) -> list[CurrencyLiquidity]:
+    """Per-currency wallet float liability + cash-float balance (point in time).
 
-    `wallet_liability` is the total signed balance across all user
-    `financial_wallet` accounts — money the operator owes users.
-    `cash_float_balance` is the `system_cash_inflow` account balance.
+    `wallet_liability` is the signed balance across user `financial_wallet`
+    accounts for that currency — money the operator owes users.
+    `cash_float_balance` is the `system_cash_inflow` balance for that currency.
+    One row per currency present in either set; balances are NEVER summed across
+    currencies. Ordered by currency.
     """
     await _assert_tenant_exists(session, tenant_id)
-    return Liquidity(
-        wallet_liability=await _account_type_balance(
-            session, tenant_id, ACCOUNT_TYPE_FINANCIAL_WALLET
-        ),
-        cash_float_balance=await _account_type_balance(
-            session, tenant_id, ACCOUNT_TYPE_SYSTEM_CASH_INFLOW
-        ),
+    wallet = await _account_type_balance_by_currency(
+        session, tenant_id, ACCOUNT_TYPE_FINANCIAL_WALLET
     )
+    cash = await _account_type_balance_by_currency(
+        session, tenant_id, ACCOUNT_TYPE_SYSTEM_CASH_INFLOW
+    )
+    currencies = sorted(set(wallet) | set(cash))
+    return [
+        CurrencyLiquidity(
+            currency=currency,
+            wallet_liability=wallet.get(currency, Decimal(0)),
+            cash_float_balance=cash.get(currency, Decimal(0)),
+        )
+        for currency in currencies
+    ]
 
 
 async def net_flow(
@@ -683,11 +804,12 @@ async def net_flow(
     granularity: str,
     now: datetime | None = None,
 ) -> list[NetFlowPoint]:
-    """Per-bucket credits (inflow) vs debits (outflow) into user wallets.
+    """Per-bucket, per-currency credits (inflow) vs debits (outflow) into wallets.
 
     Buckets COMPLETED ledger entries on `financial_wallet` accounts by
-    date_trunc(granularity, created_at). CREDIT is money flowing into user
-    wallets (inflow); DEBIT is money flowing out (outflow).
+    date_trunc(granularity, created_at) AND currency — money is NEVER summed
+    across currencies. CREDIT is money flowing into user wallets (inflow); DEBIT
+    is money flowing out (outflow). Ordered by bucket then currency.
     """
     await _assert_tenant_exists(session, tenant_id)
     granularity = validate_granularity(granularity)
@@ -698,6 +820,7 @@ async def net_flow(
     stmt = (
         select(
             bucket.label("bucket"),
+            LedgerEntry.currency.label("currency"),
             func.coalesce(func.sum(credit), 0).label("inflow"),
             func.coalesce(func.sum(debit), 0).label("outflow"),
         )
@@ -710,13 +833,18 @@ async def net_flow(
             LedgerEntry.created_at >= current.start,
             LedgerEntry.created_at < current.end,
         )
-        .group_by(bucket)
-        .order_by(bucket)
+        .group_by(bucket, LedgerEntry.currency)
+        .order_by(bucket, LedgerEntry.currency)
     )
     rows = (await session.execute(stmt)).all()
     return [
-        NetFlowPoint(bucket=bucket_val, inflow=Decimal(inflow), outflow=Decimal(outflow))
-        for bucket_val, inflow, outflow in rows
+        NetFlowPoint(
+            bucket=bucket_val,
+            currency=currency,
+            inflow=Decimal(inflow),
+            outflow=Decimal(outflow),
+        )
+        for bucket_val, currency, inflow, outflow in rows
     ]
 
 

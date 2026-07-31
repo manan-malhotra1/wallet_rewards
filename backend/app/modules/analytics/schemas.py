@@ -2,6 +2,11 @@
 
 Each model is a plain read DTO. `current`/`previous` pairs let the frontend
 compute day-on-day / week-on-week deltas without a second round-trip.
+
+Money metrics are ALWAYS grouped by currency and NEVER summed or converted
+across currencies — a tenant may run several currencies at once, and ZAR + MGA
+have no common denominator. Count / user / points metrics stay
+currency-agnostic. See CLAUDE.md and the analytics service docstrings.
 """
 
 from __future__ import annotations
@@ -16,22 +21,79 @@ class ScalarWithPrevious(BaseModel):
     """A single headline number plus its previous-period value.
 
     The frontend derives the delta % (current vs previous) for the tile chip.
+    Used for currency-agnostic scalars only (counts, users, points).
     """
 
     current: Decimal
     previous: Decimal
 
 
+class CurrencyInfo(BaseModel):
+    """A tenant currency (money instrument) for the dashboard currency toggle."""
+
+    code: str
+    symbol: str
+    display_name: str
+
+
+class CurrencyScalar(BaseModel):
+    """A per-currency headline value + its previous-period value."""
+
+    currency: str
+    current: Decimal
+    previous: Decimal
+
+
+class BucketAmount(BaseModel):
+    """A money value for one time bucket."""
+
+    bucket: datetime
+    value: Decimal
+
+
+class CurrencySeries(BaseModel):
+    """A per-currency bucketed money series, current + aligned previous."""
+
+    currency: str
+    current: list[BucketAmount]
+    previous: list[BucketAmount]
+
+
+class CountPoint(BaseModel):
+    """A currency-agnostic count for one time bucket."""
+
+    bucket: datetime
+    count: int
+
+
+class CountSeries(BaseModel):
+    """Currency-agnostic bucketed counts, current + aligned previous."""
+
+    current: list[CountPoint]
+    previous: list[CountPoint]
+
+
+class MetricsTimeseries(BaseModel):
+    """Trend data for the shared chart: agnostic count + per-currency volume & revenue."""
+
+    count: CountSeries
+    volume: list[CurrencySeries]
+    revenue: list[CurrencySeries]
+
+
 class DashboardSummary(BaseModel):
     """All stat-tile scalars for the selected range, current + previous period.
 
-    One round-trip populates the top tile row across KPI groups A/B/D/E.
+    One round-trip populates the top tile row across KPI groups A/B/D/E. Money
+    tiles (`transaction_volume`, `avg_transaction_value`, `revenue_total`) are
+    per-currency lists — the frontend renders one figure per active currency and
+    never sums them. Count / user / points tiles stay single scalars.
     """
 
     transaction_count: ScalarWithPrevious
-    transaction_volume: ScalarWithPrevious
-    avg_transaction_value: ScalarWithPrevious
-    revenue_total: ScalarWithPrevious
+    transaction_volume: list[CurrencyScalar]
+    avg_transaction_value: list[CurrencyScalar]
+    revenue_total: list[CurrencyScalar]
     new_users: ScalarWithPrevious
     total_users: Decimal
     active_users_period: Decimal
@@ -39,27 +101,12 @@ class DashboardSummary(BaseModel):
     points_redeemed: ScalarWithPrevious
 
 
-class TimeseriesPoint(BaseModel):
-    """One bucket of the transactions time series."""
-
-    bucket: datetime
-    count: int
-    volume: Decimal
-
-
-class TransactionsTimeseries(BaseModel):
-    """Current-period series plus the aligned previous-period series.
-
-    `previous` has the same length as `current`; the frontend draws it as the
-    dotted comparison overlay.
-    """
-
-    current: list[TimeseriesPoint]
-    previous: list[TimeseriesPoint]
-
-
 class ServiceSlice(BaseModel):
-    """Transaction count + value for one transaction_type (service)."""
+    """Transaction count + value for one transaction_type (service).
+
+    Currency-agnostic COUNT donut. `volume` is retained as a rough size hint but
+    is NOT a cross-currency money figure the UI should total.
+    """
 
     service_type: str
     count: int
@@ -98,10 +145,11 @@ class ActiveUsers(BaseModel):
     stickiness: Decimal  # dau / mau, 0 when mau == 0
 
 
-class RevenueSlice(BaseModel):
-    """Revenue components for one transaction_type."""
+class RevenueServiceSlice(BaseModel):
+    """Per-currency revenue components for one transaction_type. total = fee (operator revenue)."""
 
     service_type: str
+    currency: str
     fee: Decimal
     tax: Decimal
     commission: Decimal
@@ -123,17 +171,19 @@ class RewardsTimeseries(BaseModel):
     outstanding_liability: Decimal
 
 
-class Liquidity(BaseModel):
-    """Point-in-time liquidity snapshot for the tenant."""
+class CurrencyLiquidity(BaseModel):
+    """Per-currency wallet float liability + cash-float balance."""
 
-    wallet_liability: Decimal  # total held in user financial_wallet accounts
-    cash_float_balance: Decimal  # system_cash_inflow balance
+    currency: str
+    wallet_liability: Decimal
+    cash_float_balance: Decimal
 
 
 class NetFlowPoint(BaseModel):
-    """Inflow vs outflow into user wallets for one bucket."""
+    """Inflow vs outflow into user wallets for one bucket, per currency."""
 
     bucket: datetime
+    currency: str
     inflow: Decimal
     outflow: Decimal
 

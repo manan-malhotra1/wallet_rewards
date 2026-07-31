@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_POINTS,
     ENTRY_CREDIT,
     ENTRY_STATUS_COMPLETED,
     REWARD_TYPE_POINTS,
@@ -30,6 +31,7 @@ from app.shared.models import (
     TXN_STATUS_FAILED,
     TXN_STATUS_PENDING,
     Account,
+    Instrument,
     LedgerEntry,
     RewardEvent,
     Rule,
@@ -42,6 +44,7 @@ from app.shared.models import (
 # `tenant_id`. Drives the parametrised auth + empty-tenant happy-path sweeps so
 # no endpoint is left uncovered.
 ANALYTICS_ENDPOINTS = [
+    ("/api/v1/analytics/currencies", {}),
     ("/api/v1/analytics/summary", {}),
     ("/api/v1/analytics/transactions/timeseries", {"granularity": "day"}),
     ("/api/v1/analytics/transactions/by-service", {}),
@@ -89,13 +92,15 @@ async def _make_txn(
     fee: Decimal = Decimal("0"),
     tax: Decimal = Decimal("0"),
     commission: Decimal = Decimal("0"),
+    currency: str = "ZAR",
     initiated_by: User | None = None,
     created_at: datetime | None = None,
 ) -> Transaction:
     """Insert one transaction with a unique idempotency key inside the window.
 
     Defaults `created_at` to one day ago so the row lands inside the default 7d
-    current window used by every endpoint's default `range`.
+    current window used by every endpoint's default `range`. `currency` defaults
+    to ZAR; pass a second currency (e.g. MGA) to prove money is never summed.
     """
     txn = Transaction(
         tenant_id=tenant.id,
@@ -106,7 +111,7 @@ async def _make_txn(
         fee_amount=fee,
         tax_amount=tax,
         commission_amount=commission,
-        currency="ZAR",
+        currency=currency,
         initiated_by=initiated_by.id if initiated_by else None,
         created_at=created_at or (datetime.now(UTC) - timedelta(days=1)),
     )
@@ -163,12 +168,36 @@ async def _make_typed_user(db_session: AsyncSession, tenant: Tenant, *, user_typ
     return user
 
 
+async def _make_instrument(
+    db_session: AsyncSession,
+    tenant: Tenant,
+    *,
+    code: str,
+    symbol: str,
+    display_name: str,
+    account_type: str = ACCOUNT_TYPE_FINANCIAL_WALLET,
+) -> Instrument:
+    """Seed one active instrument (a currency or a points unit) for the tenant."""
+    instrument = Instrument(
+        tenant_id=tenant.id,
+        code=code,
+        symbol=symbol,
+        display_name=display_name,
+        account_type=account_type,
+    )
+    db_session.add(instrument)
+    await db_session.commit()
+    await db_session.refresh(instrument)
+    return instrument
+
+
 async def _make_wallet_credit(
     db_session: AsyncSession,
     tenant: Tenant,
     user: User,
     *,
     amount: Decimal,
+    currency: str = "ZAR",
     created_at: datetime | None = None,
 ) -> LedgerEntry:
     """Seed a COMPLETED CREDIT on a user financial_wallet account.
@@ -176,14 +205,15 @@ async def _make_wallet_credit(
     Creates the parent Transaction (LedgerEntry.transaction_id is a non-null
     FK) and the wallet Account, then the credit entry — so both liquidity
     (wallet_liability) and net-flow (inflow) aggregations have real rows to
-    read. `created_at` defaults inside the default 7d window.
+    read. `created_at` defaults inside the default 7d window; `currency`
+    defaults to ZAR.
     """
-    txn = await _make_txn(db_session, tenant, txn_type="cashin", amount=amount)
+    txn = await _make_txn(db_session, tenant, txn_type="cashin", amount=amount, currency=currency)
     account = Account(
         tenant_id=tenant.id,
         user_id=user.id,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-        currency="ZAR",
+        currency=currency,
     )
     db_session.add(account)
     await db_session.commit()
@@ -193,7 +223,7 @@ async def _make_wallet_credit(
         account_id=account.id,
         entry_type=ENTRY_CREDIT,
         amount=amount,
-        currency="ZAR",
+        currency=currency,
         status=ENTRY_STATUS_COMPLETED,
         created_at=created_at or (datetime.now(UTC) - timedelta(days=1)),
     )
@@ -324,7 +354,7 @@ async def test_transactions_timeseries_zero_fills_a_brand_new_tenant(
     db_session: AsyncSession,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify a new tenant's chart returns dense, aligned zero-filled series"""
+    """Verify a new tenant's chart returns dense, aligned zero-filled counts"""
     tenant = await _make_tenant(db_session, name="empty-ts")
     response = await async_client.get(
         "/api/v1/analytics/transactions/timeseries",
@@ -333,8 +363,8 @@ async def test_transactions_timeseries_zero_fills_a_brand_new_tenant(
     )
     assert response.status_code == 200, response.text
     body = response.json()
-    current, previous = body["current"], body["previous"]
-    # Dense zero-fill: both series present, equal-length, every point zeroed.
+    current, previous = body["count"]["current"], body["count"]["previous"]
+    # Dense zero-fill: both count series present, equal-length, every point zeroed.
     assert len(current) > 0
     assert len(current) == len(previous)
     # A 7d/day window truncates to 7 or 8 day-buckets depending on where `now`
@@ -342,7 +372,9 @@ async def test_transactions_timeseries_zero_fills_a_brand_new_tenant(
     assert 7 <= len(current) <= 8
     for point in current + previous:
         assert point["count"] == 0
-        assert Decimal(point["volume"]) == 0
+    # No transactions → no currency has activity → empty money series.
+    assert body["volume"] == []
+    assert body["revenue"] == []
 
 
 # -----------------------------------------------------------------------------
@@ -372,7 +404,8 @@ async def test_analytics_isolates_one_tenants_activity_from_another(
     assert response.status_code == 200, response.text
     body = response.json()
     assert Decimal(body["transaction_count"]["current"]) == 0
-    assert Decimal(body["transaction_volume"]["current"]) == 0
+    # Per-currency money list: no activity → no currency rows at all.
+    assert body["transaction_volume"] == []
 
     # Tenant B's by-service view is likewise empty.
     by_service = await async_client.get(
@@ -411,9 +444,12 @@ async def test_summary_totals_the_completed_transactions_in_the_range(
     )
     assert response.status_code == 200, response.text
     body = response.json()
+    # Count stays currency-agnostic; money is a per-currency list (all ZAR here).
     assert Decimal(body["transaction_count"]["current"]) == 2
-    assert Decimal(body["transaction_volume"]["current"]) == Decimal("400")
-    assert Decimal(body["avg_transaction_value"]["current"]) == Decimal("200")
+    volume = {row["currency"]: row for row in body["transaction_volume"]}
+    avg = {row["currency"]: row for row in body["avg_transaction_value"]}
+    assert Decimal(volume["ZAR"]["current"]) == Decimal("400")
+    assert Decimal(avg["ZAR"]["current"]) == Decimal("200")
 
 
 @pytest.mark.asyncio
@@ -645,11 +681,11 @@ async def test_liquidity_reflects_the_user_wallet_float(
         headers=admin_auth_header,
     )
     assert response.status_code == 200, response.text
-    body = response.json()
-    # Two COMPLETED credits into financial_wallet accounts → 750 liability.
-    assert Decimal(body["wallet_liability"]) == Decimal("750")
+    rows = {row["currency"]: row for row in response.json()}
+    # Two COMPLETED credits into ZAR financial_wallet accounts → 750 liability.
+    assert Decimal(rows["ZAR"]["wallet_liability"]) == Decimal("750")
     # No cash-float account was seeded → zero, not an error.
-    assert Decimal(body["cash_float_balance"]) == 0
+    assert Decimal(rows["ZAR"]["cash_float_balance"]) == 0
 
 
 # -----------------------------------------------------------------------------
@@ -713,6 +749,186 @@ async def test_users_by_type_requires_authentication(
         params={"tenant_id": str(tenant.id)},
     )
     assert response.status_code == 401
+
+
+# -----------------------------------------------------------------------------
+# Currencies endpoint + currency-awareness (money is NEVER summed across currencies)
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_currencies_endpoint_lists_the_tenants_currencies(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify the toggle lists the tenant's money currencies but not points"""
+    tenant = await _make_tenant(db_session, name="currencies")
+    await _make_instrument(db_session, tenant, code="ZAR", symbol="R", display_name="Rand")
+    await _make_instrument(db_session, tenant, code="MGA", symbol="Ar", display_name="Ariary")
+    # A points unit must NOT appear in the money-currency toggle.
+    await _make_instrument(
+        db_session,
+        tenant,
+        code="PTS",
+        symbol="pt",
+        display_name="Points",
+        account_type=ACCOUNT_TYPE_POINTS,
+    )
+
+    response = await async_client.get(
+        "/api/v1/analytics/currencies",
+        params={"tenant_id": str(tenant.id)},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    codes = [row["code"] for row in response.json()]
+    assert codes == ["MGA", "ZAR"]  # money only, ordered by code
+    assert "PTS" not in codes
+
+
+@pytest.mark.asyncio
+async def test_currencies_endpoint_requires_authentication(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Verify an unauthenticated caller cannot read the currency list"""
+    tenant = await _make_tenant(db_session, name="currencies-401")
+    response = await async_client.get(
+        "/api/v1/analytics/currencies",
+        params={"tenant_id": str(tenant.id)},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_summary_never_sums_money_across_currencies(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify each currency's volume is reported separately, never merged into one total"""
+    tenant = await _make_tenant(db_session, name="multi-ccy-summary")
+    await _make_txn(db_session, tenant, txn_type="cashin", amount=Decimal("100"), currency="ZAR")
+    await _make_txn(db_session, tenant, txn_type="cashin", amount=Decimal("50"), currency="MGA")
+
+    response = await async_client.get(
+        "/api/v1/analytics/summary",
+        params={"tenant_id": str(tenant.id)},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    volume = {row["currency"]: Decimal(row["current"]) for row in body["transaction_volume"]}
+    # A separate figure per currency — and crucially NOT a single 150.
+    assert volume == {"ZAR": Decimal("100"), "MGA": Decimal("50")}
+    assert Decimal("150") not in volume.values()
+    revenue_ccys = {row["currency"] for row in body["revenue_total"]}
+    assert revenue_ccys == {"ZAR", "MGA"}
+    # Count stays currency-agnostic: the two transactions are one headline number.
+    assert Decimal(body["transaction_count"]["current"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_revenue_by_service_separates_currencies(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify per-service revenue is split per currency and never summed together"""
+    tenant = await _make_tenant(db_session, name="multi-ccy-revenue")
+    await _make_txn(
+        db_session, tenant, txn_type="cashout", amount=Decimal("100"), fee=Decimal("5"),
+        currency="ZAR",
+    )
+    await _make_txn(
+        db_session, tenant, txn_type="cashout", amount=Decimal("100"), fee=Decimal("3"),
+        currency="MGA",
+    )
+
+    response = await async_client.get(
+        "/api/v1/analytics/revenue/by-service",
+        params={"tenant_id": str(tenant.id)},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    rows = {(r["service_type"], r["currency"]): r for r in response.json()}
+    assert Decimal(rows[("cashout", "ZAR")]["total"]) == Decimal("5")
+    assert Decimal(rows[("cashout", "MGA")]["total"]) == Decimal("3")
+
+
+@pytest.mark.asyncio
+async def test_liquidity_separates_currencies(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify wallet float is reported per currency, never merged across currencies"""
+    tenant = await _make_tenant(db_session, name="multi-ccy-liquidity")
+    user = await _make_user(db_session, tenant)
+    await _make_wallet_credit(db_session, tenant, user, amount=Decimal("500"), currency="ZAR")
+    await _make_wallet_credit(db_session, tenant, user, amount=Decimal("200"), currency="MGA")
+
+    response = await async_client.get(
+        "/api/v1/analytics/liquidity",
+        params={"tenant_id": str(tenant.id)},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    rows = {row["currency"]: row for row in response.json()}
+    assert Decimal(rows["ZAR"]["wallet_liability"]) == Decimal("500")
+    assert Decimal(rows["MGA"]["wallet_liability"]) == Decimal("200")
+
+
+@pytest.mark.asyncio
+async def test_net_flow_carries_currency_and_stays_separated(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify wallet inflow is reported per currency, never merged across currencies"""
+    tenant = await _make_tenant(db_session, name="multi-ccy-netflow")
+    user = await _make_user(db_session, tenant)
+    await _make_wallet_credit(db_session, tenant, user, amount=Decimal("300"), currency="ZAR")
+    await _make_wallet_credit(db_session, tenant, user, amount=Decimal("70"), currency="MGA")
+
+    response = await async_client.get(
+        "/api/v1/analytics/net-flow",
+        params={"tenant_id": str(tenant.id), "granularity": "day"},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    points = response.json()
+    # Every row carries a currency, and each currency's inflow stands on its own.
+    inflow = {p["currency"]: Decimal(p["inflow"]) for p in points}
+    assert inflow == {"ZAR": Decimal("300"), "MGA": Decimal("70")}
+
+
+@pytest.mark.asyncio
+async def test_metrics_timeseries_agnostic_count_per_currency_money(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify the trend chart counts all transactions once but splits money by currency"""
+    tenant = await _make_tenant(db_session, name="multi-ccy-timeseries")
+    await _make_txn(db_session, tenant, txn_type="cashin", amount=Decimal("100"), currency="ZAR")
+    await _make_txn(db_session, tenant, txn_type="cashin", amount=Decimal("50"), currency="MGA")
+
+    response = await async_client.get(
+        "/api/v1/analytics/transactions/timeseries",
+        params={"tenant_id": str(tenant.id), "granularity": "day"},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Count is agnostic: both transactions summed into one dense series.
+    assert sum(p["count"] for p in body["count"]["current"]) == 2
+    # Volume has one series per currency, each with its own amount.
+    vol = {s["currency"]: sum(Decimal(p["value"]) for p in s["current"]) for s in body["volume"]}
+    assert vol == {"ZAR": Decimal("100"), "MGA": Decimal("50")}
+    rev_ccys = {s["currency"] for s in body["revenue"]}
+    assert rev_ccys == {"ZAR", "MGA"}
 
 
 @pytest.mark.asyncio

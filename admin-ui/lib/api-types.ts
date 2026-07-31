@@ -832,3 +832,85 @@ export interface BudgetConsumption {
   remaining_amount: string;
   percent_consumed: number;
 }
+
+// ---- Analytics (dashboard KPIs) -----------------------------------------
+
+export interface ScalarWithPrevious {
+  current: string;
+  previous: string;
+}
+
+export interface DashboardSummary {
+  transaction_count: ScalarWithPrevious;
+  transaction_volume: ScalarWithPrevious;
+  avg_transaction_value: ScalarWithPrevious;
+  revenue_total: ScalarWithPrevious;
+  new_users: ScalarWithPrevious;
+  total_users: string;
+  active_users_period: string;
+  points_issued: ScalarWithPrevious;
+  points_redeemed: ScalarWithPrevious;
+}
+
+export interface TimeseriesPoint {
+  bucket: string;
+  count: number;
+  volume: string;
+}
+
+export interface TransactionsTimeseries {
+  current: TimeseriesPoint[];
+  previous: TimeseriesPoint[];
+}
+
+export interface ServiceSlice {
+  service_type: string;
+  count: number;
+  volume: string;
+}
+
+export interface StatusBucket {
+  bucket: string;
+  completed: number;
+  failed: number;
+  pending: number;
+}
+
+export interface UserPoint {
+  bucket: string;
+  count: number;
+}
+
+export interface UsersTimeseries {
+  current: UserPoint[];
+  previous: UserPoint[];
+}
+
+export interface ActiveUsers {
+  dau: number;
+  wau: number;
+  mau: number;
+  stickiness: string;
+}
+
+export interface RevenueSlice {
+  service_type: string;
+  fee: string;
+  tax: string;
+  commission: string;
+  total: string;
+}
+
+export interface RewardsPoint {
+  bucket: string;
+  issued: string;
+  redeemed: string;
+}
+
+export interface RewardsTimeseries {
+  points: RewardsPoint[];
+  outstanding_liability: string;
+}
+
+export type AnalyticsRange = "24h" | "7d" | "30d" | "quarter";
+export type AnalyticsGranularity = "day" | "week" | "month";

@@ -14,10 +14,13 @@ import "server-only";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 
 import type {
+  ActiveUsers,
   AddUserIdentifierPayload,
   AdminAccessResponse,
   AdminPinResetResponse,
   AdminUnlockResponse,
+  AnalyticsGranularity,
+  AnalyticsRange,
   ApiKey,
   ApiKeyCreated,
   AuditEntry,
@@ -29,6 +32,7 @@ import type {
   ConfigOperation,
   ConfigRequestStatus,
   ConfigType,
+  DashboardSummary,
   ExternalEventSource,
   Instrument,
   LimitConfig,
@@ -39,13 +43,17 @@ import type {
   PricingConfig,
   RedemptionProvider,
   ReferralTrigger,
+  RevenueSlice,
   RewardBudget,
+  RewardsTimeseries,
   Rule,
   RuleCondition,
   RulePerformance,
   Segment,
   Service,
+  ServiceSlice,
   SettableAccessLevel,
+  StatusBucket,
   StepUpPolicy,
   SweepOutcome,
   SystemWallet,
@@ -53,12 +61,14 @@ import type {
   TaxConfig,
   Tenant,
   TenantBranding,
+  TransactionsTimeseries,
   User,
   UserDetail,
   UserIdentifier,
   UserOperation,
   UserOperationStatus,
   UserType,
+  UsersTimeseries,
   WalletLimitConfig,
 } from "@/lib/api-types";
 
@@ -1017,4 +1027,62 @@ export const createApiKey = (payload: CreateApiKeyPayload) =>
 export const revokeApiKey = (key_pk: string, tenant_id: string) =>
   apiPost<ApiKey>(`/api/v1/api-keys/${key_pk}/revoke`, undefined, {
     query: { tenant_id },
+  });
+
+// ---- Analytics -----------------------------------------------------------
+
+export const getAnalyticsSummary = (tenant_id: string, range: AnalyticsRange) =>
+  apiGet<DashboardSummary>("/api/v1/analytics/summary", {
+    query: { tenant_id, range },
+  });
+
+export const getTransactionsTimeseries = (
+  tenant_id: string,
+  range: AnalyticsRange,
+  granularity: AnalyticsGranularity,
+) =>
+  apiGet<TransactionsTimeseries>("/api/v1/analytics/transactions/timeseries", {
+    query: { tenant_id, range, granularity },
+  });
+
+export const getTransactionsByService = (tenant_id: string, range: AnalyticsRange) =>
+  apiGet<ServiceSlice[]>("/api/v1/analytics/transactions/by-service", {
+    query: { tenant_id, range },
+  });
+
+export const getTransactionsByStatus = (
+  tenant_id: string,
+  range: AnalyticsRange,
+  granularity: AnalyticsGranularity,
+) =>
+  apiGet<StatusBucket[]>("/api/v1/analytics/transactions/by-status", {
+    query: { tenant_id, range, granularity },
+  });
+
+export const getUsersTimeseries = (
+  tenant_id: string,
+  range: AnalyticsRange,
+  granularity: AnalyticsGranularity,
+) =>
+  apiGet<UsersTimeseries>("/api/v1/analytics/users/timeseries", {
+    query: { tenant_id, range, granularity },
+  });
+
+export const getActiveUsers = (tenant_id: string) =>
+  apiGet<ActiveUsers>("/api/v1/analytics/users/active", {
+    query: { tenant_id },
+  });
+
+export const getRevenueByService = (tenant_id: string, range: AnalyticsRange) =>
+  apiGet<RevenueSlice[]>("/api/v1/analytics/revenue/by-service", {
+    query: { tenant_id, range },
+  });
+
+export const getRewardsTimeseries = (
+  tenant_id: string,
+  range: AnalyticsRange,
+  granularity: AnalyticsGranularity,
+) =>
+  apiGet<RewardsTimeseries>("/api/v1/analytics/rewards/timeseries", {
+    query: { tenant_id, range, granularity },
   });

@@ -319,12 +319,12 @@ async def test_timeseries_rejects_an_unknown_granularity(
 
 
 @pytest.mark.asyncio
-async def test_transactions_timeseries_is_empty_for_a_brand_new_tenant(
+async def test_transactions_timeseries_zero_fills_a_brand_new_tenant(
     async_client: AsyncClient,
     db_session: AsyncSession,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify a new tenant's transaction chart returns empty current+previous series"""
+    """Verify a new tenant's chart returns dense, aligned zero-filled series"""
     tenant = await _make_tenant(db_session, name="empty-ts")
     response = await async_client.get(
         "/api/v1/analytics/transactions/timeseries",
@@ -332,7 +332,17 @@ async def test_transactions_timeseries_is_empty_for_a_brand_new_tenant(
         headers=admin_auth_header,
     )
     assert response.status_code == 200, response.text
-    assert response.json() == {"current": [], "previous": []}
+    body = response.json()
+    current, previous = body["current"], body["previous"]
+    # Dense zero-fill: both series present, equal-length, every point zeroed.
+    assert len(current) > 0
+    assert len(current) == len(previous)
+    # A 7d/day window truncates to 7 or 8 day-buckets depending on where `now`
+    # falls within its day.
+    assert 7 <= len(current) <= 8
+    for point in current + previous:
+        assert point["count"] == 0
+        assert Decimal(point["volume"]) == 0
 
 
 # -----------------------------------------------------------------------------
@@ -437,7 +447,7 @@ async def test_revenue_by_service_sums_fee_tax_and_commission(
     db_session: AsyncSession,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify per-service revenue sums fee, tax and commission into the total"""
+    """Verify per-service operator revenue is the fee only, tax and commission excluded"""
     tenant = await _make_tenant(db_session, name="revenue")
     await _make_txn(
         db_session,
@@ -468,7 +478,8 @@ async def test_revenue_by_service_sums_fee_tax_and_commission(
     assert Decimal(row["fee"]) == Decimal("8")
     assert Decimal(row["tax"]) == Decimal("2")
     assert Decimal(row["commission"]) == Decimal("2")
-    assert Decimal(row["total"]) == Decimal("12")
+    # Operator revenue = fee only; tax is a pass-through, commission an agent cost.
+    assert Decimal(row["total"]) == Decimal("8")
 
 
 @pytest.mark.asyncio

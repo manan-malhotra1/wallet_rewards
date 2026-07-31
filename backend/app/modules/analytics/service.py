@@ -104,6 +104,53 @@ def resolve_window(range_key: str, *, now: datetime | None = None) -> tuple[Wind
     return current, previous
 
 
+def _utc_key(dt: datetime) -> datetime:
+    """Normalise a datetime to naive-UTC for equality-safe dict keying.
+
+    PG may hand back a bucket with a subtly different tz representation than the
+    generated bucket starts; converting both to naive-UTC makes them compare
+    equal. Naive datetimes are assumed to already be UTC.
+    """
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(UTC)
+    return dt.replace(tzinfo=None)
+
+
+def _bucket_starts(window: Window, granularity: str) -> list[datetime]:
+    """Ordered date_trunc-aligned bucket starts covering [window.start, window.end).
+
+    Mirrors Postgres date_trunc boundaries so zero-filled buckets line up with
+    the grouped SQL rows. day -> midnight; week -> Monday 00:00; month -> 1st 00:00.
+
+    Assumes the DB session is UTC: the windows are tz-aware UTC (resolve_window
+    uses datetime.now(UTC)), and `_trunc` preserves that tzinfo via `.replace(...)`
+    so the generated starts match Postgres `date_trunc` on a UTC timestamptz.
+    """
+
+    def _trunc(dt: datetime) -> datetime:
+        d = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        if granularity == "week":
+            d = d - timedelta(days=d.weekday())  # back to Monday (ISO, matches PG default)
+        elif granularity == "month":
+            d = d.replace(day=1)
+        return d
+
+    def _next(dt: datetime) -> datetime:
+        if granularity == "day":
+            return dt + timedelta(days=1)
+        if granularity == "week":
+            return dt + timedelta(weeks=1)
+        # month
+        return (dt.replace(day=1) + timedelta(days=32)).replace(day=1)
+
+    out: list[datetime] = []
+    cur = _trunc(window.start)
+    while cur < window.end:
+        out.append(cur)
+        cur = _next(cur)
+    return out
+
+
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
     """Reject unknown tenants — same guard used across modules."""
     result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
@@ -138,8 +185,10 @@ async def transactions_timeseries(
 ) -> TransactionsTimeseries:
     """Bucketed COMPLETED transaction count + volume, current vs previous.
 
-    Groups by date_trunc(granularity, created_at). Buckets with no rows are
-    simply absent (the frontend fills gaps); both series share the granularity.
+    Groups by date_trunc(granularity, created_at) and zero-fills every empty
+    bucket, so both series are DENSE and equal-length: `current[i]` and
+    `previous[i]` share the same relative offset in their windows, which is what
+    the previous-period overlay aligns on.
     """
     await _assert_tenant_exists(session, tenant_id)
     granularity = validate_granularity(granularity)
@@ -163,10 +212,19 @@ async def transactions_timeseries(
             .order_by(bucket)
         )
         rows = (await session.execute(stmt)).all()
-        return [
-            TimeseriesPoint(bucket=bucket_val, count=int(count), volume=Decimal(volume))
+        # Key by naive-UTC so a subtly different tz representation from PG still
+        # matches the generated bucket starts (both normalised the same way).
+        # Unpack positionally — `Row.count` is a builtin method, so attribute
+        # access would collide (mypy) and shadow the labelled column.
+        by_bucket = {
+            _utc_key(bucket_val): (int(count), Decimal(volume))
             for bucket_val, count, volume in rows
-        ]
+        }
+        out: list[TimeseriesPoint] = []
+        for start in _bucket_starts(window, granularity):
+            count, volume = by_bucket.get(_utc_key(start), (0, Decimal(0)))
+            out.append(TimeseriesPoint(bucket=start, count=count, volume=volume))
+        return out
 
     return TransactionsTimeseries(current=await _series(current), previous=await _series(previous))
 
@@ -194,12 +252,15 @@ async def _distinct_transactors(session: AsyncSession, tenant_id: UUID, window: 
 
 
 async def _revenue_total(session: AsyncSession, tenant_id: UUID, window: Window) -> Decimal:
-    """Sum of fee + tax + commission on COMPLETED transactions in the window."""
+    """Operator revenue = SUM(fee) on COMPLETED transactions in the window.
+
+    Revenue is the fee only. Tax is a pass-through (collected on behalf of the
+    authority, not operator income) and commission is a cost paid out to agents,
+    so neither counts toward operator revenue.
+    """
     stmt = select(
         func.coalesce(
-            func.sum(
-                Transaction.fee_amount + Transaction.tax_amount + Transaction.commission_amount
-            ),
+            func.sum(Transaction.fee_amount),
             0,
         )
     ).where(
@@ -379,7 +440,12 @@ async def users_timeseries(
     granularity: str,
     now: datetime | None = None,
 ) -> UsersTimeseries:
-    """New-registration counts per bucket, current vs previous window."""
+    """New-registration counts per bucket, current vs previous window.
+
+    Zero-fills every empty bucket so both series are DENSE and equal-length:
+    `current[i]` and `previous[i]` share the same relative offset, which the
+    previous-period overlay aligns on.
+    """
     await _assert_tenant_exists(session, tenant_id)
     granularity = validate_granularity(granularity)
     current, previous = resolve_window(range_key, now=now)
@@ -397,7 +463,13 @@ async def users_timeseries(
             .order_by(bucket)
         )
         rows = (await session.execute(stmt)).all()
-        return [UserPoint(bucket=bucket_val, count=int(count)) for bucket_val, count in rows]
+        # Unpack positionally — `Row.count` is a builtin method, so attribute
+        # access would collide (mypy) and shadow the labelled column.
+        by_bucket = {_utc_key(bucket_val): int(count) for bucket_val, count in rows}
+        return [
+            UserPoint(bucket=start, count=by_bucket.get(_utc_key(start), 0))
+            for start in _bucket_starts(window, granularity)
+        ]
 
     return UsersTimeseries(current=await _series(current), previous=await _series(previous))
 
@@ -421,7 +493,13 @@ async def active_users(
 async def revenue_by_service(
     session: AsyncSession, *, tenant_id: UUID, range_key: str, now: datetime | None = None
 ) -> list[RevenueSlice]:
-    """Fee/tax/commission/total grouped by transaction_type."""
+    """Charges breakdown grouped by transaction_type; total = operator revenue.
+
+    `total` reflects operator revenue, which is the fee only — tax is a
+    pass-through and commission is an agent cost, so neither is revenue. The
+    `fee`, `tax` and `commission` component fields remain available as a full
+    charges breakdown for the row.
+    """
     await _assert_tenant_exists(session, tenant_id)
     current, _ = resolve_window(range_key, now=now)
     stmt = (
@@ -449,7 +527,7 @@ async def revenue_by_service(
                 fee=fee_d,
                 tax=tax_d,
                 commission=comm_d,
-                total=fee_d + tax_d + comm_d,
+                total=fee_d,
             )
         )
     return out

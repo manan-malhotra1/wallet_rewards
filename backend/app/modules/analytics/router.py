@@ -18,12 +18,15 @@ from app.modules.analytics import service
 from app.modules.analytics.schemas import (
     ActiveUsers,
     DashboardSummary,
+    Liquidity,
+    NetFlowPoint,
     RevenueSlice,
     RewardsTimeseries,
     ServiceSlice,
     StatusBucket,
     TransactionsTimeseries,
     UsersTimeseries,
+    UserTypeSlice,
 )
 from app.shared.exceptions import InsufficientRole
 
@@ -136,3 +139,37 @@ async def get_rewards_timeseries(
     return await service.rewards_timeseries(
         session, tenant_id=tenant_id, range_key=range, granularity=granularity
     )
+
+
+@router.get("/liquidity", response_model=Liquidity)
+async def get_liquidity(
+    tenant_id: UUID,
+    _admin: AdminPrincipal = Depends(_require_finance_or_admin),
+    session: AsyncSession = Depends(get_async_session),
+) -> Liquidity:
+    """Wallet float liability + cash-float balance."""
+    return await service.liquidity(session, tenant_id=tenant_id)
+
+
+@router.get("/net-flow", response_model=list[NetFlowPoint])
+async def get_net_flow(
+    tenant_id: UUID,
+    range: str = Query("7d"),
+    granularity: str = Query("day"),
+    _admin: AdminPrincipal = Depends(_require_finance_or_admin),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[NetFlowPoint]:
+    """Per-bucket inflow vs outflow into user wallets."""
+    return await service.net_flow(
+        session, tenant_id=tenant_id, range_key=range, granularity=granularity
+    )
+
+
+@router.get("/users/by-type", response_model=list[UserTypeSlice])
+async def get_users_by_type(
+    tenant_id: UUID,
+    _admin: AdminPrincipal = Depends(_require_finance_or_admin),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[UserTypeSlice]:
+    """User distribution by user_type."""
+    return await service.users_by_type(session, tenant_id=tenant_id)

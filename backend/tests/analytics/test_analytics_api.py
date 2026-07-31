@@ -22,12 +22,17 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ENTRY_CREDIT,
+    ENTRY_STATUS_COMPLETED,
     REWARD_TYPE_POINTS,
     TXN_STATUS_COMPLETED,
     TXN_STATUS_FAILED,
     TXN_STATUS_PENDING,
-    Rule,
+    Account,
+    LedgerEntry,
     RewardEvent,
+    Rule,
     Tenant,
     Transaction,
     User,
@@ -45,6 +50,9 @@ ANALYTICS_ENDPOINTS = [
     ("/api/v1/analytics/users/active", {}),
     ("/api/v1/analytics/revenue/by-service", {}),
     ("/api/v1/analytics/rewards/timeseries", {"granularity": "day"}),
+    ("/api/v1/analytics/liquidity", {}),
+    ("/api/v1/analytics/net-flow", {"granularity": "day"}),
+    ("/api/v1/analytics/users/by-type", {}),
 ]
 
 
@@ -144,6 +152,55 @@ async def _issue_points(
     await db_session.commit()
     await db_session.refresh(event)
     return event
+
+
+async def _make_typed_user(db_session: AsyncSession, tenant: Tenant, *, user_type: str) -> User:
+    """Create a user with an explicit user_type (consumer / agent / merchant…)."""
+    user = User(tenant_id=tenant.id, user_type=user_type)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+async def _make_wallet_credit(
+    db_session: AsyncSession,
+    tenant: Tenant,
+    user: User,
+    *,
+    amount: Decimal,
+    created_at: datetime | None = None,
+) -> LedgerEntry:
+    """Seed a COMPLETED CREDIT on a user financial_wallet account.
+
+    Creates the parent Transaction (LedgerEntry.transaction_id is a non-null
+    FK) and the wallet Account, then the credit entry — so both liquidity
+    (wallet_liability) and net-flow (inflow) aggregations have real rows to
+    read. `created_at` defaults inside the default 7d window.
+    """
+    txn = await _make_txn(db_session, tenant, txn_type="cashin", amount=amount)
+    account = Account(
+        tenant_id=tenant.id,
+        user_id=user.id,
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency="ZAR",
+    )
+    db_session.add(account)
+    await db_session.commit()
+    await db_session.refresh(account)
+    entry = LedgerEntry(
+        transaction_id=txn.id,
+        account_id=account.id,
+        entry_type=ENTRY_CREDIT,
+        amount=amount,
+        currency="ZAR",
+        status=ENTRY_STATUS_COMPLETED,
+        created_at=created_at or (datetime.now(UTC) - timedelta(days=1)),
+    )
+    db_session.add(entry)
+    await db_session.commit()
+    await db_session.refresh(entry)
+    return entry
 
 
 # -----------------------------------------------------------------------------
@@ -454,9 +511,15 @@ async def test_active_users_counts_distinct_transactors(
     user_one = await _make_user(db_session, tenant)
     user_two = await _make_user(db_session, tenant)
     # user_one transacts twice, user_two once → 2 distinct transactors.
-    await _make_txn(db_session, tenant, txn_type="cashin", amount=Decimal("10"), initiated_by=user_one)
-    await _make_txn(db_session, tenant, txn_type="cashin", amount=Decimal("20"), initiated_by=user_one)
-    await _make_txn(db_session, tenant, txn_type="cashin", amount=Decimal("30"), initiated_by=user_two)
+    await _make_txn(
+        db_session, tenant, txn_type="cashin", amount=Decimal("10"), initiated_by=user_one
+    )
+    await _make_txn(
+        db_session, tenant, txn_type="cashin", amount=Decimal("20"), initiated_by=user_one
+    )
+    await _make_txn(
+        db_session, tenant, txn_type="cashin", amount=Decimal("30"), initiated_by=user_two
+    )
 
     response = await async_client.get(
         "/api/v1/analytics/users/active",
@@ -543,3 +606,122 @@ async def test_reward_points_are_scoped_to_the_owning_tenant(
     )
     assert response.status_code == 200, response.text
     assert Decimal(response.json()["points_issued"]["current"]) == 0
+
+
+# -----------------------------------------------------------------------------
+# Liquidity — wallet float liability from the ledger
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_liquidity_reflects_the_user_wallet_float(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify the liquidity view shows what users hold in their wallets"""
+    tenant = await _make_tenant(db_session, name="liquidity")
+    # Distinct users → distinct financial_wallet accounts (one wallet per
+    # user/currency); the liability sums across all of them.
+    user_one = await _make_user(db_session, tenant)
+    user_two = await _make_user(db_session, tenant)
+    await _make_wallet_credit(db_session, tenant, user_one, amount=Decimal("500"))
+    await _make_wallet_credit(db_session, tenant, user_two, amount=Decimal("250"))
+
+    response = await async_client.get(
+        "/api/v1/analytics/liquidity",
+        params={"tenant_id": str(tenant.id)},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Two COMPLETED credits into financial_wallet accounts → 750 liability.
+    assert Decimal(body["wallet_liability"]) == Decimal("750")
+    # No cash-float account was seeded → zero, not an error.
+    assert Decimal(body["cash_float_balance"]) == 0
+
+
+# -----------------------------------------------------------------------------
+# Net flow — inflow vs outflow into user wallets
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_net_flow_reports_wallet_inflow(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify money credited into user wallets surfaces as inflow"""
+    tenant = await _make_tenant(db_session, name="net-flow")
+    user = await _make_user(db_session, tenant)
+    await _make_wallet_credit(db_session, tenant, user, amount=Decimal("300"))
+
+    response = await async_client.get(
+        "/api/v1/analytics/net-flow",
+        params={"tenant_id": str(tenant.id), "granularity": "day"},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    points = response.json()
+    assert sum(Decimal(p["inflow"]) for p in points) == Decimal("300")
+    assert sum(Decimal(p["outflow"]) for p in points) == 0
+
+
+@pytest.mark.asyncio
+async def test_net_flow_is_empty_for_a_brand_new_tenant(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a tenant with no ledger activity returns an empty net-flow series"""
+    tenant = await _make_tenant(db_session, name="net-flow-empty")
+    response = await async_client.get(
+        "/api/v1/analytics/net-flow",
+        params={"tenant_id": str(tenant.id), "granularity": "day"},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == []
+
+
+# -----------------------------------------------------------------------------
+# Users by type — distribution
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_users_by_type_requires_authentication(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Verify an unauthenticated caller cannot read the user-type distribution"""
+    tenant = await _make_tenant(db_session, name="by-type-401")
+    response = await async_client.get(
+        "/api/v1/analytics/users/by-type",
+        params={"tenant_id": str(tenant.id)},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_users_by_type_groups_and_counts_each_user_type(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify the user-type breakdown counts users grouped by their type"""
+    tenant = await _make_tenant(db_session, name="by-type")
+    await _make_typed_user(db_session, tenant, user_type="consumer")
+    await _make_typed_user(db_session, tenant, user_type="consumer")
+    await _make_typed_user(db_session, tenant, user_type="agent")
+
+    response = await async_client.get(
+        "/api/v1/analytics/users/by-type",
+        params={"tenant_id": str(tenant.id)},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    counts = {row["user_type"]: row["count"] for row in response.json()}
+    assert counts["consumer"] == 2
+    assert counts["agent"] == 1

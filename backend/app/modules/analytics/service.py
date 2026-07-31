@@ -12,12 +12,14 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Integer, cast, func, select
+from sqlalchemy import ColumnElement, Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.analytics.schemas import (
     ActiveUsers,
     DashboardSummary,
+    Liquidity,
+    NetFlowPoint,
     RevenueSlice,
     RewardsPoint,
     RewardsTimeseries,
@@ -28,14 +30,22 @@ from app.modules.analytics.schemas import (
     TransactionsTimeseries,
     UserPoint,
     UsersTimeseries,
+    UserTypeSlice,
 )
 from app.shared.exceptions import TenantNotFound
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ENTRY_CREDIT,
+    ENTRY_DEBIT,
+    ENTRY_STATUS_COMPLETED,
     REDEMPTION_STATUS_COMPLETED,
     REWARD_TYPE_POINTS,
     TXN_STATUS_COMPLETED,
     TXN_STATUS_FAILED,
     TXN_STATUS_PENDING,
+    Account,
+    LedgerEntry,
     Redemption,
     RewardEvent,
     Rule,
@@ -158,9 +168,7 @@ async def transactions_timeseries(
     return TransactionsTimeseries(current=await _series(current), previous=await _series(previous))
 
 
-async def _new_user_count(
-    session: AsyncSession, tenant_id: UUID, window: Window
-) -> int:
+async def _new_user_count(session: AsyncSession, tenant_id: UUID, window: Window) -> int:
     """Count users whose created_at falls inside the window."""
     stmt = select(func.count(User.id)).where(
         User.tenant_id == tenant_id,
@@ -170,9 +178,7 @@ async def _new_user_count(
     return int((await session.execute(stmt)).scalar_one())
 
 
-async def _distinct_transactors(
-    session: AsyncSession, tenant_id: UUID, window: Window
-) -> int:
+async def _distinct_transactors(session: AsyncSession, tenant_id: UUID, window: Window) -> int:
     """Distinct users who initiated a COMPLETED transaction in the window."""
     stmt = select(func.count(func.distinct(Transaction.initiated_by))).where(
         Transaction.tenant_id == tenant_id,
@@ -184,16 +190,12 @@ async def _distinct_transactors(
     return int((await session.execute(stmt)).scalar_one())
 
 
-async def _revenue_total(
-    session: AsyncSession, tenant_id: UUID, window: Window
-) -> Decimal:
+async def _revenue_total(session: AsyncSession, tenant_id: UUID, window: Window) -> Decimal:
     """Sum of fee + tax + commission on COMPLETED transactions in the window."""
     stmt = select(
         func.coalesce(
             func.sum(
-                Transaction.fee_amount
-                + Transaction.tax_amount
-                + Transaction.commission_amount
+                Transaction.fee_amount + Transaction.tax_amount + Transaction.commission_amount
             ),
             0,
         )
@@ -206,9 +208,7 @@ async def _revenue_total(
     return Decimal((await session.execute(stmt)).scalar_one())
 
 
-async def _points_issued(
-    session: AsyncSession, tenant_id: UUID, window: Window
-) -> Decimal:
+async def _points_issued(session: AsyncSession, tenant_id: UUID, window: Window) -> Decimal:
     """Points issued in the window (points-type RewardEvent rows).
 
     `reward_events` has no tenant_id column, so we scope by joining `rules`
@@ -228,9 +228,7 @@ async def _points_issued(
     return Decimal((await session.execute(stmt)).scalar_one())
 
 
-async def _points_redeemed(
-    session: AsyncSession, tenant_id: UUID, window: Window
-) -> Decimal:
+async def _points_redeemed(session: AsyncSession, tenant_id: UUID, window: Window) -> Decimal:
     """Points redeemed via COMPLETED redemptions in the window."""
     stmt = select(func.coalesce(func.sum(Redemption.points_amount), 0)).where(
         Redemption.tenant_id == tenant_id,
@@ -273,9 +271,7 @@ async def dashboard_summary(
 
     total_users = int(
         (
-            await session.execute(
-                select(func.count(User.id)).where(User.tenant_id == tenant_id)
-            )
+            await session.execute(select(func.count(User.id)).where(User.tenant_id == tenant_id))
         ).scalar_one()
     )
     active = await _distinct_transactors(session, tenant_id, current)
@@ -292,9 +288,7 @@ async def dashboard_summary(
             current=_avg(cur_vol, cur_count), previous=_avg(prev_vol, prev_count)
         ),
         revenue_total=ScalarWithPrevious(current=cur_rev, previous=prev_rev),
-        new_users=ScalarWithPrevious(
-            current=Decimal(cur_new), previous=Decimal(prev_new)
-        ),
+        new_users=ScalarWithPrevious(current=Decimal(cur_new), previous=Decimal(prev_new)),
         total_users=Decimal(total_users),
         active_users_period=Decimal(active),
         points_issued=ScalarWithPrevious(current=cur_issued, previous=prev_issued),
@@ -540,3 +534,123 @@ async def rewards_timeseries(
         ).scalar_one()
     )
     return RewardsTimeseries(points=points, outstanding_liability=total_issued - total_redeemed)
+
+
+def _signed_balance_expr() -> ColumnElement[Decimal]:
+    """SQL expression: SUM(CREDIT) - SUM(DEBIT) over COMPLETED ledger entries.
+
+    Balance for an account is credits minus debits (ledger invariant). The
+    caller must already filter to COMPLETED status and the target account set.
+    """
+    return func.coalesce(
+        func.sum(
+            cast(LedgerEntry.entry_type == ENTRY_CREDIT, Integer) * LedgerEntry.amount
+            - cast(LedgerEntry.entry_type == ENTRY_DEBIT, Integer) * LedgerEntry.amount
+        ),
+        0,
+    )
+
+
+async def _account_type_balance(
+    session: AsyncSession, tenant_id: UUID, account_type: str
+) -> Decimal:
+    """Net COMPLETED balance across all accounts of a type for the tenant.
+
+    Args:
+        account_type: e.g. `financial_wallet` (user float) or
+            `system_cash_inflow` (operator cash float).
+
+    Returns:
+        Signed Decimal balance (credits minus debits); 0 when no entries.
+    """
+    stmt = (
+        select(_signed_balance_expr())
+        .select_from(LedgerEntry)
+        .join(Account, Account.id == LedgerEntry.account_id)
+        .where(
+            Account.tenant_id == tenant_id,
+            Account.account_type == account_type,
+            LedgerEntry.status == ENTRY_STATUS_COMPLETED,
+        )
+    )
+    return Decimal((await session.execute(stmt)).scalar_one())
+
+
+async def liquidity(session: AsyncSession, *, tenant_id: UUID) -> Liquidity:
+    """Wallet float liability + cash-float balance (point in time).
+
+    `wallet_liability` is the total signed balance across all user
+    `financial_wallet` accounts — money the operator owes users.
+    `cash_float_balance` is the `system_cash_inflow` account balance.
+    """
+    await _assert_tenant_exists(session, tenant_id)
+    return Liquidity(
+        wallet_liability=await _account_type_balance(
+            session, tenant_id, ACCOUNT_TYPE_FINANCIAL_WALLET
+        ),
+        cash_float_balance=await _account_type_balance(
+            session, tenant_id, ACCOUNT_TYPE_SYSTEM_CASH_INFLOW
+        ),
+    )
+
+
+async def net_flow(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    range_key: str,
+    granularity: str,
+    now: datetime | None = None,
+) -> list[NetFlowPoint]:
+    """Per-bucket credits (inflow) vs debits (outflow) into user wallets.
+
+    Buckets COMPLETED ledger entries on `financial_wallet` accounts by
+    date_trunc(granularity, created_at). CREDIT is money flowing into user
+    wallets (inflow); DEBIT is money flowing out (outflow).
+    """
+    await _assert_tenant_exists(session, tenant_id)
+    granularity = validate_granularity(granularity)
+    current, _ = resolve_window(range_key, now=now)
+    bucket = func.date_trunc(granularity, LedgerEntry.created_at)
+    credit = cast(LedgerEntry.entry_type == ENTRY_CREDIT, Integer) * LedgerEntry.amount
+    debit = cast(LedgerEntry.entry_type == ENTRY_DEBIT, Integer) * LedgerEntry.amount
+    stmt = (
+        select(
+            bucket.label("bucket"),
+            func.coalesce(func.sum(credit), 0).label("inflow"),
+            func.coalesce(func.sum(debit), 0).label("outflow"),
+        )
+        .select_from(LedgerEntry)
+        .join(Account, Account.id == LedgerEntry.account_id)
+        .where(
+            Account.tenant_id == tenant_id,
+            Account.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+            LedgerEntry.status == ENTRY_STATUS_COMPLETED,
+            LedgerEntry.created_at >= current.start,
+            LedgerEntry.created_at < current.end,
+        )
+        .group_by(bucket)
+        .order_by(bucket)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        NetFlowPoint(bucket=bucket_val, inflow=Decimal(inflow), outflow=Decimal(outflow))
+        for bucket_val, inflow, outflow in rows
+    ]
+
+
+async def users_by_type(session: AsyncSession, *, tenant_id: UUID) -> list[UserTypeSlice]:
+    """Distribution of users across user_type (consumer/agent/merchant…).
+
+    Row `count` is unpacked positionally — `Row.count` is a builtin method, so
+    attribute access would collide and shadow the labelled column.
+    """
+    await _assert_tenant_exists(session, tenant_id)
+    stmt = (
+        select(User.user_type.label("user_type"), func.count(User.id).label("count"))
+        .where(User.tenant_id == tenant_id)
+        .group_by(User.user_type)
+        .order_by(func.count(User.id).desc())
+    )
+    rows = (await session.execute(stmt)).all()
+    return [UserTypeSlice(user_type=user_type, count=int(count)) for user_type, count in rows]

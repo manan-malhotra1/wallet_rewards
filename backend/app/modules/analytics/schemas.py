@@ -121,3 +121,25 @@ class RewardsTimeseries(BaseModel):
 
     points: list[RewardsPoint]
     outstanding_liability: Decimal
+
+
+class Liquidity(BaseModel):
+    """Point-in-time liquidity snapshot for the tenant."""
+
+    wallet_liability: Decimal  # total held in user financial_wallet accounts
+    cash_float_balance: Decimal  # system_cash_inflow balance
+
+
+class NetFlowPoint(BaseModel):
+    """Inflow vs outflow into user wallets for one bucket."""
+
+    bucket: datetime
+    inflow: Decimal
+    outflow: Decimal
+
+
+class UserTypeSlice(BaseModel):
+    """User count for one user_type."""
+
+    user_type: str
+    count: int

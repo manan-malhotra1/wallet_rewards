@@ -1,6 +1,6 @@
 # 005 — Stop the whole dashboard flashing on every refetch
 
-- **Status**: DONE (7b8fab0)
+- **Status**: DONE (06a5f1f)
 - **Commit**: c2e8746
 - **Severity**: MEDIUM
 - **Category**: Cohesion & feel

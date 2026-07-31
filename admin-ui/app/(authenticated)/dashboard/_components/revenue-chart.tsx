@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Revenue by service type — stacked bar of fee / tax / commission.
+ * Revenue (operator fee) by service type, split by currency — one bar per
+ * selected currency, never summed across currencies.
  */
 import {
   Bar,
@@ -14,16 +15,25 @@ import {
   YAxis,
 } from "recharts";
 
-import { CHART_SERIES } from "@/lib/chart-colors";
-import type { RevenueSlice } from "@/lib/api-types";
+import { seriesColor } from "@/lib/chart-colors";
+import type { CurrencyInfo, RevenueServiceSlice } from "@/lib/api-types";
 
-export function RevenueChart({ data }: { data: RevenueSlice[] }) {
-  const rows = data.map((r) => ({
-    service_type: r.service_type,
-    fee: Number(r.fee),
-    tax: Number(r.tax),
-    commission: Number(r.commission),
-  }));
+interface Props {
+  data: RevenueServiceSlice[];
+  selectedCurrencies: string[];
+  currencyMeta: Record<string, CurrencyInfo>;
+}
+
+export function RevenueChart({ data, selectedCurrencies, currencyMeta }: Props) {
+  const currencies = selectedCurrencies.filter((c) => data.some((d) => d.currency === c));
+  const byService = new Map<string, Record<string, number | string>>();
+  for (const d of data) {
+    if (!selectedCurrencies.includes(d.currency)) continue;
+    const row = byService.get(d.service_type) ?? { service_type: d.service_type };
+    row[d.currency] = Number(d.total);
+    byService.set(d.service_type, row);
+  }
+  const rows = [...byService.values()];
   if (rows.length === 0) {
     return (
       <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">
@@ -37,12 +47,12 @@ export function RevenueChart({ data }: { data: RevenueSlice[] }) {
         <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
           <XAxis dataKey="service_type" fontSize={11} />
-          <YAxis fontSize={11} width={48} />
+          <YAxis fontSize={11} width={56} />
           <Tooltip />
           <Legend />
-          <Bar dataKey="fee" stackId="r" fill={CHART_SERIES[0]} />
-          <Bar dataKey="tax" stackId="r" fill={CHART_SERIES[3]} />
-          <Bar dataKey="commission" stackId="r" fill={CHART_SERIES[2]} />
+          {currencies.map((c, i) => (
+            <Bar key={c} dataKey={c} name={currencyMeta[c]?.code ?? c} fill={seriesColor(i)} radius={[3, 3, 0, 0]} />
+          ))}
         </BarChart>
       </ResponsiveContainer>
     </div>

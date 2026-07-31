@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.modules.accounts import router as accounts_router
 from app.modules.airtime import router as airtime_router
+from app.modules.analytics.router import router as analytics_router
 from app.modules.api_keys import router as api_keys_router
 from app.modules.budgets import router as budgets_router
 from app.modules.cashin import router as cashin_router
@@ -89,6 +90,15 @@ async def app_exception_handler(request: Request, exc: AppHTTPException) -> JSON
     )
 
 
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+    """Surface analytics param validation (bad range/granularity) as 422."""
+    return JSONResponse(
+        status_code=422,
+        content={"error_code": "invalid_parameter", "message": str(exc)},
+    )
+
+
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Liveness probe — returns 200 if the process is running."""
@@ -139,3 +149,5 @@ app.include_router(multipliers_router)
 app.include_router(services_router)
 # Phase 3 — instruments catalog
 app.include_router(instruments_router)
+# Analytics — read-only KPI dashboard
+app.include_router(analytics_router)

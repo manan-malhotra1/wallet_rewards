@@ -38,8 +38,8 @@ export function NetFlowChart({ data, currency }: { data: NetFlowPoint[]; currenc
           <YAxis fontSize={11} width={56} />
           <Tooltip />
           <Legend />
-          <Bar dataKey="inflow" fill={CHART_SERIES[4]} radius={[3, 3, 0, 0]} />
-          <Bar dataKey="outflow" fill={CHART_SERIES[5]} radius={[3, 3, 0, 0]} />
+          <Bar dataKey="inflow" fill={CHART_SERIES[4]} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          <Bar dataKey="outflow" fill={CHART_SERIES[5]} radius={[3, 3, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </div>

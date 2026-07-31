@@ -51,7 +51,7 @@ export function RevenueChart({ data, selectedCurrencies, currencyMeta }: Props) 
           <Tooltip />
           <Legend />
           {currencies.map((c, i) => (
-            <Bar key={c} dataKey={c} name={currencyMeta[c]?.code ?? c} fill={seriesColor(i)} radius={[3, 3, 0, 0]} />
+            <Bar key={c} dataKey={c} name={currencyMeta[c]?.code ?? c} fill={seriesColor(i)} radius={[3, 3, 0, 0]} isAnimationActive={false} />
           ))}
         </BarChart>
       </ResponsiveContainer>

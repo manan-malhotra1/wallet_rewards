@@ -34,9 +34,9 @@ export function StatusBreakdownChart({ data }: { data: StatusBucket[] }) {
           <YAxis fontSize={11} width={40} />
           <Tooltip />
           <Legend />
-          <Bar dataKey="completed" stackId="s" fill={STATUS_COLORS.completed} />
-          <Bar dataKey="failed" stackId="s" fill={STATUS_COLORS.failed} />
-          <Bar dataKey="pending" stackId="s" fill={STATUS_COLORS.pending} />
+          <Bar dataKey="completed" stackId="s" fill={STATUS_COLORS.completed} isAnimationActive={false} />
+          <Bar dataKey="failed" stackId="s" fill={STATUS_COLORS.failed} isAnimationActive={false} />
+          <Bar dataKey="pending" stackId="s" fill={STATUS_COLORS.pending} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </div>

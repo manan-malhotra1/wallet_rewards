@@ -61,8 +61,8 @@ export function TrendChart({ data, metric, selectedCurrencies, currencyMeta }: P
             <XAxis dataKey="bucket" tickFormatter={fmtTick} fontSize={11} />
             <YAxis fontSize={11} width={48} />
             <Tooltip />
-            <Area type="monotone" dataKey="current" name="Transactions" stroke={CHART_SERIES[0]} fill="url(#trendFill)" strokeWidth={2} />
-            <Line type="monotone" dataKey="previous" name="Previous period" stroke={CHART_SERIES[1]} strokeDasharray="4 4" strokeWidth={1.5} dot={false} />
+            <Area type="monotone" dataKey="current" name="Transactions" stroke={CHART_SERIES[0]} fill="url(#trendFill)" strokeWidth={2} isAnimationActive={false} />
+            <Line type="monotone" dataKey="previous" name="Previous period" stroke={CHART_SERIES[1]} strokeDasharray="4 4" strokeWidth={1.5} dot={false} isAnimationActive={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -97,10 +97,11 @@ export function TrendChart({ data, metric, selectedCurrencies, currencyMeta }: P
               stroke={seriesColor(i)}
               strokeWidth={2}
               dot={false}
+              isAnimationActive={false}
             />
           ))}
           {single ? (
-            <Line type="monotone" dataKey="__prev" name="Previous period" stroke={CHART_SERIES[1]} strokeDasharray="4 4" strokeWidth={1.5} dot={false} />
+            <Line type="monotone" dataKey="__prev" name="Previous period" stroke={CHART_SERIES[1]} strokeDasharray="4 4" strokeWidth={1.5} dot={false} isAnimationActive={false} />
           ) : null}
         </LineChart>
       </ResponsiveContainer>

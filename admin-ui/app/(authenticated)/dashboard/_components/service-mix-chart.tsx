@@ -28,6 +28,7 @@ export function ServiceMixChart({ data }: { data: ServiceSlice[] }) {
             innerRadius={55}
             outerRadius={85}
             paddingAngle={2}
+            isAnimationActive={false}
           >
             {data.map((_, i) => (
               <Cell key={i} fill={seriesColor(i)} />

@@ -20,7 +20,7 @@ export function UserTypeChart({ data }: { data: UserTypeSlice[] }) {
     <div className="h-[240px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
-          <Pie data={data} dataKey="count" nameKey="user_type" innerRadius={55} outerRadius={85} paddingAngle={2}>
+          <Pie data={data} dataKey="count" nameKey="user_type" innerRadius={55} outerRadius={85} paddingAngle={2} isAnimationActive={false}>
             {data.map((_, i) => (
               <Cell key={i} fill={seriesColor(i)} />
             ))}

@@ -37,8 +37,8 @@ export function RewardsChart({ data }: { data: RewardsTimeseries }) {
           <XAxis dataKey="bucket" tickFormatter={(v) => String(v).slice(5, 10)} fontSize={11} />
           <YAxis fontSize={11} width={48} />
           <Tooltip />
-          <Line type="monotone" dataKey="issued" name="Issued" stroke={CHART_SERIES[4]} strokeWidth={2} dot={false} />
-          <Line type="monotone" dataKey="redeemed" name="Redeemed" stroke={CHART_SERIES[2]} strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="issued" name="Issued" stroke={CHART_SERIES[4]} strokeWidth={2} dot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="redeemed" name="Redeemed" stroke={CHART_SERIES[2]} strokeWidth={2} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>

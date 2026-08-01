@@ -113,6 +113,32 @@ _BASELINE_SERVICES: list[tuple[str, str, str]] = [
     ),
 ]
 
+# Per-service access policy applied to every freshly-provisioned service, keyed
+# by service code -> (allowed_user_types, allowed_channels). This is the single
+# source of truth for a fresh seed and MUST match the backfill in migration
+# 0049 so a new tenant's services carry the same policy an existing tenant got
+# retroactively. Semantics (see Service model): an empty list means "no
+# restriction on that dimension"; the two dimensions are ANDed.
+#
+# A code absent from this map is provisioned with NULL/NULL (fully
+# unrestricted), preserving today's behaviour for any future baseline service.
+SERVICE_POLICY: dict[str, tuple[list[str], list[str]]] = {
+    # Consumer self-service, initiated from the mobile app.
+    "p2p": (["consumer"], ["mobile"]),
+    "airtime_recharge": (["consumer"], ["mobile"]),
+    "redemption": (["consumer"], ["mobile"]),
+    "cashout": (["consumer"], ["mobile"]),
+    "change_pin": (["consumer"], ["mobile"]),
+    # Agent-operated cash-in, from the mobile app.
+    "cash_in": (["agent", "super_agent"], ["mobile"]),
+    # Partner-merchant collection, over the API.
+    "merchant_cashin": (["merchant", "head_merchant"], ["api"]),
+    # Operator/back-office money ops: no wallet user type initiates; the
+    # admin/api channel gate is what confines these to the back office.
+    "fund": ([], ["admin", "api"]),
+    "withdraw": ([], ["admin", "api"]),
+}
+
 
 async def _instrument_exists(session: AsyncSession, tenant_id: uuid.UUID, code: str) -> bool:
     """Return True if a live instrument with this code already exists for the tenant."""
@@ -193,12 +219,17 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
     for svc_code, svc_display, svc_description in _BASELINE_SERVICES:
         if await _service_exists(session, tenant.id, svc_code):
             continue
+        # Apply the access policy for this code; a code absent from the map
+        # gets NULL/NULL (unrestricted). Matches migration 0049's backfill.
+        allowed_user_types, allowed_channels = SERVICE_POLICY.get(svc_code, (None, None))
         session.add(
             Service(
                 tenant_id=tenant.id,
                 code=svc_code,
                 display_name=svc_display,
                 description=svc_description,
+                allowed_user_types=allowed_user_types,
+                allowed_channels=allowed_channels,
             )
         )
 

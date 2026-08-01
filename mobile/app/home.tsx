@@ -1,18 +1,20 @@
 /**
- * /home — the Pay tab. Sasai Pay redesign.
+ * /home — the Pay tab. Sasai Pay redesign (multi-currency).
  *
  * Top: navy gradient hero with avatar + greeting, points pill, bell.
- * Overlapping white balance card with wallet picker + masked amount.
- * Quick actions row: Send / Airtime / Pay bills / Remit.
- * Promo banner: "Send money home, faster" call-out.
- * Recent activity: last 2 entries from the user's wallet.
+ * Below it, a SWIPEABLE horizontal carousel of clay balance cards — one
+ * per financial wallet (e.g. ZAR + INR) — with page-dot indicators. The
+ * active card's currency drives every quick action (Send / Airtime /
+ * Cash out) so downstream screens debit the right wallet.
+ * Quick actions row, a "send money home" promo, and recent activity all
+ * sit inside a vertical ScrollView so content below the fold is reachable.
  *
- * Pulls /me/wallet for the name, total balance, and PTS pill count.
+ * Pulls /me/wallet for the name, per-wallet balances, and the PTS pill.
  * Loading + error states fall back to muted greetings rather than
  * blocking the screen — the rest of the UI still renders.
  */
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,29 +32,49 @@ import {
   activityCategory,
   getMyWallet,
   transactionTitle,
+  type WalletAccount,
 } from '@/lib/api/wallet';
+import { currencySymbol, formatMoney } from '@/lib/format';
 import { qk } from '@/lib/query';
 import { clearAll, getLastPhone } from '@/lib/storage';
 
 /** Ionicons glyph name — a typed union so only valid glyphs compile. */
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/** Quick-action tile metadata (Ionicons glyph + label + route). */
-const ACTIONS: ReadonlyArray<{ icon: IconName; label: string; href: string }> = [
-  { icon: 'paper-plane', label: 'Send', href: '/p2p/recipient' },
-  { icon: 'phone-portrait', label: 'Airtime', href: '/home' }, // placeholder until /airtime ships
-  { icon: 'receipt', label: 'Pay bills', href: '/home' }, // placeholder
-  { icon: 'globe', label: 'Remit', href: '/home' }, // placeholder
+/**
+ * Quick-action tile metadata. `route` takes the active wallet currency so
+ * the next screen debits the correct wallet (Pay bills / Remit are still
+ * placeholders that stay on /home until those screens ship).
+ */
+const ACTIONS: ReadonlyArray<{
+  icon: IconName;
+  label: string;
+  route: (currency: string) => string;
+}> = [
+  { icon: 'paper-plane', label: 'Send', route: (c) => `/p2p/recipient?currency=${c}` },
+  { icon: 'phone-portrait', label: 'Airtime', route: (c) => `/airtime?currency=${c}` },
+  { icon: 'cash-outline', label: 'Cash out', route: (c) => `/cashout?currency=${c}` },
+  { icon: 'receipt', label: 'Pay bills', route: () => '/home' }, // placeholder
+  { icon: 'globe', label: 'Remit', route: () => '/home' }, // placeholder
 ];
 
-/** Format a decimal-string amount as a 2-line "$1,284.50" with the cents
- *  in a smaller muted tint per the design. Returns [whole, cents]. */
+/** Format a decimal-string amount as { whole, cents } for the big display —
+ *  the cents render in a smaller muted tint. Symbol is applied separately so
+ *  the two type sizes line up. */
 function splitAmount(amount: string): { whole: string; cents: string } {
   const n = parseFloat(amount);
   if (!Number.isFinite(n)) return { whole: '0', cents: '.00' };
   const [w, c] = n.toFixed(2).split('.');
   const withSep = w.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return { whole: withSep, cents: `.${c ?? '00'}` };
+}
+
+/** Pending = total balance minus available; only shown when positive. */
+function pendingAmount(account: WalletAccount): string {
+  const total = parseFloat(account.balance ?? '0');
+  const avail = parseFloat(account.available_balance ?? '0');
+  const diff = total - avail;
+  return Number.isFinite(diff) && diff > 0 ? diff.toFixed(2) : '0.00';
 }
 
 /** Initials for the avatar circle — first two letters of the first name. */
@@ -64,13 +86,109 @@ function initials(name: string | null | undefined): string {
   return (first + second).toUpperCase();
 }
 
+/**
+ * A single clay balance card for one financial wallet. Renders the wallet's
+ * currency chip, its available balance (masked via the shared eye toggle),
+ * and the Available / Pending sub-row. Money is always formatted through the
+ * account's own currency — never assume ZAR.
+ */
+function BalanceCard({
+  account,
+  width,
+  masked,
+  onToggleMask,
+}: {
+  account: WalletAccount;
+  width: number;
+  masked: boolean;
+  onToggleMask: () => void;
+}) {
+  const symbol = currencySymbol(account.currency).trim();
+  const balance = splitAmount(account.available_balance ?? '0');
+  const pending = pendingAmount(account);
+
+  return (
+    <ClaySurface depth="raised" radius={24} padding={20} width={width}>
+      <XStack justifyContent="space-between" alignItems="center">
+        <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#6a7888">
+          Available balance
+        </Text>
+        <View
+          backgroundColor="#e6f6f8"
+          paddingHorizontal={10}
+          paddingVertical={4}
+          borderRadius={20}
+        >
+          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12} color="#2EB6C8">
+            {account.currency} wallet
+          </Text>
+        </View>
+      </XStack>
+      <XStack alignItems="flex-end" gap={8} marginTop={8}>
+        <Text
+          fontFamily="PlusJakartaSans-ExtraBold"
+          fontSize={34}
+          color="#0c1b2a"
+          letterSpacing={-0.5}
+        >
+          {symbol} {masked ? '••••' : balance.whole}
+        </Text>
+        {!masked && (
+          <Text
+            fontFamily="PlusJakartaSans-Bold"
+            fontSize={20}
+            color="#94a2b1"
+            marginBottom={4}
+          >
+            {balance.cents}
+          </Text>
+        )}
+        <Pressable
+          onPress={onToggleMask}
+          style={{ marginLeft: 'auto', paddingBottom: 6 }}
+          accessibilityLabel="Toggle balance visibility"
+        >
+          <Ionicons name={masked ? 'eye-off' : 'eye'} size={20} color="#94a2b1" />
+        </Pressable>
+      </XStack>
+      <XStack
+        gap={18}
+        marginTop={14}
+        paddingTop={14}
+        borderTopWidth={1}
+        borderTopColor="rgba(1,46,84,0.06)"
+        alignItems="center"
+      >
+        <YStack flex={1}>
+          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
+            Available
+          </Text>
+          <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a" marginTop={2}>
+            {formatMoney(account.available_balance ?? '0', account.currency)}
+          </Text>
+        </YStack>
+        <YStack flex={1}>
+          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
+            Pending
+          </Text>
+          <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a" marginTop={2}>
+            {formatMoney(pending, account.currency)}
+          </Text>
+        </YStack>
+      </XStack>
+    </ClaySurface>
+  );
+}
+
 /** Pay tab — home. */
 export default function HomeScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const [masked, setMasked] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [phone, setPhone] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const { data, isLoading, error } = useQuery({
     queryKey: qk.wallet(),
     queryFn: getMyWallet,
@@ -113,17 +231,21 @@ export default function HomeScreen() {
   }
 
   const firstName = data?.first_name ?? 'there';
-  const zar = data?.accounts.find(
-    (a) => a.currency === 'ZAR' && a.account_type === 'financial_wallet',
+  const walletAccounts = (data?.accounts ?? []).filter(
+    (a) => a.account_type === 'financial_wallet',
   );
   const points = data?.accounts.find((a) => a.currency === 'PTS');
-  const balance = splitAmount(zar?.available_balance ?? '0');
-  const pendingNum = (() => {
-    const a = parseFloat(zar?.balance ?? '0');
-    const b = parseFloat(zar?.available_balance ?? '0');
-    const diff = a - b;
-    return Number.isFinite(diff) && diff > 0 ? diff.toFixed(2) : '0.00';
-  })();
+
+  // Carousel geometry: cards are full-width minus the horizontal gutters, and
+  // snap one-per-page. onMomentumScrollEnd derives the active index from the
+  // scroll offset so the active currency + page dots track the visible card.
+  const H_PADDING = 18;
+  const CARD_GAP = 12;
+  const cardWidth = width - H_PADDING * 2;
+  const snapInterval = cardWidth + CARD_GAP;
+
+  const activeCurrency =
+    walletAccounts[activeIndex]?.currency ?? walletAccounts[0]?.currency ?? 'ZAR';
 
   return (
     <View flex={1} backgroundColor="#ccd8e8">
@@ -234,117 +356,74 @@ export default function HomeScreen() {
             </XStack>
           </GradientHeader>
 
-          <YStack
-            flex={1}
-            paddingBottom={96}
+          {/* Everything below the fixed header scrolls vertically so recent
+              activity is reachable above the bottom tab bar. */}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 120 }}
           >
-            {/* Overlapping balance card. Margin-top -58 lifts it into the
-                gradient region so the clay card "floats" on the navy. */}
-            <ClaySurface
-              depth="raised"
-              radius={24}
-              marginTop={-58}
-              marginHorizontal={18}
-              padding={20}
-            >
-              <XStack justifyContent="space-between" alignItems="center">
-                <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#6a7888">
-                  Total balance
-                </Text>
-                <View
-                  backgroundColor="#e6f6f8"
-                  paddingHorizontal={10}
-                  paddingVertical={4}
-                  borderRadius={20}
-                >
-                  <Text
-                    fontFamily="PlusJakartaSans-SemiBold"
-                    fontSize={12}
-                    color="#2EB6C8"
-                  >
-                    ZAR wallet ▾
-                  </Text>
-                </View>
-              </XStack>
-              <XStack alignItems="flex-end" gap={8} marginTop={8}>
-                <Text
-                  fontFamily="PlusJakartaSans-ExtraBold"
-                  fontSize={34}
-                  color="#0c1b2a"
-                  letterSpacing={-0.5}
-                >
-                  R {masked ? '••••' : balance.whole}
-                </Text>
-                {!masked && (
-                  <Text
-                    fontFamily="PlusJakartaSans-Bold"
-                    fontSize={20}
-                    color="#94a2b1"
-                    marginBottom={4}
-                  >
-                    {balance.cents}
-                  </Text>
-                )}
-                <Pressable
-                  onPress={() => setMasked((m) => !m)}
-                  style={{ marginLeft: 'auto', paddingBottom: 6 }}
-                  accessibilityLabel="Toggle balance visibility"
-                >
-                  <Ionicons
-                    name={masked ? 'eye-off' : 'eye'}
-                    size={20}
-                    color="#94a2b1"
-                  />
-                </Pressable>
-              </XStack>
-              <XStack
-                gap={18}
-                marginTop={14}
-                paddingTop={14}
-                borderTopWidth={1}
-                borderTopColor="rgba(1,46,84,0.06)"
-                alignItems="center"
+            {/* Balance carousel — one card per financial wallet. The wrapper's
+                negative top margin lifts the cards into the gradient so they
+                "float" on the navy, matching the single-card design. A nested
+                horizontal ScrollView is fine inside the vertical one — RN routes
+                each axis to the matching gesture. */}
+            <View marginTop={-58}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                snapToInterval={snapInterval}
+                decelerationRate="fast"
+                disableIntervalMomentum
+                contentContainerStyle={{ paddingHorizontal: H_PADDING, paddingVertical: 4 }}
+                onMomentumScrollEnd={(e) => {
+                  const x = e.nativeEvent.contentOffset.x;
+                  const next = Math.round(x / snapInterval);
+                  if (next !== activeIndex) setActiveIndex(next);
+                }}
               >
-                <YStack flex={1}>
-                  <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
-                    Available
-                  </Text>
-                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a" marginTop={2}>
-                    R {balance.whole}{balance.cents}
-                  </Text>
-                </YStack>
-                <YStack flex={1}>
-                  <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
-                    Pending
-                  </Text>
-                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a" marginTop={2}>
-                    R {pendingNum}
-                  </Text>
-                </YStack>
-                <Pressable accessibilityLabel="Top up" onPress={() => {}}>
+                {walletAccounts.map((account, i) => (
                   <View
-                    backgroundColor="#00508F"
-                    paddingHorizontal={14}
-                    paddingVertical={9}
-                    borderRadius={12}
+                    key={account.id}
+                    marginRight={i === walletAccounts.length - 1 ? 0 : CARD_GAP}
                   >
-                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color="#ffffff">
-                      + Top up
-                    </Text>
+                    <BalanceCard
+                      account={account}
+                      width={cardWidth}
+                      masked={masked}
+                      onToggleMask={() => setMasked((m) => !m)}
+                    />
                   </View>
-                </Pressable>
-              </XStack>
-            </ClaySurface>
+                ))}
+              </ScrollView>
 
-            {/* Quick actions. Four tiles spaced evenly across the row. */}
+              {/* Page dots — only meaningful with more than one wallet. */}
+              {walletAccounts.length > 1 ? (
+                <XStack justifyContent="center" alignItems="center" gap={6} marginTop={12}>
+                  {walletAccounts.map((account, i) => {
+                    const active = i === activeIndex;
+                    return (
+                      <View
+                        key={account.id}
+                        width={active ? 18 : 6}
+                        height={6}
+                        borderRadius={3}
+                        backgroundColor={active ? '#00508F' : 'rgba(1,46,84,0.18)'}
+                      />
+                    );
+                  })}
+                </XStack>
+              ) : null}
+            </View>
+
+            {/* Quick actions. Tiles carry the active wallet currency forward. */}
             <XStack justifyContent="space-between" paddingHorizontal={22} paddingTop={22}>
               {ACTIONS.map((action) => (
                 <Pressable
                   key={action.label}
-                  onPress={() => router.push(action.href as never)}
+                  onPress={() => router.push(action.route(activeCurrency) as never)}
                   accessibilityRole="button"
                   accessibilityLabel={action.label}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, width: 62 })}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, width: 60 })}
                 >
                   <YStack alignItems="center" gap={8}>
                     <ClayIconTile size={54} radius={18}>
@@ -354,6 +433,7 @@ export default function HomeScreen() {
                       fontFamily="PlusJakartaSans-SemiBold"
                       fontSize={11}
                       color="#3a4756"
+                      numberOfLines={1}
                     >
                       {action.label}
                     </Text>
@@ -402,7 +482,10 @@ export default function HomeScreen() {
               >
                 Transfer to any bank or mobile wallet across Africa.
               </Text>
-              <Pressable onPress={() => router.push('/p2p/recipient')} style={{ marginTop: 14 }}>
+              <Pressable
+                onPress={() => router.push(`/p2p/recipient?currency=${activeCurrency}` as never)}
+                style={{ marginTop: 14 }}
+              >
                 <View
                   alignSelf="flex-start"
                   backgroundColor="#ffffff"
@@ -451,16 +534,18 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               ) : (
-                /* Last 3 real transactions from /me/wallet. */
+                /* Last 3 real transactions from /me/wallet, each formatted in
+                   its own currency (a transaction carries its own currency). */
                 (data?.recent_transactions ?? [])
                   .slice(0, 3)
                   .map((t, i, arr) => {
                     const positive = t.direction === 'in';
                     const sign = positive ? '+' : '−';
+                    const absAmount = Math.abs(parseFloat(t.amount));
                     const amtText =
                       t.currency === 'PTS'
-                        ? `${sign}${Math.abs(parseFloat(t.amount)).toFixed(0)} PTS`
-                        : `${sign}R ${Math.abs(parseFloat(t.amount)).toFixed(2)}`;
+                        ? `${sign}${absAmount.toFixed(0)} PTS`
+                        : `${sign}${formatMoney(absAmount, t.currency)}`;
                     const when = new Date(t.created_at);
                     const now = new Date();
                     const sameDay =
@@ -491,7 +576,7 @@ export default function HomeScreen() {
                   })
               )}
             </ClaySurface>
-          </YStack>
+          </ScrollView>
         </YStack>
       </SafeAreaView>
       <BottomTabBar active="pay" />

@@ -24,7 +24,7 @@ import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
 import { quoteServiceFee } from '@/lib/api/pricing';
 import { getMyWallet } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
-import { maskPhone } from '@/lib/format';
+import { currencySymbol, formatMoney, maskPhone } from '@/lib/format';
 
 const CHIPS = [50, 100, 200, 500] as const;
 
@@ -55,16 +55,21 @@ function splitAmount(amount: string): { whole: string; cents: string; hasDot: bo
 export default function AmountScreen() {
   const router = useRouter();
   const qc = useQueryClient();
-  const params = useLocalSearchParams<{ phone: string }>();
+  const params = useLocalSearchParams<{ phone: string; currency?: string }>();
   const recipientPhone = typeof params.phone === 'string' ? params.phone : '';
+  // Active wallet currency threaded from /home via /p2p/recipient. Every
+  // money display and the sendP2P call are keyed off this — never assume ZAR.
+  // Defaults to ZAR when the param is absent so the flow still works.
+  const currency = typeof params.currency === 'string' ? params.currency : 'ZAR';
+  const symbol = currencySymbol(currency).trim();
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const { data } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
 
-  const zar = data?.accounts.find(
-    (a) => a.currency === 'ZAR' && a.account_type === 'financial_wallet',
+  const wallet = data?.accounts.find(
+    (a) => a.currency === currency && a.account_type === 'financial_wallet',
   );
-  const available = parseFloat(zar?.available_balance ?? '0');
+  const available = parseFloat(wallet?.available_balance ?? '0');
   const parsed = parseFloat(amount || '0');
 
   // Live fee preview from the backend so the confirmation line matches what
@@ -101,6 +106,7 @@ export default function AmountScreen() {
       const res = await sendP2P({
         recipientPhone,
         amount: amountStr,
+        currency,
         idempotencyKey,
       });
       // Below step-up threshold → backend let it through without a PIN.
@@ -122,6 +128,7 @@ export default function AmountScreen() {
           params: {
             phone: recipientPhone,
             amount: amountStr,
+            currency,
             idem: idempotencyKey,
           },
         });
@@ -217,7 +224,7 @@ export default function AmountScreen() {
           {/* Big amount display + balance hint + chips. */}
           <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal={22}>
             <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
-              ZAR wallet · R {available.toFixed(2)} available
+              {currency} wallet · {formatMoney(available, currency)} available
             </Text>
             <ClayInset
               radius={24}
@@ -233,7 +240,7 @@ export default function AmountScreen() {
                   color="#94a2b1"
                   marginTop={8}
                 >
-                  R
+                  {symbol}
                 </Text>
                 <Text
                   fontFamily="PlusJakartaSans-ExtraBold"
@@ -261,7 +268,7 @@ export default function AmountScreen() {
                   <Pressable
                     key={n}
                     onPress={() => setAmount(selected ? '' : value)}
-                    accessibilityLabel={`Set amount R ${n}`}
+                    accessibilityLabel={`Set amount ${symbol}${n}`}
                   >
                     <View
                       paddingHorizontal={14}
@@ -274,7 +281,7 @@ export default function AmountScreen() {
                         fontSize={12.5}
                         color={selected ? '#ffffff' : '#00508F'}
                       >
-                        R{n}
+                        {symbol}{n}
                       </Text>
                     </View>
                   </Pressable>
@@ -282,9 +289,9 @@ export default function AmountScreen() {
               })}
             </XStack>
             <Text fontFamily="PlusJakartaSans-Medium" fontSize={12} color="#8a98a6" marginTop={16}>
-              Fee R {fee.toFixed(2)} · You pay{' '}
+              Fee {formatMoney(fee, currency)} · You pay{' '}
               <Text fontFamily="PlusJakartaSans-Bold" color="#0c1b2a">
-                R {total.toFixed(2)}
+                {formatMoney(total, currency)}
               </Text>
             </Text>
             {overdrawn ? (
@@ -307,7 +314,7 @@ export default function AmountScreen() {
               loading={busy}
               accessibilityLabel="Continue"
             >
-              {`Send R ${parsed.toFixed(2)}`}
+              {`Send ${formatMoney(parsed, currency)}`}
             </ClayButton>
           </View>
         </YStack>

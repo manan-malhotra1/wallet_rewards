@@ -2,18 +2,23 @@
  * PhoneInput — country code picker + national-digits input (Sasai Pay redesign).
  *
  * Composes E.164 on the fly and reports it via `onChange`. Default country
- * is +263 Zimbabwe to match the design mock's home market; +27 South
- * Africa is the secondary option for the seeded ZA tenant. Selection state
- * is purely local — the parent only sees the composed phone string.
+ * is +27 South Africa (the primary seeded tenant market), so login and
+ * recipient entry start on +27; other markets are one tap away in the
+ * picker. Selection state is purely local — the parent only sees the
+ * composed phone string.
  */
 import { useMemo, useState } from 'react';
 import { Pressable, TextInput } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
-/** Country options. Order = display order in the picker. */
+/**
+ * Country options. Order = display order in the picker, and the first
+ * entry is the default selection — South Africa (+27) leads so the input
+ * starts on the primary seeded market.
+ */
 const COUNTRIES = [
-  { code: 'ZW', dial: '+263', label: 'Zimbabwe', flag: '🇿🇼' },
   { code: 'ZA', dial: '+27', label: 'South Africa', flag: '🇿🇦' },
+  { code: 'ZW', dial: '+263', label: 'Zimbabwe', flag: '🇿🇼' },
   { code: 'IN', dial: '+91', label: 'India', flag: '🇮🇳' },
   { code: 'GB', dial: '+44', label: 'United Kingdom', flag: '🇬🇧' },
   { code: 'US', dial: '+1', label: 'United States', flag: '🇺🇸' },

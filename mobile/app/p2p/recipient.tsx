@@ -21,7 +21,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
 
@@ -45,6 +45,11 @@ const RECENTS = [
 /** Recipient picker screen. */
 export default function RecipientScreen() {
   const router = useRouter();
+  // Active wallet currency arrives via ?currency= from /home and is carried
+  // forward to the amount screen so sendP2P debits the right wallet. Defaults
+  // to ZAR if the param is missing so the flow never breaks.
+  const params = useLocalSearchParams<{ currency?: string }>();
+  const currency = typeof params.currency === 'string' ? params.currency : 'ZAR';
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +66,7 @@ export default function RecipientScreen() {
         setError("That number isn't on Sasai yet.");
         return;
       }
-      router.push({ pathname: '/p2p/amount', params: { phone: target } });
+      router.push({ pathname: '/p2p/amount', params: { phone: target, currency } });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Lookup failed. Try again.');
     } finally {

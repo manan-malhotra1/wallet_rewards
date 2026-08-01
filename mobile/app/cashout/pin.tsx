@@ -1,13 +1,11 @@
 /**
- * /p2p/pin — confirm payment with PIN (Sasai Pay redesign).
+ * /cashout/pin — authorise the cash-out with a PIN (step-up).
  *
- * Step 3 of the send-money flow. Gradient header w/ step indicator,
- * payment-summary card (amount + recipient), centered PIN pip display
- * with encryption note, and the PIN keypad at the bottom (with a
- * biometric icon slot for v2). On 4 digits we fire /payments/p2p with
- * the same idempotency key. Wrong PIN clears the dots and shows an
- * inline error; lockout / other errors route to /p2p/failed; success
- * routes to /p2p/success with receipt data.
+ * Step 3 of the cash-out flow (mirrors /p2p/pin). Reached only when the
+ * backend demanded step-up (401 `step_up_required`) on the amount screen. We
+ * replay cashOut() with the SAME idempotency key carried in params + the PIN.
+ * A wrong PIN (401 `invalid_step_up_pin`) shakes the pips and clears them for
+ * a retry under the same key; other failures route to the failure screen.
  */
 import { useRef, useState } from 'react';
 import { Animated } from 'react-native';
@@ -22,40 +20,37 @@ import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { PinInput } from '@/components/forms/PinInput';
 import { ClaySurface } from '@/components/clay';
-import { ApiError, InvalidStepUpPin, RateLimited } from '@/lib/api/errors';
-import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
+import { InvalidStepUpPin } from '@/lib/api/errors';
+import { cashOut, cashOutFailureReason, newCashOutIdempotencyKey } from '@/lib/api/cashout';
 import { qk } from '@/lib/query';
 import { formatMoney, maskPhone } from '@/lib/format';
 
-/** Confirm with PIN screen. */
-export default function PinConfirmScreen() {
+/** Confirm cash-out with PIN screen. */
+export default function CashOutPinScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const params = useLocalSearchParams<{
-    phone: string;
-    amount: string;
+    phone?: string;
+    amount?: string;
     currency?: string;
     idem?: string;
   }>();
-  const recipientPhone = typeof params.phone === 'string' ? params.phone : '';
+  const agentPhone = typeof params.phone === 'string' ? params.phone : '';
   const amount = typeof params.amount === 'string' ? params.amount : '0';
-  // Currency threaded through from the amount screen's step-up branch so the
-  // PIN-bearing retry debits the same wallet. Defaults to ZAR when absent.
-  const currency = typeof params.currency === 'string' ? params.currency : 'ZAR';
+  const currency = typeof params.currency === 'string' && params.currency ? params.currency : 'ZAR';
 
   const [pin, setPin] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shake = useRef(new Animated.Value(0)).current;
-  // Idempotency key persists across wrong-PIN retries so the backend
-  // dedups correctly (any rejection happens pre-ledger). When we arrive
-  // here from the amount screen's step-up branch, the key is passed
-  // forward so the no-PIN attempt and the with-PIN retry share one
-  // logical transaction id.
+  // Idempotency key persists across wrong-PIN retries so the backend dedups
+  // correctly (any rejection happens pre-ledger). It is forwarded from the
+  // amount screen's step-up branch so the no-PIN attempt and the with-PIN
+  // retry share one logical transaction.
   const idemRef = useRef(
     typeof params.idem === 'string' && params.idem.length > 0
       ? params.idem
-      : newP2PIdempotencyKey(),
+      : newCashOutIdempotencyKey(),
   );
 
   function triggerShake() {
@@ -72,22 +67,22 @@ export default function PinConfirmScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await sendP2P({
-        recipientPhone,
+      const res = await cashOut({
+        agentPhone,
         amount,
         currency,
         pin: entered,
         idempotencyKey: idemRef.current,
       });
-      void res;
       await qc.invalidateQueries({ queryKey: qk.wallet() });
       router.replace({
-        pathname: '/p2p/success',
+        pathname: '/cashout/success',
         params: {
-          phone: recipientPhone,
-          amount,
-          earned: String(res.earned_points ?? 0),
-          reference: res.transaction_id.slice(0, 8).toUpperCase(),
+          phone: agentPhone,
+          amount: res.amount,
+          fee: res.fee,
+          currency,
+          reference: (res.reference ?? res.transaction_id).slice(0, 8).toUpperCase(),
         },
       });
     } catch (e) {
@@ -98,15 +93,9 @@ export default function PinConfirmScreen() {
         setSubmitting(false);
         return;
       }
-      const reason =
-        e instanceof RateLimited
-          ? 'Too many attempts. Try again later.'
-          : e instanceof ApiError
-            ? e.message
-            : 'Payment failed.';
       router.replace({
-        pathname: '/p2p/failed' as never,
-        params: { phone: recipientPhone, amount, reason },
+        pathname: '/cashout/failed',
+        params: { phone: agentPhone, amount, currency, reason: cashOutFailureReason(e) },
       });
     } finally {
       setSubmitting(false);
@@ -118,11 +107,11 @@ export default function PinConfirmScreen() {
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader paddingBottom={22}>
-            <HeaderBack title="Confirm payment" />
-            <StepIndicator step={3} caption="Step 3 of 3 · Authorise your payment" />
+            <HeaderBack title="Confirm cash-out" />
+            <StepIndicator step={3} caption="Step 3 of 3 · Authorise your cash-out" />
           </GradientHeader>
 
-          {/* Summary card */}
+          {/* Summary card. */}
           <ClaySurface
             depth="raised"
             radius={20}
@@ -132,7 +121,7 @@ export default function PinConfirmScreen() {
             alignItems="center"
           >
             <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
-              You are sending
+              You are cashing out
             </Text>
             <Text
               fontFamily="PlusJakartaSans-ExtraBold"
@@ -144,28 +133,28 @@ export default function PinConfirmScreen() {
               {formatMoney(amount, currency)}
             </Text>
             <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#5a6b7b" marginTop={4}>
-              to{' '}
+              to agent{' '}
               <Text fontFamily="PlusJakartaSans-Bold" color="#0c1b2a">
-                {maskPhone(recipientPhone)}
+                {maskPhone(agentPhone)}
               </Text>
             </Text>
           </ClaySurface>
 
-          {/* PIN entry + encryption note */}
+          {/* PIN entry + encryption note. */}
           <YStack flex={1} alignItems="center" justifyContent="center" gap={22}>
             <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a">
               Enter your PIN to authorise
             </Text>
             <Animated.View style={{ transform: [{ translateX: shake }] }}>
-              <PinInput
-                value={pin}
-                onChange={setPin}
-                onComplete={onComplete}
-                errored={!!error}
-              />
+              <PinInput value={pin} onChange={setPin} onComplete={onComplete} errored={!!error} />
             </Animated.View>
             {error ? (
-              <Text fontFamily="PlusJakartaSans-Medium" color="#c0392b" fontSize={13} textAlign="center">
+              <Text
+                fontFamily="PlusJakartaSans-Medium"
+                color="#c0392b"
+                fontSize={13}
+                textAlign="center"
+              >
                 {error}
               </Text>
             ) : (

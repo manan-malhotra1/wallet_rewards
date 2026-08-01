@@ -32,8 +32,10 @@ export interface P2PResponse {
 interface P2PArgs {
   /** Recipient phone in E.164 (the backend resolves to a user_id). */
   recipientPhone: string;
-  /** Amount as a decimal string. Currency is fixed to ZAR for the demo. */
+  /** Amount as a decimal string. */
   amount: string;
+  /** 3-letter currency of the active wallet (e.g. "ZAR", "INR"). */
+  currency: string;
   /** PIN. Omit on the no-PIN attempt; include on the step-up retry. */
   pin?: string;
   /** Optional short note carried on the txn description. */
@@ -54,7 +56,7 @@ export async function sendP2P(args: P2PArgs): Promise<P2PResponse> {
     body: {
       recipient: { identifier_type: 'phone', identifier_value: args.recipientPhone },
       amount: args.amount,
-      currency: 'ZAR',
+      currency: args.currency,
       ...(args.pin ? { pin: args.pin } : {}),
       ...(args.description ? { description: args.description } : {}),
     },

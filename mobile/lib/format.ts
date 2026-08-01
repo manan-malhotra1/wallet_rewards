@@ -2,18 +2,45 @@
  * Tiny formatters for currency, points, and phone masking.
  *
  * Kept dependency-free (no Intl.NumberFormat polyfills) so the bundle stays
- * small on Hermes. ZAR is the only currency in the app right now; if we
- * grow multi-currency, switch to Intl.NumberFormat with locale="en-ZA".
+ * small on Hermes. The app is multi-currency — always format via
+ * `formatMoney(amount, currency)`, never assume ZAR.
  */
 
-/** Format a Decimal-string amount as "R 12,450.00". */
-export function formatZAR(amount: string | number): string {
+/** Display symbol per currency code. Falls back to the code + a space. */
+const CURRENCY_SYMBOL: Record<string, string> = {
+  ZAR: 'R',
+  INR: '₹',
+  USD: '$',
+  GBP: '£',
+  EUR: '€',
+};
+
+/**
+ * Return the display symbol for a currency code (e.g. "R", "₹").
+ * Unknown codes fall back to the code itself with a trailing space
+ * (e.g. "TOKEN 1,200.00") so an unmapped currency is never mis-labelled.
+ */
+export function currencySymbol(currency: string): string {
+  return CURRENCY_SYMBOL[currency] ?? `${currency} `;
+}
+
+/**
+ * Format a Decimal-string amount for a given currency, e.g.
+ * `formatMoney("12450", "ZAR")` → "R 12,450.00", `("999", "INR")` → "₹ 999.00".
+ */
+export function formatMoney(amount: string | number, currency: string): string {
   const n = typeof amount === 'string' ? parseFloat(amount) : amount;
-  if (!Number.isFinite(n)) return 'R 0.00';
+  const sym = currencySymbol(currency);
+  if (!Number.isFinite(n)) return `${sym}0.00`;
   const parts = n.toFixed(2).split('.');
   // Insert thousands separators into the integer part.
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `R ${parts.join('.')}`;
+  return `${sym}${parts.join('.')}`;
+}
+
+/** Back-compat ZAR formatter — delegates to `formatMoney`. Prefer `formatMoney`. */
+export function formatZAR(amount: string | number): string {
+  return formatMoney(amount, 'ZAR');
 }
 
 /** Format an integer PTS amount as "340 PTS". */

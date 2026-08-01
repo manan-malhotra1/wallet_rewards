@@ -18,6 +18,7 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
+import { CurrencySelector } from '@/components/forms/CurrencySelector';
 import { ClayButton, ClayInset, ClaySurface } from '@/components/clay';
 import { ApiError, RateLimited, StepUpRequired } from '@/lib/api/errors';
 import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
@@ -57,17 +58,25 @@ export default function AmountScreen() {
   const qc = useQueryClient();
   const params = useLocalSearchParams<{ phone: string; currency?: string }>();
   const recipientPhone = typeof params.phone === 'string' ? params.phone : '';
-  // Active wallet currency threaded from /home via /p2p/recipient. Every
-  // money display and the sendP2P call are keyed off this — never assume ZAR.
-  // Defaults to ZAR when the param is absent so the flow still works.
-  const currency = typeof params.currency === 'string' ? params.currency : 'ZAR';
-  const symbol = currencySymbol(currency).trim();
+  // Active wallet currency threaded from /home via /p2p/recipient, used only as
+  // the INITIAL selection. Defaults to ZAR when the param is absent so the flow
+  // still works. From here on `selectedCurrency` (switchable in-flow via the
+  // CurrencySelector) is the source of truth for every money display and the
+  // sendP2P call — never assume ZAR.
+  const paramCurrency = typeof params.currency === 'string' ? params.currency : 'ZAR';
+  const [selectedCurrency, setSelectedCurrency] = useState(paramCurrency);
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const { data } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
 
+  // The user's financial-wallet currencies drive the in-flow selector.
+  const walletCurrencies = (data?.accounts ?? [])
+    .filter((a) => a.account_type === 'financial_wallet')
+    .map((a) => a.currency);
+
+  const symbol = currencySymbol(selectedCurrency).trim();
   const wallet = data?.accounts.find(
-    (a) => a.currency === currency && a.account_type === 'financial_wallet',
+    (a) => a.currency === selectedCurrency && a.account_type === 'financial_wallet',
   );
   const available = parseFloat(wallet?.available_balance ?? '0');
   const parsed = parseFloat(amount || '0');
@@ -106,7 +115,7 @@ export default function AmountScreen() {
       const res = await sendP2P({
         recipientPhone,
         amount: amountStr,
-        currency,
+        currency: selectedCurrency,
         idempotencyKey,
       });
       // Below step-up threshold → backend let it through without a PIN.
@@ -128,7 +137,7 @@ export default function AmountScreen() {
           params: {
             phone: recipientPhone,
             amount: amountStr,
-            currency,
+            currency: selectedCurrency,
             idem: idempotencyKey,
           },
         });
@@ -223,9 +232,12 @@ export default function AmountScreen() {
 
           {/* Big amount display + balance hint + chips. */}
           <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal={22}>
-            <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
-              {currency} wallet · {formatMoney(available, currency)} available
-            </Text>
+            <CurrencySelector
+              currencies={walletCurrencies}
+              selected={selectedCurrency}
+              onSelect={setSelectedCurrency}
+              available={available}
+            />
             <ClayInset
               radius={24}
               marginTop={10}
@@ -289,9 +301,9 @@ export default function AmountScreen() {
               })}
             </XStack>
             <Text fontFamily="PlusJakartaSans-Medium" fontSize={12} color="#8a98a6" marginTop={16}>
-              Fee {formatMoney(fee, currency)} · You pay{' '}
+              Fee {formatMoney(fee, selectedCurrency)} · You pay{' '}
               <Text fontFamily="PlusJakartaSans-Bold" color="#0c1b2a">
-                {formatMoney(total, currency)}
+                {formatMoney(total, selectedCurrency)}
               </Text>
             </Text>
             {overdrawn ? (
@@ -314,7 +326,7 @@ export default function AmountScreen() {
               loading={busy}
               accessibilityLabel="Continue"
             >
-              {`Send ${formatMoney(parsed, currency)}`}
+              {`Send ${formatMoney(parsed, selectedCurrency)}`}
             </ClayButton>
           </View>
         </YStack>

@@ -247,13 +247,20 @@ export default function HomeScreen() {
   const activeCurrency =
     walletAccounts[activeIndex]?.currency ?? walletAccounts[0]?.currency ?? 'ZAR';
 
+  // Recent activity is scoped to the visible card's currency so swiping to the
+  // INR card shows INR activity, ZAR shows ZAR. PTS (reward/redemption) rows are
+  // kept regardless — points aren't a spendable currency tied to any one card.
+  const recentForCurrency = (data?.recent_transactions ?? []).filter(
+    (t) => t.currency === activeCurrency || t.currency === 'PTS',
+  );
+
   return (
     <View flex={1} backgroundColor="#ccd8e8">
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           {/* Header — navy gradient with user info + points + bell, plus
               extra bottom padding so the balance card overlaps by 58px. */}
-          <GradientHeader paddingBottom={78}>
+          <GradientHeader paddingBottom={40}>
             <XStack alignItems="center" justifyContent="space-between" paddingTop={6}>
               <Pressable
                 onPress={() => setDrawerOpen(true)}
@@ -367,7 +374,7 @@ export default function HomeScreen() {
                 "float" on the navy, matching the single-card design. A nested
                 horizontal ScrollView is fine inside the vertical one — RN routes
                 each axis to the matching gesture. */}
-            <View marginTop={-58}>
+            <View marginTop={-20}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -527,16 +534,16 @@ export default function HomeScreen() {
                 <View paddingVertical={24} alignItems="center">
                   <ActivityIndicator color="#00508F" />
                 </View>
-              ) : (data?.recent_transactions ?? []).length === 0 ? (
+              ) : recentForCurrency.length === 0 ? (
                 <View paddingVertical={20} alignItems="center">
                   <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#8a98a6">
                     No activity yet.
                   </Text>
                 </View>
               ) : (
-                /* Last 3 real transactions from /me/wallet, each formatted in
-                   its own currency (a transaction carries its own currency). */
-                (data?.recent_transactions ?? [])
+                /* Last 3 transactions for the active card's currency (plus PTS),
+                   each formatted in its own currency. */
+                recentForCurrency
                   .slice(0, 3)
                   .map((t, i, arr) => {
                     const positive = t.direction === 'in';

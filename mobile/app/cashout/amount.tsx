@@ -22,6 +22,7 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
+import { CurrencySelector } from '@/components/forms/CurrencySelector';
 import { ClayButton, ClayInset, ClaySurface } from '@/components/clay';
 import { StepUpRequired } from '@/lib/api/errors';
 import { cashOut, cashOutFailureReason, newCashOutIdempotencyKey } from '@/lib/api/cashout';
@@ -50,14 +51,24 @@ export default function CashOutAmountScreen() {
   const qc = useQueryClient();
   const params = useLocalSearchParams<{ phone?: string; currency?: string }>();
   const agentPhone = typeof params.phone === 'string' ? params.phone : '';
-  const currency = typeof params.currency === 'string' && params.currency ? params.currency : 'ZAR';
+  // `?currency=` seeds only the INITIAL selection; `selectedCurrency` (switchable
+  // in-flow via CurrencySelector) is the source of truth for every money display
+  // and the cashOut call thereafter — never assume ZAR.
+  const paramCurrency =
+    typeof params.currency === 'string' && params.currency ? params.currency : 'ZAR';
+  const [selectedCurrency, setSelectedCurrency] = useState(paramCurrency);
 
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const { data } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
 
+  // The user's financial-wallet currencies drive the in-flow selector.
+  const walletCurrencies = (data?.accounts ?? [])
+    .filter((a) => a.account_type === 'financial_wallet')
+    .map((a) => a.currency);
+
   const wallet = data?.accounts.find(
-    (a) => a.currency === currency && a.account_type === 'financial_wallet',
+    (a) => a.currency === selectedCurrency && a.account_type === 'financial_wallet',
   );
   const available = parseFloat(wallet?.available_balance ?? '0');
   const parsed = parseFloat(amount || '0');
@@ -68,7 +79,7 @@ export default function CashOutAmountScreen() {
   const overdrawn = parsed > available;
   const canContinue = parsed > 0 && !overdrawn && !busy;
   const display = splitAmount(amount);
-  const sym = currencySymbol(currency);
+  const sym = currencySymbol(selectedCurrency);
 
   /**
    * Try-then-PIN entry point. Fire cashOut without a PIN so the backend's
@@ -83,7 +94,12 @@ export default function CashOutAmountScreen() {
     const idempotencyKey = newCashOutIdempotencyKey();
     setBusy(true);
     try {
-      const res = await cashOut({ agentPhone, amount: amountStr, currency, idempotencyKey });
+      const res = await cashOut({
+        agentPhone,
+        amount: amountStr,
+        currency: selectedCurrency,
+        idempotencyKey,
+      });
       await qc.invalidateQueries({ queryKey: qk.wallet() });
       router.replace({
         pathname: '/cashout/success',
@@ -91,7 +107,7 @@ export default function CashOutAmountScreen() {
           phone: agentPhone,
           amount: res.amount,
           fee: res.fee,
-          currency,
+          currency: selectedCurrency,
           reference: (res.reference ?? res.transaction_id).slice(0, 8).toUpperCase(),
         },
       });
@@ -99,13 +115,23 @@ export default function CashOutAmountScreen() {
       if (e instanceof StepUpRequired) {
         router.push({
           pathname: '/cashout/pin',
-          params: { phone: agentPhone, amount: amountStr, currency, idem: idempotencyKey },
+          params: {
+            phone: agentPhone,
+            amount: amountStr,
+            currency: selectedCurrency,
+            idem: idempotencyKey,
+          },
         });
         return;
       }
       router.replace({
         pathname: '/cashout/failed',
-        params: { phone: agentPhone, amount: amountStr, currency, reason: cashOutFailureReason(e) },
+        params: {
+          phone: agentPhone,
+          amount: amountStr,
+          currency: selectedCurrency,
+          reason: cashOutFailureReason(e),
+        },
       });
     } finally {
       setBusy(false);
@@ -187,9 +213,12 @@ export default function CashOutAmountScreen() {
 
           {/* Big amount display + balance hint. */}
           <YStack flex={1} alignItems="center" justifyContent="center" paddingHorizontal={22}>
-            <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
-              {currency} wallet · {formatMoney(available, currency)} available
-            </Text>
+            <CurrencySelector
+              currencies={walletCurrencies}
+              selected={selectedCurrency}
+              onSelect={setSelectedCurrency}
+              available={available}
+            />
             <ClayInset
               radius={24}
               marginTop={10}
@@ -249,7 +278,7 @@ export default function CashOutAmountScreen() {
               loading={busy}
               accessibilityLabel="Continue"
             >
-              {`Cash out ${formatMoney(parsed, currency)}`}
+              {`Cash out ${formatMoney(parsed, selectedCurrency)}`}
             </ClayButton>
           </View>
         </YStack>

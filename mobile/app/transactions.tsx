@@ -28,7 +28,7 @@ import {
   WalletTransaction,
 } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
-import { formatZAR } from '@/lib/format';
+import { formatMoney } from '@/lib/format';
 
 type Filter = 'all' | 'sent' | 'received' | 'bills';
 
@@ -63,20 +63,24 @@ function subtitleFor(t: WalletTransaction): string {
   const ref = transactionRef(t);
   // Surface the service charge inline so the deduction is explained — the
   // wallet was debited amount + fee, but the row's amount shows only the
-  // transfer. ZAR fees only; PTS movements never carry a charge.
+  // transfer. Fee is in the transaction's own currency; PTS movements never
+  // carry a charge.
   const fee = parseFloat(t.fee_amount ?? '0');
-  const feeNote = fee > 0 ? ` · Fee R ${fee.toFixed(2)}` : '';
+  const feeNote = fee > 0 ? ` · Fee ${formatMoney(fee, t.currency)}` : '';
   return `${ref} · ${time}${feeNote}`;
 }
 
-/** Format amount with sign + currency symbol. Returns ["+R 50.00", true]. */
+/**
+ * Format amount with sign in the transaction's OWN currency (ZAR, INR, …),
+ * or as points for PTS rows. Returns e.g. ["+₹ 50.00", true].
+ */
 function displayAmount(t: WalletTransaction): { text: string; positive: boolean } {
   const positive = t.direction === 'in';
   const sign = positive ? '+' : '−';
   if (t.currency === 'PTS') {
     return { text: `${sign}${Math.abs(parseFloat(t.amount)).toFixed(0)} PTS`, positive };
   }
-  return { text: `${sign}R ${Math.abs(parseFloat(t.amount)).toFixed(2)}`, positive };
+  return { text: `${sign}${formatMoney(Math.abs(parseFloat(t.amount)), t.currency)}`, positive };
 }
 
 interface ChipProps {
@@ -109,30 +113,50 @@ function FilterChip({ label, active, onPress }: ChipProps) {
 /** Transactions list screen. */
 export default function TransactionsScreen() {
   const [filter, setFilter] = useState<Filter>('all');
+  // Which wallet currency the list + money strip are scoped to. Null until the
+  // user taps a chip; the effective `currency` below then falls back to ZAR (or
+  // the first wallet). Money is NEVER summed across currencies, so the strip is
+  // always single-currency.
+  const [currencyFilter, setCurrencyFilter] = useState<string | null>(null);
   const { data } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
   const all = data?.recent_transactions ?? [];
 
-  // Filtered transactions (drives the list + the summary totals).
+  // Financial-wallet currencies drive the currency chip row (INR must be
+  // reachable, not just ZAR).
+  const currencies = (data?.accounts ?? [])
+    .filter((a) => a.account_type === 'financial_wallet')
+    .map((a) => a.currency);
+  const currency =
+    currencyFilter ?? (currencies.includes('ZAR') ? 'ZAR' : currencies[0] ?? 'ZAR');
+
+  // Filtered transactions (drives the list + the summary totals). Scoped to the
+  // selected currency; PTS reward/redemption rows are kept regardless since
+  // points aren't a spendable currency tied to any wallet.
   const filtered = useMemo(
-    () => all.filter((t) => matchesFilter(t, filter)),
-    [all, filter],
+    () =>
+      all.filter(
+        (t) =>
+          (t.currency === currency || t.currency === 'PTS') && matchesFilter(t, filter),
+      ),
+    [all, filter, currency],
   );
 
-  // Money in / out — sum amounts on ZAR txns (PTS doesn't belong on the
-  // money strip). Computed from `all`, not `filtered`, so flipping the
-  // filter doesn't change the headline numbers.
+  // Money in / out — sum amounts on the selected currency only (PTS doesn't
+  // belong on the money strip, and currencies are never summed together).
+  // Computed from `all`, not `filtered`, so flipping the type filter doesn't
+  // change the headline numbers.
   const { moneyIn, moneyOut } = useMemo(() => {
-    let inZ = 0;
-    let outZ = 0;
+    let inN = 0;
+    let outN = 0;
     for (const t of all) {
-      if (t.currency !== 'ZAR') continue;
+      if (t.currency !== currency) continue;
       const n = Math.abs(parseFloat(t.amount));
       if (!Number.isFinite(n)) continue;
-      if (t.direction === 'in') inZ += n;
-      else outZ += n;
+      if (t.direction === 'in') inN += n;
+      else outN += n;
     }
-    return { moneyIn: inZ, moneyOut: outZ };
-  }, [all]);
+    return { moneyIn: inN, moneyOut: outN };
+  }, [all, currency]);
 
   // Day-grouped rendering, preserving original sort order (newest first).
   const groups = useMemo(() => {
@@ -200,6 +224,21 @@ export default function TransactionsScreen() {
             <FilterChip label="Received" active={filter === 'received'} onPress={() => setFilter('received')} />
             <FilterChip label="Bills" active={filter === 'bills'} onPress={() => setFilter('bills')} />
           </XStack>
+          {/* Currency scope — only meaningful with more than one wallet. Picks
+              which currency the list + money strip show; each is single-currency
+              so money is never summed across currencies. */}
+          {currencies.length > 1 ? (
+            <XStack gap={8} marginTop={10}>
+              {currencies.map((c) => (
+                <FilterChip
+                  key={c}
+                  label={c}
+                  active={currency === c}
+                  onPress={() => setCurrencyFilter(c)}
+                />
+              ))}
+            </XStack>
+          ) : null}
         </GradientHeader>
 
         <ScrollView
@@ -214,7 +253,7 @@ export default function TransactionsScreen() {
                 Money in
               </Text>
               <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color="#1aa06b" marginTop={3}>
-                +{formatZAR(moneyIn)}
+                +{formatMoney(moneyIn, currency)}
               </Text>
             </ClaySurface>
             <ClaySurface depth="soft" radius={16} flex={1} padding={13}>
@@ -222,7 +261,7 @@ export default function TransactionsScreen() {
                 Money out
               </Text>
               <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color="#c0392b" marginTop={3}>
-                −{formatZAR(moneyOut)}
+                −{formatMoney(moneyOut, currency)}
               </Text>
             </ClaySurface>
           </XStack>

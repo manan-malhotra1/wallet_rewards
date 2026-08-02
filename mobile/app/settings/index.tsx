@@ -15,15 +15,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { useThemePref } from '@/lib/theme';
 
 /** Settings screen. */
 export default function SettingsScreen() {
   const { pref, setPref } = useThemePref();
   const isDark = pref === 'dark';
+  const colors = useColors();
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <GradientHeader paddingBottom={24}>
           <HeaderBack title="Settings" />
@@ -41,7 +43,7 @@ export default function SettingsScreen() {
           <Text
             fontFamily="PlusJakartaSans-Bold"
             fontSize={12}
-            color="#8a98a6"
+            color={colors.textMuted}
             textTransform="uppercase"
             letterSpacing={0.8}
             paddingHorizontal={4}
@@ -55,25 +57,25 @@ export default function SettingsScreen() {
                 width={38}
                 height={38}
                 borderRadius={12}
-                backgroundColor="#e9eff6"
+                backgroundColor={colors.rim}
                 alignItems="center"
                 justifyContent="center"
               >
-                <Ionicons name="moon" size={19} color="#00508F" />
+                <Ionicons name="moon" size={19} color={colors.navy} />
               </View>
               <YStack flex={1}>
-                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14.5} color="#0c1b2a">
+                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14.5} color={colors.text}>
                   Dark mode
                 </Text>
-                <Text fontFamily="PlusJakartaSans-Medium" fontSize={12} color="#6a7888">
+                <Text fontFamily="PlusJakartaSans-Medium" fontSize={12} color={colors.textMuted}>
                   Use a darker colour scheme.
                 </Text>
               </YStack>
               <Switch
                 value={isDark}
                 onValueChange={(next) => setPref(next ? 'dark' : 'light')}
-                trackColor={{ false: '#c3d0de', true: '#50C0D0' }}
-                thumbColor={isDark ? '#00508F' : '#ffffff'}
+                trackColor={{ false: '#c3d0de', true: colors.teal }}
+                thumbColor={isDark ? colors.navy : '#ffffff'}
                 ios_backgroundColor="#c3d0de"
                 accessibilityRole="switch"
                 accessibilityLabel="Dark mode"
@@ -86,7 +88,7 @@ export default function SettingsScreen() {
             <Text
               fontFamily="PlusJakartaSans-Medium"
               fontSize={11.5}
-              color="#8a98a6"
+              color={colors.textMuted}
               marginTop={12}
               lineHeight={16}
             >

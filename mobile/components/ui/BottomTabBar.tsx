@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ClayIconTile } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 
 /** Ionicons glyph name — a typed union so only valid glyphs compile. */
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -35,15 +36,16 @@ const TABS: ReadonlyArray<{ key: TabKey; icon: IconName; label: string; href: st
 export function BottomTabBar({ active }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colors = useColors();
   return (
     <View
       position="absolute"
       bottom={0}
       left={0}
       right={0}
-      backgroundColor="#f2f6fb"
+      backgroundColor={colors.clayRaised}
       borderTopWidth={1}
-      borderTopColor="rgba(255,255,255,0.85)"
+      borderTopColor={colors.rim}
       shadowColor="#012e54"
       shadowOpacity={0.1}
       shadowRadius={24}
@@ -66,11 +68,11 @@ export function BottomTabBar({ active }: Props) {
                 {isActive ? (
                   // Raised clay tile marks the active tab.
                   <ClayIconTile size={38} radius={13}>
-                    <Ionicons name={tab.icon} size={22} color="#00508F" />
+                    <Ionicons name={tab.icon} size={22} color={colors.navy} />
                   </ClayIconTile>
                 ) : (
                   <View width={38} height={38} alignItems="center" justifyContent="center">
-                    <Ionicons name={tab.icon} size={22} color="#9aa7b5" />
+                    <Ionicons name={tab.icon} size={22} color={colors.textFaint} />
                   </View>
                 )}
                 <Text
@@ -78,7 +80,7 @@ export function BottomTabBar({ active }: Props) {
                     isActive ? 'PlusJakartaSans-Bold' : 'PlusJakartaSans-SemiBold'
                   }
                   fontSize={11}
-                  color={isActive ? '#00508F' : '#9aa7b5'}
+                  color={isActive ? colors.navy : colors.textFaint}
                 >
                   {tab.label}
                 </Text>

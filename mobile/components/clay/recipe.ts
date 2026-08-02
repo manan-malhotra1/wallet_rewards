@@ -173,3 +173,97 @@ export function overlayFill(radius: number) {
     borderRadius: radius,
   };
 }
+
+/* ------------------------------------------------------------------------- *
+ * Theme-aware clay tokens (light / dark)
+ *
+ * The statics above ARE the light look and stay byte-identical (screens still
+ * import `claySurface.bg` etc.). The `clayTokens(mode)` bundle below is the
+ * theme-aware surface the clay primitives now consume: it returns the same
+ * shadow/gradient/rim recipe re-tuned per mode. Sign/offset conventions are
+ * preserved across modes — only the colours/opacities change.
+ * ------------------------------------------------------------------------- */
+
+/** The full clay recipe for one theme mode — consumed by the clay primitives. */
+export interface ClayTokens {
+  /** Solid surface fills (base / raised / inset). */
+  surface: { bg: string; raised: string; inset: string };
+  /** INNER shadow pairs per depth variant. */
+  skiaInner: Record<'raised' | 'pressed' | 'inset', { highlight: ClaySkiaShadow; depth: ClaySkiaShadow }>;
+  /** OUTER drop tiers for raised pieces. */
+  skiaDrop: Record<'soft' | 'raised' | 'strong', ClaySkiaShadow>;
+  /** Brand gradients (raw hex stops; 2+ stops). */
+  gradients: {
+    navy: readonly [string, string, ...string[]];
+    teal: readonly [string, string, ...string[]];
+  };
+  /** Hairline rim edges (raised light + recessed shade). */
+  rim: { light: string; shade: string };
+}
+
+/**
+ * DARK inner-shadow pairs. The near-white highlight becomes a faint light sheen
+ * and the navy depth becomes a near-black shadow so the neumorphism reads on a
+ * deep surface. Signs/offsets/blurs mirror the light variant exactly.
+ */
+const darkSkiaInner: ClayTokens['skiaInner'] = {
+  raised: {
+    highlight: { inner: true, dx: 7, dy: 7, blur: 13, color: 'rgba(255,255,255,0.06)' },
+    depth: { inner: true, dx: -7, dy: -7, blur: 15, color: 'rgba(0,0,0,0.55)' },
+  },
+  pressed: {
+    depth: { inner: true, dx: 7, dy: 7, blur: 12, color: 'rgba(0,0,0,0.6)' },
+    highlight: { inner: true, dx: -6, dy: -6, blur: 12, color: 'rgba(255,255,255,0.05)' },
+  },
+  inset: {
+    depth: { inner: true, dx: 8, dy: 8, blur: 14, color: 'rgba(0,0,0,0.6)' },
+    highlight: { inner: true, dx: -6, dy: -6, blur: 12, color: 'rgba(255,255,255,0.05)' },
+  },
+};
+
+/** DARK outer drops — near-black, slightly stronger so raised pieces still lift. */
+const darkSkiaDrop: ClayTokens['skiaDrop'] = {
+  soft: { inner: false, dx: 3, dy: 7, blur: 12, color: 'rgba(0,0,0,0.45)' },
+  raised: { inner: false, dx: 4, dy: 9, blur: 15, color: 'rgba(0,0,0,0.5)' },
+  strong: { inner: false, dx: 0, dy: 11, blur: 16, color: 'rgba(0,0,0,0.55)' },
+};
+
+/** DARK brand gradients — lightened so faces stay legible on the dark base. */
+const darkNavyGradient = ['#2f6f9e', '#0b2540'] as const;
+const darkTealGradient = ['#50c8d6', '#2f9fb0'] as const;
+
+/** Clay surface fills, per mode (mirror of the semantic palette surfaces). */
+const darkSurface = { bg: '#0e1622', raised: '#1b2636', inset: '#0b131f' } as const;
+
+/** LIGHT token bundle — reuses the byte-identical statics above. */
+const lightTokens: ClayTokens = {
+  surface: claySurface,
+  skiaInner: claySkiaInner,
+  skiaDrop: claySkiaDrop,
+  gradients: { navy: navyGradient, teal: tealGradient },
+  rim: { light: clayRimLight, shade: clayRimShade },
+};
+
+/** DARK token bundle. */
+const darkTokens: ClayTokens = {
+  surface: darkSurface,
+  skiaInner: darkSkiaInner,
+  skiaDrop: darkSkiaDrop,
+  gradients: { navy: darkNavyGradient, teal: darkTealGradient },
+  rim: { light: 'rgba(255,255,255,0.06)', shade: 'rgba(0,0,0,0.5)' },
+};
+
+/**
+ * Resolve the full clay recipe for a theme mode.
+ *
+ * Args:
+ *   mode: 'light' | 'dark' — the active theme preference.
+ *
+ * Returns:
+ *   The `ClayTokens` bundle (surface fills, Skia inner/outer shadow specs,
+ *   gradients, rims) for that mode. The light bundle is byte-identical to the
+ *   legacy statics.
+ */
+export function clayTokens(mode: 'light' | 'dark'): ClayTokens {
+  return mode === 'dark' ? darkTokens : lightTokens;
+}

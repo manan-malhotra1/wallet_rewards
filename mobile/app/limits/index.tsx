@@ -19,6 +19,7 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { getMyLimits, type LimitAxis, type LimitWindows, type MyLimits } from '@/lib/api/limits';
 import { qk } from '@/lib/query';
 import { formatMoney } from '@/lib/format';
@@ -48,11 +49,12 @@ function valueFraction(axis: LimitAxis): number | null {
 
 /** Thin clay-inset progress track with a navy fill at `fraction` (0–1). */
 function ProgressBar({ fraction }: { fraction: number }) {
+  const colors = useColors();
   return (
     <View
       height={7}
       borderRadius={4}
-      backgroundColor="#dbe4ee"
+      backgroundColor={colors.clayInset}
       overflow="hidden"
       marginTop={8}
     >
@@ -60,7 +62,7 @@ function ProgressBar({ fraction }: { fraction: number }) {
         height={7}
         borderRadius={4}
         // Near-full bars tint amber as a soft "approaching your limit" cue.
-        backgroundColor={fraction >= 0.85 ? '#c98a00' : '#00508F'}
+        backgroundColor={fraction >= 0.85 ? colors.warning : colors.navy}
         width={`${Math.round(fraction * 100)}%`}
       />
     </View>
@@ -85,6 +87,7 @@ function LimitRow({
   currency: string;
   noBorder: boolean;
 }) {
+  const colors = useColors();
   const fraction = valueFraction(axis);
   const consumed = formatMoney(axis.consumed_value, currency);
   const capped = axis.cap_value != null;
@@ -99,18 +102,18 @@ function LimitRow({
     <YStack
       paddingVertical={12}
       borderBottomWidth={noBorder ? 0 : 1}
-      borderBottomColor="rgba(1,46,84,0.06)"
+      borderBottomColor={colors.hairline}
     >
       <XStack alignItems="center" justifyContent="space-between">
-        <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color="#0c1b2a">
+        <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.text}>
           {label}
         </Text>
         {capped ? (
-          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#3a4756">
+          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color={colors.textMuted}>
             {consumed} / {formatMoney(axis.cap_value as string, currency)}
           </Text>
         ) : (
-          <Text fontFamily="PlusJakartaSans-Bold" fontSize={12.5} color="#1aa06b">
+          <Text fontFamily="PlusJakartaSans-Bold" fontSize={12.5} color={colors.success}>
             No limit
           </Text>
         )}
@@ -119,11 +122,11 @@ function LimitRow({
       {fraction != null ? <ProgressBar fraction={fraction} /> : null}
 
       <XStack alignItems="center" justifyContent="space-between" marginTop={6}>
-        <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6">
+        <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color={colors.textMuted}>
           {countLine}
         </Text>
         {!capped ? (
-          <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6">
+          <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color={colors.textMuted}>
             {consumed} used
           </Text>
         ) : null}
@@ -142,12 +145,13 @@ function DirectionSection({
   windows: LimitWindows;
   currency: string;
 }) {
+  const colors = useColors();
   return (
     <YStack gap={8}>
       <Text
         fontFamily="PlusJakartaSans-Bold"
         fontSize={12}
-        color="#8a98a6"
+        color={colors.textMuted}
         textTransform="uppercase"
         letterSpacing={0.8}
         paddingHorizontal={4}
@@ -171,9 +175,10 @@ function DirectionSection({
 
 /** All limits for one currency wallet — a heading + Send + Receive sections. */
 function CurrencyBlock({ limits }: { limits: MyLimits }) {
+  const colors = useColors();
   return (
     <YStack gap={16}>
-      <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={16} color="#0c1b2a" paddingHorizontal={4}>
+      <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={16} color={colors.text} paddingHorizontal={4}>
         {limits.currency} wallet
       </Text>
       <DirectionSection title="Send" windows={limits.send} currency={limits.currency} />
@@ -184,6 +189,7 @@ function CurrencyBlock({ limits }: { limits: MyLimits }) {
 
 /** Limits screen. */
 export default function LimitsScreen() {
+  const colors = useColors();
   const { data, isLoading, isError } = useQuery({
     queryKey: qk.limits(),
     queryFn: getMyLimits,
@@ -192,7 +198,7 @@ export default function LimitsScreen() {
   const blocks = data ?? [];
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <GradientHeader paddingBottom={24}>
           <HeaderBack title="Limits" />
@@ -213,19 +219,19 @@ export default function LimitsScreen() {
         >
           {isLoading ? (
             <YStack alignItems="center" paddingVertical={40}>
-              <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#5a6b7b">
+              <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color={colors.textMuted}>
                 Loading your limits…
               </Text>
             </YStack>
           ) : isError ? (
             <YStack alignItems="center" paddingVertical={40}>
-              <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#c0392b">
+              <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color={colors.danger}>
                 Couldn't load your limits. Pull back and try again.
               </Text>
             </YStack>
           ) : blocks.length === 0 ? (
             <YStack alignItems="center" paddingVertical={40}>
-              <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#5a6b7b">
+              <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color={colors.textMuted}>
                 No limits to show yet.
               </Text>
             </YStack>

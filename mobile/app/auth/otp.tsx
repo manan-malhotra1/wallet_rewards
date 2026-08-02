@@ -29,11 +29,13 @@ import { otpSend, otpVerify } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/errors';
 import { getTenantId } from '@/lib/bootstrap';
 import { setRegistrationToken } from '@/lib/storage';
+import { useColors } from '@/lib/colors';
 
 const RESEND_SECONDS = 30;
 
 /** OTP verification screen. */
 export default function OtpScreen() {
+  const colors = useColors();
   const router = useRouter();
   const params = useLocalSearchParams<{ phone?: string }>();
   const phone = typeof params.phone === 'string' ? params.phone : '';
@@ -117,7 +119,7 @@ export default function OtpScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.screenBg }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -130,10 +132,10 @@ export default function OtpScreen() {
           >
             <YStack flex={1} padding="$5" gap="$4">
               <YStack gap="$2" marginTop="$4">
-                <Text fontFamily="Inter-Bold" fontSize={26} color="#0B1726">
+                <Text fontFamily="Inter-Bold" fontSize={26} color={colors.text}>
                   Verify your number
                 </Text>
-                <Text fontFamily="Inter-Regular" fontSize={14} color="#6A7682">
+                <Text fontFamily="Inter-Regular" fontSize={14} color={colors.textMuted}>
                   We sent a 6-digit code to {phone}.
                 </Text>
               </YStack>
@@ -141,12 +143,12 @@ export default function OtpScreen() {
                 <OtpInput onComplete={handleComplete} resetSignal={resetTick} />
               </Animated.View>
               {error ? (
-                <Text fontFamily="Inter-Medium" color="#EF4444" fontSize={13} textAlign="center">
+                <Text fontFamily="Inter-Medium" color={colors.danger} fontSize={13} textAlign="center">
                   {error}
                 </Text>
               ) : null}
               {devHint ? (
-                <Text fontFamily="Inter-Regular" color="#6A7682" fontSize={12} textAlign="center">
+                <Text fontFamily="Inter-Regular" color={colors.textMuted} fontSize={12} textAlign="center">
                   Dev OTP: {devHint}
                 </Text>
               ) : null}
@@ -160,7 +162,7 @@ export default function OtpScreen() {
                   <Text
                     fontFamily="Inter-Medium"
                     fontSize={14}
-                    color={resendIn > 0 ? '#6A7682' : '#144989'}
+                    color={resendIn > 0 ? colors.textMuted : colors.navy}
                   >
                     {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
                   </Text>

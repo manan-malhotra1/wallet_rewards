@@ -33,6 +33,7 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { PhoneInput } from '@/components/forms/PhoneInput';
 import { ClayButton, ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { ApiError } from '@/lib/api/errors';
 import {
   buyAirtime,
@@ -76,6 +77,7 @@ function errorMessage(e: unknown): string {
 
 /** Airtime top-up screen. */
 export default function AirtimeScreen() {
+  const colors = useColors();
   const params = useLocalSearchParams<{ currency?: string }>();
   const currency = typeof params.currency === 'string' && params.currency ? params.currency : 'ZAR';
 
@@ -165,7 +167,7 @@ export default function AirtimeScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -196,7 +198,7 @@ export default function AirtimeScreen() {
 
                 {/* Network selector — plain string chips. */}
                 <YStack gap={8}>
-                  <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12} color="#5a6b7b">
+                  <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12} color={colors.textMuted}>
                     Network
                   </Text>
                   <XStack gap={8} flexWrap="wrap">
@@ -213,14 +215,14 @@ export default function AirtimeScreen() {
                             paddingHorizontal={16}
                             paddingVertical={9}
                             borderRadius={20}
-                            backgroundColor={selected ? '#00508F' : '#e9f1f9'}
+                            backgroundColor={selected ? colors.navy : colors.rim}
                             borderWidth={1.5}
-                            borderColor={selected ? '#00508F' : 'rgba(1,46,84,0.08)'}
+                            borderColor={selected ? colors.navy : colors.hairline}
                           >
                             <Text
                               fontFamily="PlusJakartaSans-Bold"
                               fontSize={13}
-                              color={selected ? '#ffffff' : '#00508F'}
+                              color={selected ? colors.textOnDark : colors.navy}
                             >
                               {n}
                             </Text>
@@ -233,35 +235,35 @@ export default function AirtimeScreen() {
 
                 {/* Amount. */}
                 <YStack gap={8}>
-                  <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12} color="#5a6b7b">
+                  <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12} color={colors.textMuted}>
                     Amount ({currency})
                   </Text>
                   <XStack
                     alignItems="center"
                     gap={8}
                     borderWidth={1.5}
-                    borderColor="rgba(1,46,84,0.08)"
+                    borderColor={colors.hairline}
                     borderRadius={16}
                     paddingHorizontal={14}
                     height={54}
-                    backgroundColor="#e9eff6"
+                    backgroundColor={colors.clayInset}
                   >
-                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color="#94a2b1">
+                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color={colors.textFaint}>
                       {currency}
                     </Text>
-                    <View width={1} height={22} backgroundColor="rgba(1,46,84,0.10)" />
+                    <View width={1} height={22} backgroundColor={colors.hairline} />
                     <TextInput
                       value={amount}
                       onChangeText={handleAmount}
                       keyboardType="decimal-pad"
                       placeholder="0.00"
-                      placeholderTextColor="#9aa7b5"
+                      placeholderTextColor={colors.textFaint}
                       style={{
                         flex: 1,
                         paddingVertical: 8,
                         fontSize: 15,
                         fontFamily: 'PlusJakartaSans-Medium',
-                        color: '#0c1b2a',
+                        color: colors.text,
                       }}
                       accessibilityLabel="Airtime amount"
                     />
@@ -280,12 +282,12 @@ export default function AirtimeScreen() {
                             paddingHorizontal={13}
                             paddingVertical={6}
                             borderRadius={18}
-                            backgroundColor={selected ? '#00508F' : '#eef3fb'}
+                            backgroundColor={selected ? colors.navy : '#eef3fb'}
                           >
                             <Text
                               fontFamily="PlusJakartaSans-Bold"
                               fontSize={12}
-                              color={selected ? '#ffffff' : '#00508F'}
+                              color={selected ? colors.textOnDark : colors.navy}
                             >
                               {currency} {n}
                             </Text>
@@ -328,17 +330,18 @@ export default function AirtimeScreen() {
  * user has something to quote. Error → red callout with the mapped reason.
  */
 function OutcomePanel({ outcome, currency }: { outcome: NonNullable<Outcome>; currency: string }) {
+  const colors = useColors();
   if (outcome.kind === 'success') {
     const { msisdn, amount } = outcome.result;
     return (
       <ClaySurface depth="soft" radius={16} padding={14}>
         <XStack gap={11} alignItems="flex-start">
-          <Ionicons name="checkmark-circle" size={22} color="#0a8a5f" />
+          <Ionicons name="checkmark-circle" size={22} color={colors.success} />
           <YStack flex={1} gap={2}>
-            <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color="#0a8a5f">
+            <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.success}>
               Airtime sent
             </Text>
-            <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color="#3a4756" lineHeight={18}>
+            <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color={colors.text} lineHeight={18}>
               {currency} {parseFloat(amount).toFixed(2)} of airtime is on its way to{' '}
               {maskPhone(msisdn)}.
             </Text>
@@ -353,12 +356,12 @@ function OutcomePanel({ outcome, currency }: { outcome: NonNullable<Outcome>; cu
     return (
       <ClaySurface depth="soft" radius={16} padding={14}>
         <XStack gap={11} alignItems="flex-start">
-          <Ionicons name="time-outline" size={22} color="#c98a00" />
+          <Ionicons name="time-outline" size={22} color={colors.warning} />
           <YStack flex={1} gap={2}>
-            <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color="#c98a00">
+            <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.warning}>
               Processing
             </Text>
-            <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color="#3a4756" lineHeight={18}>
+            <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color={colors.text} lineHeight={18}>
               Your top-up is being confirmed. Reference {ref}. We'll update your wallet once it
               completes.
             </Text>
@@ -378,7 +381,7 @@ function OutcomePanel({ outcome, currency }: { outcome: NonNullable<Outcome>; cu
       gap={11}
       alignItems="flex-start"
     >
-      <Ionicons name="warning" size={20} color="#c0392b" />
+      <Ionicons name="warning" size={20} color={colors.danger} />
       <YStack flex={1}>
         <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color="#a52e22">
           Couldn't buy airtime

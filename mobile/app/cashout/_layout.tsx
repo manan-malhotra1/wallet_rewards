@@ -4,14 +4,17 @@
  */
 import { Stack } from 'expo-router';
 
+import { useColors } from '@/lib/colors';
+
 /** Cash-out (withdraw at agent) flow stack. */
 export default function CashOutLayout() {
+  const colors = useColors();
   return (
     <Stack
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_bottom',
-        contentStyle: { backgroundColor: '#ccd8e8' },
+        contentStyle: { backgroundColor: colors.screenBg },
       }}
     />
   );

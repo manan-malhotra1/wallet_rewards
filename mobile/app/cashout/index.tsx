@@ -30,10 +30,12 @@ import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { PhoneInput } from '@/components/forms/PhoneInput';
 import { ClayButton, ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 
 /** Agent picker screen — step 1 of cash-out. */
 export default function CashOutAgentScreen() {
   const router = useRouter();
+  const colors = useColors();
   const params = useLocalSearchParams<{ currency?: string }>();
   const currency = typeof params.currency === 'string' && params.currency ? params.currency : 'ZAR';
 
@@ -48,7 +50,7 @@ export default function CashOutAgentScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -76,15 +78,15 @@ export default function CashOutAgentScreen() {
                   gap={11}
                   padding={14}
                 >
-                  <Ionicons name="cash-outline" size={20} color="#00508F" />
+                  <Ionicons name="cash-outline" size={20} color={colors.navy} />
                   <YStack flex={1}>
-                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color="#0c1b2a">
+                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.text}>
                       Withdraw with an agent
                     </Text>
                     <Text
                       fontFamily="PlusJakartaSans-Medium"
                       fontSize={12}
-                      color="#5a6b7b"
+                      color={colors.textMuted}
                       marginTop={3}
                       lineHeight={18}
                     >
@@ -96,7 +98,7 @@ export default function CashOutAgentScreen() {
 
                 <YStack gap={7}>
                   <PhoneInput onChange={setPhone} variant="focused" />
-                  <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6">
+                  <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color={colors.textMuted}>
                     This must be a registered Sasai cash-out agent.
                   </Text>
                 </YStack>

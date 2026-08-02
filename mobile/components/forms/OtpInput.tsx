@@ -17,6 +17,8 @@ import {
 } from 'react-native';
 import { XStack, YStack } from 'tamagui';
 
+import { useColors } from '@/lib/colors';
+
 interface Props {
   /** Fires when all 6 digits are populated. */
   onComplete: (otp: string) => void;
@@ -28,6 +30,7 @@ const LENGTH = 6;
 
 /** Six-box OTP entry. Auto-submits when filled. */
 export function OtpInput({ onComplete, resetSignal }: Props) {
+  const colors = useColors();
   const [digits, setDigits] = useState<string[]>(() => Array(LENGTH).fill(''));
   const refs = useRef<Array<TextInput | null>>([]);
 
@@ -97,13 +100,13 @@ export function OtpInput({ onComplete, resetSignal }: Props) {
               width: 46,
               height: 58,
               borderWidth: 1.5,
-              borderColor: d ? '#00508F' : 'rgba(1,46,84,0.10)',
+              borderColor: d ? colors.navy : colors.hairline,
               borderRadius: 16,
               textAlign: 'center',
               fontSize: 24,
               fontFamily: 'PlusJakartaSans-SemiBold',
-              color: '#0c1b2a',
-              backgroundColor: d ? '#f2f6fb' : '#e9eff6',
+              color: colors.text,
+              backgroundColor: d ? colors.clayRaised : colors.clayInset,
             }}
             accessibilityLabel={`OTP digit ${i + 1}`}
           />

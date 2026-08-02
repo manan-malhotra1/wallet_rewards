@@ -22,9 +22,11 @@ import { ApiError, RateLimited } from '@/lib/api/errors';
 import { getTenantId } from '@/lib/bootstrap';
 import { setSessionToken } from '@/lib/storage';
 import { maskPhone } from '@/lib/masking';
+import { useColors } from '@/lib/colors';
 
 /** PIN entry for returning users. */
 export default function PinScreen() {
+  const colors = useColors();
   const router = useRouter();
   const params = useLocalSearchParams<{ phone?: string }>();
   const phone = typeof params.phone === 'string' ? params.phone : '';
@@ -70,12 +72,12 @@ export default function PinScreen() {
 
   if (lockedOut) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.screenBg }}>
         <YStack flex={1} padding={26} gap="$4" alignItems="center" justifyContent="center">
           <Text
             fontFamily="PlusJakartaSans-ExtraBold"
             fontSize={24}
-            color="#0c1b2a"
+            color={colors.text}
             textAlign="center"
           >
             Too many attempts
@@ -83,7 +85,7 @@ export default function PinScreen() {
           <Text
             fontFamily="PlusJakartaSans-Regular"
             fontSize={14}
-            color="#6a7888"
+            color={colors.textMuted}
             textAlign="center"
           >
             For your safety we have temporarily blocked sign-in attempts.
@@ -96,7 +98,7 @@ export default function PinScreen() {
               height={50}
               accessibilityLabel="Use a different number"
             >
-              <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#ffffff" paddingHorizontal={20}>
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.textOnDark} paddingHorizontal={20}>
                 Use a different number
               </Text>
             </ClayButton>
@@ -107,7 +109,7 @@ export default function PinScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.screenBg }} edges={['bottom']}>
       <YStack flex={1}>
         <GradientHeader paddingBottom={32}>
           <View paddingTop={16}>
@@ -120,7 +122,7 @@ export default function PinScreen() {
             <Text
               fontFamily="PlusJakartaSans-ExtraBold"
               fontSize={22}
-              color="#0c1b2a"
+              color={colors.text}
               letterSpacing={-0.4}
             >
               Welcome back
@@ -128,7 +130,7 @@ export default function PinScreen() {
             <Text
               fontFamily="PlusJakartaSans-Regular"
               fontSize={13}
-              color="#6a7888"
+              color={colors.textMuted}
             >
               Enter your PIN for {phone ? maskPhone(phone) : 'your account'}
             </Text>
@@ -148,7 +150,7 @@ export default function PinScreen() {
           {error ? (
             <Text
               fontFamily="PlusJakartaSans-Medium"
-              color="#c0392b"
+              color={colors.danger}
               fontSize={13}
               textAlign="center"
             >
@@ -163,11 +165,11 @@ export default function PinScreen() {
             gap={7}
             paddingBottom={6}
           >
-            <Ionicons name="lock-closed" size={14} color="#8a98a6" />
+            <Ionicons name="lock-closed" size={14} color={colors.textMuted} />
             <Text
               fontFamily="PlusJakartaSans-Medium"
               fontSize={12.5}
-              color="#8a98a6"
+              color={colors.textMuted}
             >
               Secured with 256-bit encryption
             </Text>

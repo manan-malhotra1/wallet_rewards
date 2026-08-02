@@ -12,6 +12,7 @@
 import { Pressable } from 'react-native';
 import { Text, View, XStack } from 'tamagui';
 
+import { useColors } from '@/lib/colors';
 import { formatMoney } from '@/lib/format';
 
 interface CurrencySelectorProps {
@@ -32,12 +33,13 @@ export function CurrencySelector({
   onSelect,
   available,
 }: CurrencySelectorProps) {
+  const colors = useColors();
   const availableText = `${formatMoney(available, selected)} available`;
 
   // Single wallet → no choice to make; keep the original muted hint line.
   if (currencies.length <= 1) {
     return (
-      <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
+      <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color={colors.textMuted}>
         {selected} wallet · {availableText}
       </Text>
     );
@@ -59,12 +61,12 @@ export function CurrencySelector({
               paddingHorizontal={13}
               paddingVertical={6}
               borderRadius={20}
-              backgroundColor={active ? '#00508F' : '#e9f1f9'}
+              backgroundColor={active ? colors.navy : colors.rim}
             >
               <Text
                 fontFamily="PlusJakartaSans-Bold"
                 fontSize={12}
-                color={active ? '#ffffff' : '#00508F'}
+                color={active ? colors.textOnDark : colors.navy}
               >
                 {c}
               </Text>
@@ -75,7 +77,7 @@ export function CurrencySelector({
       <Text
         fontFamily="PlusJakartaSans-SemiBold"
         fontSize={12.5}
-        color="#8a98a6"
+        color={colors.textMuted}
         marginLeft={2}
       >
         · {availableText}

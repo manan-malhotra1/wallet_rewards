@@ -14,8 +14,7 @@
 import { ActivityIndicator, Pressable } from 'react-native';
 import { Text, View } from 'tamagui';
 
-import { ClayShape, useClaySize } from './ClayShape';
-import { claySurface, navyGradient } from './recipe';
+import { ClayShape, useClaySize, useClayTokens } from './ClayShape';
 
 interface ClayButtonProps {
   /** Tap handler. Ignored while `disabled` or `loading`. */
@@ -48,8 +47,10 @@ export function ClayButton({
   const isPrimary = variant === 'primary';
   const inert = disabled || loading;
   const [size, onLayout] = useClaySize();
+  const tokens = useClayTokens();
+  const navyGradient = tokens.gradients.navy;
   // Primary uses the navy gradient (dark base); neutral uses the clay off-white.
-  const fallbackFill = isPrimary ? navyGradient[1] : claySurface.raised;
+  const fallbackFill = isPrimary ? navyGradient[1] : tokens.surface.raised;
   return (
     <Pressable
       onPress={inert ? undefined : onPress}

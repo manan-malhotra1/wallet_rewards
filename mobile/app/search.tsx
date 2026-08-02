@@ -10,18 +10,20 @@ import { Text, View, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
 
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
+import { useColors } from '@/lib/colors';
 
 /** Placeholder for the Search tab. */
 export default function SearchScreen() {
+  const colors = useColors();
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
         <YStack flex={1} alignItems="center" justifyContent="center" gap={12} paddingHorizontal={32}>
-          <Ionicons name="search" size={56} color="#00508F" />
+          <Ionicons name="search" size={56} color={colors.navy} />
           <Text
             fontFamily="PlusJakartaSans-ExtraBold"
             fontSize={22}
-            color="#0c1b2a"
+            color={colors.text}
             textAlign="center"
           >
             Search coming soon
@@ -29,7 +31,7 @@ export default function SearchScreen() {
           <Text
             fontFamily="PlusJakartaSans-Regular"
             fontSize={14}
-            color="#6a7888"
+            color={colors.textMuted}
             textAlign="center"
           >
             Find a contact, a bill, a merchant, or any past payment in

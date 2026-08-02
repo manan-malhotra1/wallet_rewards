@@ -5,6 +5,8 @@
  */
 import { XStack, View, Text, YStack } from 'tamagui';
 
+import { useColors } from '@/lib/colors';
+
 interface Props {
   /** Current step (1-indexed). 1 = recipient, 2 = amount, 3 = PIN. */
   step: 1 | 2 | 3;
@@ -16,6 +18,7 @@ interface Props {
 
 /** Step indicator bar + caption for the P2P flow header. */
 export function StepIndicator({ step, total = 3, caption }: Props) {
+  const colors = useColors();
   return (
     <YStack gap={8} marginTop={18}>
       <XStack gap={6} alignItems="center">
@@ -28,7 +31,7 @@ export function StepIndicator({ step, total = 3, caption }: Props) {
               flex={1}
               height={6}
               borderRadius={4}
-              backgroundColor={done ? '#50C0D0' : 'rgba(255,255,255,0.22)'}
+              backgroundColor={done ? colors.teal : 'rgba(255,255,255,0.22)'}
               // A hairline light top rim gives the active dot a puffy clay edge.
               borderTopWidth={done ? 1 : 0}
               borderTopColor="rgba(255,255,255,0.55)"

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { ClayButton, ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { formatMoney, maskPhone } from '@/lib/format';
 
 /** Format a Date as "DD MMM YYYY · HH:mm". */
@@ -26,18 +27,19 @@ function nowFormatted(): string {
 
 /** Single row in the receipt card. */
 function ReceiptRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  const colors = useColors();
   return (
     <XStack
       justifyContent="space-between"
       paddingVertical={12}
       borderBottomWidth={last ? 0 : 1}
-      borderBottomColor="#e7edf2"
+      borderBottomColor={colors.hairline}
       style={{ borderStyle: 'dashed' }}
     >
-      <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
+      <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color={colors.textMuted}>
         {label}
       </Text>
-      <Text fontFamily="PlusJakartaSans-Bold" fontSize={12.5} color="#0c1b2a">
+      <Text fontFamily="PlusJakartaSans-Bold" fontSize={12.5} color={colors.text}>
         {value}
       </Text>
     </XStack>
@@ -47,6 +49,7 @@ function ReceiptRow({ label, value, last }: { label: string; value: string; last
 /** Cash-in receipt — success. */
 export default function CashInSuccessScreen() {
   const router = useRouter();
+  const colors = useColors();
   const params = useLocalSearchParams<{
     phone?: string;
     amount?: string;
@@ -63,7 +66,7 @@ export default function CashInSuccessScreen() {
   const reference = typeof params.reference === 'string' ? params.reference : '—';
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader variant="success" paddingBottom={38}>
@@ -72,7 +75,7 @@ export default function CashInSuccessScreen() {
                 width={78}
                 height={78}
                 borderRadius={39}
-                backgroundColor="#ffffff"
+                backgroundColor={colors.clayRaised}
                 alignItems="center"
                 justifyContent="center"
                 shadowColor="#000000"
@@ -80,12 +83,12 @@ export default function CashInSuccessScreen() {
                 shadowRadius={30}
                 shadowOffset={{ width: 0, height: 12 }}
               >
-                <Ionicons name="checkmark" size={44} color="#0a8a5f" />
+                <Ionicons name="checkmark" size={44} color={colors.success} />
               </View>
               <Text
                 fontFamily="PlusJakartaSans-ExtraBold"
                 fontSize={20}
-                color="#ffffff"
+                color={colors.textOnDark}
                 marginTop={4}
               >
                 Cash-in successful
@@ -93,7 +96,7 @@ export default function CashInSuccessScreen() {
               <Text
                 fontFamily="PlusJakartaSans-ExtraBold"
                 fontSize={33}
-                color="#ffffff"
+                color={colors.textOnDark}
                 letterSpacing={-0.5}
               >
                 {formatMoney(amount, currency)}
@@ -127,8 +130,8 @@ export default function CashInSuccessScreen() {
 
           {/* Reassurance line — the agent has topped up the customer's wallet. */}
           <XStack alignItems="center" justifyContent="center" gap={7} marginTop={14}>
-            <Ionicons name="wallet-outline" size={15} color="#0a8a5f" />
-            <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#0a8a5f">
+            <Ionicons name="wallet-outline" size={15} color={colors.success} />
+            <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color={colors.success}>
               The customer&apos;s wallet has been topped up
             </Text>
           </XStack>
@@ -144,8 +147,8 @@ export default function CashInSuccessScreen() {
                 accessibilityLabel="Share receipt"
               >
                 <XStack alignItems="center" gap={7}>
-                  <Ionicons name="share-outline" size={17} color="#00508F" />
-                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#00508F">
+                  <Ionicons name="share-outline" size={17} color={colors.navy} />
+                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.navy}>
                     Share
                   </Text>
                 </XStack>

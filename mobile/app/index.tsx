@@ -10,13 +10,15 @@ import { Redirect } from 'expo-router';
 import { View } from 'tamagui';
 
 import { useSession } from '@/lib/auth';
+import { useColors } from '@/lib/colors';
 
 /** Auth-gated launch redirect. */
 export default function Index() {
+  const colors = useColors();
   const { loading, signedIn } = useSession();
   if (loading) {
     // Render nothing until we know — splash already covers this.
-    return <View flex={1} backgroundColor="#ccd8e8" />;
+    return <View flex={1} backgroundColor={colors.screenBg} />;
   }
   return signedIn ? <Redirect href="/home" /> : <Redirect href="/auth/phone" />;
 }

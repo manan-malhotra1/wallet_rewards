@@ -29,9 +29,11 @@ import { authStart, otpSend } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/errors';
 import { getTenantId } from '@/lib/bootstrap';
 import { setLastPhone } from '@/lib/storage';
+import { useColors } from '@/lib/colors';
 
 /** Phone entry — entry point of the auth flow. */
 export default function PhoneScreen() {
+  const colors = useColors();
   const router = useRouter();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -66,9 +68,9 @@ export default function PhoneScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.screenBg }} edges={['bottom']}>
       <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: '#ccd8e8' }}
+        style={{ flex: 1, backgroundColor: colors.screenBg }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -89,7 +91,7 @@ export default function PhoneScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-ExtraBold"
                   fontSize={25}
-                  color="#0c1b2a"
+                  color={colors.text}
                   letterSpacing={-0.5}
                 >
                   Welcome back
@@ -97,7 +99,7 @@ export default function PhoneScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-Regular"
                   fontSize={14}
-                  color="#6a7888"
+                  color={colors.textMuted}
                 >
                   Sign in to continue to your wallet
                 </Text>
@@ -110,7 +112,7 @@ export default function PhoneScreen() {
               {error ? (
                 <Text
                   fontFamily="PlusJakartaSans-Medium"
-                  color="#c0392b"
+                  color={colors.danger}
                   fontSize={13}
                 >
                   {error}
@@ -132,14 +134,14 @@ export default function PhoneScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-Regular"
                   fontSize={13}
-                  color="#6a7888"
+                  color={colors.textMuted}
                 >
                   New to Sasai?{' '}
                 </Text>
                 <Text
                   fontFamily="PlusJakartaSans-Bold"
                   fontSize={13}
-                  color="#00508F"
+                  color={colors.navy}
                 >
                   Create account
                 </Text>

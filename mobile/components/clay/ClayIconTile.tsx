@@ -11,8 +11,7 @@
 import { Pressable } from 'react-native';
 import { View } from 'tamagui';
 
-import { ClayShape, useClaySize } from './ClayShape';
-import { claySurface } from './recipe';
+import { ClayShape, useClayTokens } from './ClayShape';
 
 interface ClayIconTileProps {
   onPress?: () => void;
@@ -66,13 +65,16 @@ export function ClayIconTile({
   onPress,
   size = 54,
   radius = 18,
-  fill = claySurface.raised,
+  fill,
   accessibilityLabel,
   children,
 }: ClayIconTileProps) {
+  const tokens = useClayTokens();
+  // Default to the active mode's raised fill; an explicit `fill` prop wins.
+  const tileFill = fill ?? tokens.surface.raised;
   if (!onPress) {
     return (
-      <TileFace size={size} radius={radius} fill={fill} pressed={false}>
+      <TileFace size={size} radius={radius} fill={tileFill} pressed={false}>
         {children}
       </TileFace>
     );
@@ -84,7 +86,7 @@ export function ClayIconTile({
       accessibilityLabel={accessibilityLabel}
     >
       {({ pressed }) => (
-        <TileFace size={size} radius={radius} fill={fill} pressed={pressed}>
+        <TileFace size={size} radius={radius} fill={tileFill} pressed={pressed}>
           {children}
         </TileFace>
       )}

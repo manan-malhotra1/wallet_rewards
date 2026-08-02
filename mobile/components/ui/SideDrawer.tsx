@@ -22,6 +22,7 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
 
 import { SasaiPayLogo } from '@/components/brand/SasaiPayLogo';
+import { useColors } from '@/lib/colors';
 import { maskPhone } from '@/lib/format';
 
 /** Ionicons glyph name — a typed union so only valid glyphs compile. */
@@ -58,6 +59,7 @@ export function SideDrawer({
 }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const colors = useColors();
   const x = useRef(new Animated.Value(-PANEL_WIDTH)).current;
   const dim = useRef(new Animated.Value(0)).current;
 
@@ -131,7 +133,7 @@ export function SideDrawer({
       >
         <View
           flex={1}
-          backgroundColor="#eef3f9"
+          backgroundColor={colors.clayRaised}
           paddingTop={insets.top + 12}
           paddingBottom={insets.bottom + 12}
           paddingHorizontal={20}
@@ -145,14 +147,14 @@ export function SideDrawer({
               width={56}
               height={56}
               borderRadius={28}
-              backgroundColor="#50C0D0"
+              backgroundColor={colors.teal}
               alignItems="center"
               justifyContent="center"
             >
               <Text
                 fontFamily="PlusJakartaSans-Bold"
                 fontSize={20}
-                color="#013a6b"
+                color={colors.navyDeep}
               >
                 {initials}
               </Text>
@@ -160,7 +162,7 @@ export function SideDrawer({
             <Text
               fontFamily="PlusJakartaSans-ExtraBold"
               fontSize={18}
-              color="#0c1b2a"
+              color={colors.text}
               marginTop={10}
             >
               {name || 'Sasai user'}
@@ -168,7 +170,7 @@ export function SideDrawer({
             <Text
               fontFamily="PlusJakartaSans-Medium"
               fontSize={13}
-              color="#6a7888"
+              color={colors.textMuted}
             >
               {phone ? maskPhone(phone) : '—'}
             </Text>
@@ -207,11 +209,11 @@ export function SideDrawer({
                   gap={12}
                   opacity={item.disabled ? 0.45 : 1}
                 >
-                  <Ionicons name={item.icon} size={20} color="#013a6b" />
+                  <Ionicons name={item.icon} size={20} color={colors.text} />
                   <Text
                     fontFamily="PlusJakartaSans-SemiBold"
                     fontSize={14.5}
-                    color="#0c1b2a"
+                    color={colors.text}
                   >
                     {item.label}
                   </Text>
@@ -236,13 +238,13 @@ export function SideDrawer({
               paddingVertical={12}
               paddingHorizontal={4}
               borderTopWidth={1}
-              borderTopColor="rgba(1,46,84,0.08)"
+              borderTopColor={colors.hairline}
             >
-              <Ionicons name="log-out-outline" size={20} color="#c0392b" />
+              <Ionicons name="log-out-outline" size={20} color={colors.danger} />
               <Text
                 fontFamily="PlusJakartaSans-Bold"
                 fontSize={14.5}
-                color="#c0392b"
+                color={colors.danger}
               >
                 {signingOut ? 'Signing out…' : 'Sign out'}
               </Text>

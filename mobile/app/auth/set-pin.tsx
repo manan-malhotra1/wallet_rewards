@@ -26,11 +26,13 @@ import {
   getRegistrationToken,
   setSessionToken,
 } from '@/lib/storage';
+import { useColors } from '@/lib/colors';
 
 type Step = 'enter' | 'confirm';
 
 /** PIN creation screen. */
 export default function SetPinScreen() {
+  const colors = useColors();
   const router = useRouter();
   const params = useLocalSearchParams<{ phone?: string }>();
   const phone = typeof params.phone === 'string' ? params.phone : '';
@@ -87,9 +89,9 @@ export default function SetPinScreen() {
 
   if (submitting) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.screenBg }}>
         <YStack flex={1} alignItems="center" justifyContent="center" gap="$3">
-          <ActivityIndicator size="large" color="#144989" />
+          <ActivityIndicator size="large" color={colors.navy} />
           <Text fontFamily="Inter-Medium" color="$muted">
             Setting up your wallet…
           </Text>
@@ -99,7 +101,7 @@ export default function SetPinScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#ccd8e8' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.screenBg }}>
       <YStack flex={1} padding="$5" gap="$5">
         <YStack gap="$2" marginTop="$4">
           <Text fontFamily="Inter-Bold" fontSize={26} color="$ink">

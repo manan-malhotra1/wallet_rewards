@@ -9,6 +9,8 @@ import { Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Text, View, XStack } from 'tamagui';
 
+import { useColors } from '@/lib/colors';
+
 interface Props {
   title: string;
   /** Override what the back button does. Defaults to router.back(). */
@@ -17,6 +19,7 @@ interface Props {
 
 /** Back chip + screen title row for gradient-header screens. */
 export function HeaderBack({ title, onBack }: Props) {
+  const colors = useColors();
   const router = useRouter();
   function handleBack() {
     if (onBack) return onBack();
@@ -38,12 +41,12 @@ export function HeaderBack({ title, onBack }: Props) {
           alignItems="center"
           justifyContent="center"
         >
-          <Text fontSize={18} color="#ffffff">
+          <Text fontSize={18} color={colors.textOnDark}>
             ‹
           </Text>
         </View>
       </Pressable>
-      <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={18} color="#ffffff">
+      <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={18} color={colors.textOnDark}>
         {title}
       </Text>
     </XStack>

@@ -4,14 +4,17 @@
  */
 import { Stack } from 'expo-router';
 
+import { useColors } from '@/lib/colors';
+
 /** Cash-in (agent funds a customer) flow stack. */
 export default function CashInLayout() {
+  const colors = useColors();
   return (
     <Stack
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_bottom',
-        contentStyle: { backgroundColor: '#ccd8e8' },
+        contentStyle: { backgroundColor: colors.screenBg },
       }}
     />
   );

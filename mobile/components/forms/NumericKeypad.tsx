@@ -8,6 +8,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ClayKey, clay } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 
 interface Props {
   /** Fires with one of: '0'..'9', '.', 'back'. */
@@ -25,6 +26,7 @@ const ROWS: ReadonlyArray<ReadonlyArray<'0' | '1' | '2' | '3' | '4' | '5' | '6' 
 
 /** Clay numeric keypad with optional decimal point and a backspace. */
 export function NumericKeypad({ onPress, decimalsAllowed = true }: Props) {
+  const colors = useColors();
   return (
     <YStack
       backgroundColor={clay.claySurface.bg}
@@ -53,12 +55,12 @@ export function NumericKeypad({ onPress, decimalsAllowed = true }: Props) {
                 accessibilityLabel={isBack ? 'Delete' : `Key ${k}`}
               >
                 {isBack ? (
-                  <Ionicons name="backspace-outline" size={24} color="#5a6b7b" />
+                  <Ionicons name="backspace-outline" size={24} color={colors.textMuted} />
                 ) : (
                   <Text
                     fontFamily="PlusJakartaSans-SemiBold"
                     fontSize={24}
-                    color="#0c1b2a"
+                    color={colors.text}
                   >
                     {k}
                   </Text>

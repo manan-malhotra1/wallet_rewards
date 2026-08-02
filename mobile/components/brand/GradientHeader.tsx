@@ -16,8 +16,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View } from 'tamagui';
 
+import { useColors } from '@/lib/colors';
+
 type Variant = 'navy' | 'success' | 'failed';
 
+// Status-receipt gradients keep their authored hues (no clean semantic token
+// maps to these darker green/red stops); only the navy variant is theme-driven.
 const STOPS: Record<Variant, readonly [string, string]> = {
   navy: ['#00538f', '#013a6b'],
   success: ['#0a8a5f', '#067a52'],
@@ -44,9 +48,14 @@ export function GradientHeader({
   hideSwoosh = false,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const colors = useColors();
+  // The navy hero is theme-aware (dark mode darkens the gradient); status
+  // variants stay fixed. navyDeep matches the authored `#013a6b` end stop.
+  const stops: readonly [string, string] =
+    variant === 'navy' ? [colors.navy, colors.navyDeep] : STOPS[variant];
   return (
     <LinearGradient
-      colors={STOPS[variant]}
+      colors={stops}
       start={{ x: 0, y: 0 }}
       end={{ x: 0.55, y: 1 }}
       style={{

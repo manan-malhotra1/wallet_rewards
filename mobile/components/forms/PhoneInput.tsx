@@ -11,6 +11,8 @@ import { useMemo, useState } from 'react';
 import { Pressable, TextInput } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
+import { useColors } from '@/lib/colors';
+
 /**
  * Country options. Order = display order in the picker, and the first
  * entry is the default selection — South Africa (+27) leads so the input
@@ -46,6 +48,7 @@ export function PhoneInput({
   initialNational = '',
   variant = 'default',
 }: Props) {
+  const colors = useColors();
   const [country, setCountry] = useState<Country>(COUNTRIES[0]);
   const [national, setNational] = useState(initialNational);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -76,7 +79,7 @@ export function PhoneInput({
       <Text
         fontFamily="PlusJakartaSans-SemiBold"
         fontSize={12}
-        color="#5a6b7b"
+        color={colors.textMuted}
       >
         Mobile number
       </Text>
@@ -84,11 +87,11 @@ export function PhoneInput({
         alignItems="center"
         gap={10}
         borderWidth={1.5}
-        borderColor={focused ? '#00508F' : 'rgba(1,46,84,0.08)'}
+        borderColor={focused ? colors.navy : colors.hairline}
         borderRadius={16}
         paddingHorizontal={14}
         height={54}
-        backgroundColor={focused ? '#f2f6fb' : '#e9eff6'}
+        backgroundColor={focused ? colors.clayRaised : colors.clayInset}
         shadowColor={focused ? '#012e54' : 'transparent'}
         shadowOpacity={focused ? 0.16 : 0}
         shadowRadius={focused ? 18 : 0}
@@ -105,25 +108,25 @@ export function PhoneInput({
             <Text
               fontFamily="PlusJakartaSans-Bold"
               fontSize={15}
-              color="#0c1b2a"
+              color={colors.text}
             >
               {country.dial}
             </Text>
           </XStack>
         </Pressable>
-        <View width={1} height={22} backgroundColor="rgba(1,46,84,0.10)" />
+        <View width={1} height={22} backgroundColor={colors.hairline} />
         <TextInput
           value={national}
           onChangeText={handleNationalChange}
           keyboardType="number-pad"
           placeholder="77 412 8890"
-          placeholderTextColor="#9aa7b5"
+          placeholderTextColor={colors.textFaint}
           style={{
             flex: 1,
             paddingVertical: 8,
             fontSize: 15,
             fontFamily: 'PlusJakartaSans-Medium',
-            color: '#0c1b2a',
+            color: colors.text,
           }}
           accessibilityLabel="Phone number"
           maxLength={14}
@@ -135,7 +138,7 @@ export function PhoneInput({
           borderWidth={1}
           borderColor="rgba(255,255,255,0.85)"
           borderRadius={18}
-          backgroundColor="#f2f6fb"
+          backgroundColor={colors.clayRaised}
           overflow="hidden"
           shadowColor="#012e54"
           shadowOpacity={0.16}
@@ -155,14 +158,14 @@ export function PhoneInput({
                 gap={10}
                 alignItems="center"
                 backgroundColor={
-                  c.code === country.code ? '#e3ecf5' : 'transparent'
+                  c.code === country.code ? colors.clayInset : 'transparent'
                 }
               >
                 <Text fontSize={18}>{c.flag}</Text>
                 <Text
                   fontFamily="PlusJakartaSans-Bold"
                   fontSize={14}
-                  color="#0c1b2a"
+                  color={colors.text}
                   minWidth={48}
                 >
                   {c.dial}
@@ -170,7 +173,7 @@ export function PhoneInput({
                 <Text
                   fontFamily="PlusJakartaSans-Medium"
                   fontSize={14}
-                  color="#0c1b2a"
+                  color={colors.text}
                 >
                   {c.label}
                 </Text>

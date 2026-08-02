@@ -12,6 +12,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ClayIconTile } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 
 /** Ionicons glyph name — a typed union so only valid glyphs compile. */
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -61,6 +62,7 @@ export function ActivityRow({
   positive,
   noBorder = false,
 }: Props) {
+  const colors = useColors();
   const tile = TILE[category];
   const isPositive =
     positive ?? (category === 'received' || category === 'reward' || category === 'referral');
@@ -70,20 +72,20 @@ export function ActivityRow({
       gap={12}
       paddingVertical={13}
       borderBottomWidth={noBorder ? 0 : 1}
-      borderBottomColor="rgba(1,46,84,0.06)"
+      borderBottomColor={colors.hairline}
     >
       <ClayIconTile size={42} radius={14} fill={tile.bg}>
         <Ionicons name={tile.icon} size={19} color={tile.color} />
       </ClayIconTile>
       <YStack flex={1} gap={2}>
-        <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a" numberOfLines={1}>
+        <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.text} numberOfLines={1}>
           {title}
         </Text>
-        <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6" numberOfLines={1}>
+        <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color={colors.textMuted} numberOfLines={1}>
           {subtitle}
         </Text>
         {meta ? (
-          <Text fontFamily="PlusJakartaSans-Medium" fontSize={11} color="#9aa7b5" numberOfLines={1}>
+          <Text fontFamily="PlusJakartaSans-Medium" fontSize={11} color={colors.textFaint} numberOfLines={1}>
             {meta}
           </Text>
         ) : null}
@@ -92,12 +94,12 @@ export function ActivityRow({
         <Text
           fontFamily="PlusJakartaSans-ExtraBold"
           fontSize={14}
-          color={isPositive ? '#1aa06b' : '#0c1b2a'}
+          color={isPositive ? colors.success : colors.text}
         >
           {amount}
         </Text>
         {subAmount ? (
-          <Text fontFamily="PlusJakartaSans-Medium" fontSize={10.5} color="#9aa7b5">
+          <Text fontFamily="PlusJakartaSans-Medium" fontSize={10.5} color={colors.textFaint}>
             {subAmount}
           </Text>
         ) : null}

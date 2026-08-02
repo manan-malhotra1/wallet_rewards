@@ -19,6 +19,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ClayKey } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 
 interface Props {
   value: string;
@@ -30,7 +31,7 @@ interface Props {
   label?: string;
   /** Renders pips in error tint to signal a failed attempt. */
   errored?: boolean;
-  /** Color tint for filled pips. Defaults to Sasai primary navy. */
+  /** Color tint for filled pips. Defaults to the theme's brand navy. */
   pipColor?: string;
   /** Side icon on the bottom-left of the keypad (e.g., biometric). */
   bottomLeftIcon?: string;
@@ -63,10 +64,14 @@ export function PinInput({
   length = 4,
   label,
   errored = false,
-  pipColor = '#00508F',
+  pipColor,
   bottomLeftIcon,
   onBottomLeftPress,
 }: Props) {
+  const colors = useColors();
+  // Resolve the filled-pip tint from the theme so it stays legible in both
+  // light and dark; callers may still override with an explicit `pipColor`.
+  const filledPipColor = pipColor ?? colors.navy;
   function press(key: Exclude<KeypadKey, 'side'>) {
     if (key === 'back') {
       if (value.length === 0) return;
@@ -82,7 +87,7 @@ export function PinInput({
   return (
     <YStack alignItems="center" gap={22}>
       {label ? (
-        <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a">
+        <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.text}>
           {label}
         </Text>
       ) : null}
@@ -98,10 +103,10 @@ export function PinInput({
                 height: 14,
                 borderRadius: 7,
                 backgroundColor: errored
-                  ? '#c0392b'
+                  ? colors.danger
                   : filled
-                    ? pipColor
-                    : '#cfd9e3',
+                    ? filledPipColor
+                    : colors.textFaint,
               }}
             />
           );
@@ -144,7 +149,7 @@ export function PinInput({
                     }
                   >
                     {isBack ? (
-                      <Ionicons name="backspace-outline" size={24} color="#5a6b7b" />
+                      <Ionicons name="backspace-outline" size={24} color={colors.textMuted} />
                     ) : (
                       <Text
                         fontFamily={
@@ -153,7 +158,7 @@ export function PinInput({
                             : 'PlusJakartaSans-SemiBold'
                         }
                         fontSize={isSide ? 22 : 26}
-                        color={isSide ? '#5a6b7b' : '#0c1b2a'}
+                        color={isSide ? colors.textMuted : colors.text}
                       >
                         {label}
                       </Text>

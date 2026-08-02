@@ -11,8 +11,7 @@
 import { Pressable } from 'react-native';
 import { View } from 'tamagui';
 
-import { ClayShape, useClaySize } from './ClayShape';
-import { claySurface } from './recipe';
+import { ClayShape, useClaySize, useClayTokens } from './ClayShape';
 
 interface ClayKeyProps {
   onPress?: () => void;
@@ -42,6 +41,8 @@ export function ClayKey({
 }: ClayKeyProps) {
   const inert = disabled || hidden;
   const [size, onLayout] = useClaySize();
+  const tokens = useClayTokens();
+  const keyFill = tokens.surface.raised;
   return (
     <Pressable
       onPress={inert ? undefined : onPress}
@@ -58,7 +59,7 @@ export function ClayKey({
           borderRadius={radius}
           alignItems="center"
           justifyContent="center"
-          backgroundColor={size ? 'transparent' : claySurface.raised}
+          backgroundColor={size ? 'transparent' : keyFill}
           style={{ transform: [{ translateY: pressed ? 1 : 0 }] }}
         >
           {size ? (
@@ -66,7 +67,7 @@ export function ClayKey({
               width={size.w}
               height={size.h}
               radius={radius}
-              fill={claySurface.raised}
+              fill={keyFill}
               variant={pressed ? 'pressed' : 'raised'}
               drop="soft"
             />

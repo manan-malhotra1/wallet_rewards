@@ -29,6 +29,7 @@ import {
 } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
 import { formatMoney } from '@/lib/format';
+import { useColors } from '@/lib/colors';
 
 type Filter = 'all' | 'sent' | 'received' | 'bills';
 
@@ -99,10 +100,11 @@ interface ChipProps {
 }
 
 function FilterChip({ label, active, onPress }: ChipProps) {
+  const colors = useColors();
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
       <View
-        backgroundColor={active ? '#ffffff' : 'rgba(255,255,255,0.14)'}
+        backgroundColor={active ? colors.clayRaised : 'rgba(255,255,255,0.14)'}
         paddingHorizontal={14}
         paddingVertical={6}
         borderRadius={20}
@@ -110,7 +112,7 @@ function FilterChip({ label, active, onPress }: ChipProps) {
         <Text
           fontFamily={active ? 'PlusJakartaSans-Bold' : 'PlusJakartaSans-SemiBold'}
           fontSize={12}
-          color={active ? '#00508F' : '#ffffff'}
+          color={active ? colors.navy : colors.textOnDark}
         >
           {label}
         </Text>
@@ -121,6 +123,7 @@ function FilterChip({ label, active, onPress }: ChipProps) {
 
 /** Transactions list screen. */
 export default function TransactionsScreen() {
+  const colors = useColors();
   const [filter, setFilter] = useState<Filter>('all');
   // Which wallet currency the list + money strip are scoped to. Null until the
   // user taps a chip; the effective `currency` below then falls back to ZAR (or
@@ -185,13 +188,13 @@ export default function TransactionsScreen() {
   }, [filtered]);
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <GradientHeader paddingBottom={22}>
           <Text
             fontFamily="PlusJakartaSans-ExtraBold"
             fontSize={22}
-            color="#ffffff"
+            color={colors.textOnDark}
             marginTop={6}
           >
             Transactions
@@ -224,7 +227,7 @@ export default function TransactionsScreen() {
               alignItems="center"
               justifyContent="center"
             >
-              <Ionicons name="options-outline" size={20} color="#ffffff" />
+              <Ionicons name="options-outline" size={20} color={colors.textOnDark} />
             </View>
           </XStack>
           <XStack gap={8} marginTop={14}>
@@ -258,18 +261,18 @@ export default function TransactionsScreen() {
           {/* Summary strip — money in vs out, computed from real data. */}
           <XStack gap={12} paddingHorizontal={18} paddingTop={16}>
             <ClaySurface depth="soft" radius={16} flex={1} padding={13}>
-              <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
+              <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color={colors.textMuted}>
                 Money in
               </Text>
-              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color="#1aa06b" marginTop={3}>
+              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color={colors.success} marginTop={3}>
                 +{formatMoney(moneyIn, currency)}
               </Text>
             </ClaySurface>
             <ClaySurface depth="soft" radius={16} flex={1} padding={13}>
-              <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
+              <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color={colors.textMuted}>
                 Money out
               </Text>
-              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color="#c0392b" marginTop={3}>
+              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={17} color={colors.danger} marginTop={3}>
                 −{formatMoney(moneyOut, currency)}
               </Text>
             </ClaySurface>
@@ -277,7 +280,7 @@ export default function TransactionsScreen() {
 
           {groups.length === 0 ? (
             <YStack alignItems="center" paddingVertical={40}>
-              <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#8a98a6">
+              <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color={colors.textMuted}>
                 {filter === 'all'
                   ? 'No activity yet.'
                   : `No ${filter} transactions yet.`}
@@ -289,7 +292,7 @@ export default function TransactionsScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-Bold"
                   fontSize={12}
-                  color="#8a98a6"
+                  color={colors.textMuted}
                   textTransform="uppercase"
                   letterSpacing={0.8}
                   paddingHorizontal={22}

@@ -25,6 +25,7 @@ import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
 import { CurrencySelector } from '@/components/forms/CurrencySelector';
 import { ClayButton, ClayInset, ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { StepUpRequired } from '@/lib/api/errors';
 import { cashIn, cashInFailureReason, newCashInIdempotencyKey } from '@/lib/api/cashin';
 import { getMyWallet } from '@/lib/api/wallet';
@@ -49,6 +50,7 @@ function splitAmount(amount: string): { whole: string; cents: string } {
 /** Amount entry screen — step 2 of cash-in. */
 export default function CashInAmountScreen() {
   const router = useRouter();
+  const colors = useColors();
   const qc = useQueryClient();
   const params = useLocalSearchParams<{ phone?: string; currency?: string }>();
   const customerPhone = typeof params.phone === 'string' ? params.phone : '';
@@ -160,7 +162,7 @@ export default function CashInAmountScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader paddingBottom={22}>
@@ -192,10 +194,10 @@ export default function CashInAmountScreen() {
               </Text>
             </View>
             <YStack flex={1} gap={2}>
-              <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color="#0c1b2a">
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.text}>
                 {maskPhone(customerPhone)}
               </Text>
-              <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6">
+              <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color={colors.textMuted}>
                 Customer
               </Text>
             </YStack>
@@ -206,8 +208,8 @@ export default function CashInAmountScreen() {
               borderRadius={20}
             >
               <XStack alignItems="center" gap={4}>
-                <Ionicons name="person-outline" size={13} color="#00508F" />
-                <Text fontFamily="PlusJakartaSans-Bold" fontSize={11.5} color="#00508F">
+                <Ionicons name="person-outline" size={13} color={colors.navy} />
+                <Text fontFamily="PlusJakartaSans-Bold" fontSize={11.5} color={colors.navy}>
                   Customer
                 </Text>
               </XStack>
@@ -233,7 +235,7 @@ export default function CashInAmountScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-Bold"
                   fontSize={26}
-                  color="#94a2b1"
+                  color={colors.textFaint}
                   marginTop={8}
                 >
                   {sym.trim()}
@@ -241,12 +243,12 @@ export default function CashInAmountScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-ExtraBold"
                   fontSize={56}
-                  color="#0c1b2a"
+                  color={colors.text}
                   lineHeight={56}
                   letterSpacing={-1}
                 >
                   {display.whole}
-                  <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={56} color="#cfd9e3">
+                  <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={56} color={colors.textFaint}>
                     {display.cents}
                   </Text>
                 </Text>
@@ -255,7 +257,7 @@ export default function CashInAmountScreen() {
             <Text
               fontFamily="PlusJakartaSans-Medium"
               fontSize={12}
-              color="#8a98a6"
+              color={colors.textMuted}
               marginTop={16}
               textAlign="center"
             >
@@ -264,7 +266,7 @@ export default function CashInAmountScreen() {
             {overdrawn ? (
               <Text
                 fontFamily="PlusJakartaSans-Bold"
-                color="#c0392b"
+                color={colors.danger}
                 fontSize={12.5}
                 marginTop={8}
               >
@@ -274,7 +276,7 @@ export default function CashInAmountScreen() {
           </YStack>
 
           <NumericKeypad onPress={handleKey} />
-          <View backgroundColor="#ccd8e8" paddingHorizontal={18} paddingBottom={18} paddingTop={4}>
+          <View backgroundColor={colors.screenBg} paddingHorizontal={18} paddingBottom={18} paddingTop={4}>
             <ClayButton
               onPress={onContinue}
               disabled={!canContinue}

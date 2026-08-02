@@ -10,8 +10,8 @@
 import { ComponentProps } from 'react';
 import { View } from 'tamagui';
 
-import { ClayShape, useClaySize } from './ClayShape';
-import { clayRadius, claySurface } from './recipe';
+import { ClayShape, useClaySize, useClayTokens } from './ClayShape';
+import { clayRadius } from './recipe';
 
 interface ClayInsetProps extends ComponentProps<typeof View> {
   radius?: number;
@@ -22,17 +22,20 @@ interface ClayInsetProps extends ComponentProps<typeof View> {
 /** Recessed clay surface. */
 export function ClayInset({
   radius = clayRadius.md,
-  fill = claySurface.inset,
+  fill,
   children,
   style,
   ...rest
 }: ClayInsetProps) {
   const [size, onLayout] = useClaySize();
+  const tokens = useClayTokens();
+  // Default to the active mode's inset fill; an explicit `fill` prop wins.
+  const surfaceFill = fill ?? tokens.surface.inset;
   return (
     <View
       onLayout={onLayout}
       borderRadius={radius}
-      backgroundColor={size ? 'transparent' : fill}
+      backgroundColor={size ? 'transparent' : surfaceFill}
       style={style}
       {...rest}
     >
@@ -41,7 +44,7 @@ export function ClayInset({
           width={size.w}
           height={size.h}
           radius={radius}
-          fill={fill}
+          fill={surfaceFill}
           variant="inset"
         />
       ) : null}

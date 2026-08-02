@@ -28,12 +28,30 @@ import { useCallback, useState } from 'react';
 import { type LayoutChangeEvent, View } from 'react-native';
 import { Box, BoxShadow, Canvas, LinearGradient, rect, rrect, vec } from '@shopify/react-native-skia';
 
+import { useThemePref } from '@/lib/theme';
+
 import {
   CLAY_SHADOW_PAD as PAD,
-  claySkiaDrop,
-  claySkiaInner,
+  clayTokens,
   type ClaySkiaShadow,
+  type ClayTokens,
 } from './recipe';
+
+/**
+ * Resolve the full clay recipe (surface fills, inner/outer Skia shadows,
+ * gradients, rims) for the active theme preference.
+ *
+ * The shared hook every clay primitive calls to become theme-aware: it reads
+ * `useThemePref().pref` and returns the matching `clayTokens(mode)` bundle. Raw
+ * hex/rgba values, safe to hand straight to Skia.
+ *
+ * Returns:
+ *   The `ClayTokens` for the current mode (`light` by default).
+ */
+export function useClayTokens(): ClayTokens {
+  const { pref } = useThemePref();
+  return clayTokens(pref);
+}
 
 /** Measured pixel size of a laid-out primitive. */
 export interface ClaySize {
@@ -115,12 +133,16 @@ export function ClayShape({
   drop = 'raised',
   gradient,
 }: ClayShapeProps) {
+  // Resolve the active mode's shadow specs (hook must run before any early
+  // return to satisfy the rules of hooks). `fill`/`gradient` are still supplied
+  // by the primitive so each owns its own surface colour.
+  const tokens = useClayTokens();
   if (width <= 0 || height <= 0) return null;
 
   // Draw the box inset by PAD inside an oversized canvas so the outer drop
   // shadow has room and isn't clipped by the canvas bounds.
   const box = rrect(rect(PAD, PAD, width, height), radius, radius);
-  const inner = claySkiaInner[variant];
+  const inner = tokens.skiaInner[variant];
   // Only raised pieces lift; pressed/inset never carry an outer drop.
   const showOuter = variant === 'raised' && outer !== false;
 
@@ -153,7 +175,7 @@ export function ClayShape({
               colors={[...gradient]}
             />
           ) : null}
-          {showOuter ? shadow(claySkiaDrop[drop], 'drop') : null}
+          {showOuter ? shadow(tokens.skiaDrop[drop], 'drop') : null}
           {shadow(inner.depth, 'depth')}
           {shadow(inner.highlight, 'highlight')}
         </Box>

@@ -10,6 +10,7 @@ import { Pressable } from 'react-native';
 import { Input, Text, XStack, YStack } from 'tamagui';
 
 import { ClayInset } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 
 interface Props {
   /** Decimal-string amount; "" when empty. */
@@ -21,6 +22,7 @@ interface Props {
 
 /** Big-number amount input with preset chips. */
 export function AmountInput({ value, onChange, quickAmounts }: Props) {
+  const colors = useColors();
   const chips = useMemo(() => quickAmounts ?? [50, 100, 200, 500], [quickAmounts]);
 
   function setText(next: string) {
@@ -49,7 +51,7 @@ export function AmountInput({ value, onChange, quickAmounts }: Props) {
         paddingHorizontal={20}
       >
         <XStack alignItems="baseline" gap="$2" justifyContent="center">
-          <Text fontFamily="PlusJakartaSans-Medium" fontSize={28} color="#94a2b1">
+          <Text fontFamily="PlusJakartaSans-Medium" fontSize={28} color={colors.textFaint}>
             R
           </Text>
           <Input
@@ -59,7 +61,7 @@ export function AmountInput({ value, onChange, quickAmounts }: Props) {
             keyboardType="decimal-pad"
             fontSize={48}
             fontFamily="PlusJakartaSans-ExtraBold"
-            color="#0c1b2a"
+            color={colors.text}
             textAlign="center"
             borderWidth={0}
             backgroundColor="transparent"
@@ -82,11 +84,11 @@ export function AmountInput({ value, onChange, quickAmounts }: Props) {
                   paddingHorizontal="$3"
                   paddingVertical="$2"
                   borderRadius={16}
-                  backgroundColor={selected ? '#00508F' : '#e9f1f9'}
+                  backgroundColor={selected ? colors.navy : colors.rim}
                 >
                   <Text
                     fontFamily="PlusJakartaSans-SemiBold"
-                    color={selected ? '#ffffff' : '#00508F'}
+                    color={selected ? colors.textOnDark : colors.navy}
                   >
                     R {n}
                   </Text>

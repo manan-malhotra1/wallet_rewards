@@ -20,6 +20,7 @@ import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { PinInput } from '@/components/forms/PinInput';
 import { ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { InvalidStepUpPin } from '@/lib/api/errors';
 import { cashOut, cashOutFailureReason, newCashOutIdempotencyKey } from '@/lib/api/cashout';
 import { qk } from '@/lib/query';
@@ -28,6 +29,7 @@ import { formatMoney, maskPhone } from '@/lib/format';
 /** Confirm cash-out with PIN screen. */
 export default function CashOutPinScreen() {
   const router = useRouter();
+  const colors = useColors();
   const qc = useQueryClient();
   const params = useLocalSearchParams<{
     phone?: string;
@@ -103,7 +105,7 @@ export default function CashOutPinScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader paddingBottom={22}>
@@ -120,21 +122,21 @@ export default function CashOutPinScreen() {
             padding={18}
             alignItems="center"
           >
-            <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
+            <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color={colors.textMuted}>
               You are cashing out
             </Text>
             <Text
               fontFamily="PlusJakartaSans-ExtraBold"
               fontSize={34}
-              color="#0c1b2a"
+              color={colors.text}
               marginTop={4}
               letterSpacing={-0.5}
             >
               {formatMoney(amount, currency)}
             </Text>
-            <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#5a6b7b" marginTop={4}>
+            <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color={colors.textMuted} marginTop={4}>
               to agent{' '}
-              <Text fontFamily="PlusJakartaSans-Bold" color="#0c1b2a">
+              <Text fontFamily="PlusJakartaSans-Bold" color={colors.text}>
                 {maskPhone(agentPhone)}
               </Text>
             </Text>
@@ -142,7 +144,7 @@ export default function CashOutPinScreen() {
 
           {/* PIN entry + encryption note. */}
           <YStack flex={1} alignItems="center" justifyContent="center" gap={22}>
-            <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a">
+            <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.text}>
               Enter your PIN to authorise
             </Text>
             <Animated.View style={{ transform: [{ translateX: shake }] }}>
@@ -151,7 +153,7 @@ export default function CashOutPinScreen() {
             {error ? (
               <Text
                 fontFamily="PlusJakartaSans-Medium"
-                color="#c0392b"
+                color={colors.danger}
                 fontSize={13}
                 textAlign="center"
               >
@@ -159,8 +161,8 @@ export default function CashOutPinScreen() {
               </Text>
             ) : (
               <XStack alignItems="center" gap={7}>
-                <Ionicons name="lock-closed" size={14} color="#8a98a6" />
-                <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color="#8a98a6">
+                <Ionicons name="lock-closed" size={14} color={colors.textMuted} />
+                <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color={colors.textMuted}>
                   Secured with 256-bit encryption
                 </Text>
               </XStack>

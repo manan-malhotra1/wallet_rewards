@@ -26,6 +26,7 @@ import { BottomTabBar } from '@/components/ui/BottomTabBar';
 import { SideDrawer } from '@/components/ui/SideDrawer';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { ClaySurface, ClayIconTile } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { signOut } from '@/lib/auth';
 import { SessionExpired } from '@/lib/api/errors';
 import {
@@ -141,6 +142,7 @@ function BalanceCard({
   masked: boolean;
   onToggleMask: () => void;
 }) {
+  const colors = useColors();
   const symbol = currencySymbol(account.currency).trim();
   const balance = splitAmount(account.available_balance ?? '0');
   const pending = pendingAmount(account);
@@ -148,16 +150,16 @@ function BalanceCard({
   return (
     <ClaySurface depth="raised" radius={24} padding={20} width={width}>
       <XStack justifyContent="space-between" alignItems="center">
-        <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#6a7888">
+        <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color={colors.textMuted}>
           Available balance
         </Text>
         <View
-          backgroundColor="#e6f6f8"
+          backgroundColor={colors.chipTealBg}
           paddingHorizontal={10}
           paddingVertical={4}
           borderRadius={20}
         >
-          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12} color="#2EB6C8">
+          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12} color={colors.chipTealText}>
             {account.currency} wallet
           </Text>
         </View>
@@ -166,7 +168,7 @@ function BalanceCard({
         <Text
           fontFamily="PlusJakartaSans-ExtraBold"
           fontSize={34}
-          color="#0c1b2a"
+          color={colors.text}
           letterSpacing={-0.5}
         >
           {symbol} {masked ? '••••' : balance.whole}
@@ -175,7 +177,7 @@ function BalanceCard({
           <Text
             fontFamily="PlusJakartaSans-Bold"
             fontSize={20}
-            color="#94a2b1"
+            color={colors.textFaint}
             marginBottom={4}
           >
             {balance.cents}
@@ -186,7 +188,7 @@ function BalanceCard({
           style={{ marginLeft: 'auto', paddingBottom: 6 }}
           accessibilityLabel="Toggle balance visibility"
         >
-          <Ionicons name={masked ? 'eye-off' : 'eye'} size={20} color="#94a2b1" />
+          <Ionicons name={masked ? 'eye-off' : 'eye'} size={20} color={colors.textFaint} />
         </Pressable>
       </XStack>
       <XStack
@@ -194,22 +196,22 @@ function BalanceCard({
         marginTop={14}
         paddingTop={14}
         borderTopWidth={1}
-        borderTopColor="rgba(1,46,84,0.06)"
+        borderTopColor={colors.hairline}
         alignItems="center"
       >
         <YStack flex={1}>
-          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
+          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color={colors.textMuted}>
             Available
           </Text>
-          <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a" marginTop={2}>
+          <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.text} marginTop={2}>
             {formatMoney(account.available_balance ?? '0', account.currency)}
           </Text>
         </YStack>
         <YStack flex={1}>
-          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color="#8a98a6">
+          <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={11} color={colors.textMuted}>
             Pending
           </Text>
-          <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#0c1b2a" marginTop={2}>
+          <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.text} marginTop={2}>
             {formatMoney(pending, account.currency)}
           </Text>
         </YStack>
@@ -221,6 +223,7 @@ function BalanceCard({
 /** Pay tab — home. */
 export default function HomeScreen() {
   const router = useRouter();
+  const colors = useColors();
   const { width } = useWindowDimensions();
   const [masked, setMasked] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -307,7 +310,7 @@ export default function HomeScreen() {
   );
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           {/* Header — navy gradient with user info + points + bell, plus
@@ -326,11 +329,11 @@ export default function HomeScreen() {
                     width={42}
                     height={42}
                     borderRadius={21}
-                    backgroundColor="#50C0D0"
+                    backgroundColor={colors.teal}
                     alignItems="center"
                     justifyContent="center"
                   >
-                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#013a6b">
+                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.navyDeep}>
                       {initials(firstName)}
                     </Text>
                   </View>
@@ -342,7 +345,7 @@ export default function HomeScreen() {
                     >
                       Welcome back
                     </Text>
-                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color="#ffffff">
+                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color={colors.textOnDark}>
                       {firstName}
                     </Text>
                   </YStack>
@@ -363,17 +366,17 @@ export default function HomeScreen() {
                     width={26}
                     height={26}
                     borderRadius={13}
-                    backgroundColor="#50C0D0"
+                    backgroundColor={colors.teal}
                     alignItems="center"
                     justifyContent="center"
                   >
-                    <Ionicons name="star" size={14} color="#ffffff" />
+                    <Ionicons name="star" size={14} color={colors.textOnDark} />
                   </View>
                   <YStack>
                     <Text
                       fontFamily="PlusJakartaSans-ExtraBold"
                       fontSize={13}
-                      color="#ffffff"
+                      color={colors.textOnDark}
                       lineHeight={14}
                     >
                       {points ? parseInt(points.available_balance, 10).toLocaleString('en-ZA') : '0'}
@@ -398,7 +401,7 @@ export default function HomeScreen() {
                   justifyContent="center"
                   position="relative"
                 >
-                  <Ionicons name="notifications" size={20} color="#ffffff" />
+                  <Ionicons name="notifications" size={20} color={colors.textOnDark} />
                   <View
                     position="absolute"
                     top={9}
@@ -408,7 +411,7 @@ export default function HomeScreen() {
                     borderRadius={4}
                     backgroundColor="#ff5a5a"
                     borderWidth={1.5}
-                    borderColor="#013a6b"
+                    borderColor={colors.navyDeep}
                   />
                 </View>
               </XStack>
@@ -466,7 +469,7 @@ export default function HomeScreen() {
                         width={active ? 18 : 6}
                         height={6}
                         borderRadius={3}
-                        backgroundColor={active ? '#00508F' : 'rgba(1,46,84,0.18)'}
+                        backgroundColor={active ? colors.navy : 'rgba(1,46,84,0.18)'}
                       />
                     );
                   })}
@@ -486,12 +489,12 @@ export default function HomeScreen() {
                 >
                   <YStack alignItems="center" gap={8}>
                     <ClayIconTile size={54} radius={18}>
-                      <Ionicons name={tile.icon} size={24} color="#00508F" />
+                      <Ionicons name={tile.icon} size={24} color={colors.navy} />
                     </ClayIconTile>
                     <Text
                       fontFamily="PlusJakartaSans-SemiBold"
                       fontSize={11}
-                      color="#3a4756"
+                      color={colors.textMuted}
                       numberOfLines={1}
                     >
                       {tile.label}
@@ -505,7 +508,7 @@ export default function HomeScreen() {
             <View
               marginTop={14}
               marginHorizontal={18}
-              backgroundColor="#00538f"
+              backgroundColor={colors.navy}
               borderRadius={24}
               padding={18}
               overflow="hidden"
@@ -528,7 +531,7 @@ export default function HomeScreen() {
                 right={-40}
                 pointerEvents="none"
               />
-              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={16} color="#ffffff">
+              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={16} color={colors.textOnDark}>
                 Send money home, faster
               </Text>
               <Text
@@ -547,12 +550,12 @@ export default function HomeScreen() {
               >
                 <View
                   alignSelf="flex-start"
-                  backgroundColor="#ffffff"
+                  backgroundColor={colors.clayRaised}
                   paddingHorizontal={16}
                   paddingVertical={8}
                   borderRadius={11}
                 >
-                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color="#00508F">
+                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color={colors.navy}>
                     Send now →
                   </Text>
                 </View>
@@ -567,11 +570,11 @@ export default function HomeScreen() {
               paddingTop={22}
               paddingBottom={10}
             >
-              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={15} color="#0c1b2a">
+              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={15} color={colors.text}>
                 Recent activity
               </Text>
               <Pressable onPress={() => router.push('/transactions' as never)}>
-                <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#00508F">
+                <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color={colors.navy}>
                   See all
                 </Text>
               </Pressable>
@@ -584,11 +587,11 @@ export default function HomeScreen() {
             >
               {isLoading ? (
                 <View paddingVertical={24} alignItems="center">
-                  <ActivityIndicator color="#00508F" />
+                  <ActivityIndicator color={colors.navy} />
                 </View>
               ) : recentForCurrency.length === 0 ? (
                 <View paddingVertical={20} alignItems="center">
-                  <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color="#8a98a6">
+                  <Text fontFamily="PlusJakartaSans-Medium" fontSize={13} color={colors.textMuted}>
                     No activity yet.
                   </Text>
                 </View>

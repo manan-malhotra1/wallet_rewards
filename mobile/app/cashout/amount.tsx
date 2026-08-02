@@ -24,6 +24,7 @@ import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
 import { CurrencySelector } from '@/components/forms/CurrencySelector';
 import { ClayButton, ClayInset, ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { StepUpRequired } from '@/lib/api/errors';
 import { cashOut, cashOutFailureReason, newCashOutIdempotencyKey } from '@/lib/api/cashout';
 import { getMyWallet } from '@/lib/api/wallet';
@@ -48,6 +49,7 @@ function splitAmount(amount: string): { whole: string; cents: string } {
 /** Amount entry screen — step 2 of cash-out. */
 export default function CashOutAmountScreen() {
   const router = useRouter();
+  const colors = useColors();
   const qc = useQueryClient();
   const params = useLocalSearchParams<{ phone?: string; currency?: string }>();
   const agentPhone = typeof params.phone === 'string' ? params.phone : '';
@@ -157,7 +159,7 @@ export default function CashOutAmountScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader paddingBottom={22}>
@@ -189,10 +191,10 @@ export default function CashOutAmountScreen() {
               </Text>
             </View>
             <YStack flex={1} gap={2}>
-              <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color="#0c1b2a">
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.text}>
                 {maskPhone(agentPhone)}
               </Text>
-              <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6">
+              <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color={colors.textMuted}>
                 Cash-out agent
               </Text>
             </YStack>
@@ -203,8 +205,8 @@ export default function CashOutAmountScreen() {
               borderRadius={20}
             >
               <XStack alignItems="center" gap={4}>
-                <Ionicons name="cash-outline" size={13} color="#00508F" />
-                <Text fontFamily="PlusJakartaSans-Bold" fontSize={11.5} color="#00508F">
+                <Ionicons name="cash-outline" size={13} color={colors.navy} />
+                <Text fontFamily="PlusJakartaSans-Bold" fontSize={11.5} color={colors.navy}>
                   Agent
                 </Text>
               </XStack>
@@ -230,7 +232,7 @@ export default function CashOutAmountScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-Bold"
                   fontSize={26}
-                  color="#94a2b1"
+                  color={colors.textFaint}
                   marginTop={8}
                 >
                   {sym.trim()}
@@ -238,12 +240,12 @@ export default function CashOutAmountScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-ExtraBold"
                   fontSize={56}
-                  color="#0c1b2a"
+                  color={colors.text}
                   lineHeight={56}
                   letterSpacing={-1}
                 >
                   {display.whole}
-                  <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={56} color="#cfd9e3">
+                  <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={56} color={colors.textFaint}>
                     {display.cents}
                   </Text>
                 </Text>
@@ -252,7 +254,7 @@ export default function CashOutAmountScreen() {
             <Text
               fontFamily="PlusJakartaSans-Medium"
               fontSize={12}
-              color="#8a98a6"
+              color={colors.textMuted}
               marginTop={16}
               textAlign="center"
             >
@@ -261,7 +263,7 @@ export default function CashOutAmountScreen() {
             {overdrawn ? (
               <Text
                 fontFamily="PlusJakartaSans-Bold"
-                color="#c0392b"
+                color={colors.danger}
                 fontSize={12.5}
                 marginTop={8}
               >
@@ -271,7 +273,7 @@ export default function CashOutAmountScreen() {
           </YStack>
 
           <NumericKeypad onPress={handleKey} />
-          <View backgroundColor="#ccd8e8" paddingHorizontal={18} paddingBottom={18} paddingTop={4}>
+          <View backgroundColor={colors.screenBg} paddingHorizontal={18} paddingBottom={18} paddingTop={4}>
             <ClayButton
               onPress={onContinue}
               disabled={!canContinue}

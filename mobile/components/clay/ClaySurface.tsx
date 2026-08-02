@@ -14,8 +14,8 @@
 import { ComponentProps } from 'react';
 import { View } from 'tamagui';
 
-import { ClayShape, useClaySize } from './ClayShape';
-import { clayRadius, claySurface } from './recipe';
+import { ClayShape, useClaySize, useClayTokens } from './ClayShape';
+import { clayRadius } from './recipe';
 
 interface ClaySurfaceProps extends ComponentProps<typeof View> {
   /** Shadow depth. `raised` (default) is the puffy card; `soft` is denser. */
@@ -32,7 +32,7 @@ interface ClaySurfaceProps extends ComponentProps<typeof View> {
 export function ClaySurface({
   depth = 'raised',
   radius = clayRadius.md,
-  fill = claySurface.raised,
+  fill,
   // `sheen` is accepted for backwards-compat but no longer used — the Skia
   // inner highlight now provides the top-left sheen. Destructured so it isn't
   // forwarded to the View.
@@ -42,6 +42,9 @@ export function ClaySurface({
   ...rest
 }: ClaySurfaceProps) {
   const [size, onLayout] = useClaySize();
+  const tokens = useClayTokens();
+  // Default to the active mode's raised fill; an explicit `fill` prop wins.
+  const surfaceFill = fill ?? tokens.surface.raised;
   const drop = depth === 'raised' ? 'raised' : 'soft';
   return (
     <View
@@ -49,7 +52,7 @@ export function ClaySurface({
       borderRadius={radius}
       // Transparent once measured so the Skia fill + inner shadows show; a plain
       // rounded fill until then so there's no flash of unstyled content.
-      backgroundColor={size ? 'transparent' : fill}
+      backgroundColor={size ? 'transparent' : surfaceFill}
       style={style}
       {...rest}
     >
@@ -58,7 +61,7 @@ export function ClaySurface({
           width={size.w}
           height={size.h}
           radius={radius}
-          fill={fill}
+          fill={surfaceFill}
           variant="raised"
           drop={drop}
         />

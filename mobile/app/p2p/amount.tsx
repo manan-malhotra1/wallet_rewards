@@ -20,6 +20,7 @@ import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
 import { CurrencySelector } from '@/components/forms/CurrencySelector';
 import { ClayButton, ClayInset, ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { ApiError, RateLimited, StepUpRequired } from '@/lib/api/errors';
 import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
 import { quoteServiceFee } from '@/lib/api/pricing';
@@ -55,6 +56,7 @@ function splitAmount(amount: string): { whole: string; cents: string; hasDot: bo
 /** Amount entry screen. */
 export default function AmountScreen() {
   const router = useRouter();
+  const colors = useColors();
   const qc = useQueryClient();
   const params = useLocalSearchParams<{ phone: string; currency?: string }>();
   const recipientPhone = typeof params.phone === 'string' ? params.phone : '';
@@ -179,7 +181,7 @@ export default function AmountScreen() {
   }
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader paddingBottom={22}>
@@ -211,10 +213,10 @@ export default function AmountScreen() {
               </Text>
             </View>
             <YStack flex={1} gap={2}>
-              <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color="#0c1b2a">
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.text}>
                 {maskPhone(recipientPhone)}
               </Text>
-              <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6">
+              <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color={colors.textMuted}>
                 Sasai user
               </Text>
             </YStack>
@@ -224,7 +226,7 @@ export default function AmountScreen() {
               paddingVertical={4}
               borderRadius={20}
             >
-              <Text fontFamily="PlusJakartaSans-Bold" fontSize={11.5} color="#1aa06b">
+              <Text fontFamily="PlusJakartaSans-Bold" fontSize={11.5} color={colors.success}>
                 Verified
               </Text>
             </View>
@@ -249,7 +251,7 @@ export default function AmountScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-Bold"
                   fontSize={26}
-                  color="#94a2b1"
+                  color={colors.textFaint}
                   marginTop={8}
                 >
                   {symbol}
@@ -257,7 +259,7 @@ export default function AmountScreen() {
                 <Text
                   fontFamily="PlusJakartaSans-ExtraBold"
                   fontSize={56}
-                  color="#0c1b2a"
+                  color={colors.text}
                   lineHeight={56}
                   letterSpacing={-1}
                 >
@@ -265,7 +267,7 @@ export default function AmountScreen() {
                   <Text
                     fontFamily="PlusJakartaSans-ExtraBold"
                     fontSize={56}
-                    color="#cfd9e3"
+                    color={colors.textFaint}
                   >
                     {display.cents}
                   </Text>
@@ -286,12 +288,12 @@ export default function AmountScreen() {
                       paddingHorizontal={14}
                       paddingVertical={7}
                       borderRadius={20}
-                      backgroundColor={selected ? '#00508F' : '#e9f1f9'}
+                      backgroundColor={selected ? colors.navy : colors.rim}
                     >
                       <Text
                         fontFamily="PlusJakartaSans-Bold"
                         fontSize={12.5}
-                        color={selected ? '#ffffff' : '#00508F'}
+                        color={selected ? colors.textOnDark : colors.navy}
                       >
                         {symbol}{n}
                       </Text>
@@ -300,16 +302,16 @@ export default function AmountScreen() {
                 );
               })}
             </XStack>
-            <Text fontFamily="PlusJakartaSans-Medium" fontSize={12} color="#8a98a6" marginTop={16}>
+            <Text fontFamily="PlusJakartaSans-Medium" fontSize={12} color={colors.textMuted} marginTop={16}>
               Fee {formatMoney(fee, selectedCurrency)} · You pay{' '}
-              <Text fontFamily="PlusJakartaSans-Bold" color="#0c1b2a">
+              <Text fontFamily="PlusJakartaSans-Bold" color={colors.text}>
                 {formatMoney(total, selectedCurrency)}
               </Text>
             </Text>
             {overdrawn ? (
               <Text
                 fontFamily="PlusJakartaSans-Bold"
-                color="#c0392b"
+                color={colors.danger}
                 fontSize={12.5}
                 marginTop={8}
               >
@@ -319,7 +321,7 @@ export default function AmountScreen() {
           </YStack>
 
           <NumericKeypad onPress={handleKey} />
-          <View backgroundColor="#ccd8e8" paddingHorizontal={18} paddingBottom={18} paddingTop={4}>
+          <View backgroundColor={colors.screenBg} paddingHorizontal={18} paddingBottom={18} paddingTop={4}>
             <ClayButton
               onPress={onContinue}
               disabled={!canContinue}

@@ -10,8 +10,7 @@
 import { ComponentProps } from 'react';
 import { View } from 'tamagui';
 
-import { ClayShape, useClaySize } from './ClayShape';
-import { tealGradient } from './recipe';
+import { ClayShape, useClaySize, useClayTokens } from './ClayShape';
 
 interface ClayPillProps extends ComponentProps<typeof View> {
   /** Corner radius. Defaults to a fully-rounded pill. */
@@ -23,7 +22,7 @@ interface ClayPillProps extends ComponentProps<typeof View> {
 /** Teal (by default) gradient clay pill. */
 export function ClayPill({
   radius = 999,
-  colors = tealGradient,
+  colors,
   children,
   style,
   paddingHorizontal = 12,
@@ -31,6 +30,9 @@ export function ClayPill({
   ...rest
 }: ClayPillProps) {
   const [size, onLayout] = useClaySize();
+  const tokens = useClayTokens();
+  // Default to the active mode's teal gradient; explicit `colors` win.
+  const faceColors = colors ?? tokens.gradients.teal;
   // A fully-rounded pill: clamp the Skia corner radius to half the shortest
   // side so the rounded box matches the CSS `borderRadius: 999` capsule.
   const skiaRadius = size ? Math.min(radius, Math.min(size.w, size.h) / 2) : radius;
@@ -40,7 +42,7 @@ export function ClayPill({
       borderRadius={radius}
       paddingHorizontal={paddingHorizontal}
       paddingVertical={paddingVertical}
-      backgroundColor={size ? 'transparent' : colors[0]}
+      backgroundColor={size ? 'transparent' : faceColors[0]}
       style={style}
       {...rest}
     >
@@ -49,10 +51,10 @@ export function ClayPill({
           width={size.w}
           height={size.h}
           radius={skiaRadius}
-          fill={colors[0]}
+          fill={faceColors[0]}
           variant="raised"
           drop="soft"
-          gradient={colors}
+          gradient={faceColors}
         />
       ) : null}
       {children}

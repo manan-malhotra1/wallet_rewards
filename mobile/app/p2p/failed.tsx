@@ -14,22 +14,24 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { ClayButton, ClaySurface } from '@/components/clay';
+import { useColors } from '@/lib/colors';
 import { maskPhone } from '@/lib/format';
 
 /** Single row in the receipt card. */
 function ReceiptRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  const colors = useColors();
   return (
     <XStack
       justifyContent="space-between"
       paddingVertical={12}
       borderBottomWidth={last ? 0 : 1}
-      borderBottomColor="#e7edf2"
+      borderBottomColor={colors.hairline}
       style={{ borderStyle: 'dashed' }}
     >
-      <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color="#8a98a6">
+      <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12.5} color={colors.textMuted}>
         {label}
       </Text>
-      <Text fontFamily="PlusJakartaSans-Bold" fontSize={12.5} color="#0c1b2a">
+      <Text fontFamily="PlusJakartaSans-Bold" fontSize={12.5} color={colors.text}>
         {value}
       </Text>
     </XStack>
@@ -39,6 +41,7 @@ function ReceiptRow({ label, value, last }: { label: string; value: string; last
 /** Failed-payment receipt. */
 export default function FailedScreen() {
   const router = useRouter();
+  const colors = useColors();
   const params = useLocalSearchParams<{ phone: string; amount: string; reason: string }>();
   const phone = typeof params.phone === 'string' ? params.phone : '';
   const amount = typeof params.amount === 'string' ? params.amount : '0';
@@ -48,7 +51,7 @@ export default function FailedScreen() {
       : 'Payment failed';
 
   return (
-    <View flex={1} backgroundColor="#ccd8e8">
+    <View flex={1} backgroundColor={colors.screenBg}>
       <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
         <YStack flex={1}>
           <GradientHeader variant="failed" paddingBottom={38}>
@@ -57,7 +60,7 @@ export default function FailedScreen() {
                 width={78}
                 height={78}
                 borderRadius={39}
-                backgroundColor="#ffffff"
+                backgroundColor={colors.clayRaised}
                 alignItems="center"
                 justifyContent="center"
                 shadowColor="#000000"
@@ -65,15 +68,15 @@ export default function FailedScreen() {
                 shadowRadius={30}
                 shadowOffset={{ width: 0, height: 12 }}
               >
-                <Ionicons name="close" size={46} color="#c0392b" />
+                <Ionicons name="close" size={46} color={colors.danger} />
               </View>
-              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={20} color="#ffffff" marginTop={4}>
+              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={20} color={colors.textOnDark} marginTop={4}>
                 Payment failed
               </Text>
               <Text
                 fontFamily="PlusJakartaSans-ExtraBold"
                 fontSize={33}
-                color="#ffffff"
+                color={colors.textOnDark}
                 letterSpacing={-0.5}
               >
                 R {parseFloat(amount).toFixed(2)}
@@ -96,7 +99,7 @@ export default function FailedScreen() {
             gap={11}
             alignItems="flex-start"
           >
-            <Ionicons name="warning" size={20} color="#c0392b" />
+            <Ionicons name="warning" size={20} color={colors.danger} />
             <YStack flex={1}>
               <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color="#a52e22">
                 {reason}
@@ -137,7 +140,7 @@ export default function FailedScreen() {
                 height={50}
                 accessibilityLabel="Cancel"
               >
-                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#00508F">
+                <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.navy}>
                   Cancel
                 </Text>
               </ClayButton>
@@ -149,8 +152,8 @@ export default function FailedScreen() {
                 accessibilityLabel="Try again"
               >
                 <XStack alignItems="center" gap={7}>
-                  <Ionicons name="refresh" size={17} color="#ffffff" />
-                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color="#ffffff">
+                  <Ionicons name="refresh" size={17} color={colors.textOnDark} />
+                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.textOnDark}>
                     Try again
                   </Text>
                 </XStack>

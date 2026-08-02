@@ -278,6 +278,20 @@ async def external_fund(
             new_balance=balance,
         )
 
+    # Per-service access policy — CHANNEL dimension only. A partner fund has no
+    # single acting wallet-user type (the partner funds an arbitrary user), so
+    # user_type=None SKIPS the WHO check and enforces only that `fund` is allowed
+    # on the "api" channel. After the idempotency fast-path, before any ledger work.
+    from app.modules.services.service import assert_service_allowed
+
+    await assert_service_allowed(
+        session,
+        tenant_id=tenant_id,
+        transaction_type="fund",
+        user_type=None,
+        channel="api",
+    )
+
     # Fail-closed service gate (invariant #12). Runs AFTER the idempotency
     # fast-path (a replay of an already-posted fund must still return the
     # original result) but BEFORE any ledger work: BOTH a pricing and a limit
@@ -386,6 +400,19 @@ async def external_withdraw(
             currency=str(existing.currency),
             new_balance=balance,
         )
+
+    # Per-service access policy — CHANNEL dimension only (see external_fund).
+    # user_type=None enforces just that `withdraw` is allowed on the "api"
+    # channel. After the idempotency fast-path, before any ledger work.
+    from app.modules.services.service import assert_service_allowed
+
+    await assert_service_allowed(
+        session,
+        tenant_id=tenant_id,
+        transaction_type="withdraw",
+        user_type=None,
+        channel="api",
+    )
 
     # Fail-closed service gate (invariant #12). AFTER the idempotency fast-path,
     # BEFORE any ledger work: BOTH a pricing and a limit config must resolve for
@@ -565,6 +592,21 @@ async def merchant_cashin(
             amount=Decimal(str(existing.amount)),
             currency=str(existing.currency),
         )
+
+    # Per-service access policy, resolved on the MERCHANT's user_type (the
+    # initiator) with the "api" channel. Both dimensions are enforced here: the
+    # key is merchant-bound, so the acting wallet-user type IS known. After the
+    # idempotency fast-path, before any ledger work.
+    from app.modules.services.service import assert_service_allowed
+    from app.shared.utils.user_types import resolve_user_type
+
+    await assert_service_allowed(
+        session,
+        tenant_id=tenant_id,
+        transaction_type=MERCHANT_CASHIN_SERVICE_CODE,
+        user_type=await resolve_user_type(session, tenant_id, merchant_user_id),
+        channel="api",
+    )
 
     # Fail-closed service gate (invariant #12), resolved on the MERCHANT's
     # user_type (the initiator). BOTH a pricing and a limit config must resolve

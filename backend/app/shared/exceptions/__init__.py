@@ -785,6 +785,42 @@ class NotAuthorised(AppHTTPException):
         )
 
 
+# --- Per-service access policy (services.allowed_user_types / _channels) -----
+
+
+class ServiceNotAllowedForUserType(AppHTTPException):
+    """The acting user's `user_type` is not on the service's `allowed_user_types`.
+
+    Enforces the WHO dimension of the per-service access policy so the API
+    rejects exactly what the mobile app hides (what is DISPLAYED == what is
+    ALLOWED). A distinct code from `ServiceNotAllowedOnChannel` lets the client
+    tell the two rejection dimensions apart. Raised BEFORE any ledger work.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            403,
+            "service_not_allowed_user_type",
+            "Your account type is not permitted to use this service.",
+        )
+
+
+class ServiceNotAllowedOnChannel(AppHTTPException):
+    """The initiating channel is not on the service's `allowed_channels`.
+
+    Enforces the HOW dimension of the per-service access policy (e.g. an
+    operator-only service reached over the wrong surface). Distinct code from
+    `ServiceNotAllowedForUserType`. Raised BEFORE any ledger work.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            403,
+            "service_not_allowed_channel",
+            "This service is not available on this channel.",
+        )
+
+
 # --- HMAC / provider callbacks (Phase F.5) ---------------------------------
 
 

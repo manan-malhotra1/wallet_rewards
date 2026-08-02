@@ -168,6 +168,22 @@ async def p2p_transfer(
     # further work — no lock acquired, no ledger touched.
     await require_permission(session, sender_user_id, "p2p")
 
+    # 1a'. Per-service access policy (services.allowed_user_types / _channels).
+    # The mobile app hides a service the sender's user_type / channel may not
+    # use; enforce the same here so the API rejects exactly what the app hides.
+    # p2p has no idempotency fast-path in this service (post_transaction dedups),
+    # so this runs among the other pre-ledger gates.
+    from app.modules.services.service import assert_service_allowed
+    from app.shared.utils.user_types import resolve_user_type
+
+    await assert_service_allowed(
+        session,
+        tenant_id=tenant_id,
+        transaction_type="p2p",
+        user_type=await resolve_user_type(session, tenant_id, sender_user_id),
+        channel="mobile",
+    )
+
     # 1a. Admin access-lock (migration 0045). The SENDER must be `active` — a
     # txn_locked / suspended / closed sender is blocked before any charge or
     # ledger work. The recipient is passive and is NOT guarded. p2p has no early

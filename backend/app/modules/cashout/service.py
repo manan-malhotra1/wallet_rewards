@@ -181,6 +181,21 @@ async def cash_out(
 
     await assert_user_can_transact(session, tenant_id=tenant_id, user_id=subscriber_user_id)
 
+    # 1b. Per-service access policy (services.allowed_user_types / _channels).
+    # Enforce that the acting subscriber's user_type + channel may initiate
+    # cashout, mirroring the mobile display gate. After the idempotency fast-path
+    # (replays still return the original txn) and before any ledger work.
+    from app.modules.services.service import assert_service_allowed
+    from app.shared.utils.user_types import resolve_user_type
+
+    await assert_service_allowed(
+        session,
+        tenant_id=tenant_id,
+        transaction_type=CASH_OUT_SERVICE_CODE,
+        user_type=await resolve_user_type(session, tenant_id, subscriber_user_id),
+        channel="mobile",
+    )
+
     # 2. Resolve the agent recipient (tenant-scoped), reject self, enforce type.
     agent_row = await resolve_identifier(
         session, tenant_id, request.identifier_type, request.identifier_value

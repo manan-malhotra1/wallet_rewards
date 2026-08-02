@@ -19,10 +19,85 @@ from app.modules.services.schemas import (
     ServiceCreateRequest,
     ServiceUpdateRequest,
 )
-from app.shared.exceptions import ServiceCodeAlreadyExists, ServiceNotFound
-from app.shared.models import Service
+from app.shared.exceptions import (
+    ServiceCodeAlreadyExists,
+    ServiceNotAllowedForUserType,
+    ServiceNotAllowedOnChannel,
+    ServiceNotFound,
+)
+from app.shared.models import SERVICE_STATUS_ACTIVE, Service
 
 log = structlog.get_logger(__name__)
+
+
+async def assert_service_allowed(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    transaction_type: str,
+    user_type: str | None,
+    channel: str,
+) -> None:
+    """Enforce the tenant's per-service access policy for a money path.
+
+    This is the server-side twin of the mobile `/me/services` display query: it
+    makes what the API ALLOWS match what the app DISPLAYS. The live `Service`
+    row for `transaction_type` carries two allow-lists — `allowed_user_types`
+    (WHO) and `allowed_channels` (HOW) — and both must permit the caller.
+
+    Semantics (identical to `identity.list_my_services`): for EACH dimension a
+    NULL or empty array means "unrestricted" (all values allowed); a non-empty
+    array is an allow-list. The two dimensions are ANDed. An empty/None array is
+    detected here with plain truthiness (`not arr`), the Python equivalent of the
+    query's `array_length(col, 1) IS NULL`.
+
+    An **unconfigured** service (no active, non-deleted `Service` row for the
+    code) imposes NO restriction — the request keeps working. This matches the
+    NULL=all philosophy: absence of policy is not a restriction.
+
+    A `user_type` of ``None`` SKIPS the WHO dimension entirely and enforces only
+    the channel (HOW) dimension. This is used by operator/API money paths (e.g.
+    `fund` / `withdraw`) where there is no single acting wallet-user type — the
+    channel gate alone confines the operation.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope — services never resolve across tenants.
+        transaction_type: The service code being initiated (== `Service.code`).
+        user_type: The acting user's type, or ``None`` to skip the WHO check.
+        channel: The initiating channel (e.g. "mobile", "api").
+
+    Raises:
+        ServiceNotAllowedForUserType (403): `user_type` is not on a non-empty
+            `allowed_user_types` list.
+        ServiceNotAllowedOnChannel (403): `channel` is not on a non-empty
+            `allowed_channels` list.
+    """
+    service = (
+        await session.execute(
+            select(Service).where(
+                Service.tenant_id == tenant_id,
+                Service.code == transaction_type,
+                Service.status == SERVICE_STATUS_ACTIVE,
+                Service.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    # No policy row = unconfigured service = unrestricted (NULL=all philosophy).
+    if service is None:
+        return
+
+    # WHO dimension — skipped when user_type is None (channel-only enforcement).
+    if (
+        user_type is not None
+        and service.allowed_user_types
+        and user_type not in service.allowed_user_types
+    ):
+        raise ServiceNotAllowedForUserType()
+
+    # HOW dimension — NULL/empty = unrestricted.
+    if service.allowed_channels and channel not in service.allowed_channels:
+        raise ServiceNotAllowedOnChannel()
 
 
 async def list_services(

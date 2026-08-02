@@ -224,6 +224,21 @@ async def initiate_recharge(
 
     await assert_user_can_transact(session, tenant_id=tenant_id, user_id=user_id)
 
+    # Per-service access policy (services.allowed_user_types / _channels).
+    # Enforce that the acting buyer's user_type + channel may initiate an airtime
+    # recharge, mirroring the mobile display gate. After the idempotency fast-path
+    # (replays still return the original recharge) and before any ledger work.
+    from app.modules.services.service import assert_service_allowed
+    from app.shared.utils.user_types import resolve_user_type
+
+    await assert_service_allowed(
+        session,
+        tenant_id=tenant_id,
+        transaction_type=AIRTIME_SERVICE_CODE,
+        user_type=await resolve_user_type(session, tenant_id, user_id),
+        channel="mobile",
+    )
+
     currency = request.currency.upper()
 
     # Fail-closed service gate (invariant #12) — BOTH a pricing and a limit

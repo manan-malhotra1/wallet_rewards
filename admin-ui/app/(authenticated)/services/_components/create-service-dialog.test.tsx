@@ -51,8 +51,32 @@ describe("Create a service", () => {
       code: "bill_pay",
       display_name: "Bill Pay",
       description: undefined,
+      // No policy chips selected → unrestricted (null), never [].
+      allowed_user_types: null,
+      allowed_channels: null,
     });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("Verify the admin can restrict a new service to chosen user types and channels", async () => {
+    const user = await openDialog();
+
+    await user.type(screen.getByLabelText("Code"), "bill_pay");
+    await user.type(screen.getByLabelText("Display name"), "Bill Pay");
+    await user.click(screen.getByRole("button", { name: "Consumer", pressed: false }));
+    await user.click(screen.getByRole("button", { name: "Agent", pressed: false }));
+    await user.click(screen.getByRole("button", { name: "USSD", pressed: false }));
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(createServiceAction).toHaveBeenCalledTimes(1));
+    expect(createServiceAction.mock.calls[0][0]).toEqual({
+      tenant_id: "tenant-1",
+      code: "bill_pay",
+      display_name: "Bill Pay",
+      description: undefined,
+      allowed_user_types: ["consumer", "agent"],
+      allowed_channels: ["ussd"],
+    });
   });
 
   it("Verify a service with a malformed code is blocked", async () => {

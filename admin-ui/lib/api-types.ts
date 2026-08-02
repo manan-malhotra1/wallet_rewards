@@ -17,6 +17,45 @@ export type UserType =
   | "merchant"
   | "head_merchant";
 
+/**
+ * The channels a transaction can be initiated from. Mirrors the backend
+ * service access-policy enum; `admin`/`system` are operator-side origins.
+ */
+export type ServiceChannel =
+  | "web"
+  | "api"
+  | "mobile"
+  | "ussd"
+  | "admin"
+  | "system";
+
+/**
+ * Canonical, ordered list of the five user types. Rendered by the Services
+ * access-policy editor so the UI never hardcodes the enum inline. Kept in
+ * sync with the `UserType` union above and the backend allow-list.
+ */
+export const USER_TYPES: readonly UserType[] = [
+  "consumer",
+  "agent",
+  "super_agent",
+  "merchant",
+  "head_merchant",
+];
+
+/**
+ * Canonical, ordered list of the six initiation channels. Rendered by the
+ * Services access-policy editor. Kept in sync with the `ServiceChannel`
+ * union and the backend allow-list.
+ */
+export const SERVICE_CHANNELS: readonly ServiceChannel[] = [
+  "web",
+  "api",
+  "mobile",
+  "ussd",
+  "admin",
+  "system",
+];
+
 /** External-API key (Epic 14). The secret is only ever returned once. */
 export interface ApiKey {
   id: string;
@@ -87,6 +126,16 @@ export interface Service {
   display_name: string;
   description: string | null;
   status: "active" | "disabled";
+  /**
+   * Access policy — who may initiate this service. `null` = unrestricted (all
+   * user types); `[]` = restrict to none (operator-only); a list = allow-list.
+   */
+  allowed_user_types: string[] | null;
+  /**
+   * Access policy — which channels may initiate this service. `null` =
+   * unrestricted (all channels); `[]` = restrict to none; a list = allow-list.
+   */
+  allowed_channels: string[] | null;
   created_at: string;
   updated_at: string;
 }

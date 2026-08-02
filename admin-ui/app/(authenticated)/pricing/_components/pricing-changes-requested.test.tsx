@@ -38,6 +38,8 @@ const services: Service[] = [
     display_name: "Peer-to-Peer",
     description: null,
     status: "active",
+    allowed_user_types: null,
+    allowed_channels: null,
     created_at: "2026-07-01T00:00:00Z",
     updated_at: "2026-07-01T00:00:00Z",
   },

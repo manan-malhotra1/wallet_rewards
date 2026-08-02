@@ -134,6 +134,12 @@ export interface CreateServicePayload {
   code: string;
   display_name: string;
   description?: string;
+  /**
+   * Access policy on create. `null` (or omitted) = unrestricted; `[]` =
+   * restrict to none; a list = allow-list. See the `Service` type.
+   */
+  allowed_user_types?: string[] | null;
+  allowed_channels?: string[] | null;
 }
 
 export const createService = (payload: CreateServicePayload) =>
@@ -143,6 +149,12 @@ export interface UpdateServicePayload {
   display_name?: string;
   description?: string;
   status?: "active" | "disabled";
+  /**
+   * Access policy on update. Omit to leave unchanged; `null` = unrestricted;
+   * `[]` = restrict to none; a list = allow-list. See the `Service` type.
+   */
+  allowed_user_types?: string[] | null;
+  allowed_channels?: string[] | null;
 }
 
 export const updateService = (

@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { Check, Pencil, Trash2, X } from "lucide-react";
+import { Check, Pencil, ShieldCheck, Trash2, X } from "lucide-react";
 import * as React from "react";
 
 import {
@@ -13,6 +13,8 @@ import {
 } from "@/app/(authenticated)/services/_actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EditServicePolicyDialog } from "./edit-policy-dialog";
+import { PolicySummary } from "./policy-controls";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -111,6 +113,8 @@ export function ServicesTable({
             <TableHeaderCell>Display name</TableHeaderCell>
             <TableHeaderCell>Code</TableHeaderCell>
             <TableHeaderCell>Description</TableHeaderCell>
+            <TableHeaderCell>Who can initiate</TableHeaderCell>
+            <TableHeaderCell>Channels</TableHeaderCell>
             <TableHeaderCell>Status</TableHeaderCell>
             <TableHeaderCell />
           </TableRow>
@@ -135,6 +139,12 @@ export function ServicesTable({
               </TableCell>
               <TableCell className="text-[12px] text-[--color-text-3]">
                 {svc.description ?? "—"}
+              </TableCell>
+              <TableCell>
+                <PolicySummary values={svc.allowed_user_types} />
+              </TableCell>
+              <TableCell>
+                <PolicySummary values={svc.allowed_channels} />
               </TableCell>
               <TableCell>
                 <Select
@@ -182,6 +192,19 @@ export function ServicesTable({
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
+                    <EditServicePolicyDialog
+                      service={svc}
+                      tenantId={tenantId}
+                      trigger={
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label="Edit access policy"
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                        </Button>
+                      }
+                    />
                     <Button
                       size="icon-xs"
                       variant="ghost"

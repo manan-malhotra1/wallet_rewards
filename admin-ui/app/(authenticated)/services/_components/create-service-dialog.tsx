@@ -24,8 +24,18 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
+import { SERVICE_CHANNELS, USER_TYPES } from "@/lib/api-types";
+
+import { ChipGroup } from "./policy-controls";
 
 const CODE_PATTERN = /^[a-z][a-z0-9_]*$/;
+
+/** Add/remove a value from a selection array (immutably). */
+function toggleValue(current: string[], value: string): string[] {
+  return current.includes(value)
+    ? current.filter((v) => v !== value)
+    : [...current, value];
+}
 
 export function CreateServiceDialog({
   tenantId,
@@ -38,6 +48,8 @@ export function CreateServiceDialog({
   const [code, setCode] = React.useState("");
   const [displayName, setDisplayName] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [userTypes, setUserTypes] = React.useState<string[]>([]);
+  const [channels, setChannels] = React.useState<string[]>([]);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
@@ -47,6 +59,8 @@ export function CreateServiceDialog({
       setCode("");
       setDisplayName("");
       setDescription("");
+      setUserTypes([]);
+      setChannels([]);
       setError(null);
     }
   }, [open]);
@@ -62,11 +76,15 @@ export function CreateServiceDialog({
       return;
     }
     setSubmitting(true);
+    // Empty selection maps to `null` (unrestricted) — the sensible create
+    // default. Never send `[]`, which would lock everyone/every channel out.
     const res = await createServiceAction({
       tenant_id: tenantId,
       code,
       display_name: displayName.trim(),
       description: description.trim() || undefined,
+      allowed_user_types: userTypes.length > 0 ? userTypes : null,
+      allowed_channels: channels.length > 0 ? channels : null,
     });
     setSubmitting(false);
     if (res.ok) {
@@ -123,6 +141,32 @@ export function CreateServiceDialog({
               placeholder="Pay a registered biller."
               className="mt-1"
             />
+          </div>
+          <div>
+            <Label>Who can initiate</Label>
+            <ChipGroup
+              ariaLabel="Who can initiate"
+              options={USER_TYPES}
+              selected={userTypes}
+              onToggle={(v) => setUserTypes((cur) => toggleValue(cur, v))}
+              disabled={submitting}
+            />
+            <p className="mt-1 text-[11px] text-[--color-text-3]">
+              Leave empty = all user types allowed.
+            </p>
+          </div>
+          <div>
+            <Label>Channels</Label>
+            <ChipGroup
+              ariaLabel="Channels"
+              options={SERVICE_CHANNELS}
+              selected={channels}
+              onToggle={(v) => setChannels((cur) => toggleValue(cur, v))}
+              disabled={submitting}
+            />
+            <p className="mt-1 text-[11px] text-[--color-text-3]">
+              Leave empty = all channels allowed.
+            </p>
           </div>
           {error && <ErrorBanner title="Couldn't create" description={error} />}
         </div>

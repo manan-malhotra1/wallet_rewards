@@ -224,6 +224,235 @@ async def test_patch_rejects_code_field(
 
 
 @pytest.mark.asyncio
+async def test_create_service_with_access_policy_persists(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify an admin can restrict a new service to given user types and channels"""
+    resp = await async_client.post(
+        "/api/v1/services",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "code": "agent_cashout",
+            "display_name": "Agent Cash-out",
+            "allowed_user_types": ["agent"],
+            "allowed_channels": ["mobile"],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["allowed_user_types"] == ["agent"]
+    assert body["allowed_channels"] == ["mobile"]
+
+    # DB row carries the policy, not just the response envelope.
+    svc = await db_session.get(Service, body["id"])
+    assert svc is not None
+    assert svc.allowed_user_types == ["agent"]
+    assert svc.allowed_channels == ["mobile"]
+
+
+@pytest.mark.asyncio
+async def test_create_service_without_policy_is_unrestricted(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify creating a service without a policy leaves it unrestricted (null)"""
+    resp = await async_client.post(
+        "/api/v1/services",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "code": "open_service",
+            "display_name": "Open Service",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    # NULL (unrestricted) is preserved as null, never coerced to [].
+    assert body["allowed_user_types"] is None
+    assert body["allowed_channels"] is None
+
+    svc = await db_session.get(Service, body["id"])
+    assert svc is not None
+    assert svc.allowed_user_types is None
+    assert svc.allowed_channels is None
+
+
+@pytest.mark.asyncio
+async def test_create_service_rejects_unknown_user_type(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a service cannot be restricted to a user type that does not exist"""
+    resp = await async_client.post(
+        "/api/v1/services",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "code": "bad_policy",
+            "display_name": "Bad Policy",
+            "allowed_user_types": ["wizard"],
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_service_rejects_unknown_channel(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a service cannot be restricted to a channel that does not exist"""
+    resp = await async_client.post(
+        "/api/v1/services",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "code": "bad_channel",
+            "display_name": "Bad Channel",
+            "allowed_channels": ["telepathy"],
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_service_updates_access_policy(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify an admin can change who and which channel may use a service"""
+    svc = Service(
+        tenant_id=test_tenant.id,
+        code="p2p",
+        display_name="P2P",
+        allowed_user_types=["consumer"],
+        allowed_channels=["mobile"],
+    )
+    db_session.add(svc)
+    await db_session.commit()
+    await db_session.refresh(svc)
+
+    resp = await async_client.patch(
+        f"/api/v1/services/{svc.id}",
+        params={"tenant_id": str(test_tenant.id)},
+        headers=admin_auth_header,
+        json={
+            "allowed_user_types": ["agent", "super_agent"],
+            "allowed_channels": ["mobile", "ussd"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["allowed_user_types"] == ["agent", "super_agent"]
+    assert body["allowed_channels"] == ["mobile", "ussd"]
+
+    await db_session.refresh(svc)
+    assert svc.allowed_user_types == ["agent", "super_agent"]
+    assert svc.allowed_channels == ["mobile", "ussd"]
+
+
+@pytest.mark.asyncio
+async def test_patch_display_name_leaves_policy_untouched(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify renaming a service does not wipe its existing access policy"""
+    svc = Service(
+        tenant_id=test_tenant.id,
+        code="p2p",
+        display_name="P2P",
+        allowed_user_types=["consumer"],
+        allowed_channels=["mobile"],
+    )
+    db_session.add(svc)
+    await db_session.commit()
+    await db_session.refresh(svc)
+
+    resp = await async_client.patch(
+        f"/api/v1/services/{svc.id}",
+        params={"tenant_id": str(test_tenant.id)},
+        headers=admin_auth_header,
+        json={"display_name": "Peer-to-Peer"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["display_name"] == "Peer-to-Peer"
+    # Policy survives a partial edit that omitted the two allow-lists.
+    assert body["allowed_user_types"] == ["consumer"]
+    assert body["allowed_channels"] == ["mobile"]
+
+    await db_session.refresh(svc)
+    assert svc.allowed_user_types == ["consumer"]
+    assert svc.allowed_channels == ["mobile"]
+
+
+@pytest.mark.asyncio
+async def test_patch_service_rejects_unknown_channel(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a service edit cannot introduce a channel that does not exist"""
+    svc = await _seed_service(db_session, str(test_tenant.id), "p2p")
+    resp = await async_client.patch(
+        f"/api/v1/services/{svc.id}",
+        params={"tenant_id": str(test_tenant.id)},
+        headers=admin_auth_header,
+        json={"allowed_channels": ["carrier_pigeon"]},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_service_can_clear_user_types_to_operator_only(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify an admin can set an empty user-type list to make a service operator-only"""
+    svc = Service(
+        tenant_id=test_tenant.id,
+        code="fund",
+        display_name="Fund",
+        allowed_user_types=["consumer"],
+        allowed_channels=["mobile"],
+    )
+    db_session.add(svc)
+    await db_session.commit()
+    await db_session.refresh(svc)
+
+    resp = await async_client.patch(
+        f"/api/v1/services/{svc.id}",
+        params={"tenant_id": str(test_tenant.id)},
+        headers=admin_auth_header,
+        # [] is a real value (restrict-to-none), distinct from omitting the key.
+        json={"allowed_user_types": [], "allowed_channels": ["admin", "api"]},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["allowed_user_types"] == []
+    assert body["allowed_channels"] == ["admin", "api"]
+
+    await db_session.refresh(svc)
+    assert svc.allowed_user_types == []
+    assert svc.allowed_channels == ["admin", "api"]
+
+
+@pytest.mark.asyncio
 async def test_delete_service_removes_from_list(
     async_client: AsyncClient,
     db_session: AsyncSession,

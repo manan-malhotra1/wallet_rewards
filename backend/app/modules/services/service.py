@@ -172,6 +172,9 @@ async def create_service(
         code=payload.code,
         display_name=payload.display_name,
         description=payload.description,
+        # NULL/omitted stays unrestricted; an empty list persists as-is.
+        allowed_user_types=payload.allowed_user_types,
+        allowed_channels=payload.allowed_channels,
     )
     session.add(service)
     try:
@@ -192,6 +195,8 @@ async def create_service(
             "code": service.code,
             "display_name": service.display_name,
             "status": service.status,
+            "allowed_user_types": service.allowed_user_types,
+            "allowed_channels": service.allowed_channels,
         },
         ip_address=ip_address,
     )
@@ -227,6 +232,8 @@ async def update_service(
     before = {
         "display_name": service.display_name,
         "status": service.status,
+        "allowed_user_types": service.allowed_user_types,
+        "allowed_channels": service.allowed_channels,
     }
 
     if payload.display_name is not None:
@@ -235,7 +242,19 @@ async def update_service(
         service.description = payload.description
     if payload.status is not None:
         service.status = payload.status
+    # `None` = leave the policy untouched (partial edit must not wipe it); an
+    # explicit `[]` is a real value and IS persisted (restrict-to-none).
+    if payload.allowed_user_types is not None:
+        service.allowed_user_types = payload.allowed_user_types
+    if payload.allowed_channels is not None:
+        service.allowed_channels = payload.allowed_channels
 
+    after = {
+        "display_name": service.display_name,
+        "status": service.status,
+        "allowed_user_types": service.allowed_user_types,
+        "allowed_channels": service.allowed_channels,
+    }
     record_audit_for_admin(
         session,
         admin,
@@ -244,7 +263,7 @@ async def update_service(
         entity_type="service",
         entity_id=str(service.id),
         before_state=before,
-        after_state={"display_name": service.display_name, "status": service.status},
+        after_state=after,
         ip_address=ip_address,
     )
     await session.commit()
@@ -254,7 +273,7 @@ async def update_service(
         tenant_id=str(service.tenant_id),
         service_id=str(service.id),
         before=before,
-        after={"display_name": service.display_name, "status": service.status},
+        after=after,
     )
     return service
 

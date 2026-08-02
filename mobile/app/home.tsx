@@ -275,9 +275,13 @@ export default function HomeScreen() {
   }
 
   const firstName = data?.first_name ?? 'there';
-  const walletAccounts = (data?.accounts ?? []).filter(
-    (a) => a.account_type === 'financial_wallet',
-  );
+  // Funded wallet first: order the carousel by available balance (desc) so it
+  // opens on the wallet that actually has money rather than an empty ₹0 card.
+  const walletAccounts = (data?.accounts ?? [])
+    .filter((a) => a.account_type === 'financial_wallet')
+    .sort(
+      (a, b) => parseFloat(b.available_balance ?? '0') - parseFloat(a.available_balance ?? '0'),
+    );
   const points = data?.accounts.find((a) => a.currency === 'PTS');
 
   // Carousel geometry: cards are full-width minus the horizontal gutters, and

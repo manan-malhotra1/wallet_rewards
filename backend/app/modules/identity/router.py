@@ -34,6 +34,7 @@ from app.modules.identity.schemas import (
     IdentifierOut,
     IdentifierType,
     LogoutResponse,
+    MyServiceOut,
     OtpSendRequest,
     OtpSendResponse,
     OtpVerifyRequest,
@@ -56,6 +57,7 @@ from app.modules.identity.service import (
     change_user_type,
     create_user,
     get_my_wallet,
+    get_services_for_user,
     get_user_detail,
     list_user_transactions,
     resolve_identifier,
@@ -454,3 +456,20 @@ async def get_me_wallet(
     """
     payload = await get_my_wallet(session, user_id=user.id, tenant_id=user.tenant_id)
     return WalletOut.model_validate(payload)
+
+
+@router.get("/me/services", response_model=list[MyServiceOut])
+async def get_me_services(
+    user: UserPrincipal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[MyServiceOut]:
+    """Return the services the signed-in mobile user may initiate — home tiles.
+
+    User-facing: tenant is implicit from the session token, no admin role
+    required. Resolves the caller's user_type and returns only the active,
+    non-deleted services whose access policy admits that user_type AND the
+    `mobile` channel (NULL-or-empty policy array = unrestricted on that
+    dimension). Ordered by display_name for a stable tile order.
+    """
+    services = await get_services_for_user(session, user_id=user.id, tenant_id=user.tenant_id)
+    return [MyServiceOut.model_validate(s) for s in services]

@@ -207,6 +207,21 @@ class AdminUnlockResponse(BaseModel):
     was_locked: bool
 
 
+class MyServiceOut(BaseModel):
+    """One service tile the signed-in mobile user may initiate.
+
+    Powers the app's home screen: the caller gets only the services their
+    user_type + the `mobile` channel are allowed to initiate (see
+    `list_my_services`). `description` is optional copy for the tile subtitle.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    display_name: str
+    description: str | None = None
+
+
 class WalletTransactionOut(BaseModel):
     """One transaction row surfaced on /me/wallet — same data the mobile
     app shows in its recent-activity feed.
@@ -230,9 +245,11 @@ class WalletTransactionOut(BaseModel):
     amount: str
     fee_amount: str
     # Display-only charge siblings (Epic 20): the commission paid to an agent and
-    # the tax collected on this transaction. Zero for transactions that bear none.
-    commission_amount: str
-    tax_amount: str
+    # the tax collected on this transaction. These are PER-PARTY figures — each is
+    # shown only to the party it actually affected (see `_build_recent_txns_payload`),
+    # so a counterparty who neither paid nor earned the amount sees "0".
+    commission_amount: str = "0"
+    tax_amount: str = "0"
     currency: str
     created_at: datetime
     direction: Literal["in", "out"]

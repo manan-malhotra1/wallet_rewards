@@ -71,6 +71,7 @@ from app.shared.exceptions import (
 from app.shared.models import (
     PARENT_TYPE_BY_CHILD,
     REFERRAL_STATUS_PENDING,
+    SERVICE_STATUS_ACTIVE,
     USER_STATUS_ACTIVE,
     USER_STATUS_CLOSED,
     USER_STATUS_SUSPENDED,
@@ -79,6 +80,7 @@ from app.shared.models import (
     OtpRequest,
     Referral,
     ReferralCode,
+    Service,
     Tenant,
     User,
     UserIdentifier,
@@ -853,6 +855,92 @@ async def get_user_detail(
     }
 
 
+async def get_services_for_user(
+    session: AsyncSession, *, user_id: UUID, tenant_id: UUID
+) -> list[Service]:
+    """Resolve the caller's user_type, then list the services they may initiate.
+
+    Thin orchestrator behind `GET /me/services` so the router stays logic-free:
+    it looks up the authenticated user's `user_type` (tenant-scoped) and hands
+    off to `list_my_services` for the actual catalog query.
+
+    Args:
+        session: Async DB session (read-only).
+        user_id: The authenticated mobile user.
+        tenant_id: The session's tenant.
+
+    Returns:
+        The active, mobile-initiable services for this user, ordered by
+        display_name (see `list_my_services`).
+
+    Raises:
+        UserNotFound: 404 — the token's user_id is unknown in this tenant.
+    """
+    result = await session.execute(
+        select(User.user_type).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    user_type = result.scalar_one_or_none()
+    if user_type is None:
+        raise UserNotFound()
+    return await list_my_services(session, tenant_id=tenant_id, user_type=user_type)
+
+
+async def list_my_services(
+    session: AsyncSession, *, tenant_id: UUID, user_type: str
+) -> list[Service]:
+    """List active services a given user_type may initiate on the `mobile` channel.
+
+    Backs the mobile home tiles. A service is returned only when it is active,
+    not soft-deleted, in the tenant, AND both access dimensions permit the
+    caller — the two are ANDed:
+      - user_type: the service's `allowed_user_types` is unrestricted OR lists
+        this user_type.
+      - channel: the service's `allowed_channels` is unrestricted OR lists
+        `mobile`.
+
+    "Unrestricted" means the policy array is NULL **or empty** — both mean "all
+    values allowed" per the `services` column semantics. This is expressed with
+    `array_length(col, 1) IS NULL`, which is true for a NULL array AND for an
+    empty array (Postgres `array_length` returns NULL for a zero-length array),
+    so a single predicate covers both cases. A non-empty array is an allow-list
+    checked with `value = ANY(col)`.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope — services never resolve across tenants.
+        user_type: The caller's user_type (consumer / agent / super_agent /
+            merchant / head_merchant).
+
+    Returns:
+        Matching `Service` rows ordered by `display_name` for a stable feed.
+    """
+    from sqlalchemy import func, or_
+
+    stmt = (
+        select(Service)
+        .where(
+            Service.tenant_id == tenant_id,
+            Service.status == SERVICE_STATUS_ACTIVE,
+            Service.deleted_at.is_(None),
+            # user_type dimension: NULL-or-empty array = unrestricted; else the
+            # user_type must be a member (array_position returns NULL when absent).
+            or_(
+                func.array_length(Service.allowed_user_types, 1).is_(None),
+                func.array_position(Service.allowed_user_types, user_type).is_not(None),
+            ),
+            # channel dimension: NULL-or-empty array = unrestricted; else the
+            # array must list the mobile channel.
+            or_(
+                func.array_length(Service.allowed_channels, 1).is_(None),
+                func.array_position(Service.allowed_channels, "mobile").is_not(None),
+            ),
+        )
+        .order_by(Service.display_name)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def get_my_wallet(session: AsyncSession, *, user_id: UUID, tenant_id: UUID) -> dict[str, Any]:
     """Return the authenticated user's own wallet view.
 
@@ -914,7 +1002,7 @@ async def get_my_wallet(session: AsyncSession, *, user_id: UUID, tenant_id: UUID
     # surfaces a short feed (shown 4-at-a-time with a "more" toggle); a
     # full statement is a separate endpoint.
     txns_payload: list[dict[str, Any]] = await _build_recent_txns_payload(
-        session, tenant_id=tenant_id, account_ids=account_ids
+        session, tenant_id=tenant_id, user_id=user.id, account_ids=account_ids
     )
 
     return {
@@ -930,6 +1018,7 @@ async def _build_recent_txns_payload(
     session: AsyncSession,
     *,
     tenant_id: UUID,
+    user_id: UUID,
     account_ids: list[UUID],
     limit: int = 20,
 ) -> list[dict[str, Any]]:
@@ -943,6 +1032,10 @@ async def _build_recent_txns_payload(
         redemption the other side is a system or provider account with
         no owning user, so the value is None and the mobile UI falls
         back to a category label.
+      - PER-PARTY fee / tax / commission: a transaction's charges are borne /
+        earned by specific parties, not the whole transaction, so each is shown
+        ONLY to the party it affected (see the per-txn loop). Two counterparties
+        viewing the same transaction therefore see different, correct figures.
 
     Uses three additional queries (entries-by-txn batch fetch, other-
     side accounts batch fetch, user-profiles batch fetch) regardless of
@@ -951,6 +1044,8 @@ async def _build_recent_txns_payload(
     Args:
         session: Async DB session (read-only).
         tenant_id: Caller's tenant (already validated upstream).
+        user_id: The user whose PERSPECTIVE this feed is built for — decides
+            who paid the fee/tax and who earned the commission on each row.
         account_ids: All accounts owned by the caller (financial + points).
 
     Returns:
@@ -1031,6 +1126,24 @@ async def _build_recent_txns_payload(
                     counterparty_name = name
                     break
 
+        # Perspective rule: fee + tax are paid by the INITIATOR (the p2p sender,
+        # the airtime buyer, the customer in cash_in / cashout); commission is
+        # EARNED by the agent, never by the initiator. Show each amount only to
+        # the party it actually affected — everyone else sees "0".
+        is_initiator = t.initiated_by == user_id
+        fee_out = str(t.fee_amount) if is_initiator else "0"
+        tax_out = str(t.tax_amount) if is_initiator else "0"
+        # Commission goes to the agent side:
+        #  - cash_in: the agent INITIATES the deposit and earns the commission.
+        #  - cashout: the agent RECEIVES the cashed-out leg (direction "in") + it.
+        # ("cash_in" / "cashout" match CASH_IN_SERVICE_CODE / CASH_OUT_SERVICE_CODE.)
+        if t.transaction_type == "cash_in" and is_initiator:
+            commission_out = str(t.commission_amount)
+        elif t.transaction_type == "cashout" and direction == "in":
+            commission_out = str(t.commission_amount)
+        else:
+            commission_out = "0"
+
         payload.append(
             {
                 "id": t.id,
@@ -1038,9 +1151,9 @@ async def _build_recent_txns_payload(
                 "transaction_type": t.transaction_type,
                 "status": t.status,
                 "amount": str(t.amount),
-                "fee_amount": str(t.fee_amount),
-                "commission_amount": str(t.commission_amount),
-                "tax_amount": str(t.tax_amount),
+                "fee_amount": fee_out,
+                "commission_amount": commission_out,
+                "tax_amount": tax_out,
                 "currency": t.currency,
                 "created_at": t.created_at,
                 "direction": direction,
@@ -1089,7 +1202,7 @@ async def list_user_transactions(
     )
     account_ids = list(accounts_q.scalars().all())
     return await _build_recent_txns_payload(
-        session, tenant_id=tenant_id, account_ids=account_ids, limit=limit
+        session, tenant_id=tenant_id, user_id=user_id, account_ids=account_ids, limit=limit
     )
 
 

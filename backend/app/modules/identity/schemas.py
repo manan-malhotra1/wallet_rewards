@@ -222,6 +222,43 @@ class MyServiceOut(BaseModel):
     description: str | None = None
 
 
+class WindowUsageOut(BaseModel):
+    """Consumed-vs-cap figures for one rolling window (daily/weekly/monthly).
+
+    `consumed_*` is what the user has already moved in the window; `cap_*` is the
+    configured ceiling — `None` means "no limit" on that axis (either the cap
+    column is NULL or the wallet has no limit config at all). Money is a decimal
+    string; counts are ints.
+    """
+
+    consumed_count: int
+    cap_count: int | None = None
+    consumed_value: str
+    cap_value: str | None = None
+
+
+class DirectionUsageOut(BaseModel):
+    """A single direction's (send or receive) consumption across all windows."""
+
+    daily: WindowUsageOut
+    weekly: WindowUsageOut
+    monthly: WindowUsageOut
+
+
+class MyLimitsOut(BaseModel):
+    """One currency wallet's send/receive limit consumption — `GET /me/limits`.
+
+    Surfaces, per financial-wallet currency, how much of the rolling
+    daily/weekly/monthly SEND and RECEIVE caps the signed-in user has consumed
+    versus the configured caps. A wallet with no limit config still appears, with
+    every cap `None` and the consumed figures informational.
+    """
+
+    currency: str
+    send: DirectionUsageOut
+    receive: DirectionUsageOut
+
+
 class WalletTransactionOut(BaseModel):
     """One transaction row surfaced on /me/wallet — same data the mobile
     app shows in its recent-activity feed.

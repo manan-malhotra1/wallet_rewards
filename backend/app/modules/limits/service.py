@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, func, or_, select
@@ -572,6 +573,137 @@ async def check_wallet_receive_limits(
             raise RecipientLimitReached()
         label, axis, cap = breach
         raise WalletReceiveLimitExceeded(label, axis, cap)
+
+
+# -----------------------------------------------------------------------------
+# User-facing consumption view (GET /me/limits)
+# -----------------------------------------------------------------------------
+
+# The rolling windows surfaced to the mobile user, mirroring the enforcement
+# path's daily=24h / weekly=7d / monthly=30d lengths so the "consumed vs cap"
+# view lines up exactly with what `check_wallet_{send,receive}_limits` enforce.
+_MY_LIMITS_WINDOWS: tuple[tuple[str, timedelta], ...] = (
+    ("daily", timedelta(hours=24)),
+    ("weekly", timedelta(days=7)),
+    ("monthly", timedelta(days=30)),
+)
+
+
+async def _direction_consumption(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    wallet_id: UUID,
+    entry_type: str,
+    direction: str,
+    config: WalletLimitConfig | None,
+    current: datetime,
+) -> dict[str, dict[str, Any]]:
+    """Build one direction's per-window consumed-vs-cap view for a wallet.
+
+    For each of the daily/weekly/monthly windows this returns the CONSUMED count
+    + principal value (COMPLETED financial-wallet movement of `entry_type` on the
+    wallet, via `_aggregate_wallet_movement`) alongside the matching CAP count +
+    value from `config`. A NULL cap — or no config at all — surfaces as `None`
+    ("no limit"); the consumed figures are always populated (informational).
+
+    Args:
+        tenant_id: Tenant scope.
+        wallet_id: The user's financial-wallet account for this currency.
+        entry_type: ENTRY_DEBIT for sends, ENTRY_CREDIT for receives.
+        direction: 'send' or 'receive' — selects the config cap columns.
+        config: The resolved wallet limit config, or None when unconfigured.
+        current: The rolling-window anchor (DB-time NOW()).
+
+    Returns:
+        `{window: {consumed_count, cap_count, consumed_value, cap_value}}` with
+        money as decimal strings, counts as ints, and caps `None` when uncapped.
+    """
+    windows: dict[str, dict[str, Any]] = {}
+    for label, window_len in _MY_LIMITS_WINDOWS:
+        consumed_count, consumed_value = await _aggregate_wallet_movement(
+            session,
+            tenant_id=tenant_id,
+            wallet_id=wallet_id,
+            entry_type=entry_type,
+            window_floor=current - window_len,
+        )
+        count_cap = getattr(config, f"{direction}_{label}_count_cap") if config else None
+        value_cap = getattr(config, f"{direction}_{label}_value_cap") if config else None
+        windows[label] = {
+            "consumed_count": consumed_count,
+            "cap_count": None if count_cap is None else int(count_cap),
+            "consumed_value": str(consumed_value),
+            "cap_value": None if value_cap is None else str(value_cap),
+        }
+    return windows
+
+
+async def list_my_limits(
+    session: AsyncSession, *, tenant_id: UUID, user_id: UUID, now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """Return the caller's per-wallet send/receive consumption vs configured caps.
+
+    For each of the user's `financial_wallet` accounts (one per currency) this
+    resolves the wallet limit config for the user's type + that currency and, for
+    both SEND (DEBIT) and RECEIVE (CREDIT), reports the consumed count + value and
+    the corresponding cap across the rolling daily/weekly/monthly windows. Reuses
+    the enforcement helpers (`_find_wallet_limit_config`, `_aggregate_wallet_movement`)
+    so the figures match what the money paths actually enforce.
+
+    A wallet with NO limit config is still returned — every cap is `None` ("no
+    limit") and the consumed figures are informational. Tenant-isolated: only the
+    caller's own wallets in `tenant_id` are ever read (NFR-0220).
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: The session's tenant.
+        user_id: The authenticated mobile user.
+        now: Rolling-window anchor override for tests; defaults to NOW().
+
+    Returns:
+        A list of dicts shaped like `MyLimitsOut`, one per currency wallet,
+        ordered by currency for a stable response.
+    """
+    user_type = await resolve_user_type(session, tenant_id, user_id)
+    current = now or datetime.now(UTC)
+
+    wallets_q = await session.execute(
+        select(Account)
+        .where(
+            Account.tenant_id == tenant_id,
+            Account.user_id == user_id,
+            Account.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+        )
+        .order_by(Account.currency)
+    )
+    wallets = list(wallets_q.scalars().all())
+
+    payload: list[dict[str, Any]] = []
+    for wallet in wallets:
+        config = await _find_wallet_limit_config(
+            session, tenant_id=tenant_id, currency=wallet.currency, user_type=user_type
+        )
+        send = await _direction_consumption(
+            session,
+            tenant_id=tenant_id,
+            wallet_id=wallet.id,
+            entry_type=ENTRY_DEBIT,
+            direction="send",
+            config=config,
+            current=current,
+        )
+        receive = await _direction_consumption(
+            session,
+            tenant_id=tenant_id,
+            wallet_id=wallet.id,
+            entry_type=ENTRY_CREDIT,
+            direction="receive",
+            config=config,
+            current=current,
+        )
+        payload.append({"currency": wallet.currency, "send": send, "receive": receive})
+    return payload
 
 
 # -----------------------------------------------------------------------------

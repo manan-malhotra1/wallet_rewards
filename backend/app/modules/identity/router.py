@@ -34,6 +34,7 @@ from app.modules.identity.schemas import (
     IdentifierOut,
     IdentifierType,
     LogoutResponse,
+    MyLimitsOut,
     MyServiceOut,
     OtpSendRequest,
     OtpSendResponse,
@@ -67,6 +68,7 @@ from app.modules.identity.service import (
     verify_otp,
     verify_user_identifier,
 )
+from app.modules.limits.service import list_my_limits
 
 router = APIRouter(prefix="/api/v1/identity", tags=["identity"])
 
@@ -473,3 +475,21 @@ async def get_me_services(
     """
     services = await get_services_for_user(session, user_id=user.id, tenant_id=user.tenant_id)
     return [MyServiceOut.model_validate(s) for s in services]
+
+
+@router.get("/me/limits", response_model=list[MyLimitsOut])
+async def get_me_limits(
+    user: UserPrincipal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[MyLimitsOut]:
+    """Return the signed-in user's wallet send/receive limit consumption.
+
+    User-facing: tenant is implicit from the session token, no admin role
+    required. For each of the caller's financial-wallet currencies it reports how
+    much of the rolling daily/weekly/monthly SEND and RECEIVE caps they have
+    consumed versus the configured caps (null cap = no limit). A wallet with no
+    limit config is still returned with all caps null. Reuses the same limits
+    machinery the money paths enforce (see `list_my_limits`).
+    """
+    rows = await list_my_limits(session, tenant_id=user.tenant_id, user_id=user.id)
+    return [MyLimitsOut.model_validate(r) for r in rows]

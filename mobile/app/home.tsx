@@ -30,8 +30,10 @@ import { signOut } from '@/lib/auth';
 import { SessionExpired } from '@/lib/api/errors';
 import {
   activityCategory,
+  getMyServices,
   getMyWallet,
   transactionTitle,
+  type MyService,
   type WalletAccount,
 } from '@/lib/api/wallet';
 import { currencySymbol, formatMoney } from '@/lib/format';
@@ -41,22 +43,58 @@ import { clearAll, getLastPhone } from '@/lib/storage';
 /** Ionicons glyph name — a typed union so only valid glyphs compile. */
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/**
- * Quick-action tile metadata. `route` takes the active wallet currency so
- * the next screen debits the correct wallet (Pay bills / Remit are still
- * placeholders that stay on /home until those screens ship).
- */
-const ACTIONS: ReadonlyArray<{
+/** A rendered quick-action tile. `route` carries the active wallet currency. */
+interface Tile {
   icon: IconName;
   label: string;
   route: (currency: string) => string;
-}> = [
-  { icon: 'paper-plane', label: 'Send', route: (c) => `/p2p/recipient?currency=${c}` },
-  { icon: 'phone-portrait', label: 'Airtime', route: (c) => `/airtime?currency=${c}` },
-  { icon: 'cash-outline', label: 'Cash out', route: (c) => `/cashout?currency=${c}` },
-  { icon: 'receipt', label: 'Pay bills', route: () => '/home' }, // placeholder
-  { icon: 'globe', label: 'Remit', route: () => '/home' }, // placeholder
+}
+
+/**
+ * Known money-service code → tile mapping. The pay tiles are driven by the
+ * per-user `/me/services` list; each returned service `code` is looked up here
+ * for its icon, label, and currency-aware route. Codes NOT in this map (e.g.
+ * `change_pin`, which belongs in the drawer) are filtered out — they are not
+ * money actions and never render as pay tiles. `cash_in` / `redemption` route
+ * to `/home` as placeholders until their flow screens ship, but the tile still
+ * shows so an agent sees "Cash in" instead of "Send".
+ */
+const SERVICE_TILE: Record<string, Tile> = {
+  p2p: { icon: 'paper-plane', label: 'Send', route: (c) => `/p2p/recipient?currency=${c}` },
+  airtime_recharge: {
+    icon: 'phone-portrait',
+    label: 'Airtime',
+    route: (c) => `/airtime?currency=${c}`,
+  },
+  cashout: { icon: 'cash-outline', label: 'Cash out', route: (c) => `/cashout?currency=${c}` },
+  cash_in: { icon: 'enter-outline', label: 'Cash in', route: () => '/home' }, // placeholder
+  redemption: { icon: 'gift-outline', label: 'Rewards', route: () => '/home' }, // placeholder
+};
+
+/**
+ * Static consumer tiles shown while `/me/services` is loading so the pay row is
+ * never empty. Once the query resolves the real per-user tiles replace these
+ * (an agent then sees "Cash in" instead of "Send").
+ */
+const FALLBACK_TILES: ReadonlyArray<Tile> = [
+  SERVICE_TILE.p2p,
+  SERVICE_TILE.airtime_recharge,
+  SERVICE_TILE.cashout,
 ];
+
+/**
+ * Map the per-user services to renderable tiles: keep only codes we have a
+ * money-tile for (drops `change_pin` and any non-money/settings code), and
+ * prefer the backend `display_name` as the label when present.
+ */
+function tilesFromServices(services: MyService[]): Tile[] {
+  return services
+    .filter((s) => s.code in SERVICE_TILE)
+    .map((s) => {
+      const base = SERVICE_TILE[s.code];
+      return { ...base, label: s.display_name?.trim() || base.label };
+    });
+}
 
 /** Format a decimal-string amount as { whole, cents } for the big display —
  *  the cents render in a smaller muted tint. Symbol is applied separately so
@@ -193,6 +231,12 @@ export default function HomeScreen() {
     queryKey: qk.wallet(),
     queryFn: getMyWallet,
   });
+  // Per-user money services drive the quick-action tiles. While this loads we
+  // fall back to the static consumer set so the pay row is never empty.
+  const { data: services } = useQuery({
+    queryKey: qk.services(),
+    queryFn: getMyServices,
+  });
 
   // Pull the phone the user last logged in with from secure storage so
   // the drawer can show it. The wallet endpoint doesn't echo phone back
@@ -246,6 +290,10 @@ export default function HomeScreen() {
 
   const activeCurrency =
     walletAccounts[activeIndex]?.currency ?? walletAccounts[0]?.currency ?? 'ZAR';
+
+  // Quick-action tiles: real per-user tiles once services resolve, else the
+  // static consumer fallback so the row renders immediately.
+  const tiles = services ? tilesFromServices(services) : FALLBACK_TILES;
 
   // Recent activity is scoped to the visible card's currency so swiping to the
   // INR card shows INR activity, ZAR shows ZAR. PTS (reward/redemption) rows are
@@ -424,17 +472,17 @@ export default function HomeScreen() {
 
             {/* Quick actions. Tiles carry the active wallet currency forward. */}
             <XStack justifyContent="space-between" paddingHorizontal={22} paddingTop={22}>
-              {ACTIONS.map((action) => (
+              {tiles.map((tile) => (
                 <Pressable
-                  key={action.label}
-                  onPress={() => router.push(action.route(activeCurrency) as never)}
+                  key={tile.label}
+                  onPress={() => router.push(tile.route(activeCurrency) as never)}
                   accessibilityRole="button"
-                  accessibilityLabel={action.label}
+                  accessibilityLabel={tile.label}
                   style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, width: 60 })}
                 >
                   <YStack alignItems="center" gap={8}>
                     <ClayIconTile size={54} radius={18}>
-                      <Ionicons name={action.icon} size={24} color="#00508F" />
+                      <Ionicons name={tile.icon} size={24} color="#00508F" />
                     </ClayIconTile>
                     <Text
                       fontFamily="PlusJakartaSans-SemiBold"
@@ -442,7 +490,7 @@ export default function HomeScreen() {
                       color="#3a4756"
                       numberOfLines={1}
                     >
-                      {action.label}
+                      {tile.label}
                     </Text>
                   </YStack>
                 </Pressable>

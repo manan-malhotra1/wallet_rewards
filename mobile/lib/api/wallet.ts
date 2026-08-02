@@ -24,14 +24,20 @@ export interface WalletTransaction {
   status: string;
   /** Always positive — direction is on the `direction` field. */
   amount: string;
-  /** Service charge debited with this transaction. "0" when none applied. */
+  /** Service charge YOU paid on this transaction. "0" unless you were charged. */
   fee_amount: string;
+  /** Tax YOU paid on this transaction. "0" unless you were charged. */
+  tax_amount: string;
+  /** Commission YOU earned on this transaction — non-"0" only for the agent leg. */
+  commission_amount: string;
   currency: 'ZAR' | 'PTS' | string;
   created_at: string;
   /** CREDIT on the user's account → "in" (money/points received). DEBIT → "out". */
   direction: TransactionDirection;
   /** P2P only: the other user's first name. Null for top-ups / rewards / redemptions. */
   counterparty_name: string | null;
+  /** Real backend reference (e.g. "S_20260731190532000078"). Null on older rows. */
+  reference: string | null;
 }
 
 export interface Wallet {
@@ -46,6 +52,29 @@ export interface Wallet {
 export async function getMyWallet(): Promise<Wallet> {
   return api<Wallet>({
     path: '/api/v1/identity/me/wallet',
+    method: 'GET',
+    withAuth: true,
+  });
+}
+
+/**
+ * A money service THIS user (by user_type) may initiate on mobile. The backend
+ * scopes the list per user type — e.g. a consumer gets p2p / airtime_recharge /
+ * cashout / redemption / change_pin, an agent gets cash_in.
+ */
+export interface MyService {
+  /** Stable service code, e.g. "p2p", "airtime_recharge", "cash_in". */
+  code: string;
+  /** Human label from the backend, used as a tile fallback. */
+  display_name: string;
+  /** Optional longer description; null when none configured. */
+  description: string | null;
+}
+
+/** GET /me/services — services the auth'd user may initiate on mobile. */
+export async function getMyServices(): Promise<MyService[]> {
+  return api<MyService[]>({
+    path: '/api/v1/identity/me/services',
     method: 'GET',
     withAuth: true,
   });
@@ -69,8 +98,16 @@ export function transactionTitle(t: WalletTransaction): string {
   return t.transaction_type.replace(/_/g, ' ');
 }
 
-/** Short, copy-pasteable transaction reference (first 8 chars, uppercased). */
+/**
+ * Copy-pasteable transaction reference.
+ *
+ * Prefers the real backend reference (e.g. "S_20260731190532000078") so the
+ * app shows the same ref support + statements use. Falls back to a derived
+ * "SASAI-XXXXXXXX" (first 8 chars of the id) only for older rows that predate
+ * the reference field, where `reference` is null/empty.
+ */
 export function transactionRef(t: WalletTransaction): string {
+  if (t.reference && t.reference.length > 0) return t.reference;
   return `SASAI-${t.id.slice(0, 8).toUpperCase()}`;
 }
 

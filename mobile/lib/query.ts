@@ -21,4 +21,6 @@ export const queryClient = new QueryClient({
 /** Centralised query keys — change here to invalidate everywhere. */
 export const qk = {
   wallet: () => ['wallet'] as const,
+  /** Services the current user may initiate on mobile (drives the pay tiles). */
+  services: () => ['me-services'] as const,
 };

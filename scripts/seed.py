@@ -30,6 +30,7 @@ BACKEND = Path(__file__).resolve().parent.parent / "backend"
 sys.path.insert(0, str(BACKEND))
 
 from decimal import Decimal  # noqa: E402
+from typing import NotRequired, TypedDict  # noqa: E402
 
 from sqlalchemy import select, text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
@@ -37,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 from app.auth.principals import AdminPrincipal  # noqa: E402
 from app.auth.secret_box import decrypt_secret, encrypt_secret  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
+from app.modules.accounts.service import derive_balance  # noqa: E402
 from app.modules.payments.service import fund  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
 from app.modules.redemption.service import register_provider  # noqa: E402
@@ -95,7 +97,17 @@ DEFAULT_BRAND_LIGHT_COLOR = "#FFF0C9"  # Cream Soda
 # The merchant_cashin funding merchant (bound to the dev API key below).
 CASHIN_MERCHANT_PHONE = "+27825557001"
 
-USERS_TO_SEED = [
+class UserSeedSpec(TypedDict):
+    """One seeded end-user. `user_type` omitted = the model default (consumer)."""
+
+    phone: str
+    first_name: str
+    last_name: str
+    opening_balance_zar: Decimal
+    user_type: NotRequired[str]
+
+
+USERS_TO_SEED: list[UserSeedSpec] = [
     {
         "phone": "+27825550001",
         "first_name": "Alice",
@@ -108,14 +120,16 @@ USERS_TO_SEED = [
         "last_name": "Nkomo",
         "opening_balance_zar": Decimal("500"),
     },
-    # An agent (user_type='agent') with a funded e-float (its financial_wallet),
-    # so cash-in — an agent funding a customer's wallet for a commission — can be
-    # exercised end-to-end from the mobile-simulator.
+    # An agent (user_type='agent') with a HEALTHY funded e-float (its
+    # financial_wallet), so cash-in — an agent funding a customer's wallet for a
+    # commission — can be exercised repeatedly end-to-end from the mobile app /
+    # simulator without the float running dry. The large opening is topped up on
+    # already-seeded DBs by _topup_agent_efloat (see the users loop below).
     {
         "phone": "+27825558001",
         "first_name": "Grace",
         "last_name": "Dube",
-        "opening_balance_zar": Decimal("5000"),
+        "opening_balance_zar": Decimal("500000"),
         "user_type": USER_TYPE_AGENT,
     },
     # A funded MERCHANT (user_type='merchant') whose wallet is the funding
@@ -1021,6 +1035,63 @@ async def _prefund_operator_float(session: AsyncSession, tenant: Tenant) -> None
     print(f"  + Float top-up: R {amount} ZAR injected from bank mirror")
 
 
+async def _topup_agent_efloat(
+    session: AsyncSession,
+    tenant: Tenant,
+    user: User,
+    account: Account,
+    *,
+    phone: str,
+    target: Decimal,
+) -> None:
+    """Ensure an agent's e-float (financial_wallet) holds at least `target` ZAR.
+
+    On a FRESH DB the opening-balance fund already lands the agent at `target`,
+    so this is a no-op. On an ALREADY-seeded DB whose agent was funded at an
+    older (smaller) opening balance, that opening fund's idempotency key is
+    already spent — a plain re-seed can never raise the balance — so this tops
+    up the shortfall through the same `fund` path.
+
+    Guarded two ways so re-runs never double-fund: a distinct idempotency key
+    (checked first, mirroring the opening-balance guard) AND a delta check that
+    skips when the agent already holds >= target.
+
+    Args:
+        account: The agent's ZAR financial_wallet (its e-float).
+        phone: Used only to build the deterministic idempotency key.
+        target: Desired e-float balance in ZAR.
+
+    Side effects:
+        Appends ledger entries via `fund` (DEBITs the operator cash float).
+    """
+    key = f"seed-agent-efloat-{phone}"
+    existing = (
+        await session.execute(
+            select(Transaction).where(
+                Transaction.tenant_id == tenant.id,
+                Transaction.idempotency_key == key,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+
+    balance, _ = await derive_balance(session, account.id)
+    delta = target - balance
+    if delta <= 0:  # fresh DB already funded to target via the opening balance
+        return
+
+    await fund(
+        session,
+        tenant_id=tenant.id,
+        user_id=user.id,
+        amount=delta,
+        currency="ZAR",
+        idempotency_key=key,
+    )
+    print(f"  + Agent e-float top-up: {user.id} +R {delta} ZAR (-> R {target} target)")
+
+
 async def seed() -> None:
     """Populate the local dev database with the canonical test data."""
     print("Seeding local development database...")
@@ -1114,7 +1185,7 @@ async def seed() -> None:
                 user_type=spec.get("user_type"),
             )
             await _assign_role(session, user, standard_role)
-            await _get_or_create_account(
+            wallet_account = await _get_or_create_account(
                 session,
                 tenant,
                 user=user,
@@ -1153,6 +1224,19 @@ async def seed() -> None:
                     idempotency_key=key,
                 )
                 print(f"  + Fund: {spec['first_name']} <- R {opening} ZAR (opening balance)")
+
+            # Agents need a HEALTHY e-float so cash-in runs repeatedly. On an
+            # already-seeded DB the opening fund above is a spent idempotency key,
+            # so top up the shortfall to the spec's target (no-op on fresh DBs).
+            if spec.get("user_type") == USER_TYPE_AGENT:
+                await _topup_agent_efloat(
+                    session,
+                    tenant,
+                    user,
+                    wallet_account,
+                    phone=spec["phone"],
+                    target=opening,
+                )
 
         # Phase D — sample redemption provider (auto-creates its wallet).
         await _get_or_create_redemption_provider(

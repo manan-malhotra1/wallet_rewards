@@ -23,4 +23,6 @@ export const qk = {
   wallet: () => ['wallet'] as const,
   /** Services the current user may initiate on mobile (drives the pay tiles). */
   services: () => ['me-services'] as const,
+  /** The current user's send/receive limits, per currency wallet. */
+  limits: () => ['me-limits'] as const,
 };

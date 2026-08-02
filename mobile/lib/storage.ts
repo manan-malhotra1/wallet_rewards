@@ -15,6 +15,7 @@ import * as SecureStore from 'expo-secure-store';
 const KEY_SESSION_TOKEN = 'sasai.session_token';
 const KEY_LAST_PHONE = 'sasai.last_phone';
 const KEY_REGISTRATION_TOKEN = 'sasai.registration_token';
+const KEY_THEME_PREF = 'sasai.theme_pref';
 
 /** Read the cached session token. Returns null if absent. */
 export async function getSessionToken(): Promise<string | null> {
@@ -59,6 +60,22 @@ export async function setRegistrationToken(token: string): Promise<void> {
 /** Clear the registration token (after /pin/set consumes it). */
 export async function clearRegistrationToken(): Promise<void> {
   await SecureStore.deleteItemAsync(KEY_REGISTRATION_TOKEN);
+}
+
+/**
+ * Read the persisted theme preference ('light' | 'dark'), or null if unset.
+ *
+ * The theme preference is a display setting, not a credential, so it rides on
+ * the same secure-store wrapper for simplicity. It is deliberately NOT cleared
+ * by `clearAll` — a user's chosen theme survives sign-out.
+ */
+export async function getThemePref(): Promise<string | null> {
+  return SecureStore.getItemAsync(KEY_THEME_PREF);
+}
+
+/** Persist the theme preference ('light' | 'dark'). */
+export async function setThemePref(pref: string): Promise<void> {
+  await SecureStore.setItemAsync(KEY_THEME_PREF, pref);
 }
 
 /** Clear everything — used on sign-out so the next launch routes to /auth/phone. */

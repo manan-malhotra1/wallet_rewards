@@ -23,6 +23,7 @@ import { PortalProvider, TamaguiProvider } from 'tamagui';
 
 import tamaguiConfig from '@/tamagui.config';
 import { queryClient } from '@/lib/query';
+import { ThemeProvider, useThemePref } from '@/lib/theme';
 
 // Hold the splash until fonts + first render are ready (~hundreds of ms).
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -30,11 +31,43 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 /**
+ * Themed provider tree — reads the user's theme preference and drives both
+ * Tamagui's `defaultTheme` and the status-bar style from it.
+ *
+ * Split out from `RootLayout` so it can call `useThemePref()`, which requires
+ * a `ThemeProvider` ancestor (wired in `RootLayout`). Dark preference flips
+ * Tamagui to its `dark` theme and the status bar to light glyphs; light does
+ * the inverse. Full dark re-theming of every screen is a separate later effort
+ * — Tamagui-themed surfaces adapt now, hardcoded-color screens are pending.
+ */
+function ThemedApp() {
+  const { pref } = useThemePref();
+  const isDark = pref === 'dark';
+
+  return (
+    <TamaguiProvider config={tamaguiConfig} defaultTheme={pref}>
+      {/* PortalProvider is required for Tamagui Sheet / Dialog /
+          Popover to mount their content above the screen. The
+          `shouldAddRootHost` flag registers the default portal host
+          so consumers don't need to name it. */}
+      <PortalProvider shouldAddRootHost>
+        <QueryClientProvider client={queryClient}>
+          {/* Dark theme → light status-bar glyphs, and vice versa. */}
+          <StatusBar style={isDark ? 'light' : 'dark'} />
+          <Stack screenOptions={{ headerShown: false }} />
+        </QueryClientProvider>
+      </PortalProvider>
+    </TamaguiProvider>
+  );
+}
+
+/**
  * Root provider tree. Hides the splash once fonts are loaded.
  *
- * Theme is locked to `light` for v0 — the brand assets and every screen's
- * colour choices were authored against a light surface. Dark-mode support
- * lands later once we audit every screen for contrast.
+ * `ThemeProvider` sits ABOVE `TamaguiProvider` (inside `ThemedApp`) so the
+ * user's persisted light/dark preference selects the Tamagui theme. The app
+ * still defaults to `light`; dark mode is opt-in from Settings and its full
+ * per-screen re-theming lands later.
  */
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -60,18 +93,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-          {/* PortalProvider is required for Tamagui Sheet / Dialog /
-              Popover to mount their content above the screen. The
-              `shouldAddRootHost` flag registers the default portal host
-              so consumers don't need to name it. */}
-          <PortalProvider shouldAddRootHost>
-            <QueryClientProvider client={queryClient}>
-              <StatusBar style="dark" />
-              <Stack screenOptions={{ headerShown: false }} />
-            </QueryClientProvider>
-          </PortalProvider>
-        </TamaguiProvider>
+        <ThemeProvider>
+          <ThemedApp />
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

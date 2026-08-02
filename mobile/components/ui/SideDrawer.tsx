@@ -10,12 +10,13 @@
  * the bottom-sheet flow earlier. The panel is 280px wide; the rest of
  * the screen is dimmed at 45% opacity.
  *
- * Future: this is the natural slot for "Profile", "Settings",
- * "Security", "Help", "Switch wallet", and "About". They're not wired
- * yet — for the demo the only working action is Sign out.
+ * "Limits" and "Settings" navigate to their routes (closing the drawer
+ * first); "Sign out" is the wired account action. The remaining items
+ * (Profile, Security, …) are still labelled-but-inert placeholders.
  */
 import { useEffect, useRef } from 'react';
 import { Animated, Dimensions, Modal, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,8 +57,21 @@ export function SideDrawer({
   signingOut = false,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const x = useRef(new Animated.Value(-PANEL_WIDTH)).current;
   const dim = useRef(new Animated.Value(0)).current;
+
+  /**
+   * Close the drawer, then navigate to `route`.
+   *
+   * Closing first lets the slide-out play and avoids leaving the modal
+   * mounted over the destination screen (matches the app's push-then-dismiss
+   * navigation elsewhere).
+   */
+  function go(route: string) {
+    onClose();
+    router.push(route as never);
+  }
 
   // Slide-in / slide-out animation whenever `open` flips.
   useEffect(() => {
@@ -160,33 +174,49 @@ export function SideDrawer({
             </Text>
           </YStack>
 
-          {/* Menu items. Only Sign out is wired today; the rest are
-              labelled but inert so the surface looks complete. */}
+          {/* Menu items. "Limits" and "Settings" navigate (closing the drawer
+              first); the rest are labelled but inert so the surface looks
+              complete until they're wired. */}
           <YStack marginTop={32} gap={4}>
             {([
+              { icon: 'speedometer', label: 'Limits', route: '/limits' },
+              { icon: 'settings', label: 'Settings', route: '/settings' },
               { icon: 'person', label: 'Profile', disabled: true },
               { icon: 'lock-closed', label: 'Security', disabled: true },
               { icon: 'help-buoy', label: 'Help & support', disabled: true },
               { icon: 'information-circle', label: 'About Sasai Pay', disabled: true },
-            ] as ReadonlyArray<{ icon: IconName; label: string; disabled: boolean }>).map((item) => (
-              <View
+            ] as ReadonlyArray<{
+              icon: IconName;
+              label: string;
+              route?: string;
+              disabled?: boolean;
+            }>).map((item) => (
+              <Pressable
                 key={item.label}
-                paddingVertical={12}
-                paddingHorizontal={4}
-                flexDirection="row"
-                alignItems="center"
-                gap={12}
-                opacity={item.disabled ? 0.45 : 1}
+                onPress={item.route ? () => go(item.route as string) : undefined}
+                disabled={!item.route}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
+                style={({ pressed }) => ({ opacity: pressed && item.route ? 0.6 : 1 })}
               >
-                <Ionicons name={item.icon} size={20} color="#013a6b" />
-                <Text
-                  fontFamily="PlusJakartaSans-SemiBold"
-                  fontSize={14.5}
-                  color="#0c1b2a"
+                <View
+                  paddingVertical={12}
+                  paddingHorizontal={4}
+                  flexDirection="row"
+                  alignItems="center"
+                  gap={12}
+                  opacity={item.disabled ? 0.45 : 1}
                 >
-                  {item.label}
-                </Text>
-              </View>
+                  <Ionicons name={item.icon} size={20} color="#013a6b" />
+                  <Text
+                    fontFamily="PlusJakartaSans-SemiBold"
+                    fontSize={14.5}
+                    color="#0c1b2a"
+                  >
+                    {item.label}
+                  </Text>
+                </View>
+              </Pressable>
             ))}
           </YStack>
 

@@ -67,7 +67,7 @@ const SERVICE_TILE: Record<string, Tile> = {
     route: (c) => `/airtime?currency=${c}`,
   },
   cashout: { icon: 'cash-outline', label: 'Cash out', route: (c) => `/cashout?currency=${c}` },
-  cash_in: { icon: 'enter-outline', label: 'Cash in', route: () => '/home' }, // placeholder
+  cash_in: { icon: 'enter-outline', label: 'Cash in', route: (c) => `/cashin?currency=${c}` },
   redemption: { icon: 'gift-outline', label: 'Rewards', route: () => '/home' }, // placeholder
 };
 

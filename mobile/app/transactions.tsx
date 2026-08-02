@@ -54,18 +54,21 @@ function dayLabel(d: Date): string {
   return target.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }
 
-/** Build "S_2026… · 10:24 · Fee R2.00" style subtitle for ActivityRow. */
-function subtitleFor(t: WalletTransaction): string {
+/**
+ * Build the "time · Fee R2.00 · Tax …" meta line for ActivityRow. The reference
+ * (`S_2026…`) is passed separately as the row's `subtitle`, so the long ref and
+ * the time/charges live on different lines and neither truncates the other.
+ *
+ * Surfaces the per-user charges/earnings from THIS user's perspective — the
+ * backend already scopes these: `fee_amount`/`tax_amount` are "0" unless you
+ * paid them, and `commission_amount` is non-"0" only for the agent who earned
+ * it. Each is in the transaction's own currency; PTS movements carry no charge.
+ */
+function metaFor(t: WalletTransaction): string {
   const time = new Date(t.created_at).toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
   });
-  const ref = transactionRef(t);
-  // Surface the per-user charges/earnings inline, from THIS user's perspective.
-  // The backend already scopes these amounts to the viewer: `fee_amount` /
-  // `tax_amount` are "0" unless you paid them, and `commission_amount` is
-  // non-"0" only for the agent who earned it. Each is in the transaction's own
-  // currency; PTS movements never carry a charge.
   const fee = parseFloat(t.fee_amount ?? '0');
   const tax = parseFloat(t.tax_amount ?? '0');
   const commission = parseFloat(t.commission_amount ?? '0');
@@ -73,7 +76,7 @@ function subtitleFor(t: WalletTransaction): string {
   const taxNote = tax > 0 ? ` · Tax ${formatMoney(tax, t.currency)}` : '';
   const commissionNote =
     commission > 0 ? ` · Commission ${formatMoney(commission, t.currency)}` : '';
-  return `${ref} · ${time}${feeNote}${taxNote}${commissionNote}`;
+  return `${time}${feeNote}${taxNote}${commissionNote}`;
 }
 
 /**
@@ -308,7 +311,8 @@ export default function TransactionsScreen() {
                         key={t.id}
                         category={activityCategory(t)}
                         title={transactionTitle(t)}
-                        subtitle={subtitleFor(t)}
+                        subtitle={transactionRef(t)}
+                        meta={metaFor(t)}
                         amount={amt.text}
                         positive={amt.positive}
                         noBorder={i === items.length - 1}

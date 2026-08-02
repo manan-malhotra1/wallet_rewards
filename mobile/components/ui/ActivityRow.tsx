@@ -23,8 +23,11 @@ interface Props {
   category: Category;
   /** Primary line (e.g., "Maria Ncube"). */
   title: string;
-  /** Secondary line (e.g., "Received · 10:24"). */
+  /** Secondary line (e.g., the reference "S_2026…"). */
   subtitle: string;
+  /** Optional third line for time + charges, kept off the reference line so
+   *  neither truncates the other (e.g., "23:24 · Fee R1.50"). */
+  meta?: string;
   /** Display amount, already formatted (e.g., "+$120.00"). */
   amount: string;
   /** Optional small label under the amount (e.g., "Wallet", "Token"). */
@@ -52,6 +55,7 @@ export function ActivityRow({
   category,
   title,
   subtitle,
+  meta,
   amount,
   subAmount,
   positive,
@@ -78,6 +82,11 @@ export function ActivityRow({
         <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color="#8a98a6" numberOfLines={1}>
           {subtitle}
         </Text>
+        {meta ? (
+          <Text fontFamily="PlusJakartaSans-Medium" fontSize={11} color="#9aa7b5" numberOfLines={1}>
+            {meta}
+          </Text>
+        ) : null}
       </YStack>
       <YStack alignItems="flex-end" gap={2}>
         <Text

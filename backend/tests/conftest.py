@@ -123,6 +123,19 @@ async def db_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+@pytest.fixture
+def session_factory() -> async_sessionmaker[AsyncSession]:
+    """The test-engine `async_sessionmaker`, for code that opens its own sessions.
+
+    Services like the reward-outbox drainer take a session factory (not a
+    session) so they can run a fresh session per unit of work — mirroring how
+    they run in production off the app's `SessionLocal`. Returns the same
+    `TestSessionLocal` bound to the test engine, so rows a `db_session` fixture
+    commits are visible to sessions opened from this factory (same test DB).
+    """
+    return TestSessionLocal
+
+
 @pytest_asyncio.fixture
 async def async_client() -> AsyncIterator[AsyncClient]:
     """httpx AsyncClient bound to the FastAPI app, using the test database.

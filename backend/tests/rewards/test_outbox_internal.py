@@ -14,6 +14,7 @@ from app.modules.ledger import (
     RewardTrigger,
     post_transaction,
 )
+from app.modules.rewards.outbox import attempt_immediate, recon_sweep_async
 from app.shared.models import (
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ENTRY_CREDIT,
@@ -23,7 +24,7 @@ from app.shared.models import (
     Rule,
     Transaction,
 )
-from app.shared.models.rewards import OUTBOX_PENDING, RewardOutbox
+from app.shared.models.rewards import OUTBOX_PENDING, OUTBOX_PROCESSED, RewardOutbox
 
 
 async def _unguarded_pair(db_session, tenant_id: UUID, currency: str) -> tuple[Account, Account]:
@@ -356,3 +357,98 @@ async def test_evaluate_and_issue_firings_issues_reward_for_seeded_rule(
         )
     ).scalar_one()
     assert reward.reward_value == Decimal("100")
+
+
+async def _seed_first_time_p2p_rule(db_session, tenant_id: UUID) -> Rule:
+    """Seed an active first_time p2p points rule for a tenant."""
+    rule = Rule(
+        tenant_id=tenant_id,
+        name="first p2p",
+        rule_type="first_time",
+        transaction_type="p2p",
+        reward_type="points",
+        reward_value=Decimal("100"),
+    )
+    db_session.add(rule)
+    await db_session.commit()
+    await db_session.refresh(rule)
+    return rule
+
+
+async def _reward_event_count(db_session, user_id: UUID, rule_id: UUID) -> int:
+    """Count reward_events rows for a (user, rule) pair."""
+    return (
+        await db_session.execute(
+            select(func.count())
+            .select_from(RewardEvent)
+            .where(RewardEvent.user_id == user_id, RewardEvent.rule_id == rule_id)
+        )
+    ).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_attempt_immediate_issues_and_is_idempotent(
+    db_session,
+    session_factory,
+    test_tenant,
+    test_user,
+    user_points,
+    system_points_account,
+):
+    """Verify the immediate drain rewards the user once and never double-issues on replay."""
+    # A matching first_time p2p rule + a rewardable p2p txn that enqueues one
+    # PENDING outbox row (the money-service path via post_transaction).
+    rule = await _seed_first_time_p2p_rule(db_session, test_tenant.id)
+    await post_rewardable_txn(
+        db_session, test_tenant.id, test_user.id, "p2p", Decimal("100"), "ZAR"
+    )
+
+    # First drain: the rule fires once and the row is marked PROCESSED.
+    firings = await attempt_immediate(
+        session_factory, tenant_id=test_tenant.id, user_id=test_user.id
+    )
+    assert len(firings) == 1
+    assert firings[0].rule_id == rule.id
+    assert await _reward_event_count(db_session, test_user.id, rule.id) == 1
+    row = (
+        await db_session.execute(
+            select(RewardOutbox).where(RewardOutbox.tenant_id == test_tenant.id)
+        )
+    ).scalar_one()
+    assert row.status == OUTBOX_PROCESSED
+
+    # Second drain: the row is no longer PENDING, so nothing is claimed and the
+    # single reward_event stands (idempotent — no double issuance).
+    again = await attempt_immediate(
+        session_factory, tenant_id=test_tenant.id, user_id=test_user.id
+    )
+    assert again == []
+    assert await _reward_event_count(db_session, test_user.id, rule.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_recon_sweep_drains_pending(
+    db_session,
+    session_factory,
+    test_tenant,
+    test_user,
+    user_points,
+    system_points_account,
+):
+    """Verify the recon sweep drains a leftover PENDING outbox row and issues its reward."""
+    # One PENDING row the immediate attempt never ran (simulating a crash /
+    # transient miss) — the sweep is the durability safety net that catches it.
+    rule = await _seed_first_time_p2p_rule(db_session, test_tenant.id)
+    await post_rewardable_txn(
+        db_session, test_tenant.id, test_user.id, "p2p", Decimal("100"), "ZAR"
+    )
+
+    processed = await recon_sweep_async(session_factory)
+    assert processed == 1
+    assert await _reward_event_count(db_session, test_user.id, rule.id) == 1
+    row = (
+        await db_session.execute(
+            select(RewardOutbox).where(RewardOutbox.tenant_id == test_tenant.id)
+        )
+    ).scalar_one()
+    assert row.status == OUTBOX_PROCESSED

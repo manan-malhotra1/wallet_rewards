@@ -17,6 +17,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.models.base import Base, created_at_col, updated_at_col, uuid_pk
 
+# Deployment modes (tenants.business_type). Load-bearing as of 2026-08-03:
+# gates whether wallet activity and/or external Kafka events drive rewards.
+BUSINESS_TYPE_WALLET = "wallet"
+BUSINESS_TYPE_REWARDS = "rewards"
+BUSINESS_TYPE_BOTH = "both"
+BUSINESS_TYPES = (BUSINESS_TYPE_WALLET, BUSINESS_TYPE_REWARDS, BUSINESS_TYPE_BOTH)
+
 
 class Tenant(Base):
     """A logical deployment of the platform.

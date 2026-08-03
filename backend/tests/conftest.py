@@ -256,6 +256,33 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
 
 
 @pytest_asyncio.fixture
+async def tenant_factory(db_session: AsyncSession) -> Callable[..., Any]:
+    """Insert a tenant with a caller-chosen business_type (deployment mode).
+
+    Unlike `test_tenant`, this makes the mode explicit so mode-gating tests can
+    create 'wallet' / 'rewards' / 'both' tenants. No float is pre-funded — these
+    tenants exist to assert on `business_type`, not to move money.
+
+    Returns:
+        An async factory: `await tenant_factory(business_type=..., base_currency="ZAR")`
+        commits and returns the persisted Tenant.
+    """
+
+    async def _make(business_type: str, base_currency: str = "ZAR") -> Tenant:
+        tenant = Tenant(
+            name=f"mode-tenant-{uuid4().hex[:8]}",
+            business_type=business_type,
+            base_currency=base_currency,
+        )
+        db_session.add(tenant)
+        await db_session.commit()
+        await db_session.refresh(tenant)
+        return tenant
+
+    return _make
+
+
+@pytest_asyncio.fixture
 async def test_user(db_session: AsyncSession, test_tenant: Tenant, default_user_role: Role) -> User:
     """A simple active user with one phone identifier + default role.
 

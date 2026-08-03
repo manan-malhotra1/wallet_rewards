@@ -18,7 +18,19 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sasai.wallet"
+      "bundleIdentifier": "com.sasai.wallet",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -47,7 +59,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "backendUrl": "http://192.168.1.2:8000",
+      "backendUrl": "http://localhost:8000",
       "router": {},
       "eas": {
         "projectId": "e602c0b8-0daf-477f-9851-477b8b26b76f"

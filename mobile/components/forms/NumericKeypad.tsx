@@ -1,13 +1,14 @@
 /**
- * NumericKeypad — the white-background pad shown at the bottom of the
- * amount screen. Supports a decimal "." key and a backspace, and emits
+ * NumericKeypad — the theme-aware pad shown at the bottom of the amount
+ * screen (tray fill tracks `useColors().clayBg`, so it darkens in dark mode
+ * while the keys stay clay). Supports a decimal "." key and a backspace, and emits
  * structured events so the parent owns the actual amount-string state
  * (allowing it to enforce max digits, decimal places, etc.).
  */
 import { Text, XStack, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
 
-import { ClayKey, clay } from '@/components/clay';
+import { ClayKey } from '@/components/clay';
 import { useColors } from '@/lib/colors';
 
 interface Props {
@@ -29,7 +30,7 @@ export function NumericKeypad({ onPress, decimalsAllowed = true }: Props) {
   const colors = useColors();
   return (
     <YStack
-      backgroundColor={clay.claySurface.bg}
+      backgroundColor={colors.clayBg}
       paddingHorizontal={18}
       paddingTop={10}
       paddingBottom={6}

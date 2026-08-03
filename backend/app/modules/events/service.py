@@ -50,6 +50,7 @@ from app.shared.models import (
     ExternalEventSource,
     Tenant,
 )
+from app.shared.tenant_mode import external_events_allowed
 
 # -----------------------------------------------------------------------------
 # Source registration
@@ -256,6 +257,19 @@ async def process_external_event(
             outcome="rejected",
             event_id=raw.event_id,
             rejection_reason="source_tenant_mismatch",
+        )
+
+    # 2b. Deployment-mode gate: external Kafka events may issue rewards ONLY for
+    #     `rewards`-mode tenants. In `both` mode rewards come from internal wallet
+    #     activity; in `wallet` mode there are no rewards. This is enforced in code
+    #     here — not merely by which consumer process runs — so an event that slips
+    #     into the wrong tenant's stream is rejected and audit-logged, never issued.
+    if not await external_events_allowed(session, source.tenant_id):
+        await _log_rejected(session, raw, "wrong_mode")
+        return IngestResponse(
+            outcome="rejected",
+            event_id=raw.event_id,
+            rejection_reason="wrong_mode",
         )
 
     # 3. Phase F.5: HMAC verify when source.shared_secret_encrypted is set.

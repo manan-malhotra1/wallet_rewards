@@ -5,6 +5,7 @@ platform-admin JWT — both events endpoints are admin-only after Phase F.4.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -12,6 +13,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_async_session
 from app.main import app
+from app.shared.models import Tenant
+
+
+@pytest_asyncio.fixture
+async def test_tenant(db_session: AsyncSession) -> Tenant:
+    """Override the global `test_tenant` to REWARDS mode for events tests.
+
+    External Kafka events may issue rewards only for `rewards`-mode tenants
+    (`process_external_event`'s deployment-mode gate). The global fixture is
+    `both`-mode, which the gate now rejects with `wrong_mode`, so every ingest
+    test in this package binds to a rewards-mode tenant instead. Dependent
+    fixtures (`test_user`, `user_points`, `default_user_role`) resolve through
+    this override automatically. No float is pre-funded — external events issue
+    points, they never move the cash float.
+    """
+    tenant = Tenant(
+        name=f"events-tenant-{uuid4().hex[:8]}",
+        business_type="rewards",
+        base_currency="ZAR",
+    )
+    db_session.add(tenant)
+    await db_session.commit()
+    await db_session.refresh(tenant)
+    return tenant
 
 
 @pytest_asyncio.fixture

@@ -75,6 +75,35 @@ class LedgerEntryRequest:
 
 
 @dataclass(frozen=True)
+class RewardTrigger:
+    """Set by money services when a transaction should drive reward evaluation.
+
+    Its presence (plus tenant business_type == 'both') makes `post_transaction`
+    write a `reward_outbox` row atomically with the ledger commit. Reward-issuance
+    calls leave it None so reward payouts never loop back into the evaluator.
+
+    Modelled as a frozen dataclass to match `LedgerEntryRequest` /
+    `PostTransactionRequest` — this is an internal service request object, not an
+    HTTP API schema, so it stays consistent with the ledger module's existing
+    dataclass style rather than introducing a Pydantic model here.
+
+    Attributes:
+        user_id: The user the transaction (and any resulting reward) belongs to.
+        transaction_type: The rewardable type tag (must be in REWARDABLE_TYPES to
+            actually enqueue — enforced as defence-in-depth in post_transaction).
+        amount: Headline transaction amount the reward rules evaluate against.
+        currency: 3-letter ISO 4217 of `amount`.
+        merchant_id: Optional merchant the transaction was with (segment rules).
+    """
+
+    user_id: UUID
+    transaction_type: str
+    amount: Decimal
+    currency: str
+    merchant_id: UUID | None = None
+
+
+@dataclass(frozen=True)
 class PostTransactionRequest:
     """Input to `post_transaction`.
 
@@ -107,6 +136,11 @@ class PostTransactionRequest:
             NOT a reversal — used for earned payouts such as an agent commission
             credit, which must not be blocked by the agent's own cap (Story 20.3).
             Overdraft on debit legs still applies.
+        reward_trigger: Set by money services when this wallet transaction should
+            drive reward evaluation. When present AND the tenant is in `both` mode
+            AND the type is rewardable, `post_transaction` writes a `reward_outbox`
+            row in the SAME DB transaction as the ledger commit. Reward-issuance
+            calls leave it None so payouts never loop back into the evaluator.
     """
 
     tenant_id: UUID
@@ -122,6 +156,7 @@ class PostTransactionRequest:
     status: str = TXN_STATUS_COMPLETED
     is_reversal: bool = False
     skip_receive_cap: bool = False
+    reward_trigger: RewardTrigger | None = None
 
 
 async def post_transaction(session: AsyncSession, request: PostTransactionRequest) -> Transaction:
@@ -210,6 +245,33 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
                 status=entry_status,
             )
         )
+
+    # Internal wallet → rewards trigger (spec 2026-08-03). Written atomically
+    # with the ledger commit so the intent can never be lost. Gated to `both`
+    # tenants; only money services pass reward_trigger, so reward issuance
+    # itself never loops. Defense-in-depth: enforce the rewardable allowlist.
+    # txn.id is already populated by the flush() above (entries FK it), so no
+    # extra flush is needed for outbox.transaction_id.
+    if request.reward_trigger is not None:
+        from app.shared.models.rewards import REWARDABLE_TYPES, RewardOutbox
+        from app.shared.tenant_mode import rewards_from_wallet_enabled
+
+        rt = request.reward_trigger
+        if (
+            rt.transaction_type in REWARDABLE_TYPES
+            and await rewards_from_wallet_enabled(session, request.tenant_id)
+        ):
+            session.add(
+                RewardOutbox(
+                    tenant_id=request.tenant_id,
+                    user_id=rt.user_id,
+                    transaction_id=txn.id,
+                    transaction_type=rt.transaction_type,
+                    amount=rt.amount,
+                    currency=rt.currency,
+                    merchant_id=rt.merchant_id,
+                )
+            )
 
     try:
         await session.commit()

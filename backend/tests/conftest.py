@@ -283,6 +283,29 @@ async def tenant_factory(db_session: AsyncSession) -> Callable[..., Any]:
 
 
 @pytest_asyncio.fixture
+async def user_factory(db_session: AsyncSession) -> Callable[..., Any]:
+    """Insert a minimal active user under a caller-supplied tenant.
+
+    Unlike `test_user` (which is bound to `test_tenant` + a default role), this
+    factory attaches a bare user to any tenant — used by mode-gating tests that
+    build their own `tenant_factory` tenants and only need a real `users.id`.
+
+    Returns:
+        An async factory: `await user_factory(tenant)` commits and returns the
+        persisted User. Accepts a Tenant or anything exposing `.id`.
+    """
+
+    async def _make(tenant: Any) -> User:
+        user = User(tenant_id=tenant.id)
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+        return user
+
+    return _make
+
+
+@pytest_asyncio.fixture
 async def test_user(db_session: AsyncSession, test_tenant: Tenant, default_user_role: Role) -> User:
     """A simple active user with one phone identifier + default role.
 

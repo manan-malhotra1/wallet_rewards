@@ -6,8 +6,8 @@
  * per financial wallet (e.g. ZAR + INR) — with page-dot indicators. The
  * active card's currency drives every quick action (Send / Airtime /
  * Cash out) so downstream screens debit the right wallet.
- * Quick actions row, a "send money home" promo, and recent activity all
- * sit inside a vertical ScrollView so content below the fold is reachable.
+ * Quick actions row and recent activity all sit inside a vertical ScrollView
+ * so content below the fold is reachable.
  *
  * Pulls /me/wallet for the name, per-wallet balances, and the PTS pill.
  * Loading + error states fall back to muted greetings rather than
@@ -57,9 +57,9 @@ interface Tile {
  * Known money-service code → tile mapping. The pay tiles are driven by the
  * per-user `/me/services` list; each returned service `code` is looked up here
  * for its icon, label, and currency-aware route. Codes NOT in this map (e.g.
- * `change_pin`, which belongs in the drawer) are filtered out — they are not
- * money actions and never render as pay tiles. `cash_in` routes to the cash-in
- * flow; `redemption` routes to the Rewards screen.
+ * `change_pin`, which belongs in the drawer, and `redemption`, which is reached
+ * by tapping the header points chip → /rewards) are filtered out — they are not
+ * pay tiles. `cash_in` routes to the cash-in flow.
  */
 const SERVICE_TILE: Record<string, Tile> = {
   p2p: { icon: 'paper-plane', label: 'Send', route: (c) => `/p2p/recipient?currency=${c}` },
@@ -70,7 +70,6 @@ const SERVICE_TILE: Record<string, Tile> = {
   },
   cashout: { icon: 'cash-outline', label: 'Cash out', route: (c) => `/cashout?currency=${c}` },
   cash_in: { icon: 'enter-outline', label: 'Cash in', route: (c) => `/cashin?currency=${c}` },
-  redemption: { icon: 'gift-outline', label: 'Rewards', route: () => '/rewards' },
 };
 
 /**
@@ -86,16 +85,16 @@ const FALLBACK_TILES: ReadonlyArray<Tile> = [
 
 /**
  * Map the per-user services to renderable tiles: keep only codes we have a
- * money-tile for (drops `change_pin` and any non-money/settings code), and
- * prefer the backend `display_name` as the label when present.
+ * money-tile for (drops `change_pin`, `redemption`, and any non-money/settings
+ * code). Always uses the SHORT hardcoded `base.label` (Send / Airtime / Cash
+ * out / Cash in) rather than the backend `display_name` — the long display
+ * names ("Airtime recharge", "Peer-to-peer") truncate under the fixed tile
+ * width, so the tile keeps the concise label that fits on one line.
  */
 function tilesFromServices(services: MyService[]): Tile[] {
   return services
     .filter((s) => s.code in SERVICE_TILE)
-    .map((s) => {
-      const base = SERVICE_TILE[s.code];
-      return { ...base, label: s.display_name?.trim() || base.label };
-    });
+    .map((s) => SERVICE_TILE[s.code]);
 }
 
 /** Format a decimal-string amount as { whole, cents } for the big display —
@@ -368,7 +367,7 @@ export default function HomeScreen() {
                       {initials(firstName)}
                     </Text>
                   </View>
-                  <YStack>
+                  <YStack flexShrink={1} maxWidth={150}>
                     <Text
                       fontFamily="PlusJakartaSans-Medium"
                       fontSize={12}
@@ -376,53 +375,73 @@ export default function HomeScreen() {
                     >
                       Welcome back
                     </Text>
-                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color={colors.textOnDark}>
+                    {/* Constrain + ellipsize so a long name (e.g. "Alicia101514")
+                        truncates with … instead of pushing into the balance card. */}
+                    <Text
+                      fontFamily="PlusJakartaSans-Bold"
+                      fontSize={15}
+                      color={colors.textOnDark}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       {firstName}
                     </Text>
                   </YStack>
                 </XStack>
               </Pressable>
               <XStack alignItems="center" gap={10}>
-                <XStack
-                  alignItems="center"
-                  gap={7}
-                  backgroundColor="rgba(255,255,255,0.14)"
-                  borderColor="rgba(80,192,208,0.5)"
-                  borderWidth={1}
-                  borderRadius={22}
-                  paddingHorizontal={12}
-                  paddingVertical={6}
+                {/* Points chip is tappable → /rewards (the destination the old
+                    redemption tile used, now that the tile is gone). */}
+                <Pressable
+                  onPress={() => router.push('/rewards' as never)}
+                  accessibilityRole="button"
+                  accessibilityLabel="View rewards"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
+                  hitSlop={6}
                 >
-                  <View
-                    width={26}
-                    height={26}
-                    borderRadius={13}
-                    backgroundColor={colors.teal}
+                  <XStack
                     alignItems="center"
-                    justifyContent="center"
+                    gap={7}
+                    backgroundColor="rgba(255,255,255,0.14)"
+                    borderColor="rgba(80,192,208,0.5)"
+                    borderWidth={1}
+                    borderRadius={22}
+                    paddingHorizontal={12}
+                    paddingVertical={6}
                   >
-                    <Ionicons name="star" size={14} color={colors.textOnDark} />
-                  </View>
-                  <YStack>
-                    <Text
-                      fontFamily="PlusJakartaSans-ExtraBold"
-                      fontSize={13}
-                      color={colors.textOnDark}
-                      lineHeight={14}
+                    <View
+                      width={26}
+                      height={26}
+                      borderRadius={13}
+                      backgroundColor={colors.teal}
+                      alignItems="center"
+                      justifyContent="center"
                     >
-                      {points ? parseInt(points.available_balance, 10).toLocaleString('en-ZA') : '0'}
-                    </Text>
-                    <Text
-                      fontFamily="PlusJakartaSans-SemiBold"
-                      fontSize={8.5}
-                      color="#9fd9e2"
-                      letterSpacing={0.4}
-                      lineHeight={10}
-                    >
-                      POINTS
-                    </Text>
-                  </YStack>
-                </XStack>
+                      <Ionicons name="star" size={14} color={colors.textOnDark} />
+                    </View>
+                    <YStack>
+                      <Text
+                        fontFamily="PlusJakartaSans-ExtraBold"
+                        fontSize={13}
+                        color={colors.textOnDark}
+                        lineHeight={14}
+                      >
+                        {points
+                          ? parseInt(points.available_balance, 10).toLocaleString('en-ZA')
+                          : '0'}
+                      </Text>
+                      <Text
+                        fontFamily="PlusJakartaSans-SemiBold"
+                        fontSize={8.5}
+                        color="#9fd9e2"
+                        letterSpacing={0.4}
+                        lineHeight={10}
+                      >
+                        POINTS
+                      </Text>
+                    </YStack>
+                  </XStack>
+                </Pressable>
                 <View
                   width={40}
                   height={40}
@@ -534,64 +553,6 @@ export default function HomeScreen() {
                 </Pressable>
               ))}
             </XStack>
-
-            {/* Promo banner — Sasai's "send money home" call-out. */}
-            <View
-              marginTop={14}
-              marginHorizontal={18}
-              backgroundColor={colors.navy}
-              borderRadius={24}
-              padding={18}
-              overflow="hidden"
-              position="relative"
-              shadowColor="#012e54"
-              shadowOpacity={0.24}
-              shadowRadius={20}
-              shadowOffset={{ width: 0, height: 12 }}
-              style={{ elevation: 10 }}
-            >
-              {/* Decorative ring at the bottom-right. */}
-              <View
-                position="absolute"
-                width={140}
-                height={140}
-                borderRadius={70}
-                borderWidth={24}
-                borderColor="rgba(80,192,208,0.22)"
-                bottom={-70}
-                right={-40}
-                pointerEvents="none"
-              />
-              <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={16} color={colors.textOnDark}>
-                Send money home, faster
-              </Text>
-              <Text
-                fontFamily="PlusJakartaSans-Medium"
-                fontSize={12.5}
-                color="rgba(255,255,255,0.82)"
-                marginTop={4}
-                maxWidth={200}
-                lineHeight={18}
-              >
-                Transfer to any bank or mobile wallet across Africa.
-              </Text>
-              <Pressable
-                onPress={() => router.push(`/p2p/recipient?currency=${activeCurrency}` as never)}
-                style={{ marginTop: 14 }}
-              >
-                <View
-                  alignSelf="flex-start"
-                  backgroundColor={colors.clayRaised}
-                  paddingHorizontal={16}
-                  paddingVertical={8}
-                  borderRadius={11}
-                >
-                  <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color={colors.navy}>
-                    Send now →
-                  </Text>
-                </View>
-              </Pressable>
-            </View>
 
             {/* Recent activity. */}
             <XStack

@@ -52,8 +52,11 @@ interface BuyAirtimeArgs {
   msisdn: string;
   /** Carrier network as a plain string (e.g. "MTN", "Vodacom"). */
   network: string;
-  /** Amount as a decimal string (e.g. "50.00"). Currency is server-side. */
+  /** Amount as a decimal string (e.g. "50.00"). */
   amount: string;
+  /** Wallet currency to debit (e.g. "ZAR"). The backend resolves the buyer's
+   *  financial wallet in this currency; defaults to ZAR server-side if omitted. */
+  currency: string;
   /**
    * Pre-generated idempotency key. The caller passes the SAME key across a
    * retry after an error so the backend dedups (a duplicate key returns the
@@ -87,8 +90,8 @@ export async function getAirtimeStatus(id: string): Promise<AirtimeResult> {
 /**
  * Buy airtime, then resolve for a synchronous feel.
  *
- * Fires `POST /airtime/recharge` (body carries ONLY msisdn/network/amount —
- * currency is server-side). If the response is already terminal (COMPLETED or
+ * Fires `POST /airtime/recharge` (body carries msisdn/network/amount/currency).
+ * If the response is already terminal (COMPLETED or
  * REVERSED) it is returned as-is. If it is PENDING, we wait a short beat and
  * poll `getAirtimeStatus` exactly once, returning whatever that read gives
  * (terminal if the provider resolved in time, still PENDING otherwise).
@@ -106,6 +109,7 @@ export async function buyAirtime(args: BuyAirtimeArgs): Promise<AirtimeResult> {
       msisdn: args.msisdn,
       network: args.network,
       amount: args.amount,
+      currency: args.currency,
     },
     withAuth: true,
     idempotencyKey: args.idempotencyKey,

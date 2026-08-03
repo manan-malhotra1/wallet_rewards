@@ -11,7 +11,7 @@
  * the PIN screen carrying the SAME idempotency key. Other failures route to
  * the failure screen with a friendly reason.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +22,7 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
-import { CurrencySelector } from '@/components/forms/CurrencySelector';
+import { CurrencySelector, defaultWalletCurrency } from '@/components/forms/CurrencySelector';
 import { ClayButton, ClayInset, ClaySurface } from '@/components/clay';
 import { useColors } from '@/lib/colors';
 import { StepUpRequired } from '@/lib/api/errors';
@@ -51,14 +51,13 @@ export default function CashOutAmountScreen() {
   const router = useRouter();
   const colors = useColors();
   const qc = useQueryClient();
-  const params = useLocalSearchParams<{ phone?: string; currency?: string }>();
+  const params = useLocalSearchParams<{ phone?: string }>();
   const agentPhone = typeof params.phone === 'string' ? params.phone : '';
-  // `?currency=` seeds only the INITIAL selection; `selectedCurrency` (switchable
+  // Default to ZAR (falls back to the first wallet currency below once the
+  // wallet loads if the user has no ZAR wallet). `selectedCurrency` (switchable
   // in-flow via CurrencySelector) is the source of truth for every money display
-  // and the cashOut call thereafter — never assume ZAR.
-  const paramCurrency =
-    typeof params.currency === 'string' && params.currency ? params.currency : 'ZAR';
-  const [selectedCurrency, setSelectedCurrency] = useState(paramCurrency);
+  // and the cashOut call thereafter — never assume ZAR beyond this default.
+  const [selectedCurrency, setSelectedCurrency] = useState('ZAR');
 
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
@@ -68,6 +67,16 @@ export default function CashOutAmountScreen() {
   const walletCurrencies = (data?.accounts ?? [])
     .filter((a) => a.account_type === 'financial_wallet')
     .map((a) => a.currency);
+
+  // Once the wallet resolves, reconcile the default: if the current selection
+  // isn't one the user actually holds (e.g. seeded ZAR but no ZAR wallet), snap
+  // to the ZAR-preferred default. A manual pick is always in the list, so this
+  // never overrides the user's own choice.
+  useEffect(() => {
+    if (walletCurrencies.length > 0 && !walletCurrencies.includes(selectedCurrency)) {
+      setSelectedCurrency(defaultWalletCurrency(walletCurrencies));
+    }
+  }, [walletCurrencies, selectedCurrency]);
 
   const wallet = data?.accounts.find(
     (a) => a.currency === selectedCurrency && a.account_type === 'financial_wallet',

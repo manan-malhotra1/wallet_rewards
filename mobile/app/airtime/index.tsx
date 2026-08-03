@@ -11,10 +11,12 @@
  * is still PENDING — polls once for a terminal status before returning, so the
  * inline panel usually lands on COMPLETED/REVERSED rather than a spinner.
  *
- * `currency` from the route params is DISPLAY-ONLY (the backend resolves the
- * real currency server-side); we only use it to label the amount field.
+ * The wallet to debit defaults to ZAR (falling back to the user's first wallet
+ * currency if they hold no ZAR wallet) and is switchable in-flow via the shared
+ * CurrencySelector, mirroring the P2P / cash-out flows. The chosen currency is
+ * sent to the backend, which resolves the buyer's financial wallet in it.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -24,7 +26,7 @@ import {
   TextInput,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +34,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { PhoneInput } from '@/components/forms/PhoneInput';
+import { CurrencySelector, defaultWalletCurrency } from '@/components/forms/CurrencySelector';
 import { ClayButton, ClaySurface } from '@/components/clay';
 import { useColors } from '@/lib/colors';
 import { ApiError } from '@/lib/api/errors';
@@ -40,6 +43,8 @@ import {
   newAirtimeIdempotencyKey,
   type AirtimeResult,
 } from '@/lib/api/airtime';
+import { getMyWallet } from '@/lib/api/wallet';
+import { qk } from '@/lib/query';
 import { maskPhone } from '@/lib/format';
 
 /** Selectable carrier networks. Sent verbatim as the `network` string. */
@@ -78,14 +83,35 @@ function errorMessage(e: unknown): string {
 /** Airtime top-up screen. */
 export default function AirtimeScreen() {
   const colors = useColors();
-  const params = useLocalSearchParams<{ currency?: string }>();
-  const currency = typeof params.currency === 'string' && params.currency ? params.currency : 'ZAR';
 
   const [phone, setPhone] = useState('');
   const [network, setNetwork] = useState<string>(NETWORKS[0]);
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
+  // Wallet to debit — defaults to ZAR, reconciled to the ZAR-preferred default
+  // once the wallet loads (a user with no ZAR wallet snaps to their first
+  // currency). Switchable in-flow via the CurrencySelector.
+  const [currency, setCurrency] = useState('ZAR');
+  const { data: wallet } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
+  const walletCurrencies = (wallet?.accounts ?? [])
+    .filter((a) => a.account_type === 'financial_wallet')
+    .map((a) => a.currency);
+  const available = parseFloat(
+    wallet?.accounts.find(
+      (a) => a.currency === currency && a.account_type === 'financial_wallet',
+    )?.available_balance ?? '0',
+  );
+
+  // Reconcile the default once the wallet resolves: if the selection isn't a
+  // currency the user holds (e.g. seeded ZAR but no ZAR wallet), snap to the
+  // ZAR-preferred default. A manual pick is always in the list, so this never
+  // overrides the user's own choice.
+  useEffect(() => {
+    if (walletCurrencies.length > 0 && !walletCurrencies.includes(currency)) {
+      setCurrency(defaultWalletCurrency(walletCurrencies));
+    }
+  }, [walletCurrencies, currency]);
 
   // Idempotency key for the CURRENT attempt. Held in a ref so a retry after an
   // error reuses the same key (the backend dedups a replay). It is reset to
@@ -110,6 +136,11 @@ export default function AirtimeScreen() {
 
   function handleNetwork(next: string) {
     setNetwork(next);
+    resetAttempt();
+  }
+
+  function handleCurrency(next: string) {
+    setCurrency(next);
     resetAttempt();
   }
 
@@ -142,6 +173,7 @@ export default function AirtimeScreen() {
         msisdn: phone,
         network,
         amount: parsed.toFixed(2),
+        currency,
         idempotencyKey: idemRef.current,
       });
       if (result.status === 'COMPLETED') {
@@ -233,11 +265,26 @@ export default function AirtimeScreen() {
                   </XStack>
                 </YStack>
 
-                {/* Amount. */}
+                {/* Amount. Currency selector defaults to ZAR and lets the user
+                    pick which wallet is debited (parity with P2P / cash-out). */}
                 <YStack gap={8}>
-                  <Text fontFamily="PlusJakartaSans-SemiBold" fontSize={12} color={colors.textMuted}>
-                    Amount ({currency})
-                  </Text>
+                  <XStack alignItems="center" justifyContent="space-between" gap={10}>
+                    <Text
+                      fontFamily="PlusJakartaSans-SemiBold"
+                      fontSize={12}
+                      color={colors.textMuted}
+                    >
+                      Amount ({currency})
+                    </Text>
+                    <View flexShrink={1}>
+                      <CurrencySelector
+                        currencies={walletCurrencies}
+                        selected={currency}
+                        onSelect={handleCurrency}
+                        available={available}
+                      />
+                    </View>
+                  </XStack>
                   <XStack
                     alignItems="center"
                     gap={8}

@@ -15,6 +15,19 @@ import { Text, View, XStack } from 'tamagui';
 import { useColors } from '@/lib/colors';
 import { formatMoney } from '@/lib/format';
 
+/**
+ * The default wallet currency to preselect on an amount screen: ZAR when the
+ * user holds a ZAR wallet, else the first wallet currency, else 'ZAR' as a
+ * last resort (before the wallet query resolves the list is empty).
+ *
+ * @param currencies The user's financial-wallet currency codes.
+ * @returns The currency code to seed the selector with.
+ */
+export function defaultWalletCurrency(currencies: string[]): string {
+  if (currencies.includes('ZAR')) return 'ZAR';
+  return currencies[0] ?? 'ZAR';
+}
+
 interface CurrencySelectorProps {
   /** The user's financial-wallet currency codes (e.g. ['ZAR', 'INR']). */
   currencies: string[];

@@ -494,3 +494,57 @@ async def test_cash_out_in_both_mode_earns_the_subscriber_points(
     # A reward_events row was issued to the SUBSCRIBER — never the receiving agent.
     assert await reward_event_count(db_session, subscriber.id) == 1
     assert await reward_event_count(db_session, agent_recipient.id) == 0
+
+
+@pytest.mark.asyncio
+async def test_cash_out_in_wallet_mode_earns_no_points(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    subscriber: User,
+    agent_recipient: User,
+    subscriber_wallet: Account,
+    agent_wallet: Account,
+    worked_example_configs: None,
+    subscriber_auth_header: dict[str, str],
+) -> None:
+    """Verify a wallet-only deployment never rewards a cash-out (mode gate holds).
+
+    Mirror of the both-mode test with the tenant flipped to 'wallet': even with
+    an active first-transaction rule and the subscriber's points account present,
+    a wallet-mode tenant writes NO reward_outbox row, issues NO reward, and
+    returns `earned_points` 0 — proving the business_type gate holds end-to-end.
+    """
+    from sqlalchemy import func
+
+    from app.shared.models.rewards import RewardOutbox
+
+    await seed_cashout_step_up_policy(db_session, test_tenant)
+    # Same seeding as both-mode: points account + an active first-cashout rule.
+    await make_points_account(db_session, test_tenant.id, subscriber.id)
+    await seed_first_time_points_rule(
+        db_session, test_tenant.id, transaction_type="cashout", reward_value=Decimal("50")
+    )
+    # Flip the deployment mode to wallet-only — the reward gate reads business_type.
+    test_tenant.business_type = "wallet"
+    await db_session.commit()
+
+    resp = await async_client.post(
+        "/api/v1/cashout",
+        content=json.dumps(cash_out_body(amount="100")),
+        headers=cash_out_headers(subscriber_auth_header),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["earned_points"] == 0
+
+    # No reward issued to anyone, and no outbox row was ever enqueued.
+    assert await reward_event_count(db_session, subscriber.id) == 0
+    assert await reward_event_count(db_session, agent_recipient.id) == 0
+    outbox_rows = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(RewardOutbox)
+            .where(RewardOutbox.tenant_id == test_tenant.id)
+        )
+    ).scalar_one()
+    assert outbox_rows == 0

@@ -267,6 +267,63 @@ async def test_p2p_in_both_mode_earns_points_and_returns_them_inline(
 
 
 @pytest.mark.asyncio
+async def test_p2p_earned_points_reflects_active_bonus_multiplier(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+) -> None:
+    """Verify a 2x bonus makes the sender earn — and see — double the base points.
+
+    When a bonus multiplier is active, `issue_points_reward` credits the
+    MULTIPLIED value to the ledger. The inline `earned_points` (and the
+    RewardEvent it mirrors) must report that actual credited amount, not the
+    rule's pre-multiplier base — otherwise the celebration understates reality.
+    """
+    from app.shared.models import BonusMultiplier
+
+    await _seed_p2p_config(db_session, test_tenant.id)
+    await _seed_first_time_p2p_points_rule(db_session, test_tenant, reward_value=Decimal("50"))
+    # A business-wide 2x bonus → every points reward is doubled (base 50 → 100).
+    db_session.add(BonusMultiplier(tenant_id=test_tenant.id, multiplier=Decimal("2.00")))
+    await db_session.commit()
+
+    alice, _ = await _make_user_with_wallet(
+        db_session, test_tenant, phone="+27 82 555 7781", with_points=True
+    )
+    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7782")
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=alice.id,
+        amount=Decimal("500"),
+        currency="ZAR",
+        idempotency_key=f"seed-{uuid4().hex}",
+    )
+
+    alice_auth = await _auth_header_for(alice)
+    response = await async_client.post(
+        "/api/v1/payments/p2p",
+        headers={**alice_auth, "Idempotency-Key": uuid4().hex},
+        json={
+            "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 7782"},
+            "amount": "100",
+            "currency": "ZAR",
+        },
+    )
+    assert response.status_code == 201, response.text
+
+    # earned_points reflects the MULTIPLIED credit (50 base * 2), not the base.
+    assert response.json()["earned_points"] == 100
+
+    # And it equals the actual credited amount on the RewardEvent that hit the ledger.
+    reward = (
+        await db_session.execute(select(RewardEvent).where(RewardEvent.user_id == alice.id))
+    ).scalar_one()
+    assert reward.reward_value == Decimal("100")
+    assert reward.multiplier_applied == Decimal("2.00")
+
+
+@pytest.mark.asyncio
 async def test_p2p_in_wallet_mode_earns_no_points(
     async_client: AsyncClient,
     db_session: AsyncSession,

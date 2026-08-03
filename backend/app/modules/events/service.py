@@ -12,6 +12,7 @@ The same `process_external_event` is called by:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import UUID
 
 from cryptography.fernet import InvalidToken
@@ -177,7 +178,13 @@ async def evaluate_and_issue_firings(
     firings: list[RuleFiring] = await evaluate_active_rules_for_event(session, event)
     issued: list[FiringOut] = []
     for firing in firings:
-        await issue_points_reward(
+        # issue_points_reward applies any active bonus multiplier INTERNALLY and
+        # credits the MULTIPLIED value to the ledger, returning the RewardEvent
+        # whose `reward_value` is that actual post-multiplier credited amount.
+        # Report THAT, not the pre-multiplier base (firing.reward_value), so both
+        # the external path's `rules_fired` and the internal `earned_points`
+        # reflect what truly hit the user's points account.
+        reward_event = await issue_points_reward(
             session,
             tenant_id=event.tenant_id,
             user_id=event.user_id,
@@ -190,7 +197,10 @@ async def evaluate_and_issue_firings(
                 rule_id=firing.rule.id,
                 rule_name=firing.rule.name,
                 reward_type=firing.rule.reward_type,
-                reward_value=firing.reward_value,
+                # RewardEvent.reward_value is a Numeric column (Decimal at
+                # runtime, float-annotated); wrap to satisfy the Decimal field,
+                # mirroring the evaluator's own Decimal(rule.reward_value) style.
+                reward_value=Decimal(reward_event.reward_value),
             )
         )
     return issued

@@ -508,6 +508,31 @@ async def test_attempt_immediate_is_fail_open_on_issue_error(
 
 
 @pytest.mark.asyncio
+async def test_issue_immediate_points_is_absolutely_fail_open(
+    db_session,
+    monkeypatch,
+):
+    """Verify a drainer failure never breaks a payment that already committed."""
+    # issue_immediate_points runs AFTER the money-path commit. A failure ANYWHERE
+    # in its body — the session checkout, the sessionmaker construction, or the
+    # FOR UPDATE fetch (all OUTSIDE attempt_immediate's inner per-row guard) —
+    # must degrade to "0 points earned", never propagate as a 500 for a succeeded
+    # payment. Force attempt_immediate (which owns the checkout + fetch) to raise
+    # a pool-timeout-style error and assert the helper still returns an int of 0.
+    from app.modules.rewards import outbox as outbox_mod
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("pool timeout on session checkout")
+
+    monkeypatch.setattr(outbox_mod, "attempt_immediate", _boom)
+
+    earned = await outbox_mod.issue_immediate_points(
+        db_session, tenant_id=uuid4(), user_id=uuid4()
+    )
+    assert earned == 0
+
+
+@pytest.mark.asyncio
 async def test_recon_skips_poison_rows_at_max_attempts(
     db_session,
     session_factory,

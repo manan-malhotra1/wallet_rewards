@@ -199,13 +199,26 @@ async def issue_immediate_points(
         Opens and commits a fresh session bound to `session.bind`. Fail-open —
         never re-raises onto the money path.
     """
-    factory = async_sessionmaker(
-        session.bind, expire_on_commit=False, class_=AsyncSession
-    )
-    firings = await attempt_immediate(factory, tenant_id=tenant_id, user_id=user_id)
-    return int(
-        sum((f.reward_value for f in firings if f.reward_type == "points"), Decimal("0"))
-    )
+    # ABSOLUTE fail-open: this runs AFTER the money-path commit, so NOTHING here
+    # may surface as an exception — a succeeded payment must never 500 on a
+    # reward hiccup. The inner per-row drain in `attempt_immediate` is already
+    # guarded, but the session checkout, the `async_sessionmaker` construction,
+    # and the FOR UPDATE fetch are NOT: a pool timeout / reset connection there
+    # would escape onto the caller. Wrap the WHOLE body so any failure degrades
+    # to "0 points earned" (the recon sweep re-drains the still-PENDING row).
+    try:
+        factory = async_sessionmaker(
+            session.bind, expire_on_commit=False, class_=AsyncSession
+        )
+        firings = await attempt_immediate(factory, tenant_id=tenant_id, user_id=user_id)
+        return int(
+            sum((f.reward_value for f in firings if f.reward_type == "points"), Decimal("0"))
+        )
+    except Exception:
+        log.exception(
+            "reward_immediate_failed", tenant_id=str(tenant_id), user_id=str(user_id)
+        )
+        return 0
 
 
 async def recon_sweep_async(

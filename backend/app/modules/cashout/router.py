@@ -54,7 +54,7 @@ async def post_cash_out(
             },
         )
 
-    txn, agent_user_id = await cash_out(
+    txn, agent_user_id, earned_points = await cash_out(
         session,
         tenant_id=subscriber.tenant_id,
         subscriber_user_id=subscriber.id,
@@ -74,4 +74,5 @@ async def post_cash_out(
         tax=Decimal(str(txn.tax_amount)),
         currency=txn.currency,
         agent_user_id=agent_user_id,
+        earned_points=earned_points,
     )

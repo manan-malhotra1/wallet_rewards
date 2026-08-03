@@ -46,7 +46,13 @@ from app.modules.audit.service import (
     record_audit_for_system,
     record_audit_for_user,
 )
-from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
+from app.modules.ledger import (
+    LedgerEntryRequest,
+    PostTransactionRequest,
+    RewardTrigger,
+    post_transaction,
+)
+from app.modules.rewards.outbox import issue_immediate_points
 from app.modules.roles.service import require_permission
 from app.shared.exceptions import (
     AccountNotFound,
@@ -84,6 +90,13 @@ from app.shared.utils.masking import mask_phone
 # The airtime service code == Service.code == transaction_type — the single
 # identifier pricing / limits / role permission / merchant lookup all key on.
 AIRTIME_SERVICE_CODE = "airtime_recharge"
+
+# Reward-rule tag for airtime. Deliberately DECOUPLED from AIRTIME_SERVICE_CODE:
+# reward rules (and REWARDABLE_TYPES in shared/models/rewards.py) key on the
+# short "airtime" tag, whereas pricing / limits / role / merchant lookups key on
+# the fuller "airtime_recharge" service code. The RewardTrigger carries this tag,
+# not the service code, so it must match REWARDABLE_TYPES exactly.
+AIRTIME_REWARD_TYPE = "airtime"
 
 
 # -----------------------------------------------------------------------------
@@ -324,6 +337,18 @@ async def initiate_recharge(
             initiated_by=user_id,
             amount=request.amount,
             fee_amount=fee,
+            # The reward recipient is the purchasing user (the debited wallet
+            # holder). In `both` mode this makes post_transaction write a
+            # reward_outbox row for the buyer atomically with the reservation
+            # commit; other modes are a no-op. NOTE: the row is written at
+            # RESERVATION time (the txn is PENDING here) — see purchase_airtime
+            # for the drain, and the reversal caveat documented there.
+            reward_trigger=RewardTrigger(
+                user_id=user_id,
+                transaction_type=AIRTIME_REWARD_TYPE,
+                amount=request.amount,
+                currency=currency,
+            ),
         ),
     )
 
@@ -566,8 +591,21 @@ async def purchase_airtime(
     ip_address: str | None = None,
     request: AirtimeRechargeRequest,
     idempotency_key: str,
-) -> AirtimeRecharge:
-    """Full recharge: reserve + commit, then the after-commit provider attempt."""
+) -> tuple[AirtimeRecharge, int]:
+    """Full recharge: reserve + commit, provider attempt, then reward drain.
+
+    Returns:
+        (recharge, earned_points). `earned_points` is the points the purchasing
+        user earned from any reward rule that fired (0 outside `both` mode, no
+        matching rule, or on an idempotent replay).
+
+    Reversal caveat: the reward_outbox row is written at RESERVATION time (with
+    the PENDING commit inside initiate_recharge), so a recharge that the provider
+    later REVERSES still fires its reward — the reward is decoupled from the money
+    outcome and, being fail-open + best-effort, is never clawed back here. (The
+    recon sweep would drain the committed outbox row regardless of the money
+    outcome, so gating the immediate drain on success would not prevent it.)
+    """
     recharge, merchant = await initiate_recharge(
         session,
         tenant_id=tenant_id,
@@ -577,7 +615,16 @@ async def purchase_airtime(
         request=request,
         idempotency_key=idempotency_key,
     )
-    return await attempt_provision(session, recharge, merchant)
+    recharge = await attempt_provision(session, recharge, merchant)
+
+    # Reward evaluation — the reserve/provision commits are done; in `both` mode
+    # the reservation commit wrote a PENDING reward_outbox row for the buyer.
+    # Drain it now in a FRESH session (invariant #11 — never on the money-path
+    # transaction). Fail-open: a reward hiccup stays 0 and never surfaces here.
+    earned_points = await issue_immediate_points(
+        session, tenant_id=tenant_id, user_id=user_id
+    )
+    return recharge, earned_points
 
 
 # -----------------------------------------------------------------------------

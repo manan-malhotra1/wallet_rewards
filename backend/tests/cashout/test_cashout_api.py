@@ -26,6 +26,7 @@ from app.shared.models import (
     ACCOUNT_TYPE_TAX_SERVICE,
     Account,
     Tenant,
+    User,
 )
 from tests.cashout.conftest import (
     SUBSCRIBER_PHONE,
@@ -33,6 +34,11 @@ from tests.cashout.conftest import (
     cash_out_body,
     cash_out_headers,
     seed_cashout_step_up_policy,
+)
+from tests.conftest import (
+    make_points_account,
+    reward_event_count,
+    seed_first_time_points_rule,
 )
 
 
@@ -447,3 +453,43 @@ async def test_cash_out_fails_closed_when_pricing_present_but_limit_missing(
     assert resp.json()["error_code"] == "service_not_configured"
     after, _ = await derive_balance(db_session, subscriber_wallet.id)
     assert after == before
+
+
+@pytest.mark.asyncio
+async def test_cash_out_in_both_mode_earns_the_subscriber_points(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    subscriber: User,
+    agent_recipient: User,
+    subscriber_wallet: Account,
+    agent_wallet: Account,
+    worked_example_configs: None,
+    subscriber_auth_header: dict[str, str],
+) -> None:
+    """Verify a cash-out rewards the withdrawing SUBSCRIBER, not the agent.
+
+    In a full wallet+rewards ('both') tenant with an active first-transaction
+    rule, a subscriber cashing out to an agent earns the configured points
+    (the receiving agent earns commission, not rewards), and the cash-out
+    response surfaces them inline as `earned_points`.
+    """
+    await seed_cashout_step_up_policy(db_session, test_tenant)
+    # The reward recipient (subscriber) needs a points account for the CREDIT.
+    await make_points_account(db_session, test_tenant.id, subscriber.id)
+    # The reward tag is "cash_out" (underscore) — NOT the "cashout" service code.
+    await seed_first_time_points_rule(
+        db_session, test_tenant.id, transaction_type="cash_out", reward_value=Decimal("50")
+    )
+
+    resp = await async_client.post(
+        "/api/v1/cashout",
+        content=json.dumps(cash_out_body(amount="100")),
+        headers=cash_out_headers(subscriber_auth_header),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["earned_points"] == 50
+
+    # A reward_events row was issued to the SUBSCRIBER — never the receiving agent.
+    assert await reward_event_count(db_session, subscriber.id) == 1
+    assert await reward_event_count(db_session, agent_recipient.id) == 0

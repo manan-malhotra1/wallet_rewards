@@ -27,7 +27,12 @@ from app.modules.audit.service import record_audit_for_user
 from app.modules.cashin.schemas import CashInRequest
 from app.modules.commissions.service import calculate_commission
 from app.modules.identity.service import resolve_identifier
-from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
+from app.modules.ledger import (
+    LedgerEntryRequest,
+    PostTransactionRequest,
+    RewardTrigger,
+    post_transaction,
+)
 from app.modules.pricing.assembler import (
     ChargeAccounts,
     ChargeAmounts,
@@ -41,6 +46,7 @@ from app.modules.pricing.service import (
     get_or_create_system_tax_service,
     resolve_fee,
 )
+from app.modules.rewards.outbox import issue_immediate_points
 from app.modules.roles.service import require_permission
 from app.modules.taxes.service import calculate_tax
 from app.shared.exceptions import (
@@ -106,7 +112,7 @@ async def cash_in(
     idempotency_key: str,
     agent: UserPrincipal | None = None,
     ip_address: str | None = None,
-) -> tuple[Transaction, UUID]:
+) -> tuple[Transaction, UUID, int]:
     """Fund a customer's wallet from an agent's e-float, paying the agent a commission.
 
     Args:
@@ -119,7 +125,9 @@ async def cash_in(
         ip_address: Caller IP for the audit trail.
 
     Returns:
-        (Transaction, customer_user_id).
+        (Transaction, customer_user_id, earned_points). `earned_points` is the
+        points the CUSTOMER earned from any reward rule that fired on this
+        cash-in (0 outside `both` mode, when no rule matched, or on a replay).
 
     Raises:
         TenantNotFound / UserNotFound / AccountNotFound (404).
@@ -141,7 +149,13 @@ async def cash_in(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        return existing, await _resolve_customer_from_txn(session, existing, agent_user_id)
+        # Replay: the reward (if any) already fired on the original call, so no
+        # new outbox row exists to drain — earned_points is 0 on the replay.
+        return (
+            existing,
+            await _resolve_customer_from_txn(session, existing, agent_user_id),
+            0,
+        )
 
     # 1a. Admin access-lock (migration 0045). The initiating AGENT must be
     # `active`; a txn_locked / suspended / closed agent is blocked here — after
@@ -320,6 +334,17 @@ async def cash_in(
             fee_amount=assembled.fee_amount,
             commission_amount=assembled.commission_amount,
             tax_amount=assembled.tax_amount,
+            # Deliberate product choice: rewards target end-user ENGAGEMENT, so
+            # the reward recipient is the funded CUSTOMER — NOT the acting agent
+            # (the agent already earns a commission on this cash-in). In `both`
+            # mode this makes post_transaction write a reward_outbox row for the
+            # customer atomically with the ledger commit; other modes are no-ops.
+            reward_trigger=RewardTrigger(
+                user_id=customer_user_id,
+                transaction_type=CASH_IN_SERVICE_CODE,
+                amount=request.amount,
+                currency=currency,
+            ),
         ),
     )
 
@@ -344,7 +369,18 @@ async def cash_in(
         )
         await session.commit()
 
-    return txn, customer_user_id
+    # Reward evaluation — post_transaction (and any audit commit above) have
+    # already committed; in `both` mode that first commit also wrote a PENDING
+    # reward_outbox row for the CUSTOMER. Drain it now in a FRESH session so the
+    # reward work happens strictly AFTER the money commit, never inside the
+    # ledger transaction (invariant #11). Fail-open — a reward hiccup is recorded
+    # on the row for the recon sweep and never surfaces on the money path, so
+    # earned_points just stays 0. No-op outside `both` mode (no outbox row).
+    earned_points = await issue_immediate_points(
+        session, tenant_id=tenant_id, user_id=customer_user_id
+    )
+
+    return txn, customer_user_id, earned_points
 
 
 async def _resolve_customer_from_txn(

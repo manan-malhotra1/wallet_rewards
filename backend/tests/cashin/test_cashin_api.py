@@ -24,8 +24,14 @@ from app.shared.models import (
     ACCOUNT_TYPE_TAX_SERVICE,
     Account,
     Tenant,
+    User,
 )
 from tests.cashin.conftest import cash_in_body, cash_in_headers
+from tests.conftest import (
+    make_points_account,
+    reward_event_count,
+    seed_first_time_points_rule,
+)
 
 
 async def _balance(session: AsyncSession, account_id) -> Decimal:
@@ -343,3 +349,41 @@ async def test_cash_in_succeeds_when_both_configs_present(
         headers=cash_in_headers(agent_auth_header),
     )
     assert resp.status_code == 201, resp.text
+
+
+@pytest.mark.asyncio
+async def test_cash_in_in_both_mode_earns_the_customer_points(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    agent: User,
+    customer: User,
+    agent_float: Account,
+    customer_wallet: Account,
+    worked_example_configs: None,
+    agent_auth_header: dict[str, str],
+) -> None:
+    """Verify an agent cash-in rewards the funded CUSTOMER, not the agent.
+
+    In a full wallet+rewards ('both') tenant with an active first-transaction
+    rule, an agent funding a customer issues the configured points to the
+    CUSTOMER (the deliberate product choice — the agent already earns
+    commission) and the cash-in response surfaces them inline as `earned_points`.
+    """
+    # The reward recipient (customer) needs a points account for the CREDIT.
+    await make_points_account(db_session, test_tenant.id, customer.id)
+    await seed_first_time_points_rule(
+        db_session, test_tenant.id, transaction_type="cash_in", reward_value=Decimal("50")
+    )
+
+    resp = await async_client.post(
+        "/api/v1/cashin",
+        content=json.dumps(cash_in_body(amount="100")),
+        headers=cash_in_headers(agent_auth_header),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["earned_points"] == 50
+
+    # A reward_events row was issued to the CUSTOMER — never the acting agent.
+    assert await reward_event_count(db_session, customer.id) == 1
+    assert await reward_event_count(db_session, agent.id) == 0

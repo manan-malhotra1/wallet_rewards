@@ -55,8 +55,10 @@ from app.shared.models import (
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
     Base,
+    RewardEvent,
     Role,
     RolePermission,
+    Rule,
     Tenant,
     User,
     UserIdentifier,
@@ -657,6 +659,64 @@ async def create_session_token_for_user(user_id, tenant_id, channel: str = "mobi
     from app.auth.sessions import create_session
 
     return await create_session(user_id, tenant_id, channel)
+
+
+async def seed_first_time_points_rule(
+    session: AsyncSession,
+    tenant_id,
+    *,
+    transaction_type: str,
+    reward_value: Decimal,
+) -> Rule:
+    """Seed an ACTIVE first_time points rule for `transaction_type`.
+
+    Shared by the money-path reward tests (cash_in / cash_out / airtime): a
+    first_time rule fires exactly once for a user's first matching transaction,
+    which is all the single-transaction reward assertions need. The
+    `transaction_type` is the reward-rule tag (e.g. "cash_out", "airtime") —
+    which for cash-out / airtime is deliberately NOT the money service code.
+    """
+    rule = Rule(
+        tenant_id=tenant_id,
+        name=f"first-{transaction_type}-points",
+        rule_type="first_time",
+        transaction_type=transaction_type,
+        reward_type="points",
+        reward_value=reward_value,
+    )
+    session.add(rule)
+    await session.commit()
+    await session.refresh(rule)
+    return rule
+
+
+async def make_points_account(session: AsyncSession, tenant_id, user_id) -> Account:
+    """Give a user a PTS points account so a reward CREDIT has somewhere to land.
+
+    Reward issuance CREDITs the recipient's points account; without it the
+    issuance raises and (being fail-open) the reward is simply skipped.
+    """
+    account = Account(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        account_type=ACCOUNT_TYPE_POINTS,
+        currency="PTS",
+    )
+    session.add(account)
+    await session.commit()
+    await session.refresh(account)
+    return account
+
+
+async def reward_event_count(session: AsyncSession, user_id) -> int:
+    """Count reward_events rows for a user (across all rules)."""
+    from sqlalchemy import func, select
+
+    return (
+        await session.execute(
+            select(func.count()).select_from(RewardEvent).where(RewardEvent.user_id == user_id)
+        )
+    ).scalar_one()
 
 
 @pytest_asyncio.fixture

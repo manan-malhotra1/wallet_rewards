@@ -47,6 +47,8 @@ class CashInResponse(BaseModel):
         tax: Total tax collected (on fee + commission).
         currency: 3-letter ISO 4217 (uppercase).
         customer_user_id: The funded customer.
+        earned_points: Points the CUSTOMER earned from a reward rule that fired
+            on this cash-in (0 outside `both` mode, no matching rule, or replay).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -61,3 +63,4 @@ class CashInResponse(BaseModel):
     tax: Decimal
     currency: str
     customer_user_id: UUID
+    earned_points: int = 0

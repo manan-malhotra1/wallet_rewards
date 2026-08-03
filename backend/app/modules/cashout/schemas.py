@@ -44,6 +44,9 @@ class CashOutResponse(BaseModel):
         tax: Total tax collected (on fee + commission).
         currency: 3-letter ISO 4217 (uppercase).
         agent_user_id: The agent who received the cash-out.
+        earned_points: Points the withdrawing SUBSCRIBER earned from a reward
+            rule on this cash-out (0 outside `both` mode, no matching rule, or
+            replay).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -57,3 +60,4 @@ class CashOutResponse(BaseModel):
     tax: Decimal
     currency: str
     agent_user_id: UUID
+    earned_points: int = 0

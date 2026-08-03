@@ -176,6 +176,38 @@ async def attempt_immediate(
         return all_firings
 
 
+async def issue_immediate_points(
+    session: AsyncSession, *, tenant_id: UUID, user_id: UUID
+) -> int:
+    """Post-commit: drain this user's pending reward_outbox rows, return points earned.
+
+    Runs the drain in a FRESH session derived from the just-committed session's
+    engine (`session.bind`) — never on the money-path transaction, and DI-override
+    safe in tests. Fail-open: attempt_immediate never raises. Returns 0 if no rule
+    fired or the tenant isn't in `both` mode (no pending rows exist).
+
+    Args:
+        session: The money-path session that just committed; used only for its
+            `.bind` (engine) — never written to here.
+        tenant_id: Tenant whose pending rows to drain.
+        user_id: The reward recipient whose pending rows to drain.
+
+    Returns:
+        Total points issued across the drained rows (0 when nothing fired).
+
+    Side effects:
+        Opens and commits a fresh session bound to `session.bind`. Fail-open —
+        never re-raises onto the money path.
+    """
+    factory = async_sessionmaker(
+        session.bind, expire_on_commit=False, class_=AsyncSession
+    )
+    firings = await attempt_immediate(factory, tenant_id=tenant_id, user_id=user_id)
+    return int(
+        sum((f.reward_value for f in firings if f.reward_type == "points"), Decimal("0"))
+    )
+
+
 async def recon_sweep_async(
     session_factory: async_sessionmaker[AsyncSession], *, batch: int = 100
 ) -> int:

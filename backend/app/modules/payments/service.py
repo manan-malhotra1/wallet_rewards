@@ -24,7 +24,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import UserPrincipal
 from app.modules.accounts.service import derive_balance
@@ -37,7 +37,7 @@ from app.modules.ledger import (
     post_transaction,
 )
 from app.modules.payments.schemas import IdentifierType
-from app.modules.rewards.outbox import attempt_immediate
+from app.modules.rewards.outbox import issue_immediate_points
 from app.modules.roles.service import require_permission
 from app.shared.exceptions import (
     AccountNotFound,
@@ -409,29 +409,21 @@ async def p2p_transfer(
 
     # Step 8 — reward evaluation. post_transaction has already committed; in
     # `both` mode that commit also wrote a PENDING reward_outbox row for the
-    # sender. Drain it now in a FRESH session so the reward work happens strictly
-    # AFTER the money commit, never inside the ledger transaction (invariant #11 /
-    # ledger-invariants §5). The fresh sessionmaker is bound to the SAME engine
-    # this request committed to (`session.bind`) — in production that is the app's
-    # engine; the derivation just avoids reaching for a module-level singleton and
-    # keeps the drain pointed at the exact DB the money landed in.
-    # attempt_immediate is fail-open — a reward hiccup is recorded on the row for
-    # the recon sweep and never surfaces on the money path, so earned_points just
-    # stays 0. In wallet/rewards-only mode no outbox row exists and this is a no-op.
+    # sender. issue_immediate_points drains it now in a FRESH session (derived
+    # from `session.bind`) so the reward work happens strictly AFTER the money
+    # commit, never inside the ledger transaction (invariant #11 /
+    # ledger-invariants §5). It is fail-open — a reward hiccup is recorded on the
+    # row for the recon sweep and never surfaces on the money path, so
+    # earned_points just stays 0. In wallet/rewards-only mode no outbox row
+    # exists and this is a no-op.
     #
     # Idempotency: on an Idempotency-Key replay, post_transaction returns the
-    # original txn and writes NO new outbox row, so attempt_immediate finds
-    # nothing pending and returns [] -> earned_points 0 on the replay. That is
-    # acceptable — the reward was already issued (and celebrated) on the first
-    # call, and the PROCESSED row guarantees no double issuance.
-    reward_sessions = async_sessionmaker(
-        session.bind, expire_on_commit=False, class_=AsyncSession
-    )
-    firings = await attempt_immediate(
-        reward_sessions, tenant_id=tenant_id, user_id=sender_user_id
-    )
-    earned_points = int(
-        sum((f.reward_value for f in firings if f.reward_type == "points"), Decimal("0"))
+    # original txn and writes NO new outbox row, so the drain finds nothing
+    # pending and returns 0 on the replay. That is acceptable — the reward was
+    # already issued (and celebrated) on the first call, and the PROCESSED row
+    # guarantees no double issuance.
+    earned_points = await issue_immediate_points(
+        session, tenant_id=tenant_id, user_id=sender_user_id
     )
 
     return txn, recipient_user_id, earned_points

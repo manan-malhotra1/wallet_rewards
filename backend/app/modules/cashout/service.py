@@ -30,7 +30,12 @@ from app.modules.audit.service import record_audit_for_user
 from app.modules.cashout.schemas import CashOutRequest
 from app.modules.commissions.service import calculate_commission
 from app.modules.identity.service import resolve_identifier
-from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
+from app.modules.ledger import (
+    LedgerEntryRequest,
+    PostTransactionRequest,
+    RewardTrigger,
+    post_transaction,
+)
 from app.modules.pricing.assembler import (
     ChargeAccounts,
     ChargeAmounts,
@@ -44,6 +49,7 @@ from app.modules.pricing.service import (
     get_or_create_system_tax_service,
     resolve_fee,
 )
+from app.modules.rewards.outbox import issue_immediate_points
 from app.modules.roles.service import require_permission
 from app.modules.taxes.service import calculate_tax
 from app.shared.exceptions import (
@@ -67,6 +73,14 @@ from app.shared.models import (
 )
 
 CASH_OUT_SERVICE_CODE = "cashout"
+
+# Reward-rule tag for cash-out. Deliberately DECOUPLED from CASH_OUT_SERVICE_CODE:
+# the money service code is "cashout" (no underscore — what pricing / limits /
+# role lookups key on), but reward rules and REWARDABLE_TYPES
+# (shared/models/rewards.py) key on the "cash_out" tag. The RewardTrigger MUST
+# carry this tag exactly, or post_transaction's allowlist gate silently skips the
+# outbox row and no reward ever fires.
+CASH_OUT_REWARD_TYPE = "cash_out"
 
 # The user types eligible to RECEIVE a cash-out (mirror of who may cash-in).
 _AGENT_USER_TYPES = (USER_TYPE_AGENT, USER_TYPE_SUPER_AGENT)
@@ -132,7 +146,7 @@ async def cash_out(
     idempotency_key: str,
     subscriber: UserPrincipal | None = None,
     ip_address: str | None = None,
-) -> tuple[Transaction, UUID]:
+) -> tuple[Transaction, UUID, int]:
     """Send money from a subscriber's wallet to an agent (mirror of cash-in).
 
     Args:
@@ -146,7 +160,9 @@ async def cash_out(
         ip_address: Caller IP for the audit trail.
 
     Returns:
-        (Transaction, agent_user_id).
+        (Transaction, agent_user_id, earned_points). `earned_points` is the
+        points the withdrawing SUBSCRIBER earned from any reward rule that fired
+        on this cash-out (0 outside `both` mode, no matching rule, or on replay).
 
     Raises:
         TenantNotFound / UserNotFound / AccountNotFound (404).
@@ -171,7 +187,13 @@ async def cash_out(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        return existing, await _resolve_agent_from_txn(session, existing, subscriber_user_id)
+        # Replay: the reward (if any) already fired on the original call, so no
+        # new outbox row exists to drain — earned_points is 0 on the replay.
+        return (
+            existing,
+            await _resolve_agent_from_txn(session, existing, subscriber_user_id),
+            0,
+        )
 
     # 1a. Admin access-lock (migration 0045). The SUBSCRIBER (initiator) must be
     # `active`; a txn_locked / suspended / closed subscriber is blocked here —
@@ -349,6 +371,17 @@ async def cash_out(
             fee_amount=assembled.fee_amount,
             commission_amount=assembled.commission_amount,
             tax_amount=assembled.tax_amount,
+            # The reward recipient is the withdrawing SUBSCRIBER (the debited
+            # wallet holder / initiator) — the receiving agent earns commission,
+            # not rewards. In `both` mode this makes post_transaction write a
+            # reward_outbox row for the subscriber atomically with the ledger
+            # commit; other modes are a no-op.
+            reward_trigger=RewardTrigger(
+                user_id=subscriber_user_id,
+                transaction_type=CASH_OUT_REWARD_TYPE,
+                amount=request.amount,
+                currency=currency,
+            ),
         ),
     )
 
@@ -373,7 +406,18 @@ async def cash_out(
         )
         await session.commit()
 
-    return txn, agent_user_id
+    # Reward evaluation — post_transaction (and any audit commit above) have
+    # already committed; in `both` mode that first commit also wrote a PENDING
+    # reward_outbox row for the SUBSCRIBER. Drain it now in a FRESH session so
+    # the reward work happens strictly AFTER the money commit, never inside the
+    # ledger transaction (invariant #11). Fail-open — a reward hiccup is recorded
+    # on the row for the recon sweep and never surfaces on the money path, so
+    # earned_points just stays 0. No-op outside `both` mode (no outbox row).
+    earned_points = await issue_immediate_points(
+        session, tenant_id=tenant_id, user_id=subscriber_user_id
+    )
+
+    return txn, agent_user_id, earned_points
 
 
 async def _resolve_agent_from_txn(

@@ -9,7 +9,9 @@ own reward_events (user-scoped, idempotent).
 Covers:
   - wallet-mode tenant → enabled False, empty catalog/recent.
   - both-mode tenant → milestone rule shows current/target/label + in_progress.
-  - 401 without a session token.
+  - both-mode tenant → streak rule shows current-streak/target + in_progress.
+  - 401 without a session token (GET and mark-seen).
+  - mark-seen rejects a malformed body (422).
   - tenant isolation — only the caller's own tenant's rules + own reward events.
   - mark-seen flips the flag and is idempotent (second call marks 0).
   - mark-seen is user-scoped — a user cannot mark another user's rewards.
@@ -51,6 +53,31 @@ async def _seed_milestone_rule(
         rule_type="milestone",
         transaction_type=transaction_type,
         count_threshold=count_threshold,
+        reward_type="points",
+        reward_value=Decimal("50"),
+    )
+    session.add(rule)
+    await session.commit()
+    await session.refresh(rule)
+    return rule
+
+
+async def _seed_streak_rule(
+    session: AsyncSession,
+    tenant_id,
+    *,
+    transaction_type: str = "p2p",
+    streak_units: int = 5,
+    name: str = "5 P2P streak",
+) -> Rule:
+    """Seed an ACTIVE points streak rule for the tenant."""
+    rule = Rule(
+        tenant_id=tenant_id,
+        name=name,
+        description="Send P2P transfers on a 5-unit streak to earn points.",
+        rule_type="streak",
+        transaction_type=transaction_type,
+        streak_units=streak_units,
         reward_type="points",
         reward_value=Decimal("50"),
     )
@@ -130,10 +157,61 @@ async def test_me_rewards_shows_progress_for_both_tenant(
 
 
 @pytest.mark.asyncio
+async def test_me_rewards_shows_streak_progress_for_both_tenant(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Verify a user sees a streak rule's current-streak-of-target progress and status."""
+    rule = await _seed_streak_rule(db_session, test_tenant.id)
+    # Two units into a 5-unit streak.
+    db_session.add(
+        UserRuleProgress(user_id=test_user.id, rule_id=rule.id, current_streak=2)
+    )
+    await db_session.commit()
+
+    response = await async_client.get(
+        "/api/v1/identity/me/rewards", headers=alice_auth_header
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["enabled"] is True
+    item = next(i for i in body["catalog"] if i["rule_id"] == str(rule.id))
+    assert item["status"] == "in_progress"
+    assert item["progress"] == {"current": 2, "target": 5, "label": "P2P transfers"}
+
+
+@pytest.mark.asyncio
 async def test_me_rewards_requires_auth(async_client: AsyncClient) -> None:
     """Verify viewing rewards requires signing in."""
     response = await async_client.get("/api/v1/identity/me/rewards")
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_mark_rewards_seen_requires_auth(async_client: AsyncClient) -> None:
+    """Verify marking rewards seen requires signing in."""
+    response = await async_client.post(
+        "/api/v1/identity/me/rewards/seen",
+        json={"reward_event_ids": [str(uuid4())]},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_mark_rewards_seen_rejects_invalid_body(
+    async_client: AsyncClient,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Verify marking rewards seen rejects a malformed body (non-list ids) with 422."""
+    response = await async_client.post(
+        "/api/v1/identity/me/rewards/seen",
+        headers=alice_auth_header,
+        json={"reward_event_ids": "not-a-list"},
+    )
+    assert response.status_code == 422, response.text
 
 
 @pytest.mark.asyncio

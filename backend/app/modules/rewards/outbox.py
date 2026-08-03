@@ -2,8 +2,12 @@
 
 Two callers: `attempt_immediate` (post-commit fast path, for the mobile
 celebration) and `recon_sweep` (Celery beat — durability + reconciliation).
-Both go through `evaluate_and_issue_firings`, which is idempotent, so running
-both can never double-issue.
+Both go through `evaluate_and_issue_firings`. Double-issue safety comes from
+the reward_events UNIQUE index (idx_reward_events_idempotency on
+user_id+rule_id+triggering_event_id), NOT from the outbox row lock: the
+per-row commit releases the Postgres FOR UPDATE lock, so the immediate path
+and a recon sweep can transiently co-touch a row (worst case a spurious
+FAILED flip that the next sweep retries — still idempotent at issuance).
 
 Reversal hook (designed, NOT implemented): reward_outbox.transaction_id records
 the source transaction. When reversals exist, a reversal txn will emit its own
@@ -14,6 +18,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
+import structlog
 from celery import shared_task
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -26,6 +31,8 @@ from app.shared.models.rewards import (
     OUTBOX_PROCESSED,
     RewardOutbox,
 )
+
+log = structlog.get_logger()
 
 # Retry ceiling for the recon sweep — a row that has failed this many times is
 # left alone (poison-message guard) and surfaces as a stuck-row alert instead.
@@ -145,11 +152,27 @@ async def attempt_immediate(
         for row in rows:
             row_id = row.id  # capture before any rollback expires the instance
             try:
-                all_firings.extend(await _drain_row(session, row))
+                firings = await _drain_row(session, row)
                 await session.commit()
-            except Exception as exc:  # fail-open: recon sweep retries
-                await session.rollback()
-                await _record_failure(session, row_id, str(exc))
+                all_firings.extend(firings)
+            except Exception as exc:  # fail-open: recon sweep retries the row
+                # The recovery itself (rollback + failure commit) can ALSO raise
+                # — e.g. a broken connection, the very fault that tripped the
+                # drain. attempt_immediate runs AFTER the wallet txn committed,
+                # so an escape here would surface a reward hiccup on the money
+                # path. Swallow the recovery too: the row stays PENDING and the
+                # recon sweep re-drains it idempotently.
+                try:
+                    await session.rollback()
+                    await _record_failure(session, row_id, str(exc))
+                except Exception:  # recovery must not escape onto the money path
+                    log.exception(
+                        "reward_outbox_recovery_failed",
+                        outbox_id=str(row_id),
+                        tenant_id=str(tenant_id),
+                        user_id=str(user_id),
+                    )
+            # Loop continues regardless; attempt_immediate always returns normally.
         return all_firings
 
 
@@ -209,12 +232,29 @@ async def recon_sweep_async(
 def recon_sweep() -> int:
     """Celery entrypoint for the reward-outbox reconciliation sweep.
 
-    Runs `recon_sweep_async` on the app's `SessionLocal` inside a fresh event
-    loop (Celery workers are synchronous). Scheduled every 60s by Celery beat
-    (see app/celery_app.py). Returns the number of rows processed.
+    Scheduled every 60s by Celery beat (see app/celery_app.py). Returns the
+    number of rows processed.
+
+    Each beat runs on a FRESH event loop via `asyncio.run`. We therefore build
+    a DEDICATED asyncpg engine (NullPool) per run and dispose it in `finally`,
+    rather than reusing the module-level `SessionLocal`: that shared engine's
+    pooled connections bind to the first loop, so the second beat (new loop)
+    would raise "Event loop is closed" and recon would silently die after one
+    run. A per-run NullPool engine has no connection to carry across loops.
     """
     import asyncio
 
-    from app.database import SessionLocal
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
-    return asyncio.run(recon_sweep_async(SessionLocal))
+    from app.config import settings
+
+    async def _run() -> int:
+        engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+        try:
+            factory = async_sessionmaker(engine, expire_on_commit=False)
+            return await recon_sweep_async(factory)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_run())

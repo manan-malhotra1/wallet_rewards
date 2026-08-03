@@ -14,7 +14,11 @@ from app.modules.ledger import (
     RewardTrigger,
     post_transaction,
 )
-from app.modules.rewards.outbox import attempt_immediate, recon_sweep_async
+from app.modules.rewards.outbox import (
+    MAX_ATTEMPTS,
+    attempt_immediate,
+    recon_sweep_async,
+)
 from app.shared.models import (
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ENTRY_CREDIT,
@@ -24,7 +28,12 @@ from app.shared.models import (
     Rule,
     Transaction,
 )
-from app.shared.models.rewards import OUTBOX_PENDING, OUTBOX_PROCESSED, RewardOutbox
+from app.shared.models.rewards import (
+    OUTBOX_FAILED,
+    OUTBOX_PENDING,
+    OUTBOX_PROCESSED,
+    RewardOutbox,
+)
 
 
 async def _unguarded_pair(db_session, tenant_id: UUID, currency: str) -> tuple[Account, Account]:
@@ -452,3 +461,97 @@ async def test_recon_sweep_drains_pending(
         )
     ).scalar_one()
     assert row.status == OUTBOX_PROCESSED
+
+
+@pytest.mark.asyncio
+async def test_attempt_immediate_is_fail_open_on_issue_error(
+    db_session,
+    session_factory,
+    test_tenant,
+    test_user,
+    monkeypatch,
+):
+    """Verify a reward issuance failure never surfaces on the money path."""
+    # attempt_immediate runs AFTER the wallet txn committed, so a reward hiccup
+    # must be swallowed. Force the issuance core to blow up mid-drain.
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("issuance backend down")
+
+    monkeypatch.setattr(
+        "app.modules.rewards.outbox.evaluate_and_issue_firings", _boom
+    )
+
+    # One PENDING outbox row (no rule needed — issuance is patched to raise).
+    await post_rewardable_txn(
+        db_session, test_tenant.id, test_user.id, "p2p", Decimal("100"), "ZAR"
+    )
+
+    # Must return normally with no firings — never re-raise onto the caller.
+    firings = await attempt_immediate(
+        session_factory, tenant_id=test_tenant.id, user_id=test_user.id
+    )
+    assert firings == []
+
+    # The row is marked FAILED with bookkeeping persisted. Read it in a fresh
+    # session so we see the committed state, not db_session's stale identity-map
+    # copy from post_rewardable_txn.
+    async with session_factory() as verify:
+        row = (
+            await verify.execute(
+                select(RewardOutbox).where(RewardOutbox.tenant_id == test_tenant.id)
+            )
+        ).scalar_one()
+        assert row.status == OUTBOX_FAILED
+        assert row.attempts == 1
+        assert row.last_error is not None
+        assert "issuance backend down" in row.last_error
+
+
+@pytest.mark.asyncio
+async def test_recon_skips_poison_rows_at_max_attempts(
+    db_session,
+    session_factory,
+    test_tenant,
+):
+    """Verify the recon sweep leaves a row that has exhausted its retries untouched."""
+    # A row already at MAX_ATTEMPTS is a poison message: the sweep must not
+    # claim it (it surfaces as a stuck-row alert instead), so nothing is drained.
+    txn = Transaction(
+        tenant_id=test_tenant.id,
+        idempotency_key=f"poison-{uuid4().hex}",
+        transaction_type="p2p",
+        amount=100,
+        currency="ZAR",
+    )
+    db_session.add(txn)
+    await db_session.flush()
+    poison = RewardOutbox(
+        tenant_id=test_tenant.id,
+        user_id=uuid4(),
+        transaction_id=txn.id,
+        transaction_type="p2p",
+        amount=100,
+        currency="ZAR",
+        status=OUTBOX_FAILED,
+        attempts=MAX_ATTEMPTS,
+        last_error="prior failures",
+    )
+    db_session.add(poison)
+    await db_session.commit()
+
+    poison_id = poison.id  # capture before opening the verify session
+
+    processed = await recon_sweep_async(session_factory)
+    assert processed == 0
+
+    # Untouched: still FAILED at MAX_ATTEMPTS, never processed. Read in a fresh
+    # session to avoid db_session's stale identity-map copy.
+    async with session_factory() as verify:
+        row = (
+            await verify.execute(
+                select(RewardOutbox).where(RewardOutbox.id == poison_id)
+            )
+        ).scalar_one()
+        assert row.status == OUTBOX_FAILED
+        assert row.attempts == MAX_ATTEMPTS
+        assert row.processed_at is None

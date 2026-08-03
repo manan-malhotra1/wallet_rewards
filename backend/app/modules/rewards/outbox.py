@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.modules.events.schemas import FiringOut, NormalisedEvent
 from app.modules.events.service import evaluate_and_issue_firings
 from app.shared.exceptions import (
-    UserFinancialWalletMissing,
     UserPointsAccountMissing,
 )
 from app.shared.models.rewards import (
@@ -43,14 +42,16 @@ log = structlog.get_logger()
 # left alone (poison-message guard) and surfaces as a stuck-row alert instead.
 MAX_ATTEMPTS = 5
 
-# Reward-account exceptions that a retry can NEVER resolve: the reward has no
-# account to land in and none could be provisioned. `issue_points_reward`
-# auto-provisions the PTS account, so this is defense-in-depth for any residual
-# unprovisionable firing (e.g. a cashback rule for a user with no wallet in the
-# reward currency). A row that hits one of these is a benign no-op — mark it
-# PROCESSED rather than FAILED so it never burns MAX_ATTEMPTS and raises a false
-# stuck-row alert.
-_UNPROVISIONABLE = (UserPointsAccountMissing, UserFinancialWalletMissing)
+# Reward-account exceptions that a retry can NEVER resolve AND that self-heal is
+# impossible for: a benign no-op — mark the row PROCESSED rather than FAILED so it
+# never burns MAX_ATTEMPTS or raises a false stuck-row alert. Scoped to POINTS
+# only: `issue_points_reward` now auto-provisions the PTS account, so this is
+# defense-in-depth for any residual points firing. A MISSING FINANCIAL WALLET is
+# deliberately NOT here — financial wallets are not auto-provisioned, so a
+# walletless cashback is legitimately owed money that CAN be paid once the wallet
+# exists; it must fall through to _record_failure (retry + stuck-row alert), never
+# be silently dropped.
+_UNPROVISIONABLE = (UserPointsAccountMissing,)
 # source_key stamped on internally-generated events so the evaluator/audit can
 # tell a wallet-outbox firing apart from an external Kafka event.
 INTERNAL_SOURCE_KEY = "internal:wallet"

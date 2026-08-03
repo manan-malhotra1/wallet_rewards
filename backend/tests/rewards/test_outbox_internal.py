@@ -21,7 +21,7 @@ from app.modules.rewards.outbox import (
     recon_sweep_async,
 )
 from app.modules.rewards.service import POINTS_CURRENCY
-from app.shared.exceptions import UserPointsAccountMissing
+from app.shared.exceptions import UserFinancialWalletMissing, UserPointsAccountMissing
 from app.shared.models import (
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
@@ -653,6 +653,48 @@ async def test_recon_sweep_marks_processed_noop_on_unprovisionable(
 
 
 @pytest.mark.asyncio
+async def test_attempt_immediate_fails_and_retries_on_missing_financial_wallet(
+    db_session,
+    session_factory,
+    test_tenant,
+    test_user,
+    monkeypatch,
+):
+    """Verify a missing financial wallet FAILS (retries) — owed cashback is never dropped.
+
+    A missing financial_wallet is NOT a benign no-op: financial wallets aren't
+    auto-provisioned, so a walletless cashback is legitimately owed money that CAN
+    be paid once the wallet exists. It must fall through to FAILED (retry +
+    stuck-row alert), not be silently marked PROCESSED.
+    """
+    async def _raise_missing_wallet(*_args, **_kwargs):
+        raise UserFinancialWalletMissing()
+
+    monkeypatch.setattr(
+        "app.modules.rewards.outbox.evaluate_and_issue_firings", _raise_missing_wallet
+    )
+    await post_rewardable_txn(
+        db_session, test_tenant.id, test_user.id, "p2p", Decimal("100"), "ZAR"
+    )
+
+    firings = await attempt_immediate(
+        session_factory, tenant_id=test_tenant.id, user_id=test_user.id
+    )
+    assert firings == []
+
+    async with session_factory() as verify:
+        row = (
+            await verify.execute(
+                select(RewardOutbox).where(RewardOutbox.tenant_id == test_tenant.id)
+            )
+        ).scalar_one()
+        # Retryable, NOT a silent drop: FAILED with a burned attempt + recorded error.
+        assert row.status == OUTBOX_FAILED
+        assert row.attempts == 1
+        assert row.last_error is not None
+
+
+@pytest.mark.asyncio
 async def test_recon_skips_poison_rows_at_max_attempts(
     db_session,
     session_factory,
@@ -702,7 +744,10 @@ async def test_recon_skips_poison_rows_at_max_attempts(
         assert row.processed_at is None
 
 
-@pytest.mark.skip(reason="reversal claw-back is a designed-but-unbuilt hook; reversals don't exist yet (spec 2026-08-03 §4)")
+@pytest.mark.skip(
+    reason="reversal claw-back is a designed-but-unbuilt hook; reversals don't "
+    "exist yet (spec 2026-08-03 §4)"
+)
 @pytest.mark.asyncio
 async def test_reversal_claws_back_reward():
     # When reversals land: a reversal txn emits a reward_outbox row; the handler

@@ -79,10 +79,16 @@ async def _get_or_create_user_points_account(
     `uq_accounts_user_scoped` unique index; the loser rolls back and re-reads the
     winner's row rather than surfacing a raw IntegrityError.
     """
+    # Filter by currency too: the accounts unique index is
+    # (tenant_id, user_id, account_type, currency), so a user MAY hold more than
+    # one points account (one per currency). Points always accrue in PTS, so we
+    # scope to POINTS_CURRENCY — matching the create below and avoiding a
+    # MultipleResultsFound if a non-PTS points account ever exists.
     stmt = select(Account).where(
         Account.tenant_id == tenant_id,
         Account.user_id == user_id,
         Account.account_type == ACCOUNT_TYPE_POINTS,
+        Account.currency == POINTS_CURRENCY,
     )
     account = (await session.execute(stmt)).scalar_one_or_none()
     if account is not None:

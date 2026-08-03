@@ -704,6 +704,12 @@ async def _get_or_create_airtime_merchant(session: AsyncSession, tenant: Tenant)
                 service_code="airtime_recharge",
                 mode=MERCHANT_MODE_SIMULATOR,
                 callback_secret_encrypted=encrypt_secret(AIRTIME_CALLBACK_SECRET),
+                # Force the simulator to SUCCEED for every recharge in dev — else
+                # any msisdn ending `0001` fails and `0002` hangs PENDING (the
+                # provider's magic test suffixes), which surfaces to users as a
+                # "simulated provider failure". `force_outcome` overrides the
+                # suffix rule (see airtime/provider.py).
+                provider_config={"force_outcome": "success"},
             )
         )
         await session.commit()

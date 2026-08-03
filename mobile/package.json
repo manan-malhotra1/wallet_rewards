@@ -6,10 +6,15 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
+    "start:dev": "expo start --dev-client",
+    "start:dev:tunnel": "expo start --dev-client --tunnel",
     "ios": "expo run:ios",
     "android": "expo run:android",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:devclient:android": "eas build --profile development --platform android",
+    "build:devclient:android:local": "eas build --profile development --platform android --local",
+    "build:devclient:ios-sim": "eas build --profile development-simulator --platform ios"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

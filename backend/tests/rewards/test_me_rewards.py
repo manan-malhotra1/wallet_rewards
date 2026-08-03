@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.models import (
+    ReferralCode,
     RewardEvent,
     Rule,
     Tenant,
@@ -181,6 +182,50 @@ async def test_me_rewards_shows_streak_progress_for_both_tenant(
     item = next(i for i in body["catalog"] if i["rule_id"] == str(rule.id))
     assert item["status"] == "in_progress"
     assert item["progress"] == {"current": 2, "target": 5, "label": "P2P transfers"}
+
+
+@pytest.mark.asyncio
+async def test_me_rewards_returns_own_referral_code(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Verify a user sees their own shareable referral code so they can invite friends."""
+    db_session.add(
+        ReferralCode(tenant_id=test_tenant.id, user_id=test_user.id, code="ALICE01")
+    )
+    await db_session.commit()
+
+    response = await async_client.get(
+        "/api/v1/identity/me/rewards", headers=alice_auth_header
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["referral_code"] == "ALICE01"
+
+
+@pytest.mark.asyncio
+async def test_me_rewards_referral_code_null_when_absent(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Verify an older user with no referral code sees null (the read path never mints one)."""
+    response = await async_client.get(
+        "/api/v1/identity/me/rewards", headers=alice_auth_header
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["referral_code"] is None
+    # The read path must NOT create a code as a side effect.
+    codes = (
+        (await db_session.execute(select(ReferralCode).where(ReferralCode.user_id == test_user.id)))
+        .scalars()
+        .all()
+    )
+    assert codes == []
 
 
 @pytest.mark.asyncio

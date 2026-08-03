@@ -61,6 +61,7 @@ from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_TAX_SERVICE,
     MERCHANT_CATEGORY_AIRTIME,
     MERCHANT_MODE_SIMULATOR,
+    REFERRAL_TRIGGER_SIGNUP,
     USER_TYPE_AGENT,
     USER_TYPE_MERCHANT,
     Account,
@@ -630,6 +631,46 @@ async def _get_or_create_rule(
     extras = f", threshold={count_threshold}" if count_threshold else ""
     print(
         f"  + Created rule: {name} ({rule_type}/{transaction_type}{extras}, "
+        f"reward={reward_value} pts) -> {rule.id}"
+    )
+    return rule
+
+
+async def _get_or_create_referral_rule(
+    session: AsyncSession,
+    tenant: Tenant,
+    *,
+    name: str,
+    reward_value: Decimal,
+) -> Rule:
+    """Idempotently create an ACTIVE signup-trigger, both-sided referral rule.
+
+    Referral rules have no `transaction_type`; the referrer reward is
+    `reward_value` and the equal-valued referee reward is `referee_reward_value`
+    (both points, same currency) — see the Rule model's referral columns.
+    Matched by tenant + name so re-running the seed is a no-op.
+    """
+    result = await session.execute(
+        select(Rule).where(Rule.tenant_id == tenant.id, Rule.name == name)
+    )
+    rule = result.scalar_one_or_none()
+    if rule is not None:
+        return rule
+    rule = Rule(
+        tenant_id=tenant.id,
+        name=name,
+        rule_type="referral",
+        referral_trigger=REFERRAL_TRIGGER_SIGNUP,
+        reward_type="points",
+        reward_value=reward_value,  # referrer side
+        referee_reward_value=reward_value,  # referee side (both-sided)
+        status="active",
+    )
+    session.add(rule)
+    await session.commit()
+    await session.refresh(rule)
+    print(
+        f"  + Created rule: {name} (referral/signup, both-sided "
         f"reward={reward_value} pts) -> {rule.id}"
     )
     return rule
@@ -1312,6 +1353,12 @@ async def seed() -> None:
             transaction_type="p2p",
             reward_value=Decimal("50"),
             count_threshold=3,
+        )
+        await _get_or_create_referral_rule(
+            session,
+            tenant,
+            name="Invite a friend",
+            reward_value=Decimal("200"),
         )
 
     print()

@@ -39,6 +39,7 @@ from app.modules.identity.schemas import (
     AuthStartResponse,
     ChangeUserTypeRequest,
     CreateUserRequest,
+    IdentifierIn,
     IdentifierType,
     OtpSendRequest,
     OtpSendResponse,
@@ -1658,38 +1659,56 @@ async def _find_user_by_phone(session: AsyncSession, tenant_id: UUID, phone: str
     return result.scalar_one_or_none()
 
 
-async def _autocreate_user_with_phone(session: AsyncSession, tenant_id: UUID, phone: str) -> User:
+async def _autocreate_user_with_phone(
+    session: AsyncSession,
+    tenant_id: UUID,
+    phone: str,
+    *,
+    referral_code: str | None = None,
+) -> User:
     """First-time user: create on-the-fly when /otp/send hits an unknown phone.
 
-    Matches Pay-PRD-0010 semantics — registration is a side-effect of the
-    first OTP for that phone.
+    Matches Pay-PRD-0010 semantics — registration is a side-effect of the first
+    OTP for that phone. Delegates to `create_user` so the new user goes through
+    the SAME atomic path as admin registration: it gets its own shareable
+    referral code, and when `referral_code` is supplied the referral attribution
+    + signup-rule reward fire too.
+
+    A bad `referral_code` raises `InvalidReferralCode` / `SelfReferralNotAllowed`
+    from WITHIN `create_user` BEFORE its commit, so the whole registration rolls
+    back cleanly — no half-created user is left behind (Task B atomicity).
+
+    Args:
+        referral_code: Optional referrer's code to attribute this signup to.
+
+    Raises:
+        InvalidReferralCode: 422 — the quoted code does not resolve in the tenant.
+        SelfReferralNotAllowed: 422 — the code belongs to the new user (cannot
+            happen here since the code is created for the referrer first).
     """
-    user = User(tenant_id=tenant_id)
-    session.add(user)
-    await session.flush()
-    session.add(
-        UserIdentifier(
-            user_id=user.id,
+    return await create_user(
+        session,
+        CreateUserRequest(
             tenant_id=tenant_id,
-            identifier_type="phone",
-            identifier_value=phone,
-            verified=False,  # becomes True after /otp/verify
-        )
+            identifiers=[
+                # verified=False — the phone is confirmed only after /otp/verify.
+                IdentifierIn(identifier_type="phone", identifier_value=phone, verified=False)
+            ],
+            referral_code=referral_code,
+        ),
     )
-    await session.commit()
-    await session.refresh(user)
-    return user
 
 
 async def send_otp(session: AsyncSession, request: OtpSendRequest) -> OtpSendResponse:
     """Generate, store, and 'deliver' a one-time password.
 
     Auto-registers the phone if it's not already known in this tenant
-    (Pay-PRD-0010). Rate-limited per phone via Redis.
+    (Pay-PRD-0010), attributing an optional `referral_code` on that first-time
+    registration only. Rate-limited per phone via Redis.
 
     Args:
         session: Async DB session.
-        request: Validated payload.
+        request: Validated payload (may carry an optional `referral_code`).
 
     Returns:
         Response indicating delivery; in local-dev mode the OTP itself is
@@ -1698,6 +1717,8 @@ async def send_otp(session: AsyncSession, request: OtpSendRequest) -> OtpSendRes
     Raises:
         TenantNotFound: 404 when tenant is unknown.
         OtpRateLimited: 429 when this phone has requested too many OTPs.
+        InvalidReferralCode: 422 when a NEW phone quotes an unresolvable code —
+            the auto-registration rolls back, leaving no half-created user.
     """
     await _assert_tenant_exists(session, request.tenant_id)
 
@@ -1707,7 +1728,15 @@ async def send_otp(session: AsyncSession, request: OtpSendRequest) -> OtpSendRes
 
     user = await _find_user_by_phone(session, request.tenant_id, request.phone)
     if user is None:
-        user = await _autocreate_user_with_phone(session, request.tenant_id, request.phone)
+        # New phone → register it, attributing an optional referral. An EXISTING
+        # phone deliberately skips this, so `referral_code` is ignored for a
+        # returning user (an OTP re-request must not alter an established user).
+        user = await _autocreate_user_with_phone(
+            session,
+            request.tenant_id,
+            request.phone,
+            referral_code=request.referral_code,
+        )
 
     otp = hashing.generate_otp()
     otp_hash = hashing.hash_otp(otp)

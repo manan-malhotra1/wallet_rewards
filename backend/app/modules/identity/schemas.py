@@ -314,9 +314,14 @@ class RewardsOut(BaseModel):
     `enabled` is False for a `wallet`-mode tenant (no rewards engine), in which
     case `catalog` and `recent` are empty. Otherwise `catalog` lists the active
     rules the user is eligible for with progress, and `recent` the latest firings.
+
+    `referral_code` is the caller's own shareable code, surfaced regardless of
+    `enabled` (sharing a code is independent of the rewards catalog). It is null
+    for older users created before referral codes existed.
     """
 
     enabled: bool
+    referral_code: str | None = None
     catalog: list[RewardCatalogItemOut]
     recent: list[RecentRewardOut]
 
@@ -394,10 +399,19 @@ class AdminPinResetResponse(BaseModel):
 
 
 class OtpSendRequest(BaseModel):
-    """Request body for `POST /identity/otp/send`."""
+    """Request body for `POST /identity/otp/send`.
+
+    `referral_code` is an OPTIONAL referrer's code captured at mobile signup.
+    It is used ONLY when this OTP auto-registers a NEW phone (Pay-PRD-0010): the
+    new user is created WITH the code, creating the `referrals` row and firing
+    any active signup-trigger referral rule. For an EXISTING phone it is ignored
+    (an OTP re-request must never alter an established user). Absent / null →
+    organic signup, no referral.
+    """
 
     tenant_id: UUID
     phone: str = Field(min_length=5, max_length=20)
+    referral_code: str | None = Field(default=None, min_length=1, max_length=16)
 
     @field_validator("phone")
     @classmethod

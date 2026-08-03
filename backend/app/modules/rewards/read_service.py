@@ -25,6 +25,7 @@ from app.shared.models import (
     RULE_TYPE_MILESTONE,
     RULE_TYPE_STREAK,
     LedgerEntry,
+    ReferralCode,
     RewardEvent,
     Rule,
     UserRuleProgress,
@@ -56,6 +57,26 @@ def _reward_currency(reward_type: str, base_currency: str) -> str:
     currency a cashback credit is actually paid in for a base-currency wallet.
     """
     return "PTS" if reward_type == REWARD_TYPE_POINTS else base_currency
+
+
+async def _own_referral_code(
+    session: AsyncSession, *, tenant_id: UUID, user_id: UUID
+) -> str | None:
+    """The caller's own shareable referral code, or None if they lack one.
+
+    Read-only: older users created before referral codes existed have no row,
+    and this path deliberately does NOT mint one (create happens only at signup).
+    Sharing a code is independent of the rewards catalog, so this is surfaced
+    even for a `wallet`-mode (rewards-disabled) tenant.
+    """
+    return (
+        await session.execute(
+            select(ReferralCode.code).where(
+                ReferralCode.tenant_id == tenant_id,
+                ReferralCode.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
 
 
 def _progress_fired(progress: UserRuleProgress | None) -> bool:
@@ -150,16 +171,26 @@ async def list_my_rewards(
         user_id: The caller (from the session token).
 
     Returns:
-        A dict with `enabled`, `catalog`, and `recent` keys — validated by
-        `RewardsOut`.
+        A dict with `enabled`, `referral_code`, `catalog`, and `recent` keys —
+        validated by `RewardsOut`. `referral_code` is included regardless of
+        `enabled`, since sharing a code is independent of the rewards catalog.
     """
+    # Resolved first + surfaced unconditionally: a wallet-mode tenant has no
+    # rewards engine but its users still own a shareable referral code.
+    referral_code = await _own_referral_code(session, tenant_id=tenant_id, user_id=user_id)
+
     row = (
         await session.execute(
             select(Tenant.business_type, Tenant.base_currency).where(Tenant.id == tenant_id)
         )
     ).one_or_none()
     if row is None or row.business_type == BUSINESS_TYPE_WALLET:
-        return {"enabled": False, "catalog": [], "recent": []}
+        return {
+            "enabled": False,
+            "referral_code": referral_code,
+            "catalog": [],
+            "recent": [],
+        }
     base_currency = row.base_currency
 
     rules = await _eligible_rules(session, tenant_id=tenant_id, user_id=user_id)
@@ -194,7 +225,12 @@ async def list_my_rewards(
         )
 
     recent = await _recent_rewards(session, user_id=user_id, base_currency=base_currency)
-    return {"enabled": True, "catalog": catalog, "recent": recent}
+    return {
+        "enabled": True,
+        "referral_code": referral_code,
+        "catalog": catalog,
+        "recent": recent,
+    }
 
 
 async def _recent_rewards(

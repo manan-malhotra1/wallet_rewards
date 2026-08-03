@@ -16,7 +16,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ActivityRow } from '@/components/ui/ActivityRow';
 import { BottomTabBar } from '@/components/ui/BottomTabBar';
 import { SideDrawer } from '@/components/ui/SideDrawer';
+import { RewardCelebration } from '@/components/rewards/RewardCelebration';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { ClaySurface, ClayIconTile } from '@/components/clay';
 import { useColors } from '@/lib/colors';
@@ -37,6 +38,7 @@ import {
   type MyService,
   type WalletAccount,
 } from '@/lib/api/wallet';
+import { getRewards, markRewardsSeen } from '@/lib/api/rewards';
 import { currencySymbol, formatMoney } from '@/lib/format';
 import { qk } from '@/lib/query';
 import { clearAll, getLastPhone } from '@/lib/storage';
@@ -56,9 +58,8 @@ interface Tile {
  * per-user `/me/services` list; each returned service `code` is looked up here
  * for its icon, label, and currency-aware route. Codes NOT in this map (e.g.
  * `change_pin`, which belongs in the drawer) are filtered out — they are not
- * money actions and never render as pay tiles. `cash_in` / `redemption` route
- * to `/home` as placeholders until their flow screens ship, but the tile still
- * shows so an agent sees "Cash in" instead of "Send".
+ * money actions and never render as pay tiles. `cash_in` routes to the cash-in
+ * flow; `redemption` routes to the Rewards screen.
  */
 const SERVICE_TILE: Record<string, Tile> = {
   p2p: { icon: 'paper-plane', label: 'Send', route: (c) => `/p2p/recipient?currency=${c}` },
@@ -69,7 +70,7 @@ const SERVICE_TILE: Record<string, Tile> = {
   },
   cashout: { icon: 'cash-outline', label: 'Cash out', route: (c) => `/cashout?currency=${c}` },
   cash_in: { icon: 'enter-outline', label: 'Cash in', route: (c) => `/cashin?currency=${c}` },
-  redemption: { icon: 'gift-outline', label: 'Rewards', route: () => '/home' }, // placeholder
+  redemption: { icon: 'gift-outline', label: 'Rewards', route: () => '/rewards' },
 };
 
 /**
@@ -224,6 +225,7 @@ function BalanceCard({
 export default function HomeScreen() {
   const router = useRouter();
   const colors = useColors();
+  const queryClient = useQueryClient();
   const { width } = useWindowDimensions();
   const [masked, setMasked] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -239,6 +241,13 @@ export default function HomeScreen() {
   const { data: services } = useQuery({
     queryKey: qk.services(),
     queryFn: getMyServices,
+  });
+  // Rewards drive the home celebration: when the user has an unseen earned
+  // reward we pop a one-time congratulations overlay. Errors are swallowed
+  // (no `data` → no celebration) so a rewards outage never breaks home.
+  const { data: rewards } = useQuery({
+    queryKey: qk.rewards(),
+    queryFn: getRewards,
   });
 
   // Pull the phone the user last logged in with from secure storage so
@@ -308,6 +317,28 @@ export default function HomeScreen() {
   const recentForCurrency = (data?.recent_transactions ?? []).filter(
     (t) => t.currency === activeCurrency || t.currency === 'PTS',
   );
+
+  // Celebrate the first unseen earned reward. Gated on `enabled` so we never
+  // celebrate on an account with rewards turned off; when rewards are disabled
+  // or the query failed, `rewards` is falsy and this is an empty list.
+  const unseenRewards = rewards?.enabled ? rewards.recent.filter((r) => !r.seen) : [];
+  const celebration = unseenRewards[0] ?? null;
+
+  /**
+   * Dismiss the celebration: mark every currently-unseen reward as seen (so we
+   * never re-fire for them) and refetch the rewards query. Runs fire-and-forget
+   * — a failed "seen" write just means the overlay may reappear next mount.
+   */
+  function dismissCelebration() {
+    const ids = unseenRewards.map((r) => r.reward_event_id);
+    markRewardsSeen(ids)
+      .catch(() => {
+        /* Best-effort — ignore; the overlay reappears next launch at worst. */
+      })
+      .finally(() => {
+        queryClient.invalidateQueries({ queryKey: qk.rewards() });
+      });
+  }
 
   return (
     <View flex={1} backgroundColor={colors.screenBg}>
@@ -651,6 +682,9 @@ export default function HomeScreen() {
         initials={initials(firstName)}
         signingOut={signingOut}
       />
+      {celebration ? (
+        <RewardCelebration reward={celebration} onDismiss={dismissCelebration} />
+      ) : null}
     </View>
   );
 }

@@ -25,4 +25,6 @@ export const qk = {
   services: () => ['me-services'] as const,
   /** The current user's send/receive limits, per currency wallet. */
   limits: () => ['me-limits'] as const,
+  /** The current user's rewards catalog + recent earnings. */
+  rewards: () => ['rewards'] as const,
 };

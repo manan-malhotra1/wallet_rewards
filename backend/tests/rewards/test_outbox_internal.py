@@ -218,3 +218,77 @@ async def test_no_outbox_without_reward_trigger(db_session, tenant_factory, user
     await user_factory(both)
     await post_plain_txn(db_session, both.id, "reward_issuance", Decimal("100"), "ZAR")
     assert await _outbox_count(db_session, both.id) == 0
+
+
+@pytest.mark.asyncio
+async def test_idempotent_retry_writes_no_second_outbox(db_session, tenant_factory, user_factory):
+    """Verify replaying a rewardable transaction never double-enqueues its reward."""
+    # Financial idempotency: a retried idempotency_key must return the original
+    # transaction WITHOUT writing a second outbox row (the early return at
+    # post_transaction service.py:194 short-circuits before the outbox insert).
+    both = await tenant_factory(business_type="both")
+    user = await user_factory(both)
+    debit, credit = await _unguarded_pair(db_session, both.id, "ZAR")
+    request = PostTransactionRequest(
+        tenant_id=both.id,
+        idempotency_key="rewardable-retry-1",
+        transaction_type="cash_in",
+        currency="ZAR",
+        amount=Decimal("100"),
+        entries=[
+            LedgerEntryRequest(
+                account_id=debit.id, entry_type=ENTRY_DEBIT, amount=Decimal("100")
+            ),
+            LedgerEntryRequest(
+                account_id=credit.id, entry_type=ENTRY_CREDIT, amount=Decimal("100")
+            ),
+        ],
+        reward_trigger=RewardTrigger(
+            user_id=user.id,
+            transaction_type="cash_in",
+            amount=Decimal("100"),
+            currency="ZAR",
+        ),
+    )
+    first = await post_transaction(db_session, request)
+    assert await _outbox_count(db_session, both.id) == 1
+
+    # Replay with the SAME idempotency_key — original txn returned, no new row.
+    second = await post_transaction(db_session, request)
+    assert second.id == first.id
+    assert await _outbox_count(db_session, both.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_non_rewardable_type_writes_no_outbox(db_session, tenant_factory, user_factory):
+    """Verify a non-rewardable trigger type is rejected by the allowlist (no reward)."""
+    # Defense-in-depth: even in 'both' mode with a reward_trigger present, a type
+    # outside REWARDABLE_TYPES (e.g. reward_issuance) must enqueue nothing.
+    both = await tenant_factory(business_type="both")
+    user = await user_factory(both)
+    debit, credit = await _unguarded_pair(db_session, both.id, "ZAR")
+    await post_transaction(
+        db_session,
+        PostTransactionRequest(
+            tenant_id=both.id,
+            idempotency_key=f"non-rewardable-{uuid4().hex}",
+            transaction_type="reward_issuance",
+            currency="ZAR",
+            amount=Decimal("100"),
+            entries=[
+                LedgerEntryRequest(
+                    account_id=debit.id, entry_type=ENTRY_DEBIT, amount=Decimal("100")
+                ),
+                LedgerEntryRequest(
+                    account_id=credit.id, entry_type=ENTRY_CREDIT, amount=Decimal("100")
+                ),
+            ],
+            reward_trigger=RewardTrigger(
+                user_id=user.id,
+                transaction_type="reward_issuance",  # NOT in REWARDABLE_TYPES
+                amount=Decimal("100"),
+                currency="ZAR",
+            ),
+        ),
+    )
+    assert await _outbox_count(db_session, both.id) == 0

@@ -36,8 +36,18 @@ async def business_type_of(session: AsyncSession, tenant_id: UUID) -> str:
 
 
 async def rewards_from_wallet_enabled(session: AsyncSession, tenant_id: UUID) -> bool:
-    """True when internal wallet transactions should drive rewards (both mode)."""
-    return await business_type_of(session, tenant_id) == BUSINESS_TYPE_BOTH
+    """True when internal wallet transactions should drive rewards (both mode).
+
+    Non-raising by design: this runs on the `post_transaction` hot path, so an
+    unresolved tenant must degrade to "no reward trigger" (False) rather than
+    500 an otherwise-valid money movement. Queries business_type directly
+    instead of delegating to `business_type_of` (which raises on a missing
+    tenant — read endpoints rely on that).
+    """
+    result = await session.execute(
+        select(Tenant.business_type).where(Tenant.id == tenant_id)
+    )
+    return result.scalar_one_or_none() == BUSINESS_TYPE_BOTH
 
 
 async def external_events_allowed(session: AsyncSession, tenant_id: UUID) -> bool:

@@ -27,6 +27,7 @@ from app.modules.events.normaliser import normalise
 from app.modules.events.schemas import (
     FiringOut,
     IngestResponse,
+    NormalisedEvent,
     RawExternalEvent,
     SourceRegistrationRequest,
 )
@@ -162,6 +163,37 @@ async def _log_rejected(
         await session.commit()
     except IntegrityError:
         await session.rollback()
+
+
+async def evaluate_and_issue_firings(
+    session: AsyncSession, event: NormalisedEvent
+) -> list[FiringOut]:
+    """Evaluate active rules for an event and issue points for each firing.
+
+    Shared by the external Kafka path (process_external_event) and the internal
+    wallet outbox drainer. Does NOT commit — the caller owns the transaction.
+    Idempotent via reward_events(user, rule, triggering_event_id).
+    """
+    firings: list[RuleFiring] = await evaluate_active_rules_for_event(session, event)
+    issued: list[FiringOut] = []
+    for firing in firings:
+        await issue_points_reward(
+            session,
+            tenant_id=event.tenant_id,
+            user_id=event.user_id,
+            rule=firing.rule,
+            triggering_event_id=event.event_id,
+            reward_value=firing.reward_value,
+        )
+        issued.append(
+            FiringOut(
+                rule_id=firing.rule.id,
+                rule_name=firing.rule.name,
+                reward_type=firing.rule.reward_type,
+                reward_value=firing.reward_value,
+            )
+        )
+    return issued
 
 
 async def process_external_event(
@@ -304,33 +336,12 @@ async def process_external_event(
     # 5. Normalise
     event = normalise(raw, source.field_mapping)
 
-    # 6. Run the rules engine — evaluator returns the list of firings.
-    firings: list[RuleFiring] = await evaluate_active_rules_for_event(session, event)
+    # 6-7. Evaluate active rules and issue a points reward per firing. Shared
+    #      with the internal wallet outbox drainer (DRY). Does not commit.
+    issued = await evaluate_and_issue_firings(session, event)
 
-    # 7. Issue rewards for each firing. Each call uses post_transaction (which
-    #    commits) so the log_row + progress updates + ledger entries land
-    #    atomically per firing.
-    issued: list[FiringOut] = []
-    for firing in firings:
-        await issue_points_reward(
-            session,
-            tenant_id=event.tenant_id,
-            user_id=event.user_id,
-            rule=firing.rule,
-            triggering_event_id=event.event_id,
-            reward_value=firing.reward_value,
-        )
-        issued.append(
-            FiringOut(
-                rule_id=firing.rule.id,
-                rule_name=firing.rule.name,
-                reward_type=firing.rule.reward_type,
-                reward_value=firing.reward_value,
-            )
-        )
-
-    # 8. If no rules fired, we still need to commit the log_row + any progress
-    #    updates that happened in the evaluator (milestone counters).
+    # 8. Commit the log_row + any progress updates that happened in the
+    #    evaluator (milestone counters) + reward rows atomically.
     await session.commit()
 
     return IngestResponse(

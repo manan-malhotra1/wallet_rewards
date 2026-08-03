@@ -1,10 +1,13 @@
 """Internal wallet → rewards outbox behavior."""
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import func, select
 
+from app.modules.events.schemas import NormalisedEvent
+from app.modules.events.service import evaluate_and_issue_firings
 from app.modules.ledger import (
     LedgerEntryRequest,
     PostTransactionRequest,
@@ -16,6 +19,8 @@ from app.shared.models import (
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     Account,
+    RewardEvent,
+    Rule,
     Transaction,
 )
 from app.shared.models.rewards import OUTBOX_PENDING, RewardOutbox
@@ -292,3 +297,62 @@ async def test_non_rewardable_type_writes_no_outbox(db_session, tenant_factory, 
         ),
     )
     assert await _outbox_count(db_session, both.id) == 0
+
+
+@pytest.mark.asyncio
+async def test_evaluate_and_issue_firings_issues_reward_for_seeded_rule(
+    db_session,
+    test_tenant,
+    test_user,
+    user_points,
+    system_points_account,
+):
+    """Verify the shared issuance core rewards a user when an active rule fires."""
+    # This exercises evaluate_and_issue_firings directly (the reusable core the
+    # external Kafka path and the internal wallet outbox drainer both call),
+    # independent of the HMAC/dedup wrapper in process_external_event.
+    # Seed an active first_time rule matching the event's transaction_type.
+    rule = Rule(
+        tenant_id=test_tenant.id,
+        name="first p2p",
+        rule_type="first_time",
+        transaction_type="p2p",
+        reward_type="points",
+        reward_value=Decimal("100"),
+    )
+    db_session.add(rule)
+    await db_session.commit()
+    await db_session.refresh(rule)
+
+    event = NormalisedEvent(
+        event_id="txn-test-1",
+        source_key="internal:wallet",
+        tenant_id=test_tenant.id,
+        user_id=test_user.id,
+        transaction_type="p2p",
+        amount=Decimal("100"),
+        currency="ZAR",
+        merchant_id=None,
+        timestamp=datetime(2026, 8, 3, 12, 0, 0, tzinfo=UTC),
+    )
+
+    issued = await evaluate_and_issue_firings(db_session, event)
+    await db_session.commit()
+
+    # Exactly one firing, carrying the configured reward value.
+    assert len(issued) == 1
+    assert issued[0].rule_id == rule.id
+    assert issued[0].reward_type == "points"
+    assert issued[0].reward_value == Decimal("100")
+
+    # A reward_events row was persisted for this user + rule + triggering event.
+    reward = (
+        await db_session.execute(
+            select(RewardEvent).where(
+                RewardEvent.user_id == test_user.id,
+                RewardEvent.rule_id == rule.id,
+                RewardEvent.triggering_event_id == "txn-test-1",
+            )
+        )
+    ).scalar_one()
+    assert reward.reward_value == Decimal("100")

@@ -74,14 +74,6 @@ from app.shared.models import (
 
 CASH_OUT_SERVICE_CODE = "cashout"
 
-# Reward-rule tag for cash-out. Deliberately DECOUPLED from CASH_OUT_SERVICE_CODE:
-# the money service code is "cashout" (no underscore — what pricing / limits /
-# role lookups key on), but reward rules and REWARDABLE_TYPES
-# (shared/models/rewards.py) key on the "cash_out" tag. The RewardTrigger MUST
-# carry this tag exactly, or post_transaction's allowlist gate silently skips the
-# outbox row and no reward ever fires.
-CASH_OUT_REWARD_TYPE = "cash_out"
-
 # The user types eligible to RECEIVE a cash-out (mirror of who may cash-in).
 _AGENT_USER_TYPES = (USER_TYPE_AGENT, USER_TYPE_SUPER_AGENT)
 
@@ -378,7 +370,7 @@ async def cash_out(
             # commit; other modes are a no-op.
             reward_trigger=RewardTrigger(
                 user_id=subscriber_user_id,
-                transaction_type=CASH_OUT_REWARD_TYPE,
+                transaction_type=CASH_OUT_SERVICE_CODE,
                 amount=request.amount,
                 currency=currency,
             ),

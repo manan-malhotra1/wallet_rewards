@@ -477,9 +477,10 @@ async def test_cash_out_in_both_mode_earns_the_subscriber_points(
     await seed_cashout_step_up_policy(db_session, test_tenant)
     # The reward recipient (subscriber) needs a points account for the CREDIT.
     await make_points_account(db_session, test_tenant.id, subscriber.id)
-    # The reward tag is "cash_out" (underscore) — NOT the "cashout" service code.
+    # The reward tag is the CANONICAL ledger transaction_type "cashout" — the
+    # same value the service posts and admins configure rules against.
     await seed_first_time_points_rule(
-        db_session, test_tenant.id, transaction_type="cash_out", reward_value=Decimal("50")
+        db_session, test_tenant.id, transaction_type="cashout", reward_value=Decimal("50")
     )
 
     resp = await async_client.post(

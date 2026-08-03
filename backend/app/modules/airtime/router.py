@@ -74,7 +74,7 @@ async def post_recharge(
             },
         )
 
-    recharge, earned_points = await purchase_airtime(
+    recharge = await purchase_airtime(
         session,
         tenant_id=user.tenant_id,
         user_id=user.id,
@@ -85,10 +85,7 @@ async def post_recharge(
     )
     if recharge.status == AIRTIME_STATUS_PENDING:
         response.status_code = status.HTTP_202_ACCEPTED
-    out = AirtimeRechargeOut.model_validate(recharge)
-    # earned_points comes from the reward drain, not the ORM row — set it here.
-    out.earned_points = earned_points
-    return out
+    return AirtimeRechargeOut.model_validate(recharge)
 
 
 @router.get("/{recharge_id}", response_model=AirtimeRechargeOut)

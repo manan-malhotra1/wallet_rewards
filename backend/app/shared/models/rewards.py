@@ -73,8 +73,14 @@ OUTBOX_PROCESSED = "processed"
 OUTBOX_FAILED = "failed"
 
 # Wallet transaction types that drive rewards (loop-safe allowlist — excludes
-# reward_issuance / cashback_reward / redemption).
-REWARDABLE_TYPES = ("p2p", "cash_in", "cash_out", "airtime")
+# reward_issuance / cashback_reward / redemption). These are the CANONICAL
+# ledger transaction_types the money services actually post — the evaluator
+# matches event.transaction_type == rule.transaction_type, so for internal
+# wallet activity the reward tag MUST equal the ledger type (also what admins
+# configure rules against). Note "cashout" (CASH_OUT_SERVICE_CODE), not
+# "cash_out". Airtime ("airtime_recharge") is deferred until rewards can fire on
+# successful vend rather than the PENDING reservation (see airtime/service.py).
+REWARDABLE_TYPES = ("p2p", "cash_in", "cashout")
 
 
 class RewardOutbox(Base):

@@ -37,7 +37,6 @@ from app.shared.models import (
     Tenant,
     User,
 )
-from tests.conftest import reward_event_count, seed_first_time_points_rule
 
 _SUCCESS_MSISDN = "+27825551234"
 _FAIL_MSISDN = "+27820000001"  # simulator: ...0001 -> failure
@@ -577,40 +576,3 @@ async def test_recharge_succeeds_when_both_configs_present(
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "COMPLETED"
-
-
-@pytest.mark.asyncio
-async def test_recharge_in_both_mode_earns_the_buyer_points(
-    async_client: AsyncClient,
-    db_session: AsyncSession,
-    test_tenant: Tenant,
-    test_user: User,
-    airtime_merchant: MerchantProfile,
-    funded_wallet: Account,
-    airtime_configs: None,
-    user_points: Account,
-    alice_auth_header: dict[str, str],
-) -> None:
-    """Verify a successful airtime recharge rewards the purchasing user.
-
-    In a full wallet+rewards ('both') tenant with an active first-transaction
-    rule, buying airtime issues the buyer the configured points and the recharge
-    response surfaces them inline as `earned_points`.
-    """
-    # The reward tag is "airtime" — NOT the "airtime_recharge" service code.
-    await seed_first_time_points_rule(
-        db_session, test_tenant.id, transaction_type="airtime", reward_value=Decimal("50")
-    )
-
-    resp = await async_client.post(
-        "/api/v1/airtime/recharge",
-        content=json.dumps(_body()),
-        headers=_headers(alice_auth_header),
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["status"] == "COMPLETED"
-    assert body["earned_points"] == 50
-
-    # A reward_events row was issued to the purchasing user (the buyer).
-    assert await reward_event_count(db_session, test_user.id) == 1

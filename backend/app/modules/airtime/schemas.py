@@ -47,11 +47,6 @@ class AirtimeRechargeOut(BaseModel):
     failure_reason: str | None
     completed_at: datetime | None
     created_at: datetime
-    # Points the purchasing user earned from a reward rule on this recharge (0
-    # outside `both` mode, no matching rule, or replay). Only the POST /recharge
-    # route populates it from the reward drain; the GET / callback / resolve
-    # routes build from the ORM row (no such attribute) and keep the default 0.
-    earned_points: int = 0
 
 
 class AirtimeCallbackRequest(BaseModel):

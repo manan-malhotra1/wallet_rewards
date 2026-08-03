@@ -1,0 +1,10 @@
+# Keep the build context (and the bind-mount overlay) lean. The host's macOS
+# virtualenv and caches must never leak into the Linux image.
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+test-reports
+.env

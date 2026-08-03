@@ -45,3 +45,8 @@ sasai-wallet-infra/data/
 
 # scripts/dev.sh runtime state
 .run/
+
+# Celery beat schedule DB — written by the `rewards-beat` container into the
+# bind-mounted backend/ dir; a runtime artifact, never source.
+celerybeat-schedule
+backend/celerybeat-schedule

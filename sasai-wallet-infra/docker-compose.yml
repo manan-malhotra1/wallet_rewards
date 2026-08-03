@@ -88,6 +88,94 @@ services:
     volumes:
       - redis-data:/data
 
+  # --- Celery worker (background reward reconciliation) -------------------
+  # Executes the reward-outbox reconciliation task (`rewards.recon_sweep`)
+  # enqueued by the beat scheduler below. Without this, the "missed reward ==
+  # stuck outbox row" safety net is inert — see backend/app/celery_app.py.
+  #
+  # Reaches Postgres + Redis over the compose network (service names, not the
+  # host `localhost` the backend uses via `make dev`), so DATABASE_URL /
+  # REDIS_URL are overridden here. Keycloak/secret vars are required by
+  # app.config at import time but unused by the sweep, so they carry
+  # dev-only placeholders.
+  rewards-worker:
+    build:
+      context: ../backend
+    # `-E` emits task-sent/received/succeeded/failed events so Flower (below)
+    # can show a live run history, not just registered task names.
+    command: celery -A app.celery_app worker --loglevel=INFO -E
+    # Keep the reconciliation net alive: a crash or stray signal must never
+    # leave the sweep silently dead. Only an explicit `stop` keeps it down.
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://wallet:wallet@postgres:5432/wallet_platform
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: wallet-platform
+      KEYCLOAK_CLIENT_ID: backend-service
+      KEYCLOAK_CLIENT_SECRET: unused-by-worker
+      SECRET_KEY: unused-by-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ../backend:/app
+
+  # --- Celery beat (periodic scheduler) ----------------------------------
+  # Fires `rewards.recon_sweep` every 60s (schedule in app/celery_app.py) onto
+  # the Redis broker for the worker above to execute. Run exactly one beat —
+  # a second would double-enqueue (harmless, since the sweep is idempotent,
+  # but wasteful).
+  rewards-beat:
+    build:
+      context: ../backend
+    command: celery -A app.celery_app beat --loglevel=INFO
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://wallet:wallet@postgres:5432/wallet_platform
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: wallet-platform
+      KEYCLOAK_CLIENT_ID: backend-service
+      KEYCLOAK_CLIENT_SECRET: unused-by-worker
+      SECRET_KEY: unused-by-worker
+    depends_on:
+      redis:
+        condition: service_started
+    volumes:
+      - ../backend:/app
+
+  # --- Flower (Celery monitoring UI) -------------------------------------
+  # Web dashboard at http://localhost:5555 — shows recon-sweep runs (received/
+  # succeeded/failed), timings, return values, and worker liveness. Reads the
+  # same Redis broker; run history depends on the worker's `-E` flag above.
+  # Dev-only monitoring: no auth, so it's bound to localhost only.
+  flower:
+    build:
+      context: ../backend
+    command: celery -A app.celery_app flower --port=5555
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://wallet:wallet@postgres:5432/wallet_platform
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: wallet-platform
+      KEYCLOAK_CLIENT_ID: backend-service
+      KEYCLOAK_CLIENT_SECRET: unused-by-flower
+      SECRET_KEY: unused-by-flower
+      # Dev-only: expose the JSON API (/api/tasks, /api/workers) without a
+      # login. Safe here because the port is bound to 127.0.0.1 only.
+      FLOWER_UNAUTHENTICATED_API: "true"
+    ports:
+      - "127.0.0.1:5555:5555"
+    depends_on:
+      redis:
+        condition: service_started
+    volumes:
+      - ../backend:/app
+
 volumes:
   postgres-data:
   keycloak-data:

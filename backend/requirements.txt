@@ -10,6 +10,9 @@ passlib[bcrypt]>=1.7.4
 httpx>=0.28.0
 confluent-kafka>=2.6.0
 celery>=5.4.0
+# Web dashboard for Celery task runs (the reward recon sweep). Served by the
+# `flower` compose service and `make flower`; reads the same Redis broker.
+flower>=2.0.0
 redis>=5.2.0
 structlog>=24.4.0
 python-multipart>=0.0.20

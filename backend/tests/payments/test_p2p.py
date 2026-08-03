@@ -1,14 +1,18 @@
-"""Points earned on transfers.
+"""P2P triggers rewards and returns the points earned inline (both mode).
 
-Mirrors the fund pattern (`tests/payments/test_fund.py` where applicable):
-the rules engine writes `reward_events` rows keyed by `triggering_event_id`
-(the internal transaction id, stringified, for synchronous internal flows).
-The P2P response surfaces the integer total of those rows so the mobile
-success screen can render "+ X PTS earned" without a follow-up poll.
+End-to-end coverage of the P2P reward plumbing (Epic 10 pipeline wiring):
 
-The existing P2P happy / sad path matrix lives in
-`tests/payments/test_p2p_transfer.py`; this file is intentionally narrow —
-two tests that exercise *only* the new `earned_points` plumbing.
+  - In a `both`-mode tenant, completing a P2P transfer enqueues a reward for
+    the SENDER (via the reward_outbox row post_transaction writes atomically),
+    the immediate drain fires the matching rule, and the P2P API response
+    surfaces the points inline as `earned_points` for the mobile celebration.
+  - In a `wallet`-mode tenant, the mode gate holds end-to-end: no outbox row,
+    no reward issued, and `earned_points` is 0.
+
+The narrower placeholder tests that previously lived here asserted a lookup by
+transaction id that no longer exists — the response's `earned_points` now comes
+from the live outbox drain (`attempt_immediate`), not a post-hoc reward_events
+query.
 """
 
 from __future__ import annotations
@@ -18,11 +22,13 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.payments.service import fund
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_POINTS,
     Account,
     RewardEvent,
     Rule,
@@ -30,7 +36,7 @@ from app.shared.models import (
     User,
     UserIdentifier,
 )
-from tests.conftest import create_session_token_for_user
+from tests.conftest import create_session_token_for_user, prefund_float
 
 # -----------------------------------------------------------------------------
 # Helpers — mirror the test_p2p_transfer.py setup so this file stands alone.
@@ -43,8 +49,6 @@ async def _ensure_default_role(session: AsyncSession, tenant: Tenant):
     The Phase F.3 role check rejects P2P without an active "p2p" permission;
     every helper-created sender needs this role wired up.
     """
-    from sqlalchemy import select
-
     from app.shared.models import Role, RolePermission
 
     result = await session.execute(
@@ -68,8 +72,15 @@ async def _make_user_with_wallet(
     *,
     phone: str,
     currency: str = "ZAR",
+    with_points: bool = False,
 ) -> tuple[User, Account]:
-    """Create a user with one verified phone identifier + a wallet + default role."""
+    """Create a user with a verified phone, a wallet, the default role, and
+    optionally a points account.
+
+    `with_points=True` is required for the SENDER in a rewardable flow: reward
+    issuance CREDITs the user's points_account, and `issue_points_reward` raises
+    (fail-open, so the reward is simply skipped) when it is missing.
+    """
     from app.shared.models import UserRole
 
     user = User(tenant_id=tenant.id)
@@ -91,6 +102,15 @@ async def _make_user_with_wallet(
         currency=currency,
     )
     session.add(wallet)
+    if with_points:
+        session.add(
+            Account(
+                tenant_id=tenant.id,
+                user_id=user.id,
+                account_type=ACCOUNT_TYPE_POINTS,
+                currency="PTS",
+            )
+        )
     role = await _ensure_default_role(session, tenant)
     session.add(UserRole(user_id=user.id, role_id=role.id))
     await session.commit()
@@ -106,16 +126,19 @@ async def _auth_header_for(user: User) -> dict[str, str]:
 
 
 async def _seed_p2p_config(session: AsyncSession, tenant_id) -> None:
-    """Seed a zero-fee p2p pricing + limit config for ZAR.
+    """Seed a zero-fee p2p pricing + limit config (+ high step-up threshold) for ZAR.
 
     Invariant #12 makes the pricing+limit gate unconditional, so any test that
     actually transacts a p2p must seed both configs first. Zero fee keeps
-    balance-sensitive assertions unaffected.
+    balance-sensitive assertions unaffected. The step-up policy threshold is set
+    far above these amounts so the below-threshold path skips the PIN and the
+    reward plumbing runs.
     """
     from app.modules.limits.schemas import LimitConfigCreateRequest
     from app.modules.limits.service import create_limit_config
     from app.modules.pricing.schemas import PricingConfigCreateRequest
     from app.modules.pricing.service import create_pricing_config
+    from app.shared.models import StepUpPolicy
 
     await create_pricing_config(
         session,
@@ -137,11 +160,6 @@ async def _seed_p2p_config(session: AsyncSession, tenant_id) -> None:
             daily_count_cap=10,
         ),
     )
-    # Step-up is FAIL-CLOSED: a missing p2p policy would require a PIN for any
-    # amount. Seed a policy with a threshold above these tests' amounts so the
-    # below-threshold path skips the PIN and the earned_points plumbing runs.
-    from app.shared.models import StepUpPolicy
-
     session.add(
         StepUpPolicy(
             tenant_id=tenant_id,
@@ -153,25 +171,35 @@ async def _seed_p2p_config(session: AsyncSession, tenant_id) -> None:
     await session.commit()
 
 
-async def _seed_rule(session: AsyncSession, tenant: Tenant) -> Rule:
-    """Insert a minimal `first_time` rule so reward_events FK is satisfied.
+async def _seed_first_time_p2p_points_rule(
+    session: AsyncSession, tenant: Tenant, *, reward_value: Decimal
+) -> Rule:
+    """Seed an ACTIVE first_time p2p rule that awards `reward_value` points.
 
-    The rule itself is never evaluated in these tests — it exists only to
-    satisfy the `reward_events.rule_id -> rules.id` foreign key when we
-    insert a `RewardEvent` directly.
+    A first_time rule fires exactly once for a user's first matching p2p, which
+    is all these single-transfer tests need. `status` defaults to 'active'.
     """
     rule = Rule(
         tenant_id=tenant.id,
-        name="test-earned-points-rule",
+        name="first-p2p-points",
         rule_type="first_time",
         transaction_type="p2p",
         reward_type="points",
-        reward_value=Decimal("100"),
+        reward_value=reward_value,
     )
     session.add(rule)
     await session.commit()
     await session.refresh(rule)
     return rule
+
+
+async def _reward_event_count(session: AsyncSession, user_id) -> int:
+    """Count reward_events rows for a user (across all rules)."""
+    return (
+        await session.execute(
+            select(func.count()).select_from(RewardEvent).where(RewardEvent.user_id == user_id)
+        )
+    ).scalar_one()
 
 
 # -----------------------------------------------------------------------------
@@ -180,23 +208,26 @@ async def _seed_rule(session: AsyncSession, tenant: Tenant) -> Rule:
 
 
 @pytest.mark.asyncio
-async def test_p2p_response_includes_earned_points_field(
+async def test_p2p_in_both_mode_earns_points_and_returns_them_inline(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
 ) -> None:
-    """Verify a transfer that earns no reward points shows none earned
+    """Verify a transfer earns points and the sender sees them on the success screen.
 
-    A normal P2P (no rules fired) returns `earned_points: null`.
-
-    The mobile app reads `body["earned_points"]` to decide whether to
-    show the "+ X PTS earned" toast. The field must be present on every
-    response — `null` when no rules ran, an integer otherwise. This test
-    asserts presence + null-when-no-rules; the next test covers the
-    integer-when-rules-fired branch.
+    In a full wallet+rewards ('both') tenant with an active first-transfer rule,
+    sending money issues the sender the configured points AND the P2P response
+    carries `earned_points` inline so the mobile app can celebrate without a
+    follow-up request.
     """
+    # test_tenant is business_type='both' and its ZAR float is pre-funded.
     await _seed_p2p_config(db_session, test_tenant.id)
-    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7771")
+    await _seed_first_time_p2p_points_rule(db_session, test_tenant, reward_value=Decimal("50"))
+
+    # Sender needs a points account so the reward CREDIT has somewhere to land.
+    alice, _ = await _make_user_with_wallet(
+        db_session, test_tenant, phone="+27 82 555 7771", with_points=True
+    )
     bob, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 7772")
     await fund(
         db_session,
@@ -212,103 +243,73 @@ async def test_p2p_response_includes_earned_points_field(
         "/api/v1/payments/p2p",
         headers={**alice_auth, "Idempotency-Key": uuid4().hex},
         json={
-            "recipient": {
-                "identifier_type": "phone",
-                "identifier_value": "+27 82 555 7772",
-            },
-            "amount": "50",
+            "recipient": {"identifier_type": "phone", "identifier_value": "+27 82 555 7772"},
+            "amount": "100",
             "currency": "ZAR",
         },
     )
     assert response.status_code == 201, response.text
     body = response.json()
 
-    # Bob exists; the transfer landed.
+    # The transfer landed to Bob, and the sender's points are surfaced inline.
     assert body["recipient_user_id"] == str(bob.id)
+    assert body["earned_points"] == 50
 
-    # The earned_points key MUST be present (mobile relies on it). Today no
-    # synchronous rules fire on P2P, so the value is null.
-    assert "earned_points" in body
-    assert body["earned_points"] is None
+    # A reward_events row was issued to the SENDER (the acting/debited user).
+    assert await _reward_event_count(db_session, alice.id) == 1
+    reward = (
+        await db_session.execute(select(RewardEvent).where(RewardEvent.user_id == alice.id))
+    ).scalar_one()
+    assert reward.reward_type == "points"
+    assert reward.reward_value == Decimal("50")
+    # Never the passive recipient.
+    assert await _reward_event_count(db_session, bob.id) == 0
 
 
 @pytest.mark.asyncio
-async def test_p2p_earned_points_reflects_rule_issuance(
+async def test_p2p_in_wallet_mode_earns_no_points(
     async_client: AsyncClient,
     db_session: AsyncSession,
-    test_tenant: Tenant,
+    tenant_factory,
 ) -> None:
-    """Verify a transfer that earns reward points shows the points earned
+    """Verify a wallet-only deployment never rewards a transfer (mode gate holds).
 
-    A `RewardEvent` keyed to the txn surfaces as `earned_points` on replay.
-
-    Flow:
-      1. Send a P2P (txn id T, response says earned_points=null).
-      2. Seed a `RewardEvent` whose `triggering_event_id == str(T)`.
-      3. Replay the SAME request with the same Idempotency-Key — the
-         payments service short-circuits to the original txn but still
-         runs `_resolve_earned_points_for_txn`, which now finds the
-         seeded row and returns its value.
-      4. Assert the response shows earned_points == 75.
-
-    The replay path proves the resolver is wired into the response
-    construction; a single seeded row is sufficient since the resolver
-    is a SUM aggregate that already collapses to identity for one row.
+    Even with an active rule seeded, a `wallet`-mode tenant writes no reward
+    outbox row, issues no reward, and returns `earned_points` 0 — proving the
+    business_type gate holds all the way through the API response.
     """
-    await _seed_p2p_config(db_session, test_tenant.id)
-    alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 8881")
-    await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 8882")
+    wallet_tenant = await tenant_factory(business_type="wallet")
+    # Fund-via-float needs a pre-funded float even in wallet mode.
+    await prefund_float(db_session, wallet_tenant.id, currency="ZAR")
+    await _seed_p2p_config(db_session, wallet_tenant.id)
+    # Seed a rule that WOULD fire in 'both' mode — its non-effect is the point.
+    await _seed_first_time_p2p_points_rule(db_session, wallet_tenant, reward_value=Decimal("50"))
+
+    alice, _ = await _make_user_with_wallet(
+        db_session, wallet_tenant, phone="+27 83 555 3331", with_points=True
+    )
+    await _make_user_with_wallet(db_session, wallet_tenant, phone="+27 83 555 3332")
     await fund(
         db_session,
-        tenant_id=test_tenant.id,
+        tenant_id=wallet_tenant.id,
         user_id=alice.id,
         amount=Decimal("500"),
         currency="ZAR",
         idempotency_key=f"seed-{uuid4().hex}",
     )
-    rule = await _seed_rule(db_session, test_tenant)
 
-    idempotency_key = uuid4().hex
     alice_auth = await _auth_header_for(alice)
-    payload = {
-        "recipient": {
-            "identifier_type": "phone",
-            "identifier_value": "+27 82 555 8882",
+    response = await async_client.post(
+        "/api/v1/payments/p2p",
+        headers={**alice_auth, "Idempotency-Key": uuid4().hex},
+        json={
+            "recipient": {"identifier_type": "phone", "identifier_value": "+27 83 555 3332"},
+            "amount": "100",
+            "currency": "ZAR",
         },
-        "amount": "120",
-        "currency": "ZAR",
-    }
-
-    # Step 1 — first call. No reward_events exist yet, so earned_points is null.
-    first = await async_client.post(
-        "/api/v1/payments/p2p",
-        headers={**alice_auth, "Idempotency-Key": idempotency_key},
-        json=payload,
     )
-    assert first.status_code == 201, first.text
-    txn_id = first.json()["transaction_id"]
-    assert first.json()["earned_points"] is None
+    assert response.status_code == 201, response.text
+    assert response.json()["earned_points"] == 0
 
-    # Step 2 — seed one reward_event tied to the txn id (string form, matches
-    # the resolver's `RewardEvent.triggering_event_id == str(txn_id)` query).
-    db_session.add(
-        RewardEvent(
-            user_id=alice.id,
-            rule_id=rule.id,
-            triggering_event_id=txn_id,
-            reward_type="points",
-            reward_value=Decimal("75"),
-        )
-    )
-    await db_session.commit()
-
-    # Step 3 — replay. Idempotency returns the original txn; the resolver
-    # now finds the reward_event for it and surfaces 75.
-    second = await async_client.post(
-        "/api/v1/payments/p2p",
-        headers={**alice_auth, "Idempotency-Key": idempotency_key},
-        json=payload,
-    )
-    assert second.status_code == 201, second.text
-    assert second.json()["transaction_id"] == txn_id
-    assert second.json()["earned_points"] == 75
+    # No reward was issued to anyone in this tenant.
+    assert await _reward_event_count(db_session, alice.id) == 0

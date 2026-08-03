@@ -66,9 +66,10 @@ class P2PResponse(BaseModel):
             session token, NOT the request body).
         recipient_user_id: Resolved from the recipient identifier.
         created_at: When the transaction landed (UTC).
-        earned_points: Total PTS issued by the rules engine for this
-            transfer, or `null` if no rules fired. Surfacing this avoids
-            a polling round-trip on the mobile success screen.
+        earned_points: Total PTS issued to the sender by the rules engine for
+            this transfer — `0` when the tenant is not in `both` mode or no rule
+            fired. Surfacing this avoids a polling round-trip on the mobile
+            success screen.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -84,4 +85,4 @@ class P2PResponse(BaseModel):
     sender_user_id: UUID
     recipient_user_id: UUID
     created_at: datetime
-    earned_points: int | None = None
+    earned_points: int = 0

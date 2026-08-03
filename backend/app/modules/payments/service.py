@@ -24,7 +24,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.principals import UserPrincipal
 from app.modules.accounts.service import derive_balance
@@ -33,9 +33,11 @@ from app.modules.identity.service import assert_user_can_transact, resolve_ident
 from app.modules.ledger import (
     LedgerEntryRequest,
     PostTransactionRequest,
+    RewardTrigger,
     post_transaction,
 )
 from app.modules.payments.schemas import IdentifierType
+from app.modules.rewards.outbox import attempt_immediate
 from app.modules.roles.service import require_permission
 from app.shared.exceptions import (
     AccountNotFound,
@@ -50,7 +52,6 @@ from app.shared.models import (
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     Account,
-    RewardEvent,
     Tenant,
     Transaction,
     User,
@@ -112,7 +113,7 @@ async def p2p_transfer(
     sender_principal: object | None = None,
     pin: str | None = None,
     ip_address: str | None = None,
-) -> tuple[Transaction, UUID, int | None]:
+) -> tuple[Transaction, UUID, int]:
     """Execute a peer-to-peer transfer between two users in the same tenant.
 
     Steps (matches PRD Pay-PRD-0260 ordering):
@@ -127,8 +128,9 @@ async def p2p_transfer(
          under the wallet lock in the guard at step 7.
       7. Post balanced transaction via the ledger service (runs the balance guard,
          then commits).
-      8. Resolve any reward points credited by the rules engine for this
-         transaction (post-commit, so any rule-firings are durable).
+      8. In `both` mode, drain the sender's reward_outbox row the ledger commit
+         enqueued and surface the points earned inline (post-commit, fresh
+         session, fail-open — never breaks the payment).
 
     Steps 1.5 (role), 2.5 (limits), 3.5 (pricing) — TODO, Phase C+.
 
@@ -145,11 +147,10 @@ async def p2p_transfer(
 
     Returns:
         (Transaction, recipient_user_id, earned_points). `earned_points`
-        is the integer total of PTS the rules engine issued against this
-        transaction, or `None` if no rules fired. Today the P2P path does
-        not synchronously call the rules engine, so this is `None` in
-        practice; the lookup picks up any future rule-firings keyed by
-        the internal transaction id.
+        is the integer total of PTS the rules engine issued to the SENDER for
+        this transfer — `0` when the tenant is not in `both` mode, no rule
+        fired, or reward issuance failed (fail-open). Surfaced inline so the
+        mobile success screen can celebrate without a follow-up poll.
 
     Raises:
         TenantNotFound: unknown tenant.
@@ -372,6 +373,17 @@ async def p2p_transfer(
             initiated_by=sender_user_id,
             amount=amount,
             fee_amount=fee,
+            # In `both` mode this makes post_transaction write a reward_outbox
+            # row for the SENDER atomically with the ledger commit. The sender
+            # is the debited/acting user — the reward recipient — matching how
+            # limits anchor on `initiated_by`. In wallet/rewards-only mode the
+            # mode gate inside post_transaction writes nothing (safe no-op).
+            reward_trigger=RewardTrigger(
+                user_id=sender_user_id,
+                transaction_type="p2p",
+                amount=amount,
+                currency=currency,
+            ),
         ),
     )
 
@@ -395,11 +407,32 @@ async def p2p_transfer(
         )
         await session.commit()
 
-    # Step 8 — earned-points lookup happens AFTER every commit above so any
-    # rule-firing (today: none, since P2P doesn't synchronously go through
-    # Kafka; tomorrow: whatever the rules engine writes against this
-    # transaction id) is already durable. Mirrors the fund() pattern.
-    earned_points = await _resolve_earned_points_for_txn(session, txn.id)
+    # Step 8 — reward evaluation. post_transaction has already committed; in
+    # `both` mode that commit also wrote a PENDING reward_outbox row for the
+    # sender. Drain it now in a FRESH session so the reward work happens strictly
+    # AFTER the money commit, never inside the ledger transaction (invariant #11 /
+    # ledger-invariants §5). The fresh sessionmaker is bound to the SAME engine
+    # this request committed to (`session.bind`) — in production that is the app's
+    # engine; the derivation just avoids reaching for a module-level singleton and
+    # keeps the drain pointed at the exact DB the money landed in.
+    # attempt_immediate is fail-open — a reward hiccup is recorded on the row for
+    # the recon sweep and never surfaces on the money path, so earned_points just
+    # stays 0. In wallet/rewards-only mode no outbox row exists and this is a no-op.
+    #
+    # Idempotency: on an Idempotency-Key replay, post_transaction returns the
+    # original txn and writes NO new outbox row, so attempt_immediate finds
+    # nothing pending and returns [] -> earned_points 0 on the replay. That is
+    # acceptable — the reward was already issued (and celebrated) on the first
+    # call, and the PROCESSED row guarantees no double issuance.
+    reward_sessions = async_sessionmaker(
+        session.bind, expire_on_commit=False, class_=AsyncSession
+    )
+    firings = await attempt_immediate(
+        reward_sessions, tenant_id=tenant_id, user_id=sender_user_id
+    )
+    earned_points = int(
+        sum((f.reward_value for f in firings if f.reward_type == "points"), Decimal("0"))
+    )
 
     return txn, recipient_user_id, earned_points
 
@@ -523,36 +556,3 @@ async def fund(
 # Bind User to the import graph so it doesn't trigger import warnings —
 # `User` is referenced in this module's docstrings.
 _ = User
-
-
-async def _resolve_earned_points_for_txn(session: AsyncSession, txn_id: UUID) -> int | None:
-    """Sum reward points issued by the rules engine for an internal txn.
-
-    The rules engine writes `reward_events` rows keyed by
-    `triggering_event_id` — a STRING that holds either an external Kafka
-    `event_id` or, for synchronous internal flows, the string form of the
-    internal transaction id. We match on `str(txn_id)` so internal
-    rule-firings (when they exist) are picked up; today the fund path
-    does not emit Kafka events so this returns `None` in practice.
-
-    The CHECK constraint on `ledger_entries.amount > 0` plus the
-    `reward_value NUMERIC(20, 6)` storage means we can safely round to
-    int for the mobile UI — fractional points don't exist on the rules
-    engine surface.
-
-    Args:
-        session: Async DB session.
-        txn_id: The transaction we just posted.
-
-    Returns:
-        Total points credited as an int, or `None` if no rules fired.
-    """
-    result = await session.execute(
-        select(RewardEvent.reward_value).where(RewardEvent.triggering_event_id == str(txn_id))
-    )
-    rows = result.scalars().all()
-    if not rows:
-        return None
-    total = sum((Decimal(str(v)) for v in rows), start=Decimal("0"))
-    # Round to int — mobile UI does not surface fractional points.
-    return int(total)

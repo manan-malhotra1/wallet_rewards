@@ -14,6 +14,7 @@ the source transaction. When reversals exist, a reversal txn will emit its own
 row and a handler here will look up the original reward_events and post an
 append-only claw-back. No claw-back logic is built now.
 """
+
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -25,6 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.events.schemas import FiringOut, NormalisedEvent
 from app.modules.events.service import evaluate_and_issue_firings
+from app.shared.exceptions import (
+    UserFinancialWalletMissing,
+    UserPointsAccountMissing,
+)
 from app.shared.models.rewards import (
     OUTBOX_FAILED,
     OUTBOX_PENDING,
@@ -37,6 +42,15 @@ log = structlog.get_logger()
 # Retry ceiling for the recon sweep — a row that has failed this many times is
 # left alone (poison-message guard) and surfaces as a stuck-row alert instead.
 MAX_ATTEMPTS = 5
+
+# Reward-account exceptions that a retry can NEVER resolve: the reward has no
+# account to land in and none could be provisioned. `issue_points_reward`
+# auto-provisions the PTS account, so this is defense-in-depth for any residual
+# unprovisionable firing (e.g. a cashback rule for a user with no wallet in the
+# reward currency). A row that hits one of these is a benign no-op — mark it
+# PROCESSED rather than FAILED so it never burns MAX_ATTEMPTS and raises a false
+# stuck-row alert.
+_UNPROVISIONABLE = (UserPointsAccountMissing, UserFinancialWalletMissing)
 # source_key stamped on internally-generated events so the evaluator/audit can
 # tell a wallet-outbox firing apart from an external Kafka event.
 INTERNAL_SOURCE_KEY = "internal:wallet"
@@ -83,9 +97,7 @@ async def _drain_row(session: AsyncSession, row: RewardOutbox) -> list[FiringOut
     return firings
 
 
-async def _record_failure(
-    session: AsyncSession, row_id: UUID, error: str
-) -> None:
+async def _record_failure(session: AsyncSession, row_id: UUID, error: str) -> None:
     """Persist failure bookkeeping for a row after its drain rolled back.
 
     A rolled-back session leaves the original `row` instance expired/detached,
@@ -104,6 +116,28 @@ async def _record_failure(
     row.attempts += 1
     row.last_error = error[:500]
     row.status = OUTBOX_FAILED
+    await session.commit()
+
+
+async def _mark_processed_noop(session: AsyncSession, row_id: UUID, reason: str) -> None:
+    """Mark a row PROCESSED after a non-retryable (unprovisionable) drain.
+
+    Unlike `_record_failure`, this resolves the row instead of leaving it for
+    retry: the drain failed for a reason no retry can fix (`_UNPROVISIONABLE`),
+    so flipping it to PROCESSED keeps the recon sweep from re-claiming a no-op
+    forever. The reason is kept on `last_error` for traceability.
+
+    Args:
+        session: Active session, already rolled back to a clean state.
+        row_id: Primary key of the outbox row that could not be drained.
+        reason: The exception text; truncated to the column width (500).
+    """
+    row = await session.get(RewardOutbox, row_id)
+    if row is None:  # pragma: no cover - row cannot vanish mid-sweep
+        return
+    row.status = OUTBOX_PROCESSED
+    row.processed_at = datetime.now(UTC)
+    row.last_error = reason[:500]
     await session.commit()
 
 
@@ -155,6 +189,20 @@ async def attempt_immediate(
                 firings = await _drain_row(session, row)
                 await session.commit()
                 all_firings.extend(firings)
+            except _UNPROVISIONABLE as exc:
+                # Non-retryable: no reward account and none provisionable. Resolve
+                # the row as a benign no-op so the recon sweep isn't poisoned. The
+                # recovery itself must not escape onto the money path (see below).
+                try:
+                    await session.rollback()
+                    await _mark_processed_noop(session, row_id, str(exc))
+                except Exception:  # recovery must not escape onto the money path
+                    log.exception(
+                        "reward_outbox_noop_failed",
+                        outbox_id=str(row_id),
+                        tenant_id=str(tenant_id),
+                        user_id=str(user_id),
+                    )
             except Exception as exc:  # fail-open: recon sweep retries the row
                 # The recovery itself (rollback + failure commit) can ALSO raise
                 # — e.g. a broken connection, the very fault that tripped the
@@ -176,9 +224,7 @@ async def attempt_immediate(
         return all_firings
 
 
-async def issue_immediate_points(
-    session: AsyncSession, *, tenant_id: UUID, user_id: UUID
-) -> int:
+async def issue_immediate_points(session: AsyncSession, *, tenant_id: UUID, user_id: UUID) -> int:
     """Post-commit: drain this user's pending reward_outbox rows, return points earned.
 
     Runs the drain in a FRESH session derived from the just-committed session's
@@ -207,17 +253,13 @@ async def issue_immediate_points(
     # would escape onto the caller. Wrap the WHOLE body so any failure degrades
     # to "0 points earned" (the recon sweep re-drains the still-PENDING row).
     try:
-        factory = async_sessionmaker(
-            session.bind, expire_on_commit=False, class_=AsyncSession
-        )
+        factory = async_sessionmaker(session.bind, expire_on_commit=False, class_=AsyncSession)
         firings = await attempt_immediate(factory, tenant_id=tenant_id, user_id=user_id)
         return int(
             sum((f.reward_value for f in firings if f.reward_type == "points"), Decimal("0"))
         )
     except Exception:
-        log.exception(
-            "reward_immediate_failed", tenant_id=str(tenant_id), user_id=str(user_id)
-        )
+        log.exception("reward_immediate_failed", tenant_id=str(tenant_id), user_id=str(user_id))
         return 0
 
 
@@ -264,6 +306,12 @@ async def recon_sweep_async(
             try:
                 await _drain_row(session, row)
                 await session.commit()
+                processed += 1
+            except _UNPROVISIONABLE as exc:
+                # Non-retryable — resolve as a benign no-op (counts as processed:
+                # the row is no longer outstanding) instead of failing + retrying.
+                await session.rollback()
+                await _mark_processed_noop(session, row_id, str(exc))
                 processed += 1
             except Exception as exc:  # fail-open: retried on the next sweep
                 await session.rollback()

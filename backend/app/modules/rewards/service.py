@@ -26,7 +26,6 @@ from app.modules.ledger import (
 )
 from app.shared.exceptions import (
     UserFinancialWalletMissing,
-    UserPointsAccountMissing,
 )
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -43,21 +42,63 @@ from app.shared.models import (
     Rule,
 )
 
+# Points always accrue in the platform "PTS" unit account — the single source
+# of truth for the points currency, shared with the referral evaluator, seed,
+# and pricing.service (which all key off "PTS"). Cashback pays in fiat instead.
+POINTS_CURRENCY = "PTS"
 
-async def _find_user_points_account(
+
+async def _get_or_create_user_points_account(
     session: AsyncSession, tenant_id: UUID, user_id: UUID
 ) -> Account:
-    """Return the user's points_account in this tenant, or raise."""
-    result = await session.execute(
-        select(Account).where(
-            Account.tenant_id == tenant_id,
-            Account.user_id == user_id,
-            Account.account_type == ACCOUNT_TYPE_POINTS,
-        )
+    """Return the user's points_account, provisioning one (in PTS) if absent.
+
+    A user who earns a reward before ever holding points has no points_account:
+    neither user creation nor the money paths provision one, and tenant
+    provisioning only creates the PTS *instrument*, not per-user accounts. Rather
+    than fail — which leaves a poisoned reward_outbox row the recon sweep retries
+    to MAX_ATTEMPTS while the user silently never earns — auto-provision the one
+    account the reward lands in. This is system provisioning: no admin actor and
+    no audit row (mirrors the referral evaluator's `_ensure_user_account`).
+
+    Both the internal wallet path and the external Kafka path funnel through
+    `issue_points_reward`, so provisioning here covers every points-earn path,
+    including users created before rewards were enabled.
+
+    Args:
+        session: Async DB session.
+        tenant_id: Tenant scope.
+        user_id: The reward recipient.
+
+    Returns:
+        The existing or newly-inserted (flushed, not committed) points Account.
+        An account already present in ANY currency is reused as-is; a new one is
+        created in `POINTS_CURRENCY`.
+
+    Concurrency-safe: a first-ever race on the INSERT hits the
+    `uq_accounts_user_scoped` unique index; the loser rolls back and re-reads the
+    winner's row rather than surfacing a raw IntegrityError.
+    """
+    stmt = select(Account).where(
+        Account.tenant_id == tenant_id,
+        Account.user_id == user_id,
+        Account.account_type == ACCOUNT_TYPE_POINTS,
     )
-    account = result.scalar_one_or_none()
-    if account is None:
-        raise UserPointsAccountMissing()
+    account = (await session.execute(stmt)).scalar_one_or_none()
+    if account is not None:
+        return account
+    account = Account(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        account_type=ACCOUNT_TYPE_POINTS,
+        currency=POINTS_CURRENCY,
+    )
+    session.add(account)
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        return (await session.execute(stmt)).scalar_one()
     return account
 
 
@@ -151,15 +192,17 @@ async def issue_points_reward(
     Returns:
         The persisted RewardEvent.
 
-    Raises:
-        UserPointsAccountMissing: 422 — user has no points_account.
+    Side effects:
+        Auto-provisions the user's points_account (in PTS) if they don't have
+        one yet — see `_get_or_create_user_points_account`. Writes ledger +
+        reward_events rows and commits.
     """
     # Fast-path: already issued — return existing row.
     existing = await _find_existing_reward_event(session, user_id, rule.id, triggering_event_id)
     if existing is not None:
         return existing
 
-    user_points = await _find_user_points_account(session, tenant_id, user_id)
+    user_points = await _get_or_create_user_points_account(session, tenant_id, user_id)
     system_issuance = await get_or_create_system_points_issuance(
         session, tenant_id, user_points.currency
     )

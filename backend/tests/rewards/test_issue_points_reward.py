@@ -13,9 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.accounts.service import derive_balance
-from app.modules.rewards.service import issue_points_reward
-from app.shared.exceptions import UserPointsAccountMissing
+from app.modules.rewards.service import POINTS_CURRENCY, issue_points_reward
 from app.shared.models import (
+    ACCOUNT_TYPE_POINTS,
     Account,
     LedgerEntry,
     RewardEvent,
@@ -125,24 +125,43 @@ async def test_issue_reward_is_idempotent_on_replay(
 
 
 @pytest.mark.asyncio
-async def test_issue_reward_fails_when_points_account_missing(
+async def test_issue_reward_auto_provisions_points_account_when_missing(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
     system_points_account: Account,
 ) -> None:
-    """Verify a reward cannot be granted to a customer without a points account"""
+    """Verify a first-time earner with no points account still receives their reward"""
+    # This user has NO points_account (the `user_points` fixture is deliberately
+    # not requested). The reward must still land: issuance auto-provisions the
+    # PTS account rather than failing and poisoning the reward pipeline.
     rule = _make_first_time_rule(test_tenant)
     db_session.add(rule)
     await db_session.commit()
     await db_session.refresh(rule)
 
-    with pytest.raises(UserPointsAccountMissing):
-        await issue_points_reward(
-            db_session,
-            tenant_id=test_tenant.id,
-            user_id=test_user.id,
-            rule=rule,
-            triggering_event_id="evt-no-account",
-            reward_value=Decimal("100"),
+    reward = await issue_points_reward(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=test_user.id,
+        rule=rule,
+        triggering_event_id="evt-no-account",
+        reward_value=Decimal("100"),
+    )
+
+    # A points_account was created for the user, in the platform PTS currency.
+    account = (
+        await db_session.execute(
+            select(Account).where(
+                Account.tenant_id == test_tenant.id,
+                Account.user_id == test_user.id,
+                Account.account_type == ACCOUNT_TYPE_POINTS,
+            )
         )
+    ).scalar_one()
+    assert account.currency == POINTS_CURRENCY
+
+    # And the reward actually credited that freshly-provisioned account.
+    assert reward.reward_value == Decimal("100")
+    balance, _ = await derive_balance(db_session, account.id)
+    assert balance == Decimal("100")

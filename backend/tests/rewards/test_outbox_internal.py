@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import func, select
 
+from app.modules.accounts.service import derive_balance
 from app.modules.events.schemas import NormalisedEvent
 from app.modules.events.service import evaluate_and_issue_firings
 from app.modules.ledger import (
@@ -19,8 +20,11 @@ from app.modules.rewards.outbox import (
     attempt_immediate,
     recon_sweep_async,
 )
+from app.modules.rewards.service import POINTS_CURRENCY
+from app.shared.exceptions import UserPointsAccountMissing
 from app.shared.models import (
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+    ACCOUNT_TYPE_POINTS,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     Account,
@@ -530,6 +534,122 @@ async def test_issue_immediate_points_is_absolutely_fail_open(
         db_session, tenant_id=uuid4(), user_id=uuid4()
     )
     assert earned == 0
+
+
+@pytest.mark.asyncio
+async def test_recon_sweep_auto_provisions_points_account_for_first_time_earner(
+    db_session,
+    session_factory,
+    test_tenant,
+    test_user,
+):
+    """Verify a first-time earner who holds no points account still gets rewarded."""
+    # Neither `user_points` nor `system_points_account` is requested: this user
+    # has NO points account and the tenant has no system issuance master yet.
+    # Draining the outbox must auto-provision both and land the reward — not fail
+    # and leave a poisoned row. This is the end-to-end shape of the bug fix.
+    rule = await _seed_first_time_p2p_rule(db_session, test_tenant.id)
+    await post_rewardable_txn(
+        db_session, test_tenant.id, test_user.id, "p2p", Decimal("100"), "ZAR"
+    )
+
+    processed = await recon_sweep_async(session_factory)
+    assert processed == 1
+    assert await _reward_event_count(db_session, test_user.id, rule.id) == 1
+
+    # A PTS points account now exists for the user and carries the credited reward.
+    async with session_factory() as verify:
+        account = (
+            await verify.execute(
+                select(Account).where(
+                    Account.tenant_id == test_tenant.id,
+                    Account.user_id == test_user.id,
+                    Account.account_type == ACCOUNT_TYPE_POINTS,
+                )
+            )
+        ).scalar_one()
+        assert account.currency == POINTS_CURRENCY
+        balance, _ = await derive_balance(verify, account.id)
+        assert balance == Decimal("100")
+
+        row = (
+            await verify.execute(
+                select(RewardOutbox).where(RewardOutbox.tenant_id == test_tenant.id)
+            )
+        ).scalar_one()
+        assert row.status == OUTBOX_PROCESSED
+
+
+@pytest.mark.asyncio
+async def test_attempt_immediate_marks_processed_noop_on_unprovisionable(
+    db_session,
+    session_factory,
+    test_tenant,
+    test_user,
+    monkeypatch,
+):
+    """Verify an unrewardable-account drain resolves the row instead of poisoning it."""
+    # Defense-in-depth: if issuance genuinely cannot land a reward (no account and
+    # none provisionable), the immediate drain must mark the row PROCESSED — not
+    # FAILED — so the recon sweep never retries a no-op to MAX_ATTEMPTS.
+    async def _raise_unprovisionable(*_args, **_kwargs):
+        raise UserPointsAccountMissing()
+
+    monkeypatch.setattr(
+        "app.modules.rewards.outbox.evaluate_and_issue_firings", _raise_unprovisionable
+    )
+    await post_rewardable_txn(
+        db_session, test_tenant.id, test_user.id, "p2p", Decimal("100"), "ZAR"
+    )
+
+    firings = await attempt_immediate(
+        session_factory, tenant_id=test_tenant.id, user_id=test_user.id
+    )
+    assert firings == []
+
+    async with session_factory() as verify:
+        row = (
+            await verify.execute(
+                select(RewardOutbox).where(RewardOutbox.tenant_id == test_tenant.id)
+            )
+        ).scalar_one()
+        # Resolved as a benign no-op: PROCESSED, not FAILED; attempts NOT burned.
+        assert row.status == OUTBOX_PROCESSED
+        assert row.processed_at is not None
+        assert row.attempts == 0
+
+
+@pytest.mark.asyncio
+async def test_recon_sweep_marks_processed_noop_on_unprovisionable(
+    db_session,
+    session_factory,
+    test_tenant,
+    test_user,
+    monkeypatch,
+):
+    """Verify the recon sweep resolves an unrewardable row rather than retrying forever."""
+    async def _raise_unprovisionable(*_args, **_kwargs):
+        raise UserPointsAccountMissing()
+
+    monkeypatch.setattr(
+        "app.modules.rewards.outbox.evaluate_and_issue_firings", _raise_unprovisionable
+    )
+    await post_rewardable_txn(
+        db_session, test_tenant.id, test_user.id, "p2p", Decimal("100"), "ZAR"
+    )
+
+    # Counted as processed — the row is no longer outstanding after a no-op.
+    processed = await recon_sweep_async(session_factory)
+    assert processed == 1
+
+    async with session_factory() as verify:
+        row = (
+            await verify.execute(
+                select(RewardOutbox).where(RewardOutbox.tenant_id == test_tenant.id)
+            )
+        ).scalar_one()
+        assert row.status == OUTBOX_PROCESSED
+        assert row.attempts == 0
 
 
 @pytest.mark.asyncio

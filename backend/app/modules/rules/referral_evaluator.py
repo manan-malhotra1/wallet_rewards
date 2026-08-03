@@ -31,7 +31,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.rewards.service import issue_cashback_reward, issue_points_reward
+from app.modules.rewards.service import (
+    POINTS_CURRENCY,
+    issue_cashback_reward,
+    issue_points_reward,
+)
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
@@ -48,9 +52,8 @@ from app.shared.models import (
     Transaction,
 )
 
-# Points always accrue in the "PTS" unit account (the platform convention — see
-# scripts/seed.py and pricing.service). Cashback pays in the tenant base currency.
-_POINTS_CURRENCY = "PTS"
+# Points always accrue in the shared "PTS" unit account (POINTS_CURRENCY, the
+# platform convention). Cashback pays in the tenant base currency instead.
 
 
 async def _ensure_user_account(
@@ -155,7 +158,7 @@ async def _reward_one_side(
             tenant_id=tenant_id,
             user_id=user_id,
             account_type=ACCOUNT_TYPE_POINTS,
-            currency=_POINTS_CURRENCY,
+            currency=POINTS_CURRENCY,
         )
         await issue_points_reward(
             session,

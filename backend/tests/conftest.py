@@ -673,8 +673,9 @@ async def seed_first_time_points_rule(
     Shared by the money-path reward tests (cash_in / cash_out / airtime): a
     first_time rule fires exactly once for a user's first matching transaction,
     which is all the single-transaction reward assertions need. The
-    `transaction_type` is the reward-rule tag (e.g. "cash_out", "airtime") —
-    which for cash-out / airtime is deliberately NOT the money service code.
+    `transaction_type` is the reward-rule tag, which equals the canonical ledger
+    transaction_type each service posts (p2p, cash_in, "cashout", "airtime_recharge")
+    — the same value admins configure rules against.
     """
     rule = Rule(
         tenant_id=tenant_id,

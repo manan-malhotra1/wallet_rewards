@@ -78,9 +78,10 @@ OUTBOX_FAILED = "failed"
 # matches event.transaction_type == rule.transaction_type, so for internal
 # wallet activity the reward tag MUST equal the ledger type (also what admins
 # configure rules against). Note "cashout" (CASH_OUT_SERVICE_CODE), not
-# "cash_out". Airtime ("airtime_recharge") is deferred until rewards can fire on
-# successful vend rather than the PENDING reservation (see airtime/service.py).
-REWARDABLE_TYPES = ("p2p", "cash_in", "cashout")
+# "cash_out". Airtime ("airtime_recharge", == AIRTIME_SERVICE_CODE) fires on the
+# SUCCESSFUL-vend completion commit, never on the PENDING reservation — a
+# provider-REVERSED recharge must not pay a reward (see airtime/service.py).
+REWARDABLE_TYPES = ("p2p", "cash_in", "cashout", "airtime_recharge")
 
 
 class RewardOutbox(Base):

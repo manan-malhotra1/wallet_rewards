@@ -37,6 +37,11 @@ from app.shared.models import (
     Tenant,
     User,
 )
+from tests.conftest import (
+    make_points_account,
+    reward_event_count,
+    seed_first_time_points_rule,
+)
 
 _SUCCESS_MSISDN = "+27825551234"
 _FAIL_MSISDN = "+27820000001"  # simulator: ...0001 -> failure
@@ -576,3 +581,79 @@ async def test_recharge_succeeds_when_both_configs_present(
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "COMPLETED"
+
+
+# -----------------------------------------------------------------------------
+# Mode-aware rewards — fire on the SUCCESSFUL-vend completion, never on a
+# reservation or a reversal (spec 2026-08-03). test_tenant is `both` mode.
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_recharge_completed_in_both_mode_earns_the_buyer_points(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    airtime_merchant: MerchantProfile,
+    funded_wallet: Account,
+    airtime_configs: None,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Verify a successfully-vended airtime recharge rewards the buyer inline.
+
+    In a full wallet+rewards ('both') tenant with an active first-transaction
+    airtime rule, a recharge that vends to COMPLETED issues the configured points
+    to the purchasing buyer and surfaces them on the response as `earned_points`.
+    """
+    await make_points_account(db_session, test_tenant.id, test_user.id)
+    await seed_first_time_points_rule(
+        db_session, test_tenant.id, transaction_type="airtime_recharge", reward_value=Decimal("50")
+    )
+
+    resp = await async_client.post(
+        "/api/v1/airtime/recharge",
+        content=json.dumps(_body(msisdn=_SUCCESS_MSISDN)),
+        headers=_headers(alice_auth_header),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"
+    assert resp.json()["earned_points"] == 50
+
+    # Exactly one reward_events row was issued to the buyer.
+    assert await reward_event_count(db_session, test_user.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_recharge_reversed_in_both_mode_earns_no_points(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    airtime_merchant: MerchantProfile,
+    funded_wallet: Account,
+    airtime_configs: None,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Verify a provider-reversed airtime recharge pays NO reward.
+
+    The reward rides the successful-vend completion commit; a recharge the
+    provider fails/reverses (the customer is refunded) must issue no points —
+    claw-back isn't built, so the reward must never fire in the first place.
+    """
+    await make_points_account(db_session, test_tenant.id, test_user.id)
+    await seed_first_time_points_rule(
+        db_session, test_tenant.id, transaction_type="airtime_recharge", reward_value=Decimal("50")
+    )
+
+    resp = await async_client.post(
+        "/api/v1/airtime/recharge",
+        content=json.dumps(_body(msisdn=_FAIL_MSISDN)),
+        headers=_headers(alice_auth_header),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "REVERSED"
+    assert resp.json()["earned_points"] == 0
+
+    # No reward_events row exists — the reward never fired.
+    assert await reward_event_count(db_session, test_user.id) == 0

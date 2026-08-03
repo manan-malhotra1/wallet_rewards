@@ -47,6 +47,7 @@ from app.modules.audit.service import (
     record_audit_for_user,
 )
 from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
+from app.modules.rewards.outbox import issue_immediate_points
 from app.modules.roles.service import require_permission
 from app.shared.exceptions import (
     AccountNotFound,
@@ -83,11 +84,16 @@ from app.shared.utils.masking import mask_phone
 
 # The airtime service code == Service.code == transaction_type — the single
 # identifier pricing / limits / role permission / merchant lookup all key on.
+# It is also the CANONICAL reward tag: it must be in `REWARDABLE_TYPES` and equal
+# the rule.transaction_type admins configure airtime rules against.
 AIRTIME_SERVICE_CODE = "airtime_recharge"
 
-# Airtime rewards are DEFERRED: they must fire on successful provider vend, not
-# on the PENDING reservation (a REVERSED recharge must not pay a reward, and
-# claw-back isn't built) — wiring belongs in the completion path, as a follow-up.
+# Airtime rewards ride the SUCCESSFUL-vend completion commit, never the PENDING
+# reservation: `_apply_completed` writes the reward_outbox row atomically with
+# the status flip (so a provider-REVERSED recharge pays no reward — claw-back
+# isn't built), and the synchronous buyer path drains it after commit. This is
+# the p2p/cash_in/cash_out `reward_trigger` pattern, adapted so the trigger rides
+# the SUCCESS commit rather than `post_transaction`'s reservation.
 
 
 # -----------------------------------------------------------------------------
@@ -413,6 +419,39 @@ async def _resolve_fee(
 # -----------------------------------------------------------------------------
 
 
+async def _enqueue_reward_on_completion(session: AsyncSession, recharge: AirtimeRecharge) -> None:
+    """Write the buyer's reward_outbox row atomically with the completion commit.
+
+    The airtime analogue of the `reward_trigger` p2p/cash_in/cash_out pass to
+    `post_transaction`, but adapted to ride the SUCCESSFUL-vend commit rather than
+    the PENDING reservation: only a recharge that actually vended pays a reward.
+    Gated exactly like `post_transaction`'s trigger — `both` mode AND the type in
+    `REWARDABLE_TYPES` (defence-in-depth; AIRTIME_SERVICE_CODE is always in it).
+    The reward recipient is the purchasing buyer (`recharge.user_id`).
+
+    Adds the row to the caller's session WITHOUT committing — it is persisted by
+    the same commit that flips the recharge to COMPLETED, so the reward intent
+    can never be lost or fire ahead of a successful vend.
+    """
+    from app.shared.models.rewards import REWARDABLE_TYPES, RewardOutbox
+    from app.shared.tenant_mode import rewards_from_wallet_enabled
+
+    if AIRTIME_SERVICE_CODE not in REWARDABLE_TYPES:  # pragma: no cover - allowlist guard
+        return
+    if not await rewards_from_wallet_enabled(session, recharge.tenant_id):
+        return
+    session.add(
+        RewardOutbox(
+            tenant_id=recharge.tenant_id,
+            user_id=recharge.user_id,
+            transaction_id=recharge.transaction_id,
+            transaction_type=AIRTIME_SERVICE_CODE,
+            amount=recharge.amount,
+            currency=recharge.currency,
+        )
+    )
+
+
 async def _apply_completed(
     session: AsyncSession, recharge: AirtimeRecharge, provider_reference: str | None
 ) -> None:
@@ -420,6 +459,11 @@ async def _apply_completed(
 
     Per ledger-invariants.md §1, ledger money is immutable — only the status
     flips, via the parent transaction's entries.
+
+    Side effects:
+        In `both` mode, enqueues a reward_outbox row for the buyer in the SAME
+        session — persisted by the caller's commit, so the reward rides the
+        successful-vend commit (never the reservation, never a reversal).
     """
     # The `status == PENDING` guards make a double-finalise a no-op at the DB
     # level (defence-in-depth alongside the row-lock claim in the callers, S7 A1).
@@ -442,6 +486,9 @@ async def _apply_completed(
     recharge.status = AIRTIME_STATUS_COMPLETED
     recharge.provider_reference = provider_reference
     recharge.completed_at = datetime.now(UTC)
+
+    # Reward rides THIS commit — only a successfully-vended recharge is rewarded.
+    await _enqueue_reward_on_completion(session, recharge)
 
 
 async def _apply_reversed(
@@ -498,7 +545,7 @@ def _audit_provider_transition(
 
 async def attempt_provision(
     session: AsyncSession, recharge: AirtimeRecharge, merchant: MerchantProfile
-) -> AirtimeRecharge:
+) -> tuple[AirtimeRecharge, int]:
     """Call the provider AFTER the reserve-commit and finalise the recharge.
 
     This is the "sync attempt" (Q2) whose timeout is the client's bounded wait
@@ -506,12 +553,19 @@ async def attempt_provision(
     recharge PENDING for the callback / reconciliation. Idempotent: a recharge
     that is already terminal (e.g. an idempotent replay) is returned untouched.
 
+    Returns:
+        (recharge, earned_points). `earned_points` is the points issued to the
+        buyer by the rules engine — non-zero only when THIS call vended the
+        recharge to COMPLETED in a `both`-mode tenant with a matching rule; 0 on
+        a pending / reversed / already-terminal outcome.
+
     Side effects:
         On a terminal result, flips the ledger transaction + entries and writes
-        a system audit row, then commits.
+        a system audit row, then commits. On a COMPLETED result, also drains the
+        buyer's reward_outbox row in a fresh session (fail-open).
     """
     if recharge.status != AIRTIME_STATUS_PENDING:
-        return recharge
+        return recharge, 0
 
     provider = get_provider(merchant.mode)
     result = await provider.provision(
@@ -527,8 +581,9 @@ async def attempt_provision(
 
     if result.outcome == PROVIDER_OUTCOME_PENDING:
         # Provider accepted but hasn't vended — leave the reservation PENDING;
-        # the callback / reconciliation resolves it. Client gets 202.
-        return recharge
+        # the callback / reconciliation resolves it. Client gets 202. No reward
+        # yet: it only fires on the successful-vend completion commit.
+        return recharge, 0
 
     # Terminal outcome — claim the recharge under a row lock and re-check it is
     # still PENDING before finalising. A callback / operator-resolve may have
@@ -544,7 +599,7 @@ async def attempt_provision(
     ).scalar_one()
     if locked.status != AIRTIME_STATUS_PENDING:
         await session.commit()  # release the lock; another path already settled it
-        return locked
+        return locked, 0
 
     if result.outcome == PROVIDER_OUTCOME_SUCCESS:
         await _apply_completed(session, locked, result.provider_reference)
@@ -558,7 +613,19 @@ async def attempt_provision(
         )
     await session.commit()
     await session.refresh(locked)
-    return locked
+
+    # Reward evaluation — the completion commit above (in `both` mode) also wrote
+    # the buyer's PENDING reward_outbox row. Drain it now in a FRESH session so
+    # the reward work happens strictly AFTER the money commit, never inside the
+    # ledger transaction (invariant #11). Fail-open: a reward hiccup is recorded
+    # on the row for the recon sweep and never surfaces on the money path, so
+    # earned_points stays 0. Only on COMPLETED — a REVERSED recharge wrote no row.
+    earned_points = 0
+    if locked.status == AIRTIME_STATUS_COMPLETED:
+        earned_points = await issue_immediate_points(
+            session, tenant_id=locked.tenant_id, user_id=locked.user_id
+        )
+    return locked, earned_points
 
 
 async def purchase_airtime(
@@ -570,8 +637,14 @@ async def purchase_airtime(
     ip_address: str | None = None,
     request: AirtimeRechargeRequest,
     idempotency_key: str,
-) -> AirtimeRecharge:
-    """Full recharge: reserve + commit, then the after-commit provider attempt."""
+) -> tuple[AirtimeRecharge, int]:
+    """Full recharge: reserve + commit, then the after-commit provider attempt.
+
+    Returns:
+        (recharge, earned_points) — `earned_points` is the points issued to the
+        buyer, non-zero only when the recharge vended to COMPLETED synchronously
+        in a `both`-mode tenant with a matching rule (see `attempt_provision`).
+    """
     recharge, merchant = await initiate_recharge(
         session,
         tenant_id=tenant_id,

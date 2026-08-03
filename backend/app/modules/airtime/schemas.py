@@ -30,7 +30,12 @@ class AirtimeRechargeRequest(BaseModel):
 
 
 class AirtimeRechargeOut(BaseModel):
-    """Airtime recharge resource returned by the API."""
+    """Airtime recharge resource returned by the API.
+
+    `earned_points` is the reward the buyer earned when the recharge vended
+    successfully in-request (both-mode tenants). It is 0 on a PENDING / REVERSED
+    outcome and on reads — rewards fire only on the successful-vend completion.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,6 +52,7 @@ class AirtimeRechargeOut(BaseModel):
     failure_reason: str | None
     completed_at: datetime | None
     created_at: datetime
+    earned_points: int = 0
 
 
 class AirtimeCallbackRequest(BaseModel):

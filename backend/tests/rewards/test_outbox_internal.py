@@ -580,3 +580,13 @@ async def test_recon_skips_poison_rows_at_max_attempts(
         assert row.status == OUTBOX_FAILED
         assert row.attempts == MAX_ATTEMPTS
         assert row.processed_at is None
+
+
+@pytest.mark.skip(reason="reversal claw-back is a designed-but-unbuilt hook; reversals don't exist yet (spec 2026-08-03 §4)")
+@pytest.mark.asyncio
+async def test_reversal_claws_back_reward():
+    # When reversals land: a reversal txn emits a reward_outbox row; the handler
+    # looks up the original reward_events (via transaction_id), posts an append-only
+    # claw-back to system_points_issuance, and decrements user_rule_progress.
+    # reward_outbox.transaction_id is the hook.
+    ...

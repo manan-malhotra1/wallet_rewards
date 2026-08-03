@@ -34,6 +34,7 @@ from app.modules.identity.schemas import (
     IdentifierOut,
     IdentifierType,
     LogoutResponse,
+    MarkRewardsSeenIn,
     MyLimitsOut,
     MyServiceOut,
     OtpSendRequest,
@@ -43,6 +44,7 @@ from app.modules.identity.schemas import (
     PinAuthRequest,
     PinSetRequest,
     ResolveResponse,
+    RewardsOut,
     SessionTokenResponse,
     UserDetailOut,
     UserOut,
@@ -69,6 +71,7 @@ from app.modules.identity.service import (
     verify_user_identifier,
 )
 from app.modules.limits.service import list_my_limits
+from app.modules.rewards.read_service import list_my_rewards, mark_rewards_seen
 
 router = APIRouter(prefix="/api/v1/identity", tags=["identity"])
 
@@ -493,3 +496,40 @@ async def get_me_limits(
     """
     rows = await list_my_limits(session, tenant_id=user.tenant_id, user_id=user.id)
     return [MyLimitsOut.model_validate(r) for r in rows]
+
+
+@router.get("/me/rewards", response_model=RewardsOut)
+async def get_me_rewards(
+    user: UserPrincipal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> RewardsOut:
+    """Return the signed-in user's rewards view — rule catalog + recent firings.
+
+    User-facing: tenant is implicit from the session token, no admin role
+    required. A `wallet`-mode tenant has no rewards engine, so `enabled` is False
+    and the lists are empty. Otherwise the catalog lists the active rules the
+    user is eligible for (segment-bound rules only when the user is a member),
+    each with the caller's progress + status, and `recent` the ~20 latest reward
+    events (with a `seen` flag). See `list_my_rewards`.
+    """
+    payload = await list_my_rewards(session, tenant_id=user.tenant_id, user_id=user.id)
+    return RewardsOut.model_validate(payload)
+
+
+@router.post("/me/rewards/seen")
+async def post_me_rewards_seen(
+    body: MarkRewardsSeenIn,
+    user: UserPrincipal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> dict[str, int]:
+    """Acknowledge (mark seen) the caller's own reward_events — clears the badge.
+
+    User-facing: tenant is implicit from the session token. Idempotent and
+    user-scoped — only the caller's own still-unseen rows are flipped, so a
+    repeat call marks 0 and one user can never mark another's rewards. Returns
+    `{"marked": n}` where `n` is the number of rows updated.
+    """
+    n = await mark_rewards_seen(
+        session, tenant_id=user.tenant_id, user_id=user.id, reward_event_ids=body.reward_event_ids
+    )
+    return {"marked": n}

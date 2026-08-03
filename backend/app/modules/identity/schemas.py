@@ -8,6 +8,7 @@ validation is added in Phase 2 alongside the OTP flow.
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -257,6 +258,73 @@ class MyLimitsOut(BaseModel):
     currency: str
     send: DirectionUsageOut
     receive: DirectionUsageOut
+
+
+class RewardProgressOut(BaseModel):
+    """Progress bar for one catalog rule — `current` of `target`, plus a caption.
+
+    For a milestone rule `current`/`target` count matching transactions; for a
+    streak, streak units; for the binary rule types (first_time / value_based /
+    campaign / composite / referral) it is 0-or-1 of 1. `label` names the
+    activity the rule tracks (e.g. "P2P transfers").
+    """
+
+    current: int
+    target: int
+    label: str
+
+
+class RewardCatalogItemOut(BaseModel):
+    """One reward rule as shown to a mobile user — `GET /me/rewards` catalog entry.
+
+    `status` is "locked" (no progress yet), "in_progress" (partway), or "earned"
+    (the rule has completed for this user). `currency` is "PTS" for points
+    rewards and the tenant base currency for cashback.
+    """
+
+    rule_id: UUID
+    name: str
+    description: str | None = None
+    reward_type: str
+    reward_value: Decimal
+    currency: str
+    status: Literal["locked", "in_progress", "earned"]
+    progress: RewardProgressOut
+
+
+class RecentRewardOut(BaseModel):
+    """One reward the user has already earned — `GET /me/rewards` recent feed.
+
+    `seen` is True once the mobile client has acknowledged the reward (via
+    `POST /me/rewards/seen`), driving the "new reward" badge.
+    """
+
+    reward_event_id: UUID
+    rule_name: str
+    reward_type: str
+    value: Decimal
+    currency: str
+    earned_at: datetime
+    seen: bool
+
+
+class RewardsOut(BaseModel):
+    """Signed-in user's rewards view — `GET /me/rewards`.
+
+    `enabled` is False for a `wallet`-mode tenant (no rewards engine), in which
+    case `catalog` and `recent` are empty. Otherwise `catalog` lists the active
+    rules the user is eligible for with progress, and `recent` the latest firings.
+    """
+
+    enabled: bool
+    catalog: list[RewardCatalogItemOut]
+    recent: list[RecentRewardOut]
+
+
+class MarkRewardsSeenIn(BaseModel):
+    """Body for `POST /me/rewards/seen` — the reward_events to acknowledge."""
+
+    reward_event_ids: list[UUID]
 
 
 class WalletTransactionOut(BaseModel):

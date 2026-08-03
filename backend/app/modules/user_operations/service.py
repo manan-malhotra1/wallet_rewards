@@ -29,10 +29,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.principals import AdminPrincipal
 from app.modules.admin_profiles import record_admin
 from app.modules.audit.service import record_audit_for_admin
+from app.modules.identity.service import _find_identifier
 from app.modules.user_operations.apply import apply_user_operation
-from app.modules.user_operations.schemas import PAYLOAD_SCHEMAS, UpdateUserPayload
+from app.modules.user_operations.schemas import (
+    PAYLOAD_SCHEMAS,
+    CreateUserPayload,
+    UpdateUserPayload,
+)
 from app.shared.exceptions import (
     AppHTTPException,
+    IdentifierAlreadyInUse,
     SelfApprovalForbidden,
     TenantNotFound,
     UserNotFound,
@@ -42,6 +48,7 @@ from app.shared.exceptions import (
     UserOperationNotFound,
 )
 from app.shared.models import (
+    USER_OP_CREATE,
     USER_OP_STATUS_APPLIED,
     USER_OP_STATUS_CHANGES_REQUESTED,
     USER_OP_STATUS_PENDING,
@@ -62,6 +69,7 @@ from app.shared.models import (
     UserOperationRequest,
     UserOperationReview,
 )
+from app.shared.utils.normalize import normalize_identifier
 
 log = structlog.get_logger()
 
@@ -249,6 +257,58 @@ async def _assert_target_exists(
         raise UserNotFound()
 
 
+def _canonical_identifiers(payload: dict[str, object]) -> set[tuple[str, str]]:
+    """Return a create_user payload's (type, canonical-value) identifier pairs.
+
+    Values are run through `normalize_identifier` — the SAME helper
+    `identity.create_user` applies before persistence — so propose-time
+    comparisons use the exact canonical form apply will insert (spaces / dashes
+    in a phone collapse to one representation, email lowercases).
+    """
+    identifiers = CreateUserPayload.model_validate(payload).identifiers
+    return {
+        (ident.identifier_type, normalize_identifier(ident.identifier_type, ident.identifier_value))
+        for ident in identifiers
+    }
+
+
+async def _assert_create_identifiers_available(
+    session: AsyncSession, tenant_id: UUID, payload: dict[str, object]
+) -> None:
+    """Confirm no create_user identifier is already taken in-tenant (409 otherwise).
+
+    A `create_user` proposal must reject at propose time — not only at apply — if
+    any of its identifiers is EITHER already owned by a live user, OR already the
+    subject of another PENDING `create_user` proposal (so two proposals can't
+    stack on the same phone). Comparison is on the canonical identifier form
+    (`_canonical_identifiers`) so it agrees exactly with create_user's insert.
+
+    Raises:
+        IdentifierAlreadyInUse (409): a proposed identifier collides with a live
+            user or another pending create_user proposal in this tenant.
+    """
+    proposed = _canonical_identifiers(payload)
+
+    # (a) Already owned by a live user — reuse create_user's own lookup against
+    # the same canonical value so propose-time and apply-time agree exactly.
+    for identifier_type, canonical in proposed:
+        if await _find_identifier(session, tenant_id, identifier_type, canonical) is not None:
+            raise IdentifierAlreadyInUse(identifier_type)
+
+    # (b) Already claimed by another PENDING create_user proposal in this tenant.
+    result = await session.execute(
+        select(UserOperationRequest).where(
+            UserOperationRequest.tenant_id == tenant_id,
+            UserOperationRequest.operation == USER_OP_CREATE,
+            UserOperationRequest.status == USER_OP_STATUS_PENDING,
+        )
+    )
+    for pending in result.scalars().all():
+        for identifier_type, canonical in _canonical_identifiers(pending.payload):
+            if (identifier_type, canonical) in proposed:
+                raise IdentifierAlreadyInUse(identifier_type)
+
+
 # -----------------------------------------------------------------------------
 # Workflow operations
 # -----------------------------------------------------------------------------
@@ -266,19 +326,25 @@ async def propose_user_operation(
     """Maker proposes a user operation → PENDING, no user created/changed yet.
 
     The payload is validated against the operation's schema and, for update_user,
-    the target user's existence in-tenant is confirmed. The request is created
+    the target user's existence in-tenant is confirmed; for create_user, every
+    identifier is confirmed free (not owned by a live user, not already the
+    subject of another pending create_user proposal). The request is created
     PENDING with a `submitted` review. Nothing applies until enough distinct
     approvals land.
 
     Raises:
         TenantNotFound (404).
         UserNotFound (404): update_user target is unknown in this tenant.
+        IdentifierAlreadyInUse (409): a create_user identifier already belongs to
+            a live user or another pending create_user proposal in this tenant.
         AppHTTPException (422): unknown operation or invalid payload.
     """
     await _assert_tenant_exists(session, tenant_id)
     normalised = _validate_payload(operation, payload)
     if operation == USER_OP_UPDATE:
         await _assert_target_exists(session, tenant_id, normalised)
+    if operation == USER_OP_CREATE:
+        await _assert_create_identifiers_available(session, tenant_id, normalised)
 
     request = UserOperationRequest(
         tenant_id=tenant_id,

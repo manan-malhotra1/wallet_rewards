@@ -15,7 +15,12 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.models import Tenant, User, UserIdentifier
-from tests.user_operations.conftest import create_user_payload, ops_url, propose
+from tests.user_operations.conftest import (
+    create_user_payload,
+    ops_url,
+    propose,
+    request_changes,
+)
 
 
 def _phone_payload(phone: str) -> dict:
@@ -24,6 +29,25 @@ def _phone_payload(phone: str) -> dict:
         "identifiers": [{"identifier_type": "phone", "identifier_value": phone}],
         "user_type": "consumer",
     }
+
+
+async def _seed_user_with_phone(
+    session: AsyncSession, tenant: Tenant, canonical_phone: str
+) -> None:
+    """Insert a live user owning `canonical_phone` (already-normalised form)."""
+    user = User(tenant_id=tenant.id)
+    session.add(user)
+    await session.flush()
+    session.add(
+        UserIdentifier(
+            user_id=user.id,
+            tenant_id=tenant.id,
+            identifier_type="phone",
+            identifier_value=canonical_phone,
+            verified=True,
+        )
+    )
+    await session.commit()
 
 
 async def _propose_raw(
@@ -46,19 +70,7 @@ async def test_propose_create_for_existing_user_identifier_409(
 ) -> None:
     """Verify you cannot propose to create a user with a phone a live user already has"""
     # A live user owning the CANONICAL phone form (as create_user would store it).
-    user = User(tenant_id=test_tenant.id)
-    db_session.add(user)
-    await db_session.flush()
-    db_session.add(
-        UserIdentifier(
-            user_id=user.id,
-            tenant_id=test_tenant.id,
-            identifier_type="phone",
-            identifier_value="+27825559999",
-            verified=True,
-        )
-    )
-    await db_session.commit()
+    await _seed_user_with_phone(db_session, test_tenant, "+27825559999")
 
     # Propose using a VISUALLY different but same-canonical phone (spaces) — the
     # guard must normalise to match, so this still collides.
@@ -118,3 +130,78 @@ async def test_propose_second_create_different_identifier_succeeds(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )
     assert second["status"] == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_revise_create_to_taken_identifier_409(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    maker_header: dict[str, str],
+    checker_header: dict[str, str],
+) -> None:
+    """Verify revising a create_user proposal onto a taken phone is rejected (the second door)"""
+    # A live user already owns this canonical phone.
+    await _seed_user_with_phone(db_session, test_tenant, "+27825552222")
+
+    # A create_user proposal on a FRESH phone reaches CHANGES_REQUESTED.
+    proposed = await propose(
+        async_client, test_tenant, maker_header, "create_user", _phone_payload("+27 82 555 3333")
+    )
+    cr = await request_changes(
+        async_client, test_tenant, proposed["id"], checker_header, "Use a different number."
+    )
+    assert cr.json()["status"] == "CHANGES_REQUESTED"
+
+    # Revising onto the taken phone must be rejected exactly like propose.
+    resp = await async_client.patch(
+        ops_url(test_tenant, f"/{proposed['id']}"),
+        content=json.dumps({"payload": _phone_payload("+27825552222")}),
+        headers=maker_header,
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error_code"] == "identifier_already_in_use"
+
+
+@pytest.mark.asyncio
+async def test_propose_create_same_identifier_other_tenant_succeeds(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    other_tenant: Tenant,
+    maker_header: dict[str, str],
+) -> None:
+    """Verify a phone used in another tenant does NOT block a create_user here (tenant-scoped)"""
+    # The SAME canonical phone exists as a live user — but in a DIFFERENT tenant.
+    await _seed_user_with_phone(db_session, other_tenant, "+27825554444")
+
+    body = await propose(
+        async_client, test_tenant, maker_header, "create_user", _phone_payload("+27 82 555 4444")
+    )
+    assert body["status"] == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_propose_create_multi_identifier_one_taken_409(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    maker_header: dict[str, str],
+) -> None:
+    """Verify a create_user with two identifiers is rejected when ONE already belongs to a user"""
+    await _seed_user_with_phone(db_session, test_tenant, "+27825555555")
+
+    # Payload carries a fresh email PLUS the already-taken phone.
+    payload = {
+        "identifiers": [
+            {"identifier_type": "email", "identifier_value": "fresh-user@example.com"},
+            {"identifier_type": "phone", "identifier_value": "+27 82 555 5555"},
+        ],
+        "user_type": "consumer",
+    }
+    resp = await _propose_raw(async_client, test_tenant, maker_header, payload)
+    assert resp.status_code == 409, resp.text
+    body = resp.json()
+    assert body["error_code"] == "identifier_already_in_use"
+    # Only the phone collides, so the phone is the identifier named in the message.
+    assert "phone" in body["message"]

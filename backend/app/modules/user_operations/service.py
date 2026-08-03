@@ -501,14 +501,18 @@ async def revise_user_operation(
     """Original maker edits a CHANGES_REQUESTED request's payload in place.
 
     Stays CHANGES_REQUESTED (the maker resubmits separately). The new payload is
-    re-validated against the operation's schema exactly like propose, and an
-    update_user target's existence is re-confirmed.
+    re-validated against the operation's schema exactly like propose, an
+    update_user target's existence is re-confirmed, and a create_user's revised
+    identifiers are re-checked for availability — revise is a SECOND door into
+    the approval loop and must enforce the same duplicate guard as propose.
 
     Raises:
         UserOperationNotFound (404).
         UserOperationForbidden (403): not the original maker.
         UserOperationInvalidState (409): not in CHANGES_REQUESTED.
         UserNotFound (404): revised update_user target is unknown in this tenant.
+        IdentifierAlreadyInUse (409): a revised create_user identifier already
+            belongs to a live user or another pending create_user proposal.
         AppHTTPException (422): the new payload fails its schema.
     """
     request = await _load_request(session, request_id, tenant_id, for_update=True)
@@ -520,6 +524,12 @@ async def revise_user_operation(
     normalised = _validate_payload(request.operation, payload)
     if request.operation == USER_OP_UPDATE:
         await _assert_target_exists(session, tenant_id, normalised)
+    if request.operation == USER_OP_CREATE:
+        # revise keeps the request in CHANGES_REQUESTED (no PENDING flip here),
+        # and the guard's pending-proposal branch filters status == PENDING, so
+        # this very request never collides with itself. No live user has been
+        # created yet either, so there is no self identity-row to exclude.
+        await _assert_create_identifiers_available(session, tenant_id, normalised)
     request.payload = normalised
     _add_review(
         session,

@@ -82,6 +82,48 @@ async def test_propose_create_for_existing_user_identifier_409(
 
 
 @pytest.mark.asyncio
+async def test_propose_create_no_plus_collides_with_live_plus_409(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    maker_header: dict[str, str],
+) -> None:
+    """Verify a phone WITHOUT '+' is blocked when the same number exists WITH '+' (reported bug)"""
+    # A live user owns the canonical '+'-prefixed form.
+    await _seed_user_with_phone(db_session, test_tenant, "+27825550007")
+
+    # The admin re-enters the SAME real number without the leading '+'. This is
+    # the exact case that slipped through before phone normalisation added the '+'.
+    resp = await _propose_raw(
+        async_client, test_tenant, maker_header, _phone_payload("27825550007")
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error_code"] == "identifier_already_in_use"
+
+
+@pytest.mark.asyncio
+async def test_propose_create_twice_no_plus_vs_plus_409(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    maker_header: dict[str, str],
+) -> None:
+    """Verify a second pending proposal WITHOUT '+' collides with a first WITH '+' (reported bug)"""
+    # First proposal lands PENDING with the '+'-prefixed form.
+    first = await propose(
+        async_client, test_tenant, maker_header, "create_user", _phone_payload("+27825550007")
+    )
+    assert first["status"] == "PENDING"
+
+    # Second proposal for the SAME number without the '+' must be rejected — the
+    # two pending proposals the UI let through are now collapsed to one identifier.
+    resp = await _propose_raw(
+        async_client, test_tenant, maker_header, _phone_payload("27825550007")
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error_code"] == "identifier_already_in_use"
+
+
+@pytest.mark.asyncio
 async def test_propose_create_twice_same_identifier_409(
     async_client: AsyncClient,
     test_tenant: Tenant,

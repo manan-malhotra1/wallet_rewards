@@ -18,18 +18,28 @@ from __future__ import annotations
 
 import re
 
-# Anything that isn't a digit or the leading '+' is whitespace / punctuation.
-_PHONE_STRIP_RE = re.compile(r"[\s\-()\.]")
+# Everything that isn't a digit is stripped; a single leading '+' is then
+# re-applied so the canonical form is ALWAYS E.164 (`+` + digits only).
+_NON_DIGIT_RE = re.compile(r"\D")
 
 
 def normalize_phone(value: str) -> str:
-    """Strip spaces / dashes / parens / dots; keep leading '+' + digits.
+    """Canonicalise a phone to E.164 form: a single leading '+' then digits.
+
+    Strips EVERY non-digit character (spaces, dashes, parens, dots, and any
+    stray '+' — including a missing or duplicated one) and re-prepends exactly
+    one '+'. This makes the presence/absence of the leading '+' irrelevant so
+    the SAME real number resolves to ONE identifier everywhere (uniqueness at
+    create_user / add_identifier / the maker-checker propose-revise duplicate
+    guard, and auth/OTP lookup). Matches the stored convention — every existing
+    `user_identifiers` phone value is already `+`-prefixed digits.
 
     Input examples that all map to `+27825550001`:
+      - `27825550001`      (no leading '+')
+      - `+27825550001`
       - `+27 82 555 0001`
       - `+27-82-555-0001`
       - `+27 (82) 555.0001`
-      - `+27825550001`
 
     Returns the original (unchanged) value if it's empty so the caller's
     validation layer can surface a "missing identifier" error rather than
@@ -37,7 +47,12 @@ def normalize_phone(value: str) -> str:
     """
     if not value:
         return value
-    return _PHONE_STRIP_RE.sub("", value).strip()
+    digits = _NON_DIGIT_RE.sub("", value)
+    # An all-punctuation input strips to empty; leave it empty (no bare '+')
+    # so validation still rejects it rather than minting a '+' identifier.
+    if not digits:
+        return ""
+    return f"+{digits}"
 
 
 def normalize_identifier(identifier_type: str, value: str) -> str:

@@ -192,6 +192,33 @@ async def test_add_duplicate_identifier_rejected(
 
 
 @pytest.mark.asyncio
+async def test_add_phone_without_plus_collides_with_existing_plus(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify adding a phone WITHOUT '+' is rejected when the same number exists WITH '+'"""
+    # `owner` is created with the '+'-prefixed form (canonicalised at write time).
+    await _create_user(async_client, admin_auth_header, test_tenant, phone="+27825550007")
+    other = await _create_user(
+        async_client, admin_auth_header, test_tenant, phone="+27 82 555 9000"
+    )
+
+    # Adding the SAME real number to `other` without the leading '+' must collide,
+    # because normalisation collapses '+'/no-'+' to one canonical identifier.
+    dup_status, dup_body = await _add_identifier(
+        async_client,
+        admin_auth_header,
+        user_id=other["id"],
+        tenant=test_tenant,
+        identifier_type="phone",
+        identifier_value="27825550007",
+    )
+    assert dup_status == 409, dup_body
+    assert dup_body["error_code"] == "identifier_already_in_use"
+
+
+@pytest.mark.asyncio
 async def test_add_identifier_unknown_user(
     async_client: AsyncClient,
     test_tenant: Tenant,

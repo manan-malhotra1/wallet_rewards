@@ -39,6 +39,7 @@ from app.modules.rewards.service import (
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
+    REFERRAL_STATUS_PENDING,
     REFERRAL_STATUS_REWARDED,
     REFERRAL_TRIGGER_NTH_TRANSACTION,
     REFERRAL_TRIGGER_SIGNUP,
@@ -255,6 +256,46 @@ async def evaluate_referral_on_signup(
             triggering_event_id=f"referral_signup:{referral.id}:{rule.id}",
         )
     await session.commit()
+
+
+async def evaluate_referral_on_registration_complete(
+    session: AsyncSession, *, tenant_id: UUID, referred_user_id: UUID
+) -> None:
+    """Fire the signup referral reward once a referred user COMPLETES registration.
+
+    Called AFTER the INITIAL registration PIN is set (i.e. a verified phone that
+    finished self-registration) — NOT at account auto-creation. This is the
+    anti-farming guard: an unverified phone that never finishes signup, and every
+    admin-/externally-created user (which never runs the self-reg PIN-set), are
+    therefore never rewarded.
+
+    No-op unless this user is the referred party of a still-PENDING referral.
+    Idempotent + once-only: only a PENDING referral is acted on, so a later
+    change-PIN / re-registration never re-rewards. Delegates to
+    `evaluate_referral_on_signup`, which pays both sides and marks the referral
+    REWARDED.
+
+    Args:
+        session: Async DB session (committed by the delegate on a fire).
+        tenant_id: Tenant scope.
+        referred_user_id: The user who just completed registration.
+
+    Side effects:
+        On a PENDING referral: issues rewards, stamps the referral, sets
+        `status='rewarded'`, and commits. A no-op otherwise.
+    """
+    referral = (
+        await session.execute(
+            select(Referral).where(
+                Referral.tenant_id == tenant_id,
+                Referral.referred_user_id == referred_user_id,
+                Referral.status == REFERRAL_STATUS_PENDING,
+            )
+        )
+    ).scalar_one_or_none()
+    if referral is None:
+        return  # Organic signup, already rewarded, or not a referred user.
+    await evaluate_referral_on_signup(session, tenant_id=tenant_id, referral=referral)
 
 
 async def _count_referee_completed_transactions(

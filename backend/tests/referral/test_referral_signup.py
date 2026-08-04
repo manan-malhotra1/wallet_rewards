@@ -1,8 +1,11 @@
-"""Referral rewards at signup.
+"""Referral attribution at signup and reward at registration completion.
 
-Exercises the end-to-end attribution flow: code generation on every signup,
-pending-referral creation when a valid code is quoted, rejection of
-unknown / self codes, and the referrer reward firing after create commits.
+Exercises the two-stage flow: `create_user(self_registration=True)` mints a
+shareable code on every signup and, when a valid code is quoted, a PENDING
+`referrals` link (attribution) — but pays NOTHING at this point. The reward for
+both sides fires only when the referred user COMPLETES registration
+(`evaluate_referral_on_registration_complete`, invoked at PIN-set). Unknown /
+self codes are still rejected at create time, before any commit.
 """
 
 from __future__ import annotations
@@ -17,6 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.accounts.service import derive_balance
 from app.modules.identity.schemas import CreateUserRequest, IdentifierIn
 from app.modules.identity.service import create_user
+from app.modules.rules.referral_evaluator import (
+    evaluate_referral_on_registration_complete,
+)
 from app.shared.exceptions import InvalidReferralCode, SelfReferralNotAllowed
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -32,9 +38,19 @@ from app.shared.models import (
 
 
 async def _create_user(
-    session: AsyncSession, tenant_id, *, referral_code: str | None = None
+    session: AsyncSession,
+    tenant_id,
+    *,
+    referral_code: str | None = None,
+    self_registration: bool = True,
 ) -> User:
-    """Create a user via the service with one unique phone identifier."""
+    """Create a user via the service with one unique phone identifier.
+
+    Defaults to the self-registration path (`self_registration=True`) so a quoted
+    `referral_code` mints the PENDING attribution link — that is the surface these
+    tests exercise. Pass `self_registration=False` to model the admin path, which
+    ignores the code entirely.
+    """
     req = CreateUserRequest(
         tenant_id=tenant_id,
         identifiers=[
@@ -45,7 +61,14 @@ async def _create_user(
         ],
         referral_code=referral_code,
     )
-    return await create_user(session, req)
+    return await create_user(session, req, self_registration=self_registration)
+
+
+async def _complete_registration(session: AsyncSession, referee: User) -> None:
+    """Fire the completion hook that `set_pin` runs once the initial PIN lands."""
+    await evaluate_referral_on_registration_complete(
+        session, tenant_id=referee.tenant_id, referred_user_id=referee.id
+    )
 
 
 async def _own_code(session: AsyncSession, user_id) -> str:
@@ -77,10 +100,10 @@ async def _seed_points_infra(session: AsyncSession, tenant: Tenant, user: User) 
 
 
 @pytest.mark.asyncio
-async def test_signup_with_valid_code_rewards_referrer(
+async def test_completed_signup_with_valid_code_rewards_referrer(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Verify entering a valid referral code at signup rewards the referrer"""
+    """Verify a referred user who completes registration rewards the referrer"""
     referrer = await _create_user(db_session, test_tenant.id)
     await _seed_points_infra(db_session, test_tenant, referrer)
 
@@ -106,7 +129,14 @@ async def test_signup_with_valid_code_rewards_referrer(
             select(Referral).where(Referral.referred_user_id == referee.id)
         )
     ).scalar_one()
+    # Attribution only at create — nobody is paid until registration completes.
     assert referral.referrer_user_id == referrer.id
+    assert referral.status == "pending"
+    assert referral.referrer_rewarded_at is None
+
+    # Completing registration (PIN-set hook) is what pays the referrer.
+    await _complete_registration(db_session, referee)
+    await db_session.refresh(referral)
     assert referral.status == "rewarded"
     assert referral.referrer_rewarded_at is not None
     assert referral.referee_rewarded_at is None  # no referee reward configured
@@ -217,9 +247,15 @@ async def test_signup_cashback_provisions_and_credits_brand_new_referee(
     code = await _own_code(db_session, referrer.id)
     referee = await _create_user(db_session, test_tenant.id, referral_code=code)
 
+    # No cashback until the referred user completes registration.
     referral = (
         await db_session.execute(select(Referral).where(Referral.referred_user_id == referee.id))
     ).scalar_one()
+    assert referral.status == "pending"
+    assert await _wallet_balance(db_session, referee.id) is None
+
+    await _complete_registration(db_session, referee)
+    await db_session.refresh(referral)
     assert referral.status == "rewarded"
     assert referral.referrer_rewarded_at is not None
     assert referral.referee_rewarded_at is not None
@@ -230,14 +266,15 @@ async def test_signup_cashback_provisions_and_credits_brand_new_referee(
 
 
 @pytest.mark.asyncio
-async def test_signup_succeeds_even_if_reward_issuance_fails(
+async def test_create_does_not_issue_reward_even_if_reward_backend_is_down(
     db_session: AsyncSession, test_tenant: Tenant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Verify a signup still succeeds when the referral reward cannot be paid
+    """Verify signup itself never touches reward issuance — it only attributes
 
-    The user + referral commit before rewards fire (NFR-0130), so a failure in
-    evaluate_referral_on_signup is swallowed + logged: the signup still returns
-    the user and the referral stays PENDING for later reconciliation.
+    Reward issuance is fully decoupled from `create_user` now: a quoted code
+    mints a PENDING referral and nothing else. So even with the reward path
+    hard-wired to explode, signup succeeds and the referral is left PENDING for
+    the completion hook to pay (or a reconciliation job to retry) later.
     """
     referrer = await _create_user(db_session, test_tenant.id)
     code = await _own_code(db_session, referrer.id)
@@ -245,6 +282,7 @@ async def test_signup_succeeds_even_if_reward_issuance_fails(
     async def _boom(*_args, **_kwargs):
         raise RuntimeError("reward backend down")
 
+    # If create_user still called the evaluator, this would blow the signup up.
     monkeypatch.setattr(
         "app.modules.rules.referral_evaluator.evaluate_referral_on_signup", _boom
     )

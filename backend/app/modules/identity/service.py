@@ -278,18 +278,53 @@ async def _resolve_referrer(
     return referrer_code
 
 
+async def _assert_referral_code_exists(
+    session: AsyncSession, *, tenant_id: UUID, code: str
+) -> None:
+    """Fail fast if a referral code doesn't resolve in the tenant (no user yet).
+
+    Used at /otp/send BEFORE the per-phone OTP rate-limit quota is consumed, so a
+    typo'd code returns 422 without burning the phone's ~60s quota (a subsequent
+    valid send still works). Self-referral cannot arise here — the new user does
+    not exist yet — so only existence is checked; `create_user` still runs the
+    authoritative validation (unknown + self) atomically at registration.
+
+    Raises:
+        InvalidReferralCode: 422 — no such code in this tenant.
+    """
+    exists = (
+        await session.execute(
+            select(ReferralCode.id).where(
+                ReferralCode.tenant_id == tenant_id,
+                ReferralCode.code == code,
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        raise InvalidReferralCode()
+
+
 async def create_user(
     session: AsyncSession,
     request: CreateUserRequest,
     *,
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
+    self_registration: bool = False,
 ) -> User:
     """Create a new user with one or more identifiers and optional profile.
 
     Tenant isolation is enforced by storing `tenant_id` on every related row.
     Identifier uniqueness is enforced by the DB constraint — we catch the
     IntegrityError and re-raise as a clean 409 (Pay-PRD-0070).
+
+    Referral attribution is created ONLY for self-registration (the OTP
+    auto-register path passes `self_registration=True`); admin-, external-, and
+    maker-checker-created users IGNORE `referral_code` entirely — no referral
+    link, and therefore no referral reward can ever accrue to them. NO referral
+    reward is issued here in ANY case: a valid code creates a PENDING referral
+    only, and the reward fires later at PIN-set (registration completion), which
+    an admin-/externally-created user never runs.
 
     Args:
         session: Async DB session. COMMITTED here (the user, identifiers,
@@ -300,6 +335,9 @@ async def create_user(
         admin: Authenticated admin (audit context). Direct-registration is
             admin-only after Phase F.4; absent for OTP-flow self-registration.
         ip_address: Caller IP (audit context).
+        self_registration: True only for the end-user OTP auto-register path.
+            Gates referral-code validation + PENDING-referral creation, so an
+            admin/external caller never mints a rewardable referral link.
 
     Returns:
         The created User with identifiers and profile loaded.
@@ -309,6 +347,10 @@ async def create_user(
         IdentifierAlreadyInUse: 409 when an identifier collides in this tenant.
         InvalidUserTypeParent: 422 when user_type / parent_user_id are
             incompatible (Decision D4).
+        InvalidReferralCode: 422 (self-registration only) — the quoted code does
+            not resolve in this tenant; raised BEFORE commit so no half-user lands.
+        SelfReferralNotAllowed: 422 (self-registration only) — code is the new
+            user's own.
 
     Note:
         Merchant types (`merchant`, `head_merchant`) are accepted here, but the
@@ -376,24 +418,29 @@ async def create_user(
     # self-referral quoting it in this same request resolves).
     await _create_unique_referral_code(session, tenant_id=request.tenant_id, user_id=user.id)
 
-    # Attribution: a quoted code creates a pending referral (referred -> referrer).
-    # Validation (unknown / self) raises 422 before any commit.
-    referral: Referral | None = None
-    if request.referral_code:
+    # Attribution (self-registration ONLY): a quoted code creates a PENDING
+    # referral (referred -> referrer). Validation (unknown / self) raises 422
+    # before any commit, so a bad code rolls the whole signup back cleanly. NO
+    # reward is issued here — the referral stays PENDING until the referred user
+    # COMPLETES registration at PIN-set (anti-farming: an unverified phone that
+    # never finishes signup is never paid). Admin/external callers pass
+    # self_registration=False, so they never mint a rewardable referral link.
+    if self_registration and request.referral_code:
         referrer_code = await _resolve_referrer(
             session,
             tenant_id=request.tenant_id,
             code=request.referral_code,
             new_user_id=user.id,
         )
-        referral = Referral(
-            tenant_id=request.tenant_id,
-            referrer_user_id=referrer_code.user_id,
-            referred_user_id=user.id,
-            code=request.referral_code,
-            status=REFERRAL_STATUS_PENDING,
+        session.add(
+            Referral(
+                tenant_id=request.tenant_id,
+                referrer_user_id=referrer_code.user_id,
+                referred_user_id=user.id,
+                code=request.referral_code,
+                status=REFERRAL_STATUS_PENDING,
+            )
         )
-        session.add(referral)
 
     await session.flush()
 
@@ -419,30 +466,9 @@ async def create_user(
 
     await session.commit()
 
-    # NFR-0130: reward issuance writes to the ledger and must happen AFTER the
-    # create transaction commits, never inside it. Fire any active signup-trigger
-    # referral rule now that the referral row is durable.
-    #
-    # Fail-SAFE: the user + referral are already committed. A reward-issuance
-    # failure here (misconfigured rule, missing account we couldn't provision,
-    # etc.) must NEVER turn a successful signup into an error. Swallow + log; the
-    # referral stays PENDING and is reconcilable later (the reward_events unique
-    # index makes a retry idempotent — no double-pay).
-    if referral is not None:
-        from app.modules.rules.referral_evaluator import evaluate_referral_on_signup
-
-        try:
-            await evaluate_referral_on_signup(
-                session, tenant_id=request.tenant_id, referral=referral
-            )
-        except Exception:
-            await session.rollback()
-            log.warning(
-                "referral_signup_reward_failed",
-                referral_id=str(referral.id),
-                tenant_id=str(request.tenant_id),
-            )
-
+    # No referral reward is issued at creation (anti-farming): a PENDING referral
+    # created above is paid only when the referred user COMPLETES registration at
+    # PIN-set (see `set_pin` -> evaluate_referral_on_registration_complete).
     return await _reload_user(session, user.id)
 
 
@@ -1669,14 +1695,15 @@ async def _autocreate_user_with_phone(
     """First-time user: create on-the-fly when /otp/send hits an unknown phone.
 
     Matches Pay-PRD-0010 semantics — registration is a side-effect of the first
-    OTP for that phone. Delegates to `create_user` so the new user goes through
-    the SAME atomic path as admin registration: it gets its own shareable
-    referral code, and when `referral_code` is supplied the referral attribution
-    + signup-rule reward fire too.
+    OTP for that phone. Delegates to `create_user` with `self_registration=True`
+    so the new user gets their own shareable referral code and, when a
+    `referral_code` is supplied, a PENDING referral link (attribution only). NO
+    reward fires here — it fires later at PIN-set once the phone is verified and
+    signup is complete (anti-farming).
 
     A bad `referral_code` raises `InvalidReferralCode` / `SelfReferralNotAllowed`
     from WITHIN `create_user` BEFORE its commit, so the whole registration rolls
-    back cleanly — no half-created user is left behind (Task B atomicity).
+    back cleanly — no half-created user is left behind.
 
     Args:
         referral_code: Optional referrer's code to attribute this signup to.
@@ -1696,6 +1723,7 @@ async def _autocreate_user_with_phone(
             ],
             referral_code=referral_code,
         ),
+        self_registration=True,
     )
 
 
@@ -1722,11 +1750,20 @@ async def send_otp(session: AsyncSession, request: OtpSendRequest) -> OtpSendRes
     """
     await _assert_tenant_exists(session, request.tenant_id)
 
+    user = await _find_user_by_phone(session, request.tenant_id, request.phone)
+
+    # FIX 4: validate a NEW phone's referral code BEFORE consuming the OTP quota,
+    # so a typo'd code 422s without locking the phone out for ~60s. Only a new
+    # phone uses the code — an existing user's OTP re-request ignores it.
+    if user is None and request.referral_code:
+        await _assert_referral_code_exists(
+            session, tenant_id=request.tenant_id, code=request.referral_code
+        )
+
     allowed, retry_after = await consume_otp_send_quota(request.phone)
     if not allowed:
         raise OtpRateLimited(retry_after)
 
-    user = await _find_user_by_phone(session, request.tenant_id, request.phone)
     if user is None:
         # New phone → register it, attributing an optional referral. An EXISTING
         # phone deliberately skips this, so `referral_code` is ignored for a
@@ -1857,11 +1894,38 @@ async def set_pin(session: AsyncSession, request: PinSetRequest) -> None:
     user = result.scalar_one_or_none()
     if user is None:
         raise UserNotFound()
+    # set_pin ONLY sets the INITIAL registration PIN — a user who already has one
+    # is rejected here (PIN changes/resets go through their own paths). This makes
+    # the referral reward below fire at most once per user: a later change-PIN can
+    # never re-enter this branch, and the reward itself also gates on a PENDING
+    # referral, so re-reward is impossible on both counts.
     if user.pin_hash is not None:
         raise PinAlreadySet()
 
+    tenant_id = user.tenant_id
     user.pin_hash = hashing.hash_pin(request.pin)
     await session.commit()
+
+    # Registration is now COMPLETE (phone verified via OTP + PIN set), so pay any
+    # PENDING referral this user was signed up under — BOTH sides. Post-commit +
+    # fail-open (NFR-0130): a reward error must never break PIN-set; the referral
+    # stays PENDING and is reconcilable later. Admin/external users never reach
+    # this path, so they are never rewarded.
+    from app.modules.rules.referral_evaluator import (
+        evaluate_referral_on_registration_complete,
+    )
+
+    try:
+        await evaluate_referral_on_registration_complete(
+            session, tenant_id=tenant_id, referred_user_id=user_id
+        )
+    except Exception:
+        await session.rollback()
+        log.warning(
+            "referral_signup_reward_failed",
+            user_id=str(user_id),
+            tenant_id=str(tenant_id),
+        )
 
 
 async def authenticate_pin(

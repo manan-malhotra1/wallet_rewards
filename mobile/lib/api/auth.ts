@@ -39,15 +39,35 @@ export async function authStart(
   });
 }
 
-/** Send a fresh OTP. In dev the response includes the code for demoing. */
+/**
+ * Send a fresh OTP. In dev the response includes the code for demoing.
+ *
+ * Args:
+ *   tenantId: Resolved tenant for the request.
+ *   phone: E.164 phone to deliver the OTP to.
+ *   referralCode: Optional signup referral code. Sent only when a non-empty
+ *     value is supplied; for a brand-new phone the backend captures it (reward
+ *     paid at PIN-set). An invalid code fails with 422 `invalid_referral_code`.
+ *
+ * Raises:
+ *   ApiError: 422 `invalid_referral_code` when the referral code isn't valid.
+ */
 export async function otpSend(
   tenantId: string,
   phone: string,
+  referralCode?: string,
 ): Promise<OtpSendResponse> {
+  const trimmed = referralCode?.trim();
   return api<OtpSendResponse>({
     path: '/api/v1/identity/otp/send',
     method: 'POST',
-    body: { tenant_id: tenantId, phone },
+    body: {
+      tenant_id: tenantId,
+      phone,
+      // Only include the field when the user actually entered a code, so the
+      // login flow (and empty-code signups) keep the original narrow contract.
+      ...(trimmed ? { referral_code: trimmed } : {}),
+    },
   });
 }
 

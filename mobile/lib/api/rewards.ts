@@ -81,6 +81,11 @@ export interface RewardsResponse {
   catalog: RewardCatalogItem[];
   /** Rewards already earned, newest first. */
   recent: RecentReward[];
+  /**
+   * The signed-in user's own referral code to share, or null if they have none
+   * (e.g. referrals disabled). Drives the "Refer a friend" card visibility.
+   */
+  referral_code: string | null;
 }
 
 /**

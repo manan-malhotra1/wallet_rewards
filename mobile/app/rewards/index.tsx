@@ -11,7 +11,7 @@
  * Data comes from GET /me/rewards (see lib/api/rewards.ts). Points are whole
  * counts; cashback is money formatted in its own currency — never assume ZAR.
  */
-import { ScrollView } from 'react-native';
+import { Pressable, Share, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -20,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ActivityRow } from '@/components/ui/ActivityRow';
 import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
-import { ClaySurface } from '@/components/clay';
+import { ClayInset, ClaySurface } from '@/components/clay';
 import { useColors } from '@/lib/colors';
 import {
   getRewards,
@@ -180,6 +180,84 @@ function RecentRow({ reward, noBorder }: { reward: RecentReward; noBorder: boole
   );
 }
 
+/**
+ * "Refer a friend" card — surfaces the user's own referral code prominently
+ * with a Share action (react-native's native sheet; no extra dep). Rendered
+ * only when the user has a code; the caller hides it when `referral_code` is
+ * null. Sharing lets them hand the code to a friend who earns both sides points
+ * on sign-up.
+ *
+ * Args:
+ *   code: The signed-in user's referral code (non-null by the time it renders).
+ */
+function ReferralCard({ code }: { code: string }) {
+  const colors = useColors();
+
+  /** Open the OS share sheet pre-filled with the code and an invite line. */
+  async function onShare() {
+    await Share.share({
+      message: `Join me on Sasai! Use my referral code ${code} when you sign up and we both earn points.`,
+    });
+  }
+
+  return (
+    <ClaySurface depth="soft" radius={20} paddingHorizontal={16} paddingVertical={16}>
+      <XStack alignItems="center" gap={10}>
+        <View
+          width={40}
+          height={40}
+          borderRadius={20}
+          backgroundColor={colors.chipTealBg}
+          alignItems="center"
+          justifyContent="center"
+        >
+          <Ionicons name="gift" size={20} color={colors.teal} />
+        </View>
+        <YStack flex={1} gap={2}>
+          <Text fontFamily="PlusJakartaSans-Bold" fontSize={15} color={colors.text}>
+            Refer a friend
+          </Text>
+          <Text fontFamily="PlusJakartaSans-Medium" fontSize={11.5} color={colors.textMuted}>
+            Share this code — you both earn points when they sign up.
+          </Text>
+        </YStack>
+      </XStack>
+
+      <XStack alignItems="center" gap={10} marginTop={14}>
+        <ClayInset radius={14} flex={1} paddingVertical={12} alignItems="center">
+          <Text
+            fontFamily="PlusJakartaSans-ExtraBold"
+            fontSize={20}
+            color={colors.navy}
+            letterSpacing={3}
+          >
+            {code}
+          </Text>
+        </ClayInset>
+        <Pressable
+          onPress={onShare}
+          accessibilityRole="button"
+          accessibilityLabel="Share referral code"
+        >
+          <XStack
+            alignItems="center"
+            gap={6}
+            backgroundColor={colors.navy}
+            paddingHorizontal={16}
+            height={48}
+            borderRadius={14}
+          >
+            <Ionicons name="share-social" size={16} color={colors.textOnDark} />
+            <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.textOnDark}>
+              Share
+            </Text>
+          </XStack>
+        </Pressable>
+      </XStack>
+    </ClaySurface>
+  );
+}
+
 /** Small uppercase section heading (e.g. "Progress", "Recent"). */
 function SectionTitle({ children }: { children: string }) {
   const colors = useColors();
@@ -267,6 +345,9 @@ export default function RewardsScreen() {
             </YStack>
           ) : (
             <YStack gap={26}>
+              {/* Refer a friend — only when the user has a code to share. */}
+              {data?.referral_code ? <ReferralCard code={data.referral_code} /> : null}
+
               {/* Progress — the rules the user can earn. */}
               <YStack gap={10}>
                 <SectionTitle>Progress</SectionTitle>

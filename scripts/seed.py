@@ -72,6 +72,7 @@ from app.shared.models import (  # noqa: E402
     MerchantProfile,
     PricingConfig,
     RedemptionProvider,
+    ReferralCode,
     Role,
     RolePermission,
     Rule,
@@ -185,6 +186,32 @@ async def _get_or_create_tenant(session: AsyncSession) -> Tenant:
     return tenant
 
 
+async def _ensure_referral_code(session: AsyncSession, user: User) -> None:
+    """Give `user` a referral code if it has none yet — idempotent.
+
+    Seeded users are built by constructing `User()` directly (bypassing
+    `identity.create_user`), so they never get the referral code that the real
+    signup flow mints. Without a code the refer-a-friend feature can't be
+    exercised on a fresh seed. This mirrors the real flow by delegating to the
+    identity service's `_create_unique_referral_code`, so the alphabet, length,
+    and per-tenant uniqueness stay in one place. Existing users with a code are
+    left untouched.
+    """
+    from app.modules.identity.service import _create_unique_referral_code
+
+    existing = await session.execute(
+        select(ReferralCode.id).where(ReferralCode.user_id == user.id)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+
+    code = await _create_unique_referral_code(
+        session, tenant_id=user.tenant_id, user_id=user.id
+    )
+    await session.commit()
+    print(f"    + Referral code {code.code} for user {user.id}")
+
+
 async def _get_or_create_user(
     session: AsyncSession,
     tenant: Tenant,
@@ -217,6 +244,7 @@ async def _get_or_create_user(
             existing.pin_hash = hash_pin("1234")
             await session.commit()
             print(f"    ~ Backfilled dev PIN on existing user: {phone}")
+        await _ensure_referral_code(session, existing)
         return existing
 
     # Seeded users get a deterministic dev PIN ("1234") so the
@@ -248,6 +276,7 @@ async def _get_or_create_user(
     await session.commit()
     await session.refresh(user)
     print(f"  + Created user: {first_name} {last_name} ({phone}) -> {user.id}")
+    await _ensure_referral_code(session, user)
     return user
 
 
@@ -768,6 +797,7 @@ async def _get_or_create_airtime_merchant(session: AsyncSession, tenant: Tenant)
         currency="ZAR",
         label="Airtime merchant holding",
     )
+    await _ensure_referral_code(session, merchant)
     return merchant
 
 

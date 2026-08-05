@@ -32,11 +32,12 @@ from app.modules.events.schemas import (
     RawExternalEvent,
     SourceRegistrationRequest,
 )
-from app.modules.rewards.service import issue_points_reward
+from app.modules.rewards.service import issue_cashback_reward, issue_points_reward
 from app.modules.rules.evaluator import (
     RuleFiring,
     evaluate_active_rules_for_event,
 )
+from app.shared.models.rules import REWARD_TYPE_CASHBACK
 from app.shared.exceptions import (
     AppHTTPException,
     SourceKeyAlreadyInUse,
@@ -179,20 +180,37 @@ async def evaluate_and_issue_firings(
     firings: list[RuleFiring] = await evaluate_active_rules_for_event(session, event)
     issued: list[FiringOut] = []
     for firing in firings:
-        # issue_points_reward applies any active bonus multiplier INTERNALLY and
-        # credits the MULTIPLIED value to the ledger, returning the RewardEvent
-        # whose `reward_value` is that actual post-multiplier credited amount.
-        # Report THAT, not the pre-multiplier base (firing.reward_value), so both
-        # the external path's `rules_fired` and the internal `earned_points`
-        # reflect what truly hit the user's points account.
-        reward_event = await issue_points_reward(
-            session,
-            tenant_id=event.tenant_id,
-            user_id=event.user_id,
-            rule=firing.rule,
-            triggering_event_id=event.event_id,
-            reward_value=firing.reward_value,
-        )
+        # Dispatch on the rule's configured reward_type. A cashback rule must
+        # credit real money to the financial wallet — NOT points. (Both the
+        # internal outbox drainer and the external Kafka path share this core, so
+        # dispatching here fixes cashback issuance everywhere.) Cashback pays in
+        # the qualifying event's currency (the user holds that wallet — they just
+        # transacted in it) and, per Pay-PRD-0623, applies NO bonus multiplier.
+        if firing.rule.reward_type == REWARD_TYPE_CASHBACK:
+            reward_event = await issue_cashback_reward(
+                session,
+                tenant_id=event.tenant_id,
+                user_id=event.user_id,
+                currency=event.currency,
+                amount=firing.reward_value,
+                rule_id=firing.rule.id,
+                triggering_event_id=event.event_id,
+            )
+        else:
+            # issue_points_reward applies any active bonus multiplier INTERNALLY
+            # and credits the MULTIPLIED value to the ledger, returning the
+            # RewardEvent whose `reward_value` is that actual post-multiplier
+            # credited amount. Report THAT, not the pre-multiplier base
+            # (firing.reward_value), so both the external path's `rules_fired`
+            # and the internal `earned_points` reflect what truly hit the account.
+            reward_event = await issue_points_reward(
+                session,
+                tenant_id=event.tenant_id,
+                user_id=event.user_id,
+                rule=firing.rule,
+                triggering_event_id=event.event_id,
+                reward_value=firing.reward_value,
+            )
         issued.append(
             FiringOut(
                 rule_id=firing.rule.id,

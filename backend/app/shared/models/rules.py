@@ -114,6 +114,12 @@ class Rule(Base):
     # Reward
     reward_type: Mapped[str] = mapped_column(String(20), nullable=False)
     reward_value: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
+    # Currency the reward is paid in. For cashback this is the financial currency
+    # the admin chose for the campaign (e.g. ZAR/INR) and it also scopes the
+    # reward budget. Points always accrue in PTS, so it is NULL for points rules.
+    # Nullable for backward-compat: a legacy cashback rule with NULL falls back to
+    # the triggering event's currency at issuance time.
+    reward_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
 
     # Recurrence
     stop_after_n_triggers: Mapped[int | None] = mapped_column(Integer, nullable=True)

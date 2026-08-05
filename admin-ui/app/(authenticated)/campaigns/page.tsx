@@ -14,9 +14,14 @@
 import { Megaphone, Plus } from "lucide-react";
 
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { getRulePerformance, listRules, listServices } from "@/lib/api-endpoints";
+import {
+  getRulePerformance,
+  listInstruments,
+  listRules,
+  listServices,
+} from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
-import type { RulePerformance, Service } from "@/lib/api-types";
+import type { Instrument, RulePerformance, Service } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -43,16 +48,28 @@ export default async function CampaignsPage() {
 
   let rules: Awaited<ReturnType<typeof listRules>> = [];
   let services: Service[] = [];
+  let instruments: Instrument[] = [];
   let error: ApiError | null = null;
   try {
-    [rules, services] = await Promise.all([
+    [rules, services, instruments] = await Promise.all([
       listRules(activeTenantId),
       listServices(activeTenantId, "active"),
+      listInstruments(activeTenantId, "active"),
     ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
   }
+
+  // A cashback reward pays in one of the tenant's financial currencies;
+  // points always pay in the tenant's points instrument (PTS). We hand
+  // the wizard both so its reward-currency dropdown and the derived
+  // inline-budget currency stay tenant-accurate.
+  const financialCurrencies = instruments
+    .filter((i) => i.account_type === "financial_wallet")
+    .map((i) => i.code);
+  const pointsCurrency =
+    instruments.find((i) => i.account_type === "points_account")?.code ?? "PTS";
 
   // Fetch performance for every campaign in parallel. A single failure
   // becomes `null` for that row so the page still renders the rest.
@@ -79,6 +96,8 @@ export default async function CampaignsPage() {
           <CreateCampaignDialog
             tenantId={activeTenantId}
             services={services}
+            financialCurrencies={financialCurrencies}
+            pointsCurrency={pointsCurrency}
             trigger={
               <button
                 type="button"

@@ -60,6 +60,8 @@ async function openWizardAt(
     <CreateCampaignDialog
       tenantId="tenant-1"
       services={SERVICES}
+      financialCurrencies={["ZAR", "USD"]}
+      pointsCurrency="PTS"
       trigger={<button type="button">New campaign</button>}
     />,
   );
@@ -115,6 +117,49 @@ describe("Managing reward campaigns — creating a campaign", () => {
       transaction_type: "p2p",
       reward_type: "points",
       reward_value: "50",
+    });
+  });
+
+  it("Verify a points campaign hides the reward-currency dropdown and sends no currency", async () => {
+    const user = userEvent.setup();
+    await openWizardAt(user, "Milestone");
+
+    // Reward type defaults to Points → no currency picker.
+    expect(screen.queryByLabelText("Reward currency")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Name"), "Points milestone");
+    await user.type(screen.getByLabelText("Reward value"), "200");
+    await user.click(screen.getByRole("button", { name: "Activate campaign" }));
+
+    await waitFor(() =>
+      expect(createCampaignWithBudgetAction).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      createCampaignWithBudgetAction.mock.calls[0][0].reward_currency,
+    ).toBeUndefined();
+  });
+
+  it("Verify a cashback campaign shows the reward-currency dropdown and threads it into the payload", async () => {
+    const user = userEvent.setup();
+    await openWizardAt(user, "Milestone");
+
+    await user.type(screen.getByLabelText("Name"), "Cashback milestone");
+    await user.type(screen.getByLabelText("Reward value"), "10");
+
+    // Switch reward type to Cashback → currency picker appears, defaulting
+    // to the tenant's first financial currency (ZAR).
+    await user.click(screen.getByLabelText("Reward type"));
+    await user.click(screen.getByRole("option", { name: "Cashback" }));
+    expect(await screen.findByLabelText("Reward currency")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Activate campaign" }));
+
+    await waitFor(() =>
+      expect(createCampaignWithBudgetAction).toHaveBeenCalledTimes(1),
+    );
+    expect(createCampaignWithBudgetAction.mock.calls[0][0]).toMatchObject({
+      reward_type: "cashback",
+      reward_currency: "ZAR",
     });
   });
 

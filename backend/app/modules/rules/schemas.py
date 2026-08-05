@@ -71,6 +71,9 @@ class RuleCreateRequest(BaseModel):
 
     reward_type: RewardType
     reward_value: Decimal = Field(gt=Decimal("0"))
+    # Cashback pays in this financial currency (and it scopes the reward budget).
+    # Required for cashback, must be absent for points (points are always PTS).
+    reward_currency: str | None = Field(default=None, min_length=3, max_length=3)
     stop_after_n_triggers: int | None = Field(default=None, ge=1)
     resets_after_trigger: bool = True
 
@@ -147,6 +150,20 @@ class RuleCreateRequest(BaseModel):
                 raise ValueError(f"{self.rule_type} rules must not specify referral_trigger_n")
             if self.referee_reward_value is not None:
                 raise ValueError(f"{self.rule_type} rules must not specify referee_reward_value")
+        # Cashback needs a payout currency (and it scopes the budget); points are
+        # always PTS, so a currency must NOT be supplied for a points rule.
+        if self.reward_type == "cashback":
+            if not self.reward_currency:
+                raise ValueError(
+                    "cashback rules require reward_currency (a financial currency, e.g. ZAR)"
+                )
+            if self.reward_currency.upper() == "PTS":
+                raise ValueError("cashback reward_currency must be a financial currency, not PTS")
+            self.reward_currency = self.reward_currency.upper()
+        elif self.reward_currency is not None:
+            raise ValueError(
+                "points rules must not specify reward_currency (points always accrue in PTS)"
+            )
         return self
 
 
@@ -172,6 +189,7 @@ class RuleOut(BaseModel):
     referee_reward_value: Decimal | None = None
     reward_type: str
     reward_value: Decimal
+    reward_currency: str | None = None
     stop_after_n_triggers: int | None
     resets_after_trigger: bool
     status: str

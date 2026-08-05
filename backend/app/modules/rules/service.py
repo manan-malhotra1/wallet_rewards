@@ -77,6 +77,7 @@ async def create_rule(
         referee_reward_value=request.referee_reward_value,
         reward_type=request.reward_type,
         reward_value=request.reward_value,
+        reward_currency=request.reward_currency,
         stop_after_n_triggers=request.stop_after_n_triggers,
         resets_after_trigger=request.resets_after_trigger,
     )

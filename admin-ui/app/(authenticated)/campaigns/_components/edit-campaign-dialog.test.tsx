@@ -41,6 +41,7 @@ const RULE: Rule = {
   campaign_end_date: null,
   reward_type: "points",
   reward_value: "200",
+  reward_currency: null,
   stop_after_n_triggers: null,
   resets_after_trigger: true,
   status: "active",

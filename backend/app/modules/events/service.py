@@ -187,11 +187,15 @@ async def evaluate_and_issue_firings(
         # the qualifying event's currency (the user holds that wallet — they just
         # transacted in it) and, per Pay-PRD-0623, applies NO bonus multiplier.
         if firing.rule.reward_type == REWARD_TYPE_CASHBACK:
+            # Pay in the campaign's configured cashback currency. Legacy rules
+            # created before reward_currency existed have NULL → fall back to the
+            # triggering event's currency (the user holds that wallet).
+            cashback_currency = firing.rule.reward_currency or event.currency
             reward_event = await issue_cashback_reward(
                 session,
                 tenant_id=event.tenant_id,
                 user_id=event.user_id,
-                currency=event.currency,
+                currency=cashback_currency,
                 amount=firing.reward_value,
                 rule_id=firing.rule.id,
                 triggering_event_id=event.event_id,

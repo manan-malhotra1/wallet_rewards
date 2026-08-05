@@ -46,6 +46,7 @@ const rule: Rule = {
   campaign_end_date: "2026-08-31",
   reward_type: "cashback",
   reward_value: "10",
+  reward_currency: "ZAR",
   stop_after_n_triggers: null,
   resets_after_trigger: false,
   status: "active",

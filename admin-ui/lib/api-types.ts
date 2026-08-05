@@ -292,6 +292,9 @@ export interface Rule {
   referee_reward_value?: string | null;
   reward_type: "points" | "cashback";
   reward_value: string;
+  // The financial currency a cashback reward pays out in (ISO 4217, e.g.
+  // "ZAR"). Required for cashback, null for points (points are always PTS).
+  reward_currency: string | null;
   stop_after_n_triggers: number | null;
   resets_after_trigger: boolean;
   status: string;

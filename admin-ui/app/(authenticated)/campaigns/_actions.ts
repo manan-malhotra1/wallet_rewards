@@ -49,10 +49,10 @@ export type CreateRuleResult = CreateCampaignResult;
  *      + `budgetError` so the UI can prompt the operator to fix the
  *      budget separately without losing their campaign.
  *
- * Currency for the budget is derived from `reward_type`:
- *   `points` → 'PTS', `cashback` → the tenant base currency (we default
- *   to 'ZAR' here; tighten in Phase G+ when tenant currency is threaded
- *   through).
+ * Currency for the inline budget is DERIVED from the campaign's reward,
+ * never a separate input:
+ *   `points`   → 'PTS' (points are always PTS)
+ *   `cashback` → the campaign's `reward_currency` (a financial currency)
  */
 export async function createCampaignWithBudgetAction(
   rulePayload: CreateRulePayload,
@@ -78,7 +78,10 @@ export async function createCampaignWithBudgetAction(
     return { ok: true, campaignId: rule.id, budgetCreated: false };
   }
 
-  const currency = rulePayload.reward_type === "points" ? "PTS" : "ZAR";
+  const currency =
+    rulePayload.reward_type === "points"
+      ? "PTS"
+      : (rulePayload.reward_currency ?? "ZAR");
 
   const budgetPayload: CreateBudgetPayload = {
     tenant_id: rulePayload.tenant_id,

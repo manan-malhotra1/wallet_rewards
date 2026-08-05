@@ -69,72 +69,53 @@ type BudgetWindow = "rolling_24h" | "rolling_7d" | "calendar_month" | "lifetime"
 interface BudgetPreset {
   key: string;
   label: string;
-  description: string;
+  /** Amount rendered in the card, e.g. "1,000". Unit is appended live. */
+  display_amount: string;
   cap_amount: string;
   window_type: BudgetWindow;
 }
 
-const POINTS_PRESETS: BudgetPreset[] = [
+// One preset set for both reward types — the caps are currency-agnostic;
+// only the unit shown on the card differs (ZAR vs PTS), computed live.
+const BUDGET_PRESETS: BudgetPreset[] = [
   {
     key: "conservative",
     label: "Conservative",
-    description: "1,000 pts / day",
+    display_amount: "1,000",
     cap_amount: "1000",
     window_type: "rolling_24h",
   },
   {
     key: "standard",
     label: "Standard",
-    description: "10,000 pts / day",
+    display_amount: "10,000",
     cap_amount: "10000",
     window_type: "rolling_24h",
   },
   {
     key: "monthly",
     label: "Monthly cap",
-    description: "100,000 pts / month",
+    display_amount: "100,000",
     cap_amount: "100000",
     window_type: "calendar_month",
   },
   {
     key: "lifetime",
     label: "Lifetime cap",
-    description: "1,000,000 pts total",
+    display_amount: "1,000,000",
     cap_amount: "1000000",
     window_type: "lifetime",
   },
 ];
 
-const CASHBACK_PRESETS: BudgetPreset[] = [
-  {
-    key: "conservative",
-    label: "Conservative",
-    description: "1,000 / day",
-    cap_amount: "1000",
-    window_type: "rolling_24h",
-  },
-  {
-    key: "standard",
-    label: "Standard",
-    description: "10,000 / day",
-    cap_amount: "10000",
-    window_type: "rolling_24h",
-  },
-  {
-    key: "monthly",
-    label: "Monthly cap",
-    description: "100,000 / month",
-    cap_amount: "100000",
-    window_type: "calendar_month",
-  },
-  {
-    key: "lifetime",
-    label: "Lifetime cap",
-    description: "1,000,000 total",
-    cap_amount: "1000000",
-    window_type: "lifetime",
-  },
-];
+/** Render a preset's description with the derived reward-currency unit. */
+function presetDescription(preset: BudgetPreset, unit: string): string {
+  if (preset.window_type === "lifetime") {
+    return `${preset.display_amount} ${unit} total`;
+  }
+  const period = preset.window_type === "calendar_month" ? "month" : "day";
+  return `${preset.display_amount} ${unit} / ${period}`;
+}
 
 interface FormState {
   name: string;
@@ -158,6 +139,9 @@ interface FormState {
   referee_reward_value: string;
   reward_type: Rule["reward_type"];
   reward_value: string;
+  // Financial currency for a cashback reward. Ignored (and not sent) when
+  // reward_type === "points". Defaults to the tenant's first financial ccy.
+  reward_currency: string;
   stop_after_n_triggers: string;
   resets_after_trigger: boolean;
   // Budget section ---------------------------------------------------
@@ -189,6 +173,7 @@ const INITIAL: FormState = {
   referee_reward_value: "",
   reward_type: "points",
   reward_value: "",
+  reward_currency: "",
   stop_after_n_triggers: "",
   resets_after_trigger: true,
   budget_enabled: false,
@@ -248,13 +233,12 @@ function summarise(form: FormState): string {
   return `Campaign type: ${form.rule_type}. ${reward}.`;
 }
 
-function summariseBudget(form: FormState): string {
+function summariseBudget(form: FormState, budgetCurrency: string): string {
   if (!form.budget_enabled) {
     return "No per-campaign budget — campaign relies on the tenant-wide budget if set, else runs uncapped.";
   }
   const cap = form.budget_cap_amount || "?";
-  const unit = form.reward_type === "points" ? "pts" : "(reward units)";
-  return `Cap ${cap} ${unit} per ${WINDOW_LABEL[form.budget_window_type]}.`;
+  return `Cap ${cap} ${budgetCurrency} per ${WINDOW_LABEL[form.budget_window_type]}.`;
 }
 
 /** Repeatable editor for a composite rule's >= 2 sub-conditions (WAL-75). */
@@ -349,16 +333,22 @@ function ConditionsEditor({
 export function CreateCampaignDialog({
   tenantId,
   services,
+  financialCurrencies,
+  pointsCurrency,
   trigger,
 }: {
   tenantId: string;
   services: Service[];
+  financialCurrencies: string[];
+  pointsCurrency: string;
   trigger: React.ReactNode;
 }) {
   const defaultTxn = services[0]?.code ?? INITIAL.transaction_type;
+  const defaultCurrency = financialCurrencies[0] ?? "";
   const initialWithService: FormState = {
     ...INITIAL,
     transaction_type: defaultTxn,
+    reward_currency: defaultCurrency,
     conditions: INITIAL.conditions.map((c) => ({
       ...c,
       transaction_type: defaultTxn,
@@ -392,12 +382,19 @@ export function CreateCampaignDialog({
       budget_window_type: preset.window_type,
     }));
 
-  const presets = form.reward_type === "points" ? POINTS_PRESETS : CASHBACK_PRESETS;
+  // The inline budget's currency is DERIVED from the reward, never a
+  // separate input: cashback → the chosen financial currency, points → PTS.
+  const budgetCurrency =
+    form.reward_type === "cashback" ? form.reward_currency : pointsCurrency;
 
   const onSubmit = async (status: "active" | "draft") => {
     setErrorBanner(null);
     if (!form.name || !form.reward_value) {
       setErrorBanner("Name and reward value are required.");
+      return;
+    }
+    if (form.reward_type === "cashback" && !form.reward_currency) {
+      setErrorBanner("Cashback campaigns need a reward currency.");
       return;
     }
     // Client-side guardrails mirroring the backend validator; the backend
@@ -487,6 +484,10 @@ export function CreateCampaignDialog({
             : undefined,
         reward_type: form.reward_type,
         reward_value: form.reward_value,
+        // Cashback carries the chosen financial currency; points MUST omit
+        // it (the backend 422s a currency on a points rule).
+        reward_currency:
+          form.reward_type === "cashback" ? form.reward_currency : undefined,
         stop_after_n_triggers: form.stop_after_n_triggers
           ? Number(form.stop_after_n_triggers)
           : undefined,
@@ -808,9 +809,20 @@ export function CreateCampaignDialog({
                 <div className="mt-1">
                   <Select
                     value={form.reward_type}
-                    onValueChange={(v) =>
-                      update("reward_type", v as Rule["reward_type"])
-                    }
+                    onValueChange={(v) => {
+                      const next = v as Rule["reward_type"];
+                      // Cashback needs a financial currency; seed the default
+                      // the moment the operator switches so the derived budget
+                      // labels have a unit to show.
+                      setForm((prev) => ({
+                        ...prev,
+                        reward_type: next,
+                        reward_currency:
+                          next === "cashback" && !prev.reward_currency
+                            ? defaultCurrency
+                            : prev.reward_currency,
+                      }));
+                    }}
                   >
                     <SelectTrigger id="reward-type">
                       <SelectValue />
@@ -832,6 +844,35 @@ export function CreateCampaignDialog({
                   className="mt-1"
                 />
               </div>
+              {/* Reward currency — only for cashback; points are always PTS. */}
+              {form.reward_type === "cashback" && (
+                <div>
+                  <Label htmlFor="reward-currency">Reward currency</Label>
+                  <div className="mt-1">
+                    <Select
+                      value={form.reward_currency}
+                      onValueChange={(v) => update("reward_currency", v)}
+                      disabled={financialCurrencies.length === 0}
+                    >
+                      <SelectTrigger id="reward-currency">
+                        <SelectValue placeholder="Choose a currency…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {financialCurrencies.map((code) => (
+                          <SelectItem key={code} value={code}>
+                            {code}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {financialCurrencies.length === 0 && (
+                    <p className="mt-1 text-[11px] text-[--color-text-3]">
+                      No financial currencies — add one in /instruments first.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="col-span-2">
                 <Label htmlFor="stop-after">
                   Stop after N triggers (0 = unlimited)
@@ -877,7 +918,7 @@ export function CreateCampaignDialog({
                   <div>
                     <Label>Preset</Label>
                     <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {presets.map((preset) => {
+                      {BUDGET_PRESETS.map((preset) => {
                         const active = form.budget_preset === preset.key;
                         return (
                           <button
@@ -893,7 +934,7 @@ export function CreateCampaignDialog({
                           >
                             <div className="text-xs font-semibold">{preset.label}</div>
                             <div className="mt-0.5 text-[11px] text-muted-foreground">
-                              {preset.description}
+                              {presetDescription(preset, budgetCurrency)}
                             </div>
                           </button>
                         );
@@ -917,7 +958,9 @@ export function CreateCampaignDialog({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label htmlFor="budget-cap">Cap amount</Label>
+                      <Label htmlFor="budget-cap">
+                        Cap amount ({budgetCurrency})
+                      </Label>
                       <Input
                         id="budget-cap"
                         value={form.budget_cap_amount}
@@ -966,7 +1009,7 @@ export function CreateCampaignDialog({
               </div>
               <div className="flex items-start gap-2">
                 <PiggyBank className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-                <span>{summariseBudget(form)}</span>
+                <span>{summariseBudget(form, budgetCurrency)}</span>
               </div>
             </div>
 

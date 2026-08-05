@@ -368,6 +368,10 @@ export interface CreateRulePayload {
   referee_reward_value?: string;
   reward_type: Rule["reward_type"];
   reward_value: string;
+  // Financial currency for a cashback reward (3-char ISO 4217). REQUIRED
+  // when reward_type === "cashback"; MUST be omitted for points (the
+  // backend 422s a currency on a points rule).
+  reward_currency?: string;
   stop_after_n_triggers?: number;
   resets_after_trigger?: boolean;
 }

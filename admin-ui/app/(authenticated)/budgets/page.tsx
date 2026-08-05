@@ -5,8 +5,9 @@
 import { PiggyBank, Plus } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
-import { listBudgets } from "@/lib/api-endpoints";
+import { listBudgets, listInstruments } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
+import type { Instrument } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -32,13 +33,22 @@ export default async function BudgetsPage() {
   }
 
   let entries: Awaited<ReturnType<typeof listBudgets>> = [];
+  let instruments: Instrument[] = [];
   let error: ApiError | null = null;
   try {
-    entries = await listBudgets(activeTenantId);
+    [entries, instruments] = await Promise.all([
+      listBudgets(activeTenantId),
+      listInstruments(activeTenantId, "active"),
+    ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
   }
+
+  // Every instrument code is a valid budget currency (PTS + each financial
+  // currency). Fall back to PTS so the dialog always has one option.
+  const currencies = instruments.map((i) => i.code);
+  if (currencies.length === 0) currencies.push("PTS");
 
   return (
     <div>
@@ -48,6 +58,7 @@ export default async function BudgetsPage() {
         actions={
           <CreateBudgetDialog
             tenantId={activeTenantId}
+            currencies={currencies}
             trigger={
               <button
                 type="button"

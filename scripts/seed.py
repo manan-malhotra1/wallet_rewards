@@ -1089,6 +1089,104 @@ async def _get_or_create_p2p_charges(session: AsyncSession, tenant: Tenant) -> N
         print("  + P2P charges: R2.50 fee, R5-R10000 limit (default)")
 
 
+async def _get_or_create_partner_movement_charges(
+    session: AsyncSession, tenant: Tenant
+) -> None:
+    """Fail-closed config so partner-API fund/withdraw work out of the box (invariant #12).
+
+    The external partner `fund` / `withdraw` endpoints (api-key + HMAC) still run
+    through `require_pricing_and_limits` for the TARGET user's type. Operator
+    movements carry no fee, but invariant #12 forbids a silent zero-fee
+    fall-through, so an explicit zero-fee pricing row + a wide limit row are seeded
+    per service at the NULL-user_type default (any user type resolves them).
+    Idempotent.
+    """
+    added: list[str] = []
+    for txn_type in ("fund", "withdraw"):
+        exists = (
+            await session.execute(
+                select(PricingConfig).where(
+                    PricingConfig.tenant_id == tenant.id,
+                    PricingConfig.transaction_type == txn_type,
+                    PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                    PricingConfig.currency == "ZAR",
+                    PricingConfig.user_type.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            session.add(
+                PricingConfig(
+                    tenant_id=tenant.id,
+                    transaction_type=txn_type,
+                    account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                    currency="ZAR",
+                    fixed_fee=Decimal("0"),  # explicit zero fee (not an implicit default)
+                )
+            )
+            session.add(
+                LimitConfig(
+                    tenant_id=tenant.id,
+                    transaction_type=txn_type,
+                    account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                    currency="ZAR",
+                    min_amount=Decimal("1"),
+                    max_amount=Decimal("1000000"),
+                )
+            )
+            added.append(txn_type)
+    if added:
+        await session.commit()
+        print(
+            f"  + Partner {'/'.join(added)} charges: R0 fee, R1-R1,000,000 limit (default)"
+        )
+
+
+async def _get_or_create_redemption_charges(
+    session: AsyncSession, tenant: Tenant
+) -> None:
+    """Fail-closed config so points redemption works out of the box (invariant #12).
+
+    `initiate_redemption` runs `require_pricing_and_limits` scoped to the POINTS
+    account (currency PTS), NOT the financial wallet. An explicit zero-fee pricing
+    row + a wide points-limit row satisfy the gate; the real points-overdraft check
+    is redemption's own `points_account` lock. NULL user_type default. Idempotent.
+    """
+    exists = (
+        await session.execute(
+            select(PricingConfig).where(
+                PricingConfig.tenant_id == tenant.id,
+                PricingConfig.transaction_type == "redemption",
+                PricingConfig.account_type == ACCOUNT_TYPE_POINTS,
+                PricingConfig.currency == "PTS",
+                PricingConfig.user_type.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        session.add(
+            PricingConfig(
+                tenant_id=tenant.id,
+                transaction_type="redemption",
+                account_type=ACCOUNT_TYPE_POINTS,
+                currency="PTS",
+                fixed_fee=Decimal("0"),  # explicit zero fee (not an implicit default)
+            )
+        )
+        session.add(
+            LimitConfig(
+                tenant_id=tenant.id,
+                transaction_type="redemption",
+                account_type=ACCOUNT_TYPE_POINTS,
+                currency="PTS",
+                min_amount=Decimal("1"),
+                max_amount=Decimal("1000000"),
+            )
+        )
+        await session.commit()
+        print("  + Redemption charges: R0 fee, 1-1,000,000 PTS limit (default)")
+
+
 # System principal used as the audit actor for seed-time treasury operations.
 _SEED_ADMIN = AdminPrincipal(id="seed-script", username="seed", roles=frozenset())
 
@@ -1378,6 +1476,8 @@ async def seed() -> None:
         await _get_or_create_cashout_charges(session, tenant)
         await _get_or_create_change_pin_charges(session, tenant)
         await _get_or_create_p2p_charges(session, tenant)
+        await _get_or_create_partner_movement_charges(session, tenant)
+        await _get_or_create_redemption_charges(session, tenant)
 
         # Phase C — sample external source + reward rules. The shared
         # secret is deterministic in dev so the mobile-simulator's env

@@ -49,10 +49,11 @@ Verify: `curl -s http://localhost:8000/healthz` → `{"status":"ok"}`.
 `make check` = alembic check + ruff + mypy; `make test` = pytest (slow — one run at a time,
 see the shared-test-DB note in §7).
 
-`make seed` configures **every user-facing money service** with an explicit pricing + limit
-config (P2P, cash-in, cash-out, airtime, change-PIN, merchant-cash-in) so nothing hits the
-fail-closed gate (invariant #12 → 422). It also seeds commission (cash-in) + a 15% fee/commission
-tax, and three reward rules (first-fund, 3-P2P milestone, referral).
+`make seed` configures **every service** with an explicit pricing + limit config so nothing hits
+the fail-closed gate (invariant #12 → 422): P2P, cash-in, cash-out, airtime, change-PIN,
+merchant-cash-in, the partner-API `fund`/`withdraw` (ZAR wallet), and `redemption` (PTS points).
+It also seeds commission (cash-in) + a 15% fee/commission tax, and three reward rules (first-fund,
+3-P2P milestone, referral).
 
 **Seeded end-users** (all PIN **`1234`**):
 | Who | Phone | Type |

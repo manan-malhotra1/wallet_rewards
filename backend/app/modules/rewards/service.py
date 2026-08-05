@@ -422,6 +422,23 @@ async def issue_cashback_reward(
     user_wallet = await _find_user_financial_wallet(session, tenant_id, user_id, currency)
     system_inflow = await _get_or_create_system_cash_inflow(session, tenant_id, currency)
 
+    # Phase G.1 parity with points — cashback is REAL money out of the operator
+    # cash float, so it MUST be budget-checked before the ledger write (this is
+    # the primary defence against a campaign draining the float). Budgets are
+    # currency-scoped, so a ZAR budget (tenant- or rule-scoped) caps cashback
+    # independently of any PTS points budget. Locks matching budget rows FOR
+    # UPDATE; raises BudgetExceeded on breach. No multiplier applies to cashback,
+    # so the configured `amount` is what's checked and charged.
+    from app.modules.budgets.service import check_budget_available
+
+    await check_budget_available(
+        session,
+        tenant_id=tenant_id,
+        rule_id=rule_id,
+        currency=currency,
+        amount=amount,
+    )
+
     # Deterministic key → a replay hits post_transaction's idempotency guard
     # rather than writing a second money transaction.
     idempotency_key = f"cashback:{rule_id}:{user_id}:{triggering_event_id}"

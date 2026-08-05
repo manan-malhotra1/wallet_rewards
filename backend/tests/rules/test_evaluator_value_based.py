@@ -1,12 +1,17 @@
 """Value-based rewards.
 
-Drives the engine via the public events/external HTTP path so the
-candidate query + dispatcher + branch are all exercised end-to-end.
+Drives the engine through the INTERNAL wallet-outbox path — a direct
+`evaluate_and_issue_firings` call shaped like `reward_outbox` rows
+(`source_key="internal:wallet"`) — because `test_tenant` is a `both`-mode
+tenant, where rewards come from the wallet outbox and external HTTP ingest is
+correctly rejected (`wrong_mode`). The rule itself is still created via the
+public admin API.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -14,6 +19,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.events.schemas import NormalisedEvent
+from app.modules.events.service import evaluate_and_issue_firings
 from app.shared.models import (
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
@@ -43,15 +50,6 @@ async def _ensure_system_points(session: AsyncSession, tenant: Tenant) -> None:
         await session.commit()
 
 
-async def _register_source(client: AsyncClient, tenant: Tenant, key: str) -> None:
-    """Register the dev event source so subsequent ingest calls work."""
-    resp = await client.post(
-        "/api/v1/events/sources",
-        json={"tenant_id": str(tenant.id), "name": f"src-{key}", "source_key": key},
-    )
-    assert resp.status_code == 201, resp.text
-
-
 async def _create_value_based_rule(
     client: AsyncClient,
     tenant: Tenant,
@@ -77,18 +75,28 @@ async def _create_value_based_rule(
     assert resp.status_code == 201, resp.text
 
 
-def _event(*, tenant: Tenant, user: User, source_key: str, amount: str) -> dict:
-    """Build the RawExternalEvent body."""
-    return {
-        "event_id": uuid4().hex,
-        "source_key": source_key,
-        "tenant_id": str(tenant.id),
-        "user_id": str(user.id),
-        "transaction_type": "fund",
-        "amount": amount,
-        "currency": "ZAR",
-        "timestamp": datetime.now(UTC).isoformat(),
-    }
+async def _ingest(
+    session: AsyncSession, tenant: Tenant, user: User, *, amount: str, txn_type: str = "fund"
+) -> int:
+    """Drive one internal wallet event through the evaluator; return firings fired.
+
+    Mirrors how `reward_outbox` shapes an event for `evaluate_and_issue_firings`:
+    an `internal:wallet` source, a per-transaction event_id (idempotency key),
+    and no merchant.
+    """
+    event = NormalisedEvent(
+        event_id=uuid4().hex,
+        source_key="internal:wallet",
+        tenant_id=tenant.id,
+        user_id=user.id,
+        transaction_type=txn_type,
+        amount=Decimal(amount),
+        currency="ZAR",
+        merchant_id=None,
+        timestamp=datetime.now(UTC),
+    )
+    firings = await evaluate_and_issue_firings(session, event)
+    return len(firings)
 
 
 @pytest.mark.asyncio
@@ -100,7 +108,6 @@ async def test_value_based_fires_when_amount_meets_threshold(
 ) -> None:
     """Verify a customer earns a reward when a transaction meets the minimum amount"""
     await _ensure_system_points(db_session, test_tenant)
-    await _register_source(async_client, test_tenant, "vb-src-1")
     await _create_value_based_rule(async_client, test_tenant, min_amount="100")
 
     # Also need the user's points account so issuance can credit.
@@ -114,13 +121,7 @@ async def test_value_based_fires_when_amount_meets_threshold(
     )
     await db_session.commit()
 
-    resp = await async_client.post(
-        "/api/v1/events/external",
-        json=_event(tenant=test_tenant, user=test_user, source_key="vb-src-1", amount="500"),
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["outcome"] == "processed"
-    assert len(resp.json()["rules_fired"]) == 1
+    assert await _ingest(db_session, test_tenant, test_user, amount="500") == 1
 
 
 @pytest.mark.asyncio
@@ -132,15 +133,9 @@ async def test_value_based_does_not_fire_below_threshold(
 ) -> None:
     """Verify a customer earns no reward when a transaction is below the minimum amount"""
     await _ensure_system_points(db_session, test_tenant)
-    await _register_source(async_client, test_tenant, "vb-src-2")
     await _create_value_based_rule(async_client, test_tenant, min_amount="100")
 
-    resp = await async_client.post(
-        "/api/v1/events/external",
-        json=_event(tenant=test_tenant, user=test_user, source_key="vb-src-2", amount="50"),
-    )
-    assert resp.status_code == 200
-    assert resp.json()["rules_fired"] == []
+    assert await _ingest(db_session, test_tenant, test_user, amount="50") == 0
 
 
 @pytest.mark.asyncio
@@ -152,7 +147,6 @@ async def test_value_based_stop_after_n_triggers(
 ) -> None:
     """Verify a value-based rule stops rewarding a customer after its trigger limit"""
     await _ensure_system_points(db_session, test_tenant)
-    await _register_source(async_client, test_tenant, "vb-src-3")
     await _create_value_based_rule(
         async_client, test_tenant, min_amount="100", stop_after_n_triggers=2
     )
@@ -166,13 +160,9 @@ async def test_value_based_stop_after_n_triggers(
     )
     await db_session.commit()
 
-    outcomes = []
-    for _ in range(3):
-        resp = await async_client.post(
-            "/api/v1/events/external",
-            json=_event(tenant=test_tenant, user=test_user, source_key="vb-src-3", amount="500"),
-        )
-        outcomes.append(len(resp.json()["rules_fired"]))
+    outcomes = [
+        await _ingest(db_session, test_tenant, test_user, amount="500") for _ in range(3)
+    ]
     assert outcomes == [1, 1, 0]
 
 

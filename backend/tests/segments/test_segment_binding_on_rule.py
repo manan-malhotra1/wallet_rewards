@@ -1,8 +1,17 @@
-"""Segment-targeted rewards."""
+"""Segment-targeted rewards.
+
+Driven through the INTERNAL wallet-outbox path — a direct
+`evaluate_and_issue_firings` call shaped like `reward_outbox` rows
+(`source_key="internal:wallet"`) — because `test_tenant` is a `both`-mode
+tenant, where rewards come from the wallet outbox and external HTTP ingest is
+correctly rejected (`wrong_mode`). The segment + rule are still created via the
+public admin API.
+"""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -10,6 +19,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.events.schemas import NormalisedEvent
+from app.modules.events.service import evaluate_and_issue_firings
 from app.shared.models import (
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
@@ -41,18 +52,27 @@ async def _ensure_system_points(session: AsyncSession, tenant: Tenant) -> None:
         await session.commit()
 
 
-def _event(*, tenant: Tenant, user: User, source_key: str) -> dict:
-    """Canonical RawExternalEvent body."""
-    return {
-        "event_id": uuid4().hex,
-        "source_key": source_key,
-        "tenant_id": str(tenant.id),
-        "user_id": str(user.id),
-        "transaction_type": "fund",
-        "amount": "500",
-        "currency": "ZAR",
-        "timestamp": datetime.now(UTC).isoformat(),
-    }
+async def _ingest(session: AsyncSession, tenant: Tenant, user: User) -> int:
+    """Drive one internal wallet event through the evaluator; return firings fired.
+
+    Mirrors how `reward_outbox` shapes an event for `evaluate_and_issue_firings`:
+    an `internal:wallet` source, a per-transaction event_id, no merchant. Each
+    call uses a fresh event_id so a firing is never blocked by the idempotency
+    guard from a prior call.
+    """
+    event = NormalisedEvent(
+        event_id=uuid4().hex,
+        source_key="internal:wallet",
+        tenant_id=tenant.id,
+        user_id=user.id,
+        transaction_type="fund",
+        amount=Decimal("500"),
+        currency="ZAR",
+        merchant_id=None,
+        timestamp=datetime.now(UTC),
+    )
+    firings = await evaluate_and_issue_firings(session, event)
+    return len(firings)
 
 
 @pytest.mark.asyncio
@@ -66,17 +86,6 @@ async def test_segment_bound_rule_fires_only_for_members(
 ) -> None:
     """Verify a reward only applies to customers in the targeted segment"""
     await _ensure_system_points(db_session, test_tenant)
-
-    # Source + segment + rule with segment binding.
-    await async_client.post(
-        "/api/v1/events/sources",
-        headers=admin_auth_header,
-        json={
-            "tenant_id": str(test_tenant.id),
-            "name": "seg-src",
-            "source_key": "seg-src",
-        },
-    )
 
     seg_resp = await async_client.post(
         "/api/v1/segments",
@@ -104,19 +113,12 @@ async def test_segment_bound_rule_fires_only_for_members(
     rule.segment_id = segment_id
     await db_session.commit()
 
-    r1 = await async_client.post(
-        "/api/v1/events/external",
-        json=_event(tenant=test_tenant, user=test_user, source_key="seg-src"),
-    )
-    assert r1.json()["rules_fired"] == []
+    # Not a member yet → the segment-bound rule is skipped.
+    assert await _ingest(db_session, test_tenant, test_user) == 0
 
     # Add the user to the segment, fire another event for a clean
     # (user, rule, triggering_event_id) tuple → now fires.
     db_session.add(UserSegment(user_id=test_user.id, segment_id=segment_id))
     await db_session.commit()
 
-    r2 = await async_client.post(
-        "/api/v1/events/external",
-        json=_event(tenant=test_tenant, user=test_user, source_key="seg-src"),
-    )
-    assert len(r2.json()["rules_fired"]) == 1
+    assert await _ingest(db_session, test_tenant, test_user) == 1

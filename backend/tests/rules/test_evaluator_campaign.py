@@ -3,11 +3,20 @@
 Campaign rules fire once per user, only within
 [campaign_start_date, campaign_end_date]. Outside the window the rule
 is a no-op.
+
+Driven through the INTERNAL wallet-outbox path — a direct
+`evaluate_and_issue_firings` call shaped like `reward_outbox` rows
+(`source_key="internal:wallet"`, explicit per-event timestamp) — because
+`test_tenant` is a `both`-mode tenant, where rewards come from the wallet
+outbox and external HTTP ingest is correctly rejected (`wrong_mode`). The
+explicit timestamp lets each test place the event inside or outside the
+campaign window.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -15,6 +24,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.events.schemas import NormalisedEvent
+from app.modules.events.service import evaluate_and_issue_firings
 from app.shared.models import (
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
@@ -57,15 +68,6 @@ async def _user_points_account(session: AsyncSession, tenant: Tenant, user: User
     await session.commit()
 
 
-async def _register_source(client: AsyncClient, tenant: Tenant, key: str) -> None:
-    """Register the dev event source."""
-    resp = await client.post(
-        "/api/v1/events/sources",
-        json={"tenant_id": str(tenant.id), "name": f"src-{key}", "source_key": key},
-    )
-    assert resp.status_code == 201, resp.text
-
-
 async def _create_campaign_rule(
     client: AsyncClient,
     tenant: Tenant,
@@ -90,18 +92,26 @@ async def _create_campaign_rule(
     assert resp.status_code == 201, resp.text
 
 
-def _event_at(*, tenant: Tenant, user: User, source_key: str, when: datetime) -> dict:
-    """Build a RawExternalEvent with an explicit timestamp."""
-    return {
-        "event_id": uuid4().hex,
-        "source_key": source_key,
-        "tenant_id": str(tenant.id),
-        "user_id": str(user.id),
-        "transaction_type": "fund",
-        "amount": "500",
-        "currency": "ZAR",
-        "timestamp": when.isoformat(),
-    }
+async def _ingest(session: AsyncSession, tenant: Tenant, user: User, when: datetime) -> int:
+    """Drive one internal wallet event at `when`; return the number of firings.
+
+    Mirrors how `reward_outbox` shapes an event for `evaluate_and_issue_firings`:
+    an `internal:wallet` source, a per-transaction event_id, and an explicit
+    timestamp (which the campaign evaluator gates against the date window).
+    """
+    event = NormalisedEvent(
+        event_id=uuid4().hex,
+        source_key="internal:wallet",
+        tenant_id=tenant.id,
+        user_id=user.id,
+        transaction_type="fund",
+        amount=Decimal("500"),
+        currency="ZAR",
+        merchant_id=None,
+        timestamp=when,
+    )
+    firings = await evaluate_and_issue_firings(session, event)
+    return len(firings)
 
 
 @pytest.mark.asyncio
@@ -114,7 +124,6 @@ async def test_campaign_fires_when_inside_window(
     """Verify a customer earns a campaign reward during the campaign period"""
     await _ensure_system_points(db_session, test_tenant)
     await _user_points_account(db_session, test_tenant, test_user)
-    await _register_source(async_client, test_tenant, "camp-in")
 
     today = datetime.now(UTC).date()
     await _create_campaign_rule(
@@ -124,17 +133,7 @@ async def test_campaign_fires_when_inside_window(
         end=today + timedelta(days=2),
     )
 
-    resp = await async_client.post(
-        "/api/v1/events/external",
-        json=_event_at(
-            tenant=test_tenant,
-            user=test_user,
-            source_key="camp-in",
-            when=datetime.now(UTC),
-        ),
-    )
-    assert resp.status_code == 200, resp.text
-    assert len(resp.json()["rules_fired"]) == 1
+    assert await _ingest(db_session, test_tenant, test_user, datetime.now(UTC)) == 1
 
 
 @pytest.mark.asyncio
@@ -146,7 +145,6 @@ async def test_campaign_does_not_fire_outside_window(
 ) -> None:
     """Verify a customer earns no campaign reward before the campaign starts"""
     await _ensure_system_points(db_session, test_tenant)
-    await _register_source(async_client, test_tenant, "camp-out")
 
     # Campaign runs from yesterday onward, but the event is dated 5 days ago.
     await _create_campaign_rule(
@@ -156,17 +154,12 @@ async def test_campaign_does_not_fire_outside_window(
         end=datetime.now(UTC).date() + timedelta(days=30),
     )
 
-    resp = await async_client.post(
-        "/api/v1/events/external",
-        json=_event_at(
-            tenant=test_tenant,
-            user=test_user,
-            source_key="camp-out",
-            when=datetime.now(UTC) - timedelta(days=5),
-        ),
+    assert (
+        await _ingest(
+            db_session, test_tenant, test_user, datetime.now(UTC) - timedelta(days=5)
+        )
+        == 0
     )
-    assert resp.status_code == 200
-    assert resp.json()["rules_fired"] == []
 
 
 @pytest.mark.asyncio
@@ -179,7 +172,6 @@ async def test_campaign_fires_once_per_user(
     """Verify a customer earns a campaign reward only once"""
     await _ensure_system_points(db_session, test_tenant)
     await _user_points_account(db_session, test_tenant, test_user)
-    await _register_source(async_client, test_tenant, "camp-once")
 
     today = datetime.now(UTC).date()
     await _create_campaign_rule(
@@ -189,18 +181,9 @@ async def test_campaign_fires_once_per_user(
         end=today + timedelta(days=7),
     )
 
-    outcomes = []
-    for _ in range(2):
-        resp = await async_client.post(
-            "/api/v1/events/external",
-            json=_event_at(
-                tenant=test_tenant,
-                user=test_user,
-                source_key="camp-once",
-                when=datetime.now(UTC),
-            ),
-        )
-        outcomes.append(len(resp.json()["rules_fired"]))
+    outcomes = [
+        await _ingest(db_session, test_tenant, test_user, datetime.now(UTC)) for _ in range(2)
+    ]
     assert outcomes == [1, 0]
 
 

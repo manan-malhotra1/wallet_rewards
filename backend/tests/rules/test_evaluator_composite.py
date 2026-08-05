@@ -6,11 +6,14 @@ qualifying COMPLETED transactions of that transaction_type (each >=
 min_amount when set) reaches its count_threshold, counted within the current
 window (`user_rule_progress.window_start`).
 
-The engine is driven via the public events/external HTTP path so the
-candidate query (subquery on rule_conditions) + dispatcher + async evaluator
-are exercised end-to-end. Qualifying transactions are seeded directly on the
-`transactions` table — the durable, source-agnostic record the evaluator
-counts.
+The engine is driven through the INTERNAL wallet-outbox path — a direct
+`evaluate_and_issue_firings` call shaped like `reward_outbox` rows
+(`source_key="internal:wallet"`, explicit per-event timestamp) — because
+`test_tenant` is a `both`-mode tenant, where rewards come from the wallet
+outbox and external HTTP ingest is correctly rejected (`wrong_mode`).
+Qualifying transactions are seeded directly on the `transactions` table — the
+durable, source-agnostic record the composite evaluator counts — and the
+driving event's own amount is irrelevant to that counting.
 
 Note on structure: the admin JWT the fixture mints is short-lived, so each
 test performs its admin-authenticated calls promptly and batches direct-DB
@@ -28,6 +31,8 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.events.schemas import NormalisedEvent
+from app.modules.events.service import evaluate_and_issue_firings
 from app.shared.models import (
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     TXN_STATUS_COMPLETED,
@@ -40,15 +45,6 @@ from app.shared.models import (
     Transaction,
     User,
 )
-
-
-async def _register_source(client: AsyncClient, tenant: Tenant, key: str) -> None:
-    """Register the dev event source so ingest calls work (admin-only)."""
-    resp = await client.post(
-        "/api/v1/events/sources",
-        json={"tenant_id": str(tenant.id), "name": f"src-{key}", "source_key": key},
-    )
-    assert resp.status_code == 201, resp.text
 
 
 async def _create_composite_rule(
@@ -140,34 +136,33 @@ def _event(
     *,
     tenant: Tenant,
     user: User,
-    source_key: str,
     txn_type: str,
     when: datetime | None = None,
     event_id: str | None = None,
-) -> dict:
-    """Build a RawExternalEvent body that triggers composite re-evaluation.
+) -> NormalisedEvent:
+    """Build an internal wallet event that triggers composite re-evaluation.
 
+    Shaped like a `reward_outbox` row: `internal:wallet` source, no merchant.
     The event's own amount is irrelevant to composite counting (the rule
-    counts `transactions`, not the driving event) but must be > 0 to satisfy
-    the RawExternalEvent schema.
+    counts `transactions`, not the driving event); the transaction_type must
+    match a sub-condition so the composite rule is a candidate.
     """
-    return {
-        "event_id": event_id or uuid4().hex,
-        "source_key": source_key,
-        "tenant_id": str(tenant.id),
-        "user_id": str(user.id),
-        "transaction_type": txn_type,
-        "amount": "1",
-        "currency": "ZAR",
-        "timestamp": (when or datetime.now(UTC)).isoformat(),
-    }
+    return NormalisedEvent(
+        event_id=event_id or uuid4().hex,
+        source_key="internal:wallet",
+        tenant_id=tenant.id,
+        user_id=user.id,
+        transaction_type=txn_type,
+        amount=Decimal("1"),
+        currency="ZAR",
+        merchant_id=None,
+        timestamp=when or datetime.now(UTC),
+    )
 
 
-async def _ingest(client: AsyncClient, body: dict) -> dict:
-    """Send one event; return the parsed response body."""
-    resp = await client.post("/api/v1/events/external", json=body)
-    assert resp.status_code == 200, resp.text
-    return resp.json()
+async def _ingest(session: AsyncSession, event: NormalisedEvent) -> list:
+    """Drive one internal wallet event through the evaluator; return firings."""
+    return await evaluate_and_issue_firings(session, event)
 
 
 async def _reward_count(session: AsyncSession, rule_id: str, user: User) -> int:
@@ -203,7 +198,6 @@ async def test_composite_and_fires_when_all_conditions_met(
     test_user: User,
 ) -> None:
     """Verify a customer earns a reward when every condition of a combined rule is met"""
-    await _register_source(async_client, test_tenant, "cmp-and-1")
     await _create_composite_rule(
         async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
     )
@@ -216,11 +210,11 @@ async def test_composite_and_fires_when_all_conditions_met(
             _txn(test_tenant, test_user, txn_type="send", amount="100"),
         ],
     )
-    body = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-and-1", txn_type="fund"),
+    firings = await _ingest(
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
-    assert len(body["rules_fired"]) == 1
+    assert len(firings) == 1
 
 
 @pytest.mark.asyncio
@@ -231,7 +225,6 @@ async def test_composite_and_does_not_fire_when_one_condition_below(
     test_user: User,
 ) -> None:
     """Verify a customer earns no reward when only some conditions of a combined rule are met"""
-    await _register_source(async_client, test_tenant, "cmp-and-2")
     await _create_composite_rule(
         async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
     )
@@ -241,11 +234,11 @@ async def test_composite_and_does_not_fire_when_one_condition_below(
         test_user,
         txns=[_txn(test_tenant, test_user, txn_type="fund", amount="100")],
     )
-    body = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-and-2", txn_type="fund"),
+    firings = await _ingest(
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
-    assert body["rules_fired"] == []
+    assert firings == []
 
 
 @pytest.mark.asyncio
@@ -256,7 +249,6 @@ async def test_composite_condition_respects_min_amount_and_count(
     test_user: User,
 ) -> None:
     """Verify small transactions do not count toward a combined rule's spending condition"""
-    await _register_source(async_client, test_tenant, "cmp-min")
     await _create_composite_rule(
         async_client,
         test_tenant,
@@ -278,10 +270,10 @@ async def test_composite_condition_respects_min_amount_and_count(
         ],
     )
     first = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-min", txn_type="fund"),
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
-    assert first["rules_fired"] == []  # only 1 qualifying fund, need 2
+    assert first == []  # only 1 qualifying fund, need 2
 
     # Add a second qualifying fund → now AND is satisfied.
     await _seed(
@@ -292,10 +284,10 @@ async def test_composite_condition_respects_min_amount_and_count(
         with_points_accounts=False,
     )
     second = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-min", txn_type="fund"),
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
-    assert len(second["rules_fired"]) == 1
+    assert len(second) == 1
 
 
 # -----------------------------------------------------------------------------
@@ -311,7 +303,6 @@ async def test_composite_or_fires_when_any_condition_met(
     test_user: User,
 ) -> None:
     """Verify a customer earns a reward when any one condition of a combined rule is met"""
-    await _register_source(async_client, test_tenant, "cmp-or-1")
     await _create_composite_rule(
         async_client, test_tenant, operator="OR", conditions=_TWO_CONDS
     )
@@ -321,11 +312,11 @@ async def test_composite_or_fires_when_any_condition_met(
         test_user,
         txns=[_txn(test_tenant, test_user, txn_type="fund", amount="100")],
     )
-    body = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-or-1", txn_type="fund"),
+    firings = await _ingest(
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
-    assert len(body["rules_fired"]) == 1
+    assert len(firings) == 1
 
 
 @pytest.mark.asyncio
@@ -336,7 +327,6 @@ async def test_composite_or_does_not_fire_when_none_met(
     test_user: User,
 ) -> None:
     """Verify a customer earns no reward when no condition of a combined rule is met"""
-    await _register_source(async_client, test_tenant, "cmp-or-2")
     await _create_composite_rule(
         async_client,
         test_tenant,
@@ -356,11 +346,11 @@ async def test_composite_or_does_not_fire_when_none_met(
             _txn(test_tenant, test_user, txn_type="send", amount="100"),
         ],
     )
-    body = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-or-2", txn_type="fund"),
+    firings = await _ingest(
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
-    assert body["rules_fired"] == []
+    assert firings == []
 
 
 # -----------------------------------------------------------------------------
@@ -376,7 +366,6 @@ async def test_composite_idempotent_re_evaluation(
     test_user: User,
 ) -> None:
     """Verify a repeated event never rewards a combined rule twice"""
-    await _register_source(async_client, test_tenant, "cmp-idem")
     rule_id = await _create_composite_rule(
         async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
     )
@@ -392,15 +381,15 @@ async def test_composite_idempotent_re_evaluation(
     ev = _event(
         tenant=test_tenant,
         user=test_user,
-        source_key="cmp-idem",
         txn_type="fund",
         event_id="fixed-composite-event",
     )
-    first = await _ingest(async_client, ev)
-    second = await _ingest(async_client, ev)  # same event_id → replay
+    first = await _ingest(db_session, ev)
+    await _ingest(db_session, ev)  # same event_id → replay, guarded by reward_events
 
-    assert len(first["rules_fired"]) == 1
-    assert second["outcome"] == "duplicate"
+    assert len(first) == 1
+    # The reward_events unique index (user, rule, triggering_event_id) is the
+    # idempotency guard: a replayed event never writes a second reward row.
     assert await _reward_count(db_session, rule_id, test_user) == 1
 
 
@@ -412,7 +401,6 @@ async def test_composite_reset_opens_new_window_and_fires_again(
     test_user: User,
 ) -> None:
     """Verify a customer can earn a resetting combined-rule reward again in a new cycle"""
-    await _register_source(async_client, test_tenant, "cmp-reset")
     rule_id = await _create_composite_rule(
         async_client,
         test_tenant,
@@ -431,16 +419,15 @@ async def test_composite_reset_opens_new_window_and_fires_again(
         ],
     )
     first = await _ingest(
-        async_client,
+        db_session,
         _event(
             tenant=test_tenant,
             user=test_user,
-            source_key="cmp-reset",
             txn_type="fund",
             when=t0 + timedelta(minutes=1),
         ),
     )
-    assert len(first["rules_fired"]) == 1
+    assert len(first) == 1
 
     # New qualifying txns AFTER the reset window origin.
     t1 = t0 + timedelta(hours=1)
@@ -455,16 +442,15 @@ async def test_composite_reset_opens_new_window_and_fires_again(
         with_points_accounts=False,
     )
     second = await _ingest(
-        async_client,
+        db_session,
         _event(
             tenant=test_tenant,
             user=test_user,
-            source_key="cmp-reset",
             txn_type="fund",
             when=t1 + timedelta(minutes=1),
         ),
     )
-    assert len(second["rules_fired"]) == 1
+    assert len(second) == 1
     assert await _reward_count(db_session, rule_id, test_user) == 2
 
 
@@ -476,7 +462,6 @@ async def test_composite_no_reset_is_one_shot(
     test_user: User,
 ) -> None:
     """Verify a one-time combined-rule reward is earned only once"""
-    await _register_source(async_client, test_tenant, "cmp-noreset")
     rule_id = await _create_composite_rule(
         async_client,
         test_tenant,
@@ -494,15 +479,15 @@ async def test_composite_no_reset_is_one_shot(
         ],
     )
     first = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-noreset", txn_type="fund"),
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
     second = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-noreset", txn_type="fund"),
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
-    assert len(first["rules_fired"]) == 1
-    assert second["rules_fired"] == []
+    assert len(first) == 1
+    assert second == []
     assert await _reward_count(db_session, rule_id, test_user) == 1
 
 
@@ -514,7 +499,6 @@ async def test_composite_stop_after_n_triggers(
     test_user: User,
 ) -> None:
     """Verify a combined rule stops rewarding a customer after its trigger limit"""
-    await _register_source(async_client, test_tenant, "cmp-stop")
     rule_id = await _create_composite_rule(
         async_client,
         test_tenant,
@@ -531,11 +515,10 @@ async def test_composite_stop_after_n_triggers(
         txns=[_txn(test_tenant, test_user, txn_type="fund", amount="100", when=t0)],
     )
     first = await _ingest(
-        async_client,
+        db_session,
         _event(
             tenant=test_tenant,
             user=test_user,
-            source_key="cmp-stop",
             txn_type="fund",
             when=t0 + timedelta(minutes=1),
         ),
@@ -550,17 +533,16 @@ async def test_composite_stop_after_n_triggers(
         with_points_accounts=False,
     )
     second = await _ingest(
-        async_client,
+        db_session,
         _event(
             tenant=test_tenant,
             user=test_user,
-            source_key="cmp-stop",
             txn_type="fund",
             when=t1 + timedelta(minutes=1),
         ),
     )
-    assert len(first["rules_fired"]) == 1
-    assert second["rules_fired"] == []
+    assert len(first) == 1
+    assert second == []
     assert await _reward_count(db_session, rule_id, test_user) == 1
 
 
@@ -577,7 +559,6 @@ async def test_composite_segment_bound_skips_non_member(
     test_user: User,
 ) -> None:
     """Verify a combined-rule reward skips a customer outside the targeted segment"""
-    await _register_source(async_client, test_tenant, "cmp-seg")
     rule_id = await _create_composite_rule(
         async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
     )
@@ -597,11 +578,11 @@ async def test_composite_segment_bound_skips_non_member(
             _txn(test_tenant, test_user, txn_type="send", amount="100"),
         ],
     )
-    body = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-seg", txn_type="fund"),
+    firings = await _ingest(
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
-    assert body["rules_fired"] == []
+    assert firings == []
 
 
 @pytest.mark.asyncio
@@ -612,7 +593,6 @@ async def test_composite_bonus_multiplier_scales_payout(
     test_user: User,
 ) -> None:
     """Verify an active bonus multiplier increases a combined rule's reward"""
-    await _register_source(async_client, test_tenant, "cmp-mult")
     rule_id = await _create_composite_rule(
         async_client,
         test_tenant,
@@ -642,11 +622,11 @@ async def test_composite_bonus_multiplier_scales_payout(
             _txn(test_tenant, test_user, txn_type="send", amount="100"),
         ],
     )
-    body = await _ingest(
-        async_client,
-        _event(tenant=test_tenant, user=test_user, source_key="cmp-mult", txn_type="fund"),
+    firings = await _ingest(
+        db_session,
+        _event(tenant=test_tenant, user=test_user, txn_type="fund"),
     )
-    assert len(body["rules_fired"]) == 1
+    assert len(firings) == 1
 
     reward = (
         await db_session.execute(

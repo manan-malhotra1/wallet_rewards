@@ -40,22 +40,37 @@ Postgres: `localhost:5432` (`wallet` / `wallet` / db `wallet_platform`).
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env                               # defaults are fine for local (OTP_DEV_RETURN=true)
+cp .env.example .env                               # defaults are fine for local (incl. SIMULATOR_DEV_MODE=true, needed by the :3002 simulator)
 alembic upgrade head
-make seed                                           # test tenant, users, services, pricing, rules
+make seed                                           # tenant, users, services, pricing+limits, commission, tax, rules
 make dev                                            # uvicorn --reload on :8000
 ```
 Verify: `curl -s http://localhost:8000/healthz` → `{"status":"ok"}`.
 `make check` = alembic check + ruff + mypy; `make test` = pytest (slow — one run at a time,
 see the shared-test-DB note in §7).
 
-**Seeded test accounts** (all PIN **`1234`**):
+`make seed` configures **every user-facing money service** with an explicit pricing + limit
+config (P2P, cash-in, cash-out, airtime, change-PIN, merchant-cash-in) so nothing hits the
+fail-closed gate (invariant #12 → 422). It also seeds commission (cash-in) + a 15% fee/commission
+tax, and three reward rules (first-fund, 3-P2P milestone, referral).
+
+**Seeded end-users** (all PIN **`1234`**):
 | Who | Phone | Type |
 |---|---|---|
 | Alice | `+27825550001` | consumer |
 | Bob | `+27825550002` | consumer |
 | Grace | `+27825558001` | agent (cash-in) |
-Admin UI login (local dev): **`admin-test@example.test`** / **`admin-test-pass`**.
+| Cash-in merchant | `+27825557001` | merchant |
+| Airtime merchant | `+27825559001` | merchant |
+
+**Admin logins** (Keycloak, both password **`admin-test-pass`**) — two distinct admins so
+maker-checker works out of the box:
+| User | Role | Use |
+|---|---|---|
+| `admin-test` | platform-admin + all approver roles | the **maker** (propose) |
+| `admin-approver` | platform-admin + all approver roles | the **checker** (approve — must differ from maker) |
+
+Sign in with either at the admin UI (username or `<user>@example.test`).
 
 ## 3. Admin UI
 
@@ -68,6 +83,36 @@ npm run dev                                          # :3000
 Open `http://localhost:3000`, sign in with the admin dev creds above.
 `.env.local` is git-ignored; the example carries the fixed local-dev Keycloak client secret, so no manual paste is needed.
 `npm test` runs the Vitest suite.
+
+## 3b. Mobile simulator (dev-only web harness, :3002)
+
+A Next.js harness that drives the backend as each seeded end-user — send P2P, cash-in/out,
+airtime, change-PIN, trigger external reward events, and exercise the partner APIs — without a
+phone. It needs the backend running with **`SIMULATOR_DEV_MODE=true`** (set by `cp .env.example .env`
+in §2; it gates the `/api/v1/events/sim-*` routes, else the UI shows "Sim bootstrap failed (404)").
+
+```bash
+cd mobile-simulator
+cp .env.local.example .env.local                    # copy-and-go: matches make seed (event-source secret, dev API key)
+npm install
+npm run dev                                          # :3002
+```
+Open `http://localhost:3002`. It lists all five seeded users (Alice, Bob, Grace/Agent, Airtime
+merchant, Cash-in merchant); log each in with PIN **`1234`**.
+
+## One command for the whole stack — `scripts/dev.sh`
+
+Instead of starting each service by hand, use the launcher (starts/stops/restarts/inspects
+everything; PIDs + logs under `.run/`, gitignored):
+```bash
+scripts/dev.sh start          # docker → backend → admin-ui → sim (all)
+scripts/dev.sh status         # health table of all 7 services
+scripts/dev.sh restart backend
+scripts/dev.sh logs sim
+scripts/dev.sh stop           # stop everything (docker compose down — keeps data)
+```
+It's path-portable (resolves its own repo root), so run it from any checkout — but that checkout
+needs its venv (§2) + `npm install` (§3, §3b) done first.
 
 ## 4. Mobile — the connectivity rule (read this first)
 
@@ -166,6 +211,14 @@ The EAS `preview` environment is SHARED by `preview` (Android APK) and
 - **`npm`/EAS `EACCES … _cacache`:** root-owned npm cache — `sudo chown -R "$(whoami)" ~/.npm`.
 - **Reset a user's PIN in dev:** `UPDATE users SET pin_hash=<bcrypt('1234')> WHERE …` (use
   `app.auth.hashing.hash_pin` to generate the hash — the app uses `bcrypt`, not passlib).
+- **Start clean / fresh checkout on a machine that ran this repo before:** the compose project
+  name is derived from the `sasai-wallet-infra/` dir, so a *second* clone **reuses the same named
+  volumes** (`sasai-wallet-infra_postgres-data` …) and inherits the old DB. For a truly fresh DB
+  run `docker compose -f sasai-wallet-infra/docker-compose.yml down -v` first (deletes the
+  volumes), then bring it up + re-run `bootstrap_keycloak.py` + `alembic upgrade head` + `make seed`.
+- **"No user found" in the admin UI right after a volume wipe:** wiping + re-seeding mints a **new
+  tenant id**, but the browser still holds the old `sasai_active_tenant` cookie → tenant-scoped
+  lookups 404. Re-pick the tenant in the top-left switcher (or clear the site's cookies).
 
 ## 8. Quick "is it all up?" check
 

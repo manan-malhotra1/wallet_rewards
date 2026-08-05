@@ -1046,6 +1046,49 @@ async def _get_or_create_change_pin_charges(session: AsyncSession, tenant: Tenan
         print("  + Change-PIN charges: R0 fee, limitless (gate-only) limit")
 
 
+async def _get_or_create_p2p_charges(session: AsyncSession, tenant: Tenant) -> None:
+    """Fail-closed config so P2P transfers work out of the box (invariant #12).
+
+    P2P is subscriber-initiated; its pricing + limit configs sit at the
+    NULL-user_type default so any consumer resolves them. A small non-zero fee is
+    seeded (rather than zero) so the local stack exercises the full charge + tax
+    assembly — the tenant's 15% fee-tax applies on top of this fee. Idempotent.
+    """
+    exists = (
+        await session.execute(
+            select(PricingConfig).where(
+                PricingConfig.tenant_id == tenant.id,
+                PricingConfig.transaction_type == "p2p",
+                PricingConfig.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                PricingConfig.currency == "ZAR",
+                PricingConfig.user_type.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        session.add(
+            PricingConfig(
+                tenant_id=tenant.id,
+                transaction_type="p2p",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                fixed_fee=Decimal("2.50"),
+            )
+        )
+        session.add(
+            LimitConfig(
+                tenant_id=tenant.id,
+                transaction_type="p2p",
+                account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+                currency="ZAR",
+                min_amount=Decimal("5"),
+                max_amount=Decimal("10000"),
+            )
+        )
+        await session.commit()
+        print("  + P2P charges: R2.50 fee, R5-R10000 limit (default)")
+
+
 # System principal used as the audit actor for seed-time treasury operations.
 _SEED_ADMIN = AdminPrincipal(id="seed-script", username="seed", roles=frozenset())
 
@@ -1334,6 +1377,7 @@ async def seed() -> None:
         # Cash-out config so a subscriber cash-out works out of the box.
         await _get_or_create_cashout_charges(session, tenant)
         await _get_or_create_change_pin_charges(session, tenant)
+        await _get_or_create_p2p_charges(session, tenant)
 
         # Phase C — sample external source + reward rules. The shared
         # secret is deterministic in dev so the mobile-simulator's env

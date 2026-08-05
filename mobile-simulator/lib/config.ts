@@ -48,6 +48,11 @@ export const config = {
       phone: process.env.SASAI_MERCHANT_PHONE ?? "+27825559001",
       pin: process.env.SASAI_MERCHANT_PIN,
     },
+    cashinMerchant: {
+      label: "Merchant (Cash-in)",
+      phone: process.env.SASAI_CASHIN_MERCHANT_PHONE ?? "+27825557001",
+      pin: process.env.SASAI_CASHIN_MERCHANT_PIN,
+    },
   },
   eventSource: {
     key: process.env.EVENT_SOURCE_KEY ?? "sasai-bank",

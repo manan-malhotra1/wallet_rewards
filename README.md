@@ -94,6 +94,7 @@ Admin UI login (local dev): **`admin-test@example.test`** / **`admin-test-pass`*
 ```bash
 cd ../admin-ui
 npm install
+cp .env.local.example .env.local                   # Keycloak creds match bootstrap_keycloak.py (copy-and-go)
 npm run dev                                         # :3000
 ```
 Open `http://localhost:3000` and sign in with the admin dev creds above. `npm test` runs the Vitest suite.

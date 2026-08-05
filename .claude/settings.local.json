@@ -187,7 +187,9 @@
       "Bash(ps -o pid,etime,pcpu,rss,command -p 17871)",
       "Bash(curl -s -o /dev/null -w \"backend: %{http_code}\\\\n\" http://localhost:8000/healthz)",
       "Bash(curl -s -o /dev/null -w \"keycloak: %{http_code}\\\\n\" http://localhost:8080/realms/wallet-platform/.well-known/openid-configuration)",
-      "Bash(lsof -nP -iTCP -sTCP:LISTEN)"
+      "Bash(lsof -nP -iTCP -sTCP:LISTEN)",
+      "Bash(cd /Users/manan/Documents/Sasai_Wallet/backend && grep -rn \"points_account\" app/ --include=*.py -l)",
+      "Bash(cd /Users/manan/Documents/Sasai_Wallet/backend && grep -rn \"UserPointsAccountMissing\\\\|issue_points_reward\\\\|reward_outbox\\\\|MAX_ATTEMPTS\" app/ --include=*.py)"
     ]
   }
 }

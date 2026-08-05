@@ -9,6 +9,11 @@ paths:
 
 # Testing conventions
 
+> **As-built status (2026-08-05):** this file states the *standards*. For how the harness actually runs today
+> — and where reality diverges (the 80% coverage gate is a target, not yet wired into CI; Playwright E2E under
+> `admin-ui/e2e/` exists but is ungated; the money core has no live Kafka producer/consumer, wallet→rewards uses
+> the `reward_outbox`) — see [docs/design/12-testing-and-automation.md](../../docs/design/12-testing-and-automation.md).
+
 ## Backend (pytest)
 
 - `pytest` + `pytest-asyncio` + `httpx.AsyncClient`.

@@ -14,15 +14,14 @@ paths:
 
 ## Data fetching
 
-- In server components: directly call the API via the typed client in `lib/api/`. The Bearer token is read server-side from the Keycloak session.
+- In server components: directly call the API via the typed client in `lib/api-endpoints.ts` (wrapping `lib/api.ts`). The Bearer token is read server-side from the Keycloak session.
 - In client components: use server actions. Never `fetch` the backend directly from the browser.
 - Never expose `BACKEND_URL` or `KEYCLOAK_CLIENT_SECRET` to the client. They are server-only env vars.
 
 ## Forms
 
-- Server actions for submissions. Use `useFormState` + `useFormStatus` for pending/error states.
-- Validation: zod schemas in `lib/schemas/`; reuse the same schema on server action to validate again.
-- Inline validation on blur, not on every keystroke.
+- Server actions (in each route's `_actions.ts`) for submissions. Use React 19 `useActionState` (+ `useFormStatus`) for pending/error states.
+- Validation: zod where it earns its keep; validate again inside the server action. Inline field validation, not on every keystroke.
 - Destructive actions: confirm dialog with typed-confirmation pattern (type `SUSPEND` to confirm).
 
 ## Styling
@@ -42,9 +41,9 @@ paths:
 
 ## Tables
 
-- TanStack Table v8.
-- Sortable headers, multi-select with shift-range, bulk-action toolbar.
-- 50 rows per page default. URL params for sort/filter (shareable view).
+- Hand-rolled on the shadcn `components/ui/table.tsx` primitives (TanStack Table is a dependency but currently unused — don't reach for it without cause).
+- Sortable headers, multi-select with shift-range, bulk-action toolbar where the screen needs them.
+- URL params for sort/filter (shareable view). Grouping helpers live in `lib/config-groups.ts` for banded config tables.
 
 ## Command palette
 

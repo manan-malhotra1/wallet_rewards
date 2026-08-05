@@ -1,5 +1,7 @@
 # Sasai Wallet & Rewards Platform — Admin UI Layouts
 
+> **As-built note (2026-08-05):** routes have evolved since this spec — `/rules` is now `/campaigns`, and money/config/user actions run through the unified `/approvals` maker-checker surface. See [docs/design/09-admin-ui.md](design/09-admin-ui.md) for the current admin UI.
+
 > **Document type:** UI Specification
 > **Version:** 0.1
 > **Date:** 2026-05-28

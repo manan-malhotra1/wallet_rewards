@@ -1,32 +1,38 @@
 # Data Architecture
 
+> System-level summary — the authoritative per-module implementation is in [docs/design/](design/README.md); requirements are in [docs/02-prd.md](02-prd.md). Last refreshed 2026-08-05.
+
 > **Document type:** Data Architecture
-> **Version:** 0.1
-> **Date:** 2026-05-28
-> **Source of truth for schemas:** Technical PRD §6 at `/Users/manan/Downloads/wallet-platform-technical-prd-v1_0.md`
+> **Version:** 0.2 (refreshed against `main`)
+> **Date:** 2026-05-28 · refreshed 2026-08-05
+> **Deep design:** ledger + account model in [design/02-ledger-accounts-and-money-movement.md](design/02-ledger-accounts-and-money-movement.md); events/outbox in [design/06-events-ingestion-and-mode-awareness.md](design/06-events-ingestion-and-mode-awareness.md).
 
 ---
 
-## 1. Core entity map (17 tables)
+## 1. Core entity map
+
+One SQLAlchemy ORM file per domain under `backend/app/shared/models/` (~30 files). Per-module DDL detail lives in the [design docs](design/README.md).
 
 | Domain | Tables |
 |---|---|
-| Tenant | `tenants`, `tenant_config` |
-| Identity | `users`, `user_identifiers`, `user_profiles`, `otp_requests`, `auth_attempts` |
-| Merchant | `merchants` |
+| Tenant / config | `tenants` (carries `business_type`), `tenant_config` |
+| Identity | `users`, `user_identifiers`, `user_profiles`, `otp_requests`, `auth_attempts`, `merchant_profiles`, `admin_profiles` |
 | Roles | `roles`, `role_permissions`, `user_roles` |
-| Accounts | `accounts`, `account_balance_snapshots` |
+| Accounts | `accounts` (11 account types), `account_balance_snapshots` |
 | Ledger | `transactions`, `ledger_entries` |
-| Limits / Pricing | `limit_configs`, `pricing_configs` |
+| Money controls | `limit_configs`, `wallet_limit_configs`, `pricing_configs`, `tax_configs`, `commission_configs`, `step_up_policies`, `reward_budgets` |
+| Catalog / access | `instruments` (currencies), `services` (transaction types + access policy) |
 | Rules | `rules`, `rule_conditions`, `user_rule_progress`, `bonus_multipliers`, `bonus_multiplier_rules` |
-| Rewards | `reward_events`, `badges`, `user_badges`, `tiers`, `user_tier_history`, `points_expiry_rules` |
+| Rewards | `reward_events`, `reward_outbox` (internal wallet→rewards, `both` mode), badges/tiers/points-expiry (schema only, surfaces Planned) |
 | Redemption | `redemption_providers`, `redemptions` |
 | Events | `external_event_sources`, `event_ingestion_log` |
-| Segments | `segments`, `segment_members`, `segment_upload_history` |
-| Notifications / Audit | `notifications`, `audit_log` |
+| Segments | `segments`, `user_segments` |
 | Referrals | `referral_codes`, `referrals` |
+| Governance (maker-checker) | `config_requests`, `money_operations`, `user_operations` (+ per-subsystem review rows) |
+| Partner API | `api_keys`, `external_user_creations` |
+| Audit | `audit_log` |
 
-Full DDL in Technical PRD §6.1–6.14.
+Notes: `reward_outbox` is a transactional outbox, not Kafka. Rewards catalog extras (tiers, badges, challenges, points-expiry) have schema but no live user surface. Module 13 `notifications` is **not built** (no table). Full HOW per domain in [docs/design/](design/README.md).
 
 ---
 
@@ -86,23 +92,31 @@ updated_at                                                │
 - `transactions.idempotency_key` UNIQUE per `tenant_id` (Pay-PRD-0200).
 - `status` transitions enforced in app code: `PENDING → COMPLETED | FAILED | REVERSED`. No transitions out of terminal states.
 
+**One choke point.** Every value movement funnels through `ledger.service.post_transaction`; nothing writes `ledger_entries` any other way. Its `FOR UPDATE` balance guard (invariant #11) locks only **`financial_wallet`** and the **`system_cash_inflow`** cash-float rows (in id-sorted order, before any balance read, held through commit) and enforces overdraft, the `max_balance` ceiling (user wallet only), and the non-negative float floor; all pool/collection/points accounts are skipped. Reversals and earned payouts are cap-exempt. Fee/limit config is fail-closed before the write (`require_pricing_and_limits` → 422). In `both`-mode tenants, `post_transaction` also writes the `reward_outbox` row atomically with the ledger commit. Full detail: [design/02-ledger-accounts-and-money-movement.md](design/02-ledger-accounts-and-money-movement.md).
+
 ---
 
 ## 4. Account types
 
-`accounts.account_type` enum (extended from PRD §6.5 — see addendums below):
+`accounts.account_type` — **11 types** (`backend/app/shared/models/accounts.py`, `ACCOUNT_TYPES`). Only the two **guarded** types below (`financial_wallet`, `system_cash_inflow`) are subject to the ledger balance guard; all others are pool / collection / mirror / points accounts and are skipped by it.
 
-| Type | Holds | Owner |
-|---|---|---|
-| `financial_wallet` | Monetary balance in `currency` | User or merchant |
-| `points_account` | Reward points balance | User |
-| `system_points_issuance` | Master source of all reward points (debit side when issuing) | System (`user_id = NULL`, `merchant_id = NULL`) |
-| `provider_redemption_wallet` | Points in-flight to a redemption partner | System (platform-held) |
-| `system_cash_inflow` | Master source of money entering the system from outside (top-ups, external receipts) | System (one per tenant per currency) |
+| Type | Holds | Owner | Guarded? |
+|---|---|---|---|
+| `financial_wallet` | Monetary balance in `currency` | User or merchant | ✅ overdraft + `max_balance` |
+| `system_cash_inflow` | Operator **cash float** — money entering from the bank, source of user funding | System (one per tenant per currency) | ✅ overdraft **floor** (`InsufficientFloat`), no ceiling |
+| `points_account` | Reward points balance | User | — |
+| `system_points_issuance` | Master source of all reward points (debit side when issuing) | System (`user_id = NULL`) | — |
+| `provider_redemption_wallet` | Points in-flight to a redemption partner | System (platform-held) | — |
+| `airtime_merchant_holding` | Airtime merchant collection account | System (merchant) | — |
+| `operator_adjustment` | Bank mirror — counter-leg for float top-ups / withdrawals (trends negative) | System | — |
+| `system_fee_collected` | Collected operator fees | System | — |
+| `commission` | Agent commission collected | System | — |
+| `tax_service_collected` | Tax on service fee | System | — |
+| `tax_commission_collected` | Tax on commission | System | — |
 
-A single user can hold multiple accounts: one `financial_wallet` per currency + one `points_account` per tenant.
+A single user can hold multiple accounts: one `financial_wallet` per currency + one `points_account` per tenant. System/collection accounts are lazily provisioned per tenant (and per currency where relevant).
 
-### Addendum — `system_points_issuance` (added 2026-05-28)
+### Balance invariant — `system_points_issuance`
 
 The PRD requires double-entry balance (NFR-0100) and credits to a user's `points_account` on rule fire (Pay-PRD-0620), but never names what the offsetting DEBIT is. For the ledger to sum to zero, every CREDIT to a user must have a corresponding DEBIT somewhere.
 
@@ -116,26 +130,18 @@ The system_points_issuance balance trends increasingly negative as more points a
 
 Each tenant auto-creates one `system_points_issuance` account on tenant creation.
 
-### Addendum — `system_cash_inflow` (added 2026-05-28, Phase B)
+### Balance invariant — `system_cash_inflow` (the operator cash float)
 
-Mirror of `system_points_issuance` for **money** rather than points. Used as the offsetting
-debit when external money enters the system: top-ups, mobile money receipts, bank credits.
+The money counterpart of `system_points_issuance`: the offsetting account for money entering
+a user wallet (funding, cash-in, cashback). One per tenant **per currency**, lazily provisioned.
 
-Without this account type, the seed cannot post opening balances to user wallets in a way
-that preserves the sum-to-zero invariant (NFR-0100). The future top-up endpoint
-(Pay-PRD-0320) uses the same account.
-
-Each tenant has one `system_cash_inflow` account **per currency** (so a multi-currency
-tenant has multiple — one for ZAR, one for KES, etc.). Phase B seeds it lazily on first
-top-up.
-
-**Amendment — no-overdraft float floor (2026-07-18).** The float is now a **POSITIVE**
-balance carrying a non-negative overdraft floor enforced at the ledger choke point
-(`post_transaction`, invariant #11). It must be pre-funded from the bank — CREDIT
+It is a **POSITIVE** balance carrying a non-negative overdraft **floor** enforced at the ledger
+choke point (`post_transaction`, invariant #11). It must be pre-funded from the bank — CREDIT
 `system_cash_inflow` / DEBIT an `operator_adjustment` bank mirror (e.g. via
-`treasury.adjust_system_wallet`) — before it can fund users. A net DEBIT that would drive
-it below zero is rejected with `InsufficientFloat` (409). The old convention where the
-float trended negative (mirroring `system_points_issuance`) is **replaced**:
+`treasury.adjust_system_wallet`) — before it can fund users. A net DEBIT that would drive it
+below zero is rejected with `InsufficientFloat` (409). It has no `max_balance` ceiling, so a
+top-up credit is never blocked; a fund reversal credits it back (never floored). The float
+does **not** trend negative:
 
 ```
 # OLD (pre-2026-07-18): system_cash_inflow.balance + SUM(financial_wallets, that ccy) == 0
@@ -161,22 +167,20 @@ mirror before posting any user opening balance.
 
 ---
 
-## 6. Event ingestion data flow
+## 6. Event → reward data flow
 
+Two mode-gated sources feed the same evaluate-and-issue core (`evaluate_and_issue_firings`); there is **no internal Kafka producer** and **no engagement emission** (Module 17 gap).
+
+**External (`rewards` mode only)** — over `wallet.events.external` (Kafka) or the equivalent HTTP endpoint:
 ```
-External event arrives  ──► Validate source registered (external_event_sources)
-                            Verify proof-of-origin
-                            Deduplicate (event_ingestion_log on source_key + external_event_id)
-                            Normalise via field_mapping JSONB
-                            Emit to Kafka topic wallet.events.normalised
-                            Rules engine consumes
-                            On qualifying event, write reward_events (UNIQUE on user_id+rule_id+triggering_event_id)
-                            Atomic ledger_entries + transactions row for the reward credit
-                            Emit wallet.rewards.issued
-                            Engagement emitter relays to wallet.engagement.outbound → WebEngage
+Event arrives ─► source registered? (external_event_sources) ─► mode gate (external_events_allowed)
+              ─► HMAC proof-of-origin (Pay-PRD-0495) ─► dedup (event_ingestion_log on source_key+external_event_id)
+              ─► normalise (field_mapping JSONB) ─► evaluate active rules ─► issue reward (ledger + reward_events)
 ```
 
-The `reward_events` table's `UNIQUE INDEX (user_id, rule_id, triggering_event_id)` is the structural guarantee against double-issuance (NFR-0110).
+**Internal (`both` mode only)** — a completed rewardable wallet transaction writes a `reward_outbox` row **atomically with the ledger commit** (inside `post_transaction`); a post-commit fast path plus a 60s Celery sweep drain it into the same evaluate-and-issue core. No Kafka. Absolutely fail-open — rewards never break the money path.
+
+The `reward_events` `UNIQUE INDEX (user_id, rule_id, triggering_event_id)` is the structural guarantee against double-issuance (NFR-0110); dedup upstream (event_ingestion_log / outbox `transaction_id`) prevents re-evaluation.
 
 ---
 

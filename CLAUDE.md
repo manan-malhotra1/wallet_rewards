@@ -1,8 +1,8 @@
 # Sasai Wallet & Rewards Platform
 
-A multi-tenant wallet + rule-based rewards engine for Sasai Fintech's diaspora ecosystem. Two deployment modes (wallet / rewards-only), append-only ledger, Kafka-backed event ingestion, Keycloak-secured admin, PIN/OTP for users.
+A multi-tenant wallet + rule-based rewards engine for Sasai Fintech's diaspora ecosystem. Three per-tenant deployment modes (`business_type`: wallet / rewards / both), append-only ledger, Kafka-backed event ingestion, Keycloak-secured admin, PIN/OTP for users, and an Expo mobile app.
 
-**Source of truth:** [Product PRD](docs/02-prd.md) and [Technical Architecture](docs/05-technical-architecture.md). When this file conflicts with the PRDs, the PRDs win.
+**Source of truth (all in-repo):** [Product PRD](docs/02-prd.md) (the *what* — requirements + `Pay-PRD-####` IDs), [Epics & Stories](docs/09-epics-and-stories.md) (delivery tracking), and [Design docs](docs/design/README.md) (the *how* — per-module implementation). System-level summaries: [Technical Architecture](docs/05-technical-architecture.md) + [Data Architecture](docs/06-data-architecture.md). When this file conflicts with the PRD, the PRD wins on intent; the design docs win on current implementation.
 
 > ## ⚠ READ FIRST: [Coding Master Guidelines](.claude/rules/coding-guidelines.md)
 >
@@ -21,22 +21,24 @@ A multi-tenant wallet + rule-based rewards engine for Sasai Fintech's diaspora e
 | Bus | Apache Kafka · confluent-kafka | Docker |
 | Auth | Keycloak (admin) · custom PIN/OTP (users) | Docker |
 | Queue | Celery · Redis | latest |
-| Admin UI | Next.js 16.2.6 · TypeScript · App Router · shadcn/ui · Tailwind | Node 22.22.2 |
-
-Mobile (Expo) is deferred to Phase 2.
+| Admin UI | Next.js 16.2.6 · TypeScript · App Router · shadcn/ui · Tailwind v4 · next-auth v5 | Node 22.22.2 |
+| Mobile | Expo (SDK 54) · React Native · expo-router · Tamagui · Skia · TanStack Query | Node 22.22.2 |
 
 ## Repo layout
 
 | Path | What lives here |
 |---|---|
-| `backend/app/modules/{module}/` | Per-domain service (`router.py`, `service.py`, `schemas.py`) |
+| `backend/app/modules/{module}/` | Per-domain service (`router.py`, `service.py`, `schemas.py`) — ~27 modules |
 | `backend/app/shared/models/` | SQLAlchemy ORM, one file per domain |
+| `backend/app/shared/exceptions/` | All custom exceptions (one file, all subclass `AppHTTPException`) |
+| `backend/app/auth/` | Keycloak JWT, Redis sessions, bcrypt hashing, HMAC callbacks, API-key + rate-limit |
 | `backend/alembic/versions/` | Migrations (`YYYYMMDD_NNNN_description.py`) |
-| `admin-ui/app/` | Next.js admin (App Router) |
-| `sasai-wallet-infra/` | Docker Compose (Postgres, Kafka, Keycloak, Redis) |
-| `scripts/` | `seed.py`, `check_migrations.py` |
-| `docs/` | Vision, PRD, architecture, UI layouts |
-| `.claude/` | Agents, skills, rules, memory |
+| `admin-ui/app/(authenticated)/` | Next.js admin (App Router; server components + `_actions.ts` server actions) |
+| `mobile/app/` | Expo mobile app (expo-router file-based screens) |
+| `sasai-wallet-infra/` | Docker Compose (Postgres, Kafka, Keycloak, Redis) + `kafka/topics.sh` |
+| `scripts/` | `seed.py`, `check_migrations.py`, `bootstrap_keycloak.py`, `run_consumer.py` |
+| `docs/` | Vision, PRD, epics, `design/` (per-module HOW), architecture, UX/UI, security threat models |
+| `.claude/` | Agents, skills (incl. `local-setup`), rules, memory |
 
 ## Non-negotiable invariants
 
@@ -117,9 +119,13 @@ npm run dev       # :3000
 
 ## Quick references
 
-- Product PRD (v1.3): [docs/02-prd.md](docs/02-prd.md)
+- Product PRD (the *what* — requirement IDs + acceptance criteria): [docs/02-prd.md](docs/02-prd.md)
+- Epics & Stories (delivery tracking, Shipped/Partial/Planned): [docs/09-epics-and-stories.md](docs/09-epics-and-stories.md)
+- Design docs (the *how* — start at the HLD): [docs/design/README.md](docs/design/README.md)
 - Glossary: PRD section 3
 - Tech architecture: [docs/05-technical-architecture.md](docs/05-technical-architecture.md)
 - Data architecture: [docs/06-data-architecture.md](docs/06-data-architecture.md)
-- UI layouts (admin): [docs/04-ui-layouts.md](docs/04-ui-layouts.md)
+- UX philosophy / UI layouts (admin): [docs/03-ux-philosophy.md](docs/03-ux-philosophy.md) · [docs/04-ui-layouts.md](docs/04-ui-layouts.md)
+- First-time local setup (infra → backend → admin → mobile): [.claude/skills/local-setup/SKILL.md](.claude/skills/local-setup/SKILL.md)
+- Security threat models: [docs/security/threat-models/](docs/security/threat-models/)
 - Architectural decisions log: [.claude/memory/MEMORY.md](.claude/memory/MEMORY.md)

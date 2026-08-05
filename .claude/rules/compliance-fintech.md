@@ -14,8 +14,8 @@ These rules govern every line of code in this repo. The compliance agent reviews
 
 Never appear in logs, audit records, API responses, error messages, or database fields in plain form (NFR-0170):
 
-- PIN — only stored as bcrypt hash via `passlib`
-- OTP — only stored as bcrypt hash
+- PIN — only stored as a bcrypt hash (via `backend/app/auth/hashing.py`, not passlib)
+- OTP — only stored as a bcrypt hash
 - Session tokens — Redis only, never in DB, never logged
 - Full card numbers — never stored, only tokenised reference
 - Full account numbers — stored, but masked in logs

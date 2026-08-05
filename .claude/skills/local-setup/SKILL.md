@@ -40,6 +40,7 @@ Postgres: `localhost:5432` (`wallet` / `wallet` / db `wallet_platform`).
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+pip install -r requirements-dev.txt                # pytest/ruff/mypy — WITHOUT this, `make test` / `make check` fail
 cp .env.example .env                               # defaults are fine for local (incl. SIMULATOR_DEV_MODE=true, needed by the :3002 simulator)
 alembic upgrade head
 make seed                                           # tenant, users, services, pricing+limits, commission, tax, rules

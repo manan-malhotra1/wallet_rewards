@@ -70,7 +70,8 @@ Postgres: `localhost:5432` (`wallet` / `wallet` / db `wallet_platform`).
 cd ../backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env                               # defaults are fine for local (OTP_DEV_RETURN=true)
+pip install -r requirements-dev.txt                # pytest/ruff/mypy — needed for `make test` / `make check`
+cp .env.example .env                               # defaults are fine for local (incl. SIMULATOR_DEV_MODE)
 alembic upgrade head
 make seed                                           # test tenant, users, services, pricing, rules
 make dev                                            # uvicorn --reload on :8000

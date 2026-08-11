@@ -25,6 +25,7 @@ import {
   Tag,
   Ticket,
   Users,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -68,6 +69,7 @@ const OPERATIONS: NavItem[] = [
 const CONFIG: NavEntry[] = [
   { label: "Campaigns", href: "/campaigns", icon: Megaphone },
   { label: "Segments", href: "/segments", icon: Layers },
+  { label: "Multipliers", href: "/multipliers", icon: Zap },
   { label: "Budgets", href: "/budgets", icon: PiggyBank },
   { label: "Limits", href: "/limits", icon: ListChecks },
   { label: "Step-up PIN", href: "/step-up", icon: ShieldAlert },

@@ -22,6 +22,7 @@ import {
   Tag,
   Ticket,
   Users,
+  Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -44,6 +45,7 @@ const NAV: NavItem[] = [
   { label: "Go to Reconciliation", href: "/reconciliation", icon: ScanLine },
   { label: "Go to Campaigns", href: "/campaigns", icon: Megaphone },
   { label: "Go to Segments", href: "/segments", icon: Layers },
+  { label: "Go to Multipliers", href: "/multipliers", icon: Zap },
   { label: "Go to Limits", href: "/limits", icon: ListChecks },
   { label: "Go to Service charges", href: "/pricing", icon: Coins },
   { label: "Go to Commission", href: "/commissions", icon: Percent },

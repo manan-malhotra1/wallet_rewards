@@ -69,6 +69,12 @@ const STATUS_MAP: Record<
     bg: "bg-muted",
     text: "text-muted-foreground",
   },
+  SCHEDULED: {
+    label: "Scheduled",
+    dot: "bg-amber-500",
+    bg: "bg-amber-500/10 dark:bg-amber-500/15",
+    text: "text-amber-700 dark:text-amber-300",
+  },
   EXPIRED: {
     label: "Expired",
     dot: "bg-slate-400",

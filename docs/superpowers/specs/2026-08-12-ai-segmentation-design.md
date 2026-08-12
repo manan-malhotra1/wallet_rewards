@@ -136,6 +136,10 @@ ledger entry's amount on the wallet is summed regardless of DEBIT/CREDIT directi
 send, a receive, and a fee leg all count toward the same total. This is deliberately not
 a signed net-flow number (that would need per-entry-type sign handling, which v1 does
 not do) — a tenant that needs net flow should compose `wallet_balance` deltas instead.
+`txn_sum` is additionally scoped to the tenant's `base_currency` (same rule as
+`wallet_balance` — balances/amounts are never summed across currencies); `txn_count` and
+`days_since_last_txn` are deliberately NOT currency-scoped, since counting or timing a
+transaction is meaningful regardless of the currency it moved.
 
 ## 4. Evaluator (Phase 1)
 

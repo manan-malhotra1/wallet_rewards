@@ -531,12 +531,20 @@ def signed_balance_expr() -> ColumnElement[Decimal]:
     The caller is responsible for filtering to COMPLETED status and the
     target account set before summing; this expression only encodes the sign.
 
+    Both directions are matched explicitly (CREDIT and DEBIT) rather than
+    using an `else_` catch-all for DEBIT: `entry_type` is CHECK-constrained to
+    exactly those two values today, so this is a fail-safe, not a fix — a
+    hypothetical future third entry direction contributes 0 (silently
+    excluded) instead of being treated as a DEBIT by an unconditional
+    `else_=-amount`.
+
     Returns:
         A CASE SQL expression suitable for `func.sum(...)`.
     """
     return case(
         (LedgerEntry.entry_type == ENTRY_CREDIT, LedgerEntry.amount),
-        else_=-LedgerEntry.amount,
+        (LedgerEntry.entry_type == ENTRY_DEBIT, -LedgerEntry.amount),
+        else_=0,
     )
 
 

@@ -6,10 +6,16 @@ txn_sum / days_since_last_txn builders in `app.modules.segments.metrics` join
 a user's `financial_wallet` ledger entries to their COMPLETED transactions and
 filter on tenant + status + a rolling `created_at` window; EXPLAIN on a
 synthetic 300k-row `transactions` table showed this turns a parallel seq scan
-into a Bitmap Index Scan (~358ms -> ~196ms). `ledger_entries` already has
-`ix_ledger_entries_account (account_id, status, created_at)`, which covers the
-Account -> LedgerEntry leg of the same join, so no second index is needed
-there.
+into a Bitmap Index Scan (~358ms -> ~196ms).
+
+`ledger_entries` already has `ix_ledger_entries_account (account_id, status,
+created_at)`. That same EXPLAIN run, however, showed the planner choosing a
+sequential scan of `ledger_entries` + hash join over that index for the
+Account -> LedgerEntry leg at this data volume/selectivity — the index is
+NOT shown here to cover that leg efficiently at scale. Whether the
+LedgerEntry side needs its own tuning is left to a follow-up at-scale
+measurement (segmentation Task 5); this migration adds only the one index the
+EXPLAIN evidence above actually justifies.
 
 Revision ID: 0054
 Revises: 0053

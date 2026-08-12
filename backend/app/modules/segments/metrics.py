@@ -16,8 +16,13 @@ deliberately targets the customer instead), gives P2P *recipients* no row at
 all, and is NULL on system-initiated inbound activity (e.g. remittance). Every
 transactional builder therefore joins Account (the user's `financial_wallet`)
 -> LedgerEntry (COMPLETED, on that wallet) -> Transaction (same tenant,
-COMPLETED) and groups by `Account.user_id`; see `_wallet_txn_base`. This is
-recorded in `docs/superpowers/specs/2026-08-12-ai-segmentation-design.md` §3.
+COMPLETED) and groups by `Account.user_id`; see `_wallet_txn_base`. `txn_sum`
+is additionally scoped to the tenant's base currency (a user with wallets in
+more than one currency must not have them silently added together — same rule
+as `wallet_balance`); `txn_count` and `days_since_last_txn` stay
+currency-agnostic (a transaction count/recency is meaningful across
+currencies, a summed amount is not). This is recorded in
+`docs/superpowers/specs/2026-08-12-ai-segmentation-design.md` §3.
 
 Shared builder contract:
   - Every entry in `METRIC_BUILDERS` is an async, set-based aggregate — see
@@ -131,10 +136,13 @@ async def _rows_to_map(session: AsyncSession, stmt: Select[Any]) -> dict[UUID, D
         Mapping of user_id to Decimal value, skipping any NULL user_id rows.
     """
     result = await session.execute(stmt)
-    # Decimal(str(x)) — never Decimal(float) directly — for the same binary
-    # float representation reason criteria.py's comparator handling documents
-    # (Decimal(0.1) != Decimal("0.1")): the extract(epoch, ...) aggregates
-    # below return a Python float, and str() round-trips it exactly first.
+    # Decimal(str(x)) — never Decimal(float) directly — defense-in-depth for
+    # this generic helper: asyncpg already returns Decimal for NUMERIC/EXTRACT
+    # results on the Postgres version this repo targets, so today every caller
+    # gets a Decimal-safe round trip either way, but a future builder could
+    # select a genuinely float-typed column, and Decimal(0.1) != Decimal("0.1")
+    # (binary float representation — same reason criteria.py's comparator
+    # handling goes through str() first).
     return {row[0]: Decimal(str(row[1])) for row in result.all() if row[0] is not None}
 
 
@@ -196,15 +204,23 @@ async def txn_sum(
     window_days: int | None = None,
     now: datetime,
 ) -> dict[UUID, Decimal]:
-    """Wallet-attributed gross transaction value per user.
+    """Wallet-attributed gross transaction value per user, base-currency scoped.
 
     Definition: SUM(LedgerEntry.amount) over every COMPLETED entry that
     touches the user's financial wallet — send AND receive AND fee legs all
     count (this is gross value moved through the wallet, not net flow; a
     dedicated net-flow metric would need to sign the sum by entry_type, which
     v1 does not do — see module docstring).
+
+    Scoped to `Tenant.base_currency` (same rule as `wallet_balance`): a user
+    who holds wallets in more than one currency must not have those amounts
+    silently summed together. `txn_count` and `days_since_last_txn` are NOT
+    currency-scoped — counting/timing a transaction is meaningful regardless
+    of currency, only a summed amount is not.
     """
+    base_currency = select(Tenant.base_currency).where(Tenant.id == tenant_id).scalar_subquery()
     stmt = _wallet_txn_base(tenant_id).add_columns(func.coalesce(func.sum(LedgerEntry.amount), 0))
+    stmt = stmt.where(LedgerEntry.currency == base_currency)
     if txn_type is not None:
         stmt = stmt.where(Transaction.transaction_type == txn_type)
     start = _window_start(now, window_days)

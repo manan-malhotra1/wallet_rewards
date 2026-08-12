@@ -233,6 +233,44 @@ async def test_txn_sum_scopes_to_tenant(
 
 
 @pytest.mark.asyncio
+async def test_txn_sum_is_scoped_to_tenant_base_currency(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+) -> None:
+    """A second wallet in another currency counts toward txn_count but not txn_sum.
+
+    `test_tenant`'s base currency is ZAR (see `tests/conftest.py::test_tenant`).
+    A USD wallet for the SAME user must not have its amount folded into
+    txn_sum — that would silently mix currencies — but the transaction itself
+    still counts toward txn_count, which stays currency-agnostic.
+    """
+    zar_counterpart = await _wallet_account(db_session, test_tenant.id, None)
+    await _wallet_txn(
+        db_session,
+        test_tenant.id,
+        debit_account=user_wallet,
+        credit_account=zar_counterpart,
+        amount="50",
+    )
+
+    usd_wallet = await _wallet_account(db_session, test_tenant.id, test_user.id, currency="USD")
+    usd_counterpart = await _wallet_account(db_session, test_tenant.id, None, currency="USD")
+    await _wallet_txn(
+        db_session,
+        test_tenant.id,
+        debit_account=usd_wallet,
+        credit_account=usd_counterpart,
+        amount="1000",
+        currency="USD",
+    )
+
+    counts = await compute_metric(db_session, test_tenant.id, "txn_count")
+    sums = await compute_metric(db_session, test_tenant.id, "txn_sum")
+
+    assert counts[test_user.id] == Decimal(2)
+    assert sums[test_user.id] == Decimal(50)
+
+
+@pytest.mark.asyncio
 async def test_txn_count_receive_side_attribution_ignores_initiated_by(
     db_session: AsyncSession,
     test_tenant: Tenant,
@@ -258,6 +296,55 @@ async def test_txn_count_receive_side_attribution_ignores_initiated_by(
 
     counts = await compute_metric(db_session, test_tenant.id, "txn_count")
     assert counts[user_b.id] == Decimal(1)
+
+
+@pytest.mark.asyncio
+async def test_txn_count_and_sum_handle_two_entries_on_the_same_wallet(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+) -> None:
+    """Fanout regression (M1): a transaction with two COMPLETED entries on ONE
+    wallet — mirrors the real agent cash-in shape, where the principal DEBIT
+    and the commission CREDIT are netted onto the same wallet. `txn_count`
+    must apply the DISTINCT(transaction_id) guard (count the transaction
+    once, not once per entry); `txn_sum` sums both legs (gross, not net)."""
+    txn = Transaction(
+        tenant_id=test_tenant.id,
+        idempotency_key=f"k-{uuid4()}",
+        transaction_type="cash_in",
+        status=TXN_STATUS_COMPLETED,
+        initiated_by=test_user.id,
+        amount=Decimal("100"),
+        currency="ZAR",
+    )
+    db_session.add(txn)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            LedgerEntry(
+                transaction_id=txn.id,
+                account_id=user_wallet.id,
+                entry_type=ENTRY_DEBIT,
+                amount=Decimal("100"),
+                currency="ZAR",
+                status=ENTRY_STATUS_COMPLETED,
+            ),
+            LedgerEntry(
+                transaction_id=txn.id,
+                account_id=user_wallet.id,
+                entry_type=ENTRY_CREDIT,
+                amount=Decimal("15"),
+                currency="ZAR",
+                status=ENTRY_STATUS_COMPLETED,
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    counts = await compute_metric(db_session, test_tenant.id, "txn_count")
+    sums = await compute_metric(db_session, test_tenant.id, "txn_sum")
+
+    assert counts[test_user.id] == Decimal(1)
+    assert sums[test_user.id] == Decimal(115)
 
 
 @pytest.mark.asyncio

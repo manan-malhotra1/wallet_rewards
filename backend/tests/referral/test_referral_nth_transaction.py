@@ -39,9 +39,7 @@ async def _make_user(session: AsyncSession, tenant: Tenant) -> User:
     return user
 
 
-async def _add_points_account(
-    session: AsyncSession, tenant: Tenant, user: User | None
-) -> Account:
+async def _add_points_account(session: AsyncSession, tenant: Tenant, user: User | None) -> Account:
     acct = Account(
         tenant_id=tenant.id,
         user_id=user.id if user else None,
@@ -124,9 +122,7 @@ async def test_nth_transaction_fires_only_at_threshold_and_once(
     bal, _ = await derive_balance(db_session, referrer_pts.id)
     assert bal == Decimal("50")
     referral = (
-        await db_session.execute(
-            select(Referral).where(Referral.referred_user_id == referee.id)
-        )
+        await db_session.execute(select(Referral).where(Referral.referred_user_id == referee.id))
     ).scalar_one()
     assert referral.status == "rewarded"
 

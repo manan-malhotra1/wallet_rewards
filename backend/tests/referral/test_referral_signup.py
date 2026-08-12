@@ -125,9 +125,7 @@ async def test_completed_signup_with_valid_code_rewards_referrer(
     referee = await _create_user(db_session, test_tenant.id, referral_code=code)
 
     referral = (
-        await db_session.execute(
-            select(Referral).where(Referral.referred_user_id == referee.id)
-        )
+        await db_session.execute(select(Referral).where(Referral.referred_user_id == referee.id))
     ).scalar_one()
     # Attribution only at create — nobody is paid until registration completes.
     assert referral.referrer_user_id == referrer.id
@@ -283,17 +281,13 @@ async def test_create_does_not_issue_reward_even_if_reward_backend_is_down(
         raise RuntimeError("reward backend down")
 
     # If create_user still called the evaluator, this would blow the signup up.
-    monkeypatch.setattr(
-        "app.modules.rules.referral_evaluator.evaluate_referral_on_signup", _boom
-    )
+    monkeypatch.setattr("app.modules.rules.referral_evaluator.evaluate_referral_on_signup", _boom)
 
     referee = await _create_user(db_session, test_tenant.id, referral_code=code)
 
     # Signup succeeded — the user exists.
     assert referee.id is not None
-    persisted = (
-        await db_session.execute(select(User).where(User.id == referee.id))
-    ).scalar_one()
+    persisted = (await db_session.execute(select(User).where(User.id == referee.id))).scalar_one()
     assert persisted.id == referee.id
 
     # The referral is durable but left PENDING (unrewarded), reconcilable later.

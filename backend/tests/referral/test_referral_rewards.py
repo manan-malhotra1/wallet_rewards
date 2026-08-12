@@ -82,8 +82,11 @@ async def test_signup_rewards_both_sides_with_points(
     referrer = await _make_user(db_session, test_tenant)
     referee = await _make_user(db_session, test_tenant)
     await _add_account(
-        db_session, test_tenant, account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
-        currency="PTS", user=None,
+        db_session,
+        test_tenant,
+        account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+        currency="PTS",
+        user=None,
     )
     referrer_pts = await _add_account(
         db_session, test_tenant, account_type=ACCOUNT_TYPE_POINTS, currency="PTS", user=referrer
@@ -127,12 +130,18 @@ async def test_signup_cashback_credits_wallets_from_system_inflow(
     referrer = await _make_user(db_session, test_tenant)
     referee = await _make_user(db_session, test_tenant)
     referrer_w = await _add_account(
-        db_session, test_tenant, account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-        currency="ZAR", user=referrer,
+        db_session,
+        test_tenant,
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency="ZAR",
+        user=referrer,
     )
     referee_w = await _add_account(
-        db_session, test_tenant, account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-        currency="ZAR", user=referee,
+        db_session,
+        test_tenant,
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency="ZAR",
+        user=referee,
     )
     db_session.add(
         Rule(
@@ -183,8 +192,11 @@ async def test_signup_evaluation_is_idempotent(
     referrer = await _make_user(db_session, test_tenant)
     referee = await _make_user(db_session, test_tenant)
     await _add_account(
-        db_session, test_tenant, account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
-        currency="PTS", user=None,
+        db_session,
+        test_tenant,
+        account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+        currency="PTS",
+        user=None,
     )
     referrer_pts = await _add_account(
         db_session, test_tenant, account_type=ACCOUNT_TYPE_POINTS, currency="PTS", user=referrer
@@ -210,23 +222,22 @@ async def test_signup_evaluation_is_idempotent(
     await evaluate_referral_on_signup(db_session, tenant_id=test_tenant.id, referral=referral)
     await evaluate_referral_on_signup(db_session, tenant_id=test_tenant.id, referral=referral)
 
-    events = (
-        (await db_session.execute(select(RewardEvent))).scalars().all()
-    )
+    events = (await db_session.execute(select(RewardEvent))).scalars().all()
     assert len(events) == 2  # one per side, not four
     ref_bal, _ = await derive_balance(db_session, referrer_pts.id)
     assert ref_bal == Decimal("50")
 
 
 @pytest.mark.asyncio
-async def test_cashback_reward_is_cap_exempt(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_cashback_reward_is_cap_exempt(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """Verify a cashback referral reward lands even when it exceeds the wallet limit"""
     referee = await _make_user(db_session, test_tenant)
     wallet = await _add_account(
-        db_session, test_tenant, account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
-        currency="ZAR", user=referee,
+        db_session,
+        test_tenant,
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency="ZAR",
+        user=referee,
     )
     # Tight cap for the default (consumer) user type.
     db_session.add(

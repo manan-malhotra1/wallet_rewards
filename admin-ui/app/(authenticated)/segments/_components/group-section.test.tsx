@@ -4,17 +4,25 @@
  */
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GroupSection } from "@/app/(authenticated)/segments/_components/group-section";
-import type { Segment, SegmentGroup } from "@/lib/api-types";
+import type { Segment, SegmentGroup, SegmentMetricInfo, Service } from "@/lib/api-types";
 import { formatTimestamp } from "@/lib/utils";
 
 const deleteSegmentGroupAction = vi.fn();
 const addUserToSegmentAction = vi.fn();
+const previewCriteriaAction = vi.fn();
+const updateSegmentAction = vi.fn();
 vi.mock("@/app/(authenticated)/segments/_actions", () => ({
   deleteSegmentGroupAction: (...args: unknown[]) => deleteSegmentGroupAction(...args),
   addUserToSegmentAction: (...args: unknown[]) => addUserToSegmentAction(...args),
+  // <EditSegmentDialog> (mounted per-row by <GroupSection> below) pulls
+  // these two in as well — stubbed here too so opening it in a test never
+  // calls through to an unmocked import.
+  previewCriteriaAction: (...args: unknown[]) => previewCriteriaAction(...args),
+  updateSegmentAction: (...args: unknown[]) => updateSegmentAction(...args),
 }));
 
 const toast = vi.fn();
@@ -33,6 +41,11 @@ const GROUP: SegmentGroup = {
 };
 
 const SYSTEM_GROUP: SegmentGroup = { ...GROUP, id: "group-sys", is_system: true };
+const GROUPS: SegmentGroup[] = [GROUP, { ...GROUP, id: "group-2", name: "Value" }];
+const METRICS: SegmentMetricInfo[] = [
+  { name: "txn_sum", supports_txn_type: true, supports_window: true },
+];
+const SERVICES: Service[] = [];
 
 function makeSegment(overrides: Partial<Segment>): Segment {
   return {
@@ -78,11 +91,26 @@ beforeEach(() => {
   addUserToSegmentAction.mockResolvedValue({ ok: true });
 });
 
+/** Render <GroupSection> with the group/metric/service vocabulary it now threads to <EditSegmentDialog>. */
+function renderSection(
+  props: Partial<React.ComponentProps<typeof GroupSection>> = {},
+) {
+  return render(
+    <GroupSection
+      group={GROUP}
+      segments={[]}
+      tenantId="tenant-1"
+      groups={GROUPS}
+      metrics={METRICS}
+      services={SERVICES}
+      {...props}
+    />,
+  );
+}
+
 describe("Group-sectioned segments — one group's table", () => {
   it("Verify segments render priority-DESC, highest priority first", () => {
-    render(
-      <GroupSection group={GROUP} segments={[BRONZE, GOLD]} tenantId="tenant-1" />,
-    );
+    renderSection({ segments: [BRONZE, GOLD] });
 
     const rows = screen.getAllByRole("row").filter((r) => within(r).queryByText(/Gold|Bronze/));
     expect(within(rows[0]).getByText("Gold")).toBeInTheDocument();
@@ -93,9 +121,7 @@ describe("Group-sectioned segments — one group's table", () => {
     // Passed in Zeta-then-Alpha order so a passing test can only mean the
     // component itself re-sorted them, not that they happened to already be
     // in the right order.
-    render(
-      <GroupSection group={GROUP} segments={[TIE_ZETA, TIE_ALPHA]} tenantId="tenant-1" />,
-    );
+    renderSection({ segments: [TIE_ZETA, TIE_ALPHA] });
 
     const rows = screen.getAllByRole("row").filter((r) => within(r).queryByText(/Alpha|Zeta/));
     expect(within(rows[0]).getByText("Alpha")).toBeInTheDocument();
@@ -103,28 +129,26 @@ describe("Group-sectioned segments — one group's table", () => {
   });
 
   it("Verify a dynamic segment shows a Dynamic badge and a static one shows Static", () => {
-    render(
-      <GroupSection group={GROUP} segments={[BRONZE, DYNAMIC_PENDING]} tenantId="tenant-1" />,
-    );
+    renderSection({ segments: [BRONZE, DYNAMIC_PENDING] });
 
     expect(screen.getByText("Static")).toBeInTheDocument();
     expect(screen.getByText("Dynamic")).toBeInTheDocument();
   });
 
   it("Verify a dynamic segment's criteria summary renders in the Criteria column", () => {
-    render(<GroupSection group={GROUP} segments={[DYNAMIC_PENDING]} tenantId="tenant-1" />);
+    renderSection({ segments: [DYNAMIC_PENDING] });
 
     expect(screen.getByText("txn_sum ≥ 5000")).toBeInTheDocument();
   });
 
   it("Verify a dynamic segment with a null last_evaluated_at shows Pending recompute", () => {
-    render(<GroupSection group={GROUP} segments={[DYNAMIC_PENDING]} tenantId="tenant-1" />);
+    renderSection({ segments: [DYNAMIC_PENDING] });
 
     expect(screen.getByText("Pending recompute")).toBeInTheDocument();
   });
 
   it("Verify an evaluated dynamic segment shows its formatted last-evaluated timestamp, not Pending", () => {
-    render(<GroupSection group={GROUP} segments={[DYNAMIC_EVALUATED]} tenantId="tenant-1" />);
+    renderSection({ segments: [DYNAMIC_EVALUATED] });
 
     expect(screen.queryByText("Pending recompute")).not.toBeInTheDocument();
     // Assert the actual rendered text, not just the absence of "Pending" —
@@ -136,7 +160,7 @@ describe("Group-sectioned segments — one group's table", () => {
   });
 
   it("Verify the delete-group button is hidden for a system group", () => {
-    render(<GroupSection group={SYSTEM_GROUP} segments={[BRONZE]} tenantId="tenant-1" />);
+    renderSection({ group: SYSTEM_GROUP, segments: [BRONZE] });
 
     expect(screen.queryByRole("button", { name: "Delete group" })).not.toBeInTheDocument();
     // Two "System" badges are expected here: the group header's own badge
@@ -146,16 +170,14 @@ describe("Group-sectioned segments — one group's table", () => {
   });
 
   it("Verify the delete-group button is hidden when canDelete is false, even for a non-system group", () => {
-    render(
-      <GroupSection group={GROUP} segments={[BRONZE]} tenantId="tenant-1" canDelete={false} />,
-    );
+    renderSection({ segments: [BRONZE], canDelete: false });
 
     expect(screen.queryByRole("button", { name: "Delete group" })).not.toBeInTheDocument();
   });
 
   it("Verify confirming group delete calls the action with (group.id, tenantId)", async () => {
     const user = userEvent.setup();
-    render(<GroupSection group={GROUP} segments={[BRONZE]} tenantId="tenant-1" />);
+    renderSection({ segments: [BRONZE] });
 
     await user.click(screen.getByRole("button", { name: "Delete group" }));
     const dialog = await screen.findByRole("dialog");
@@ -172,7 +194,7 @@ describe("Group-sectioned segments — one group's table", () => {
       message: "Move or delete its segments first.",
     });
     const user = userEvent.setup();
-    render(<GroupSection group={GROUP} segments={[BRONZE]} tenantId="tenant-1" />);
+    renderSection({ segments: [BRONZE] });
 
     await user.click(screen.getByRole("button", { name: "Delete group" }));
     const dialog = await screen.findByRole("dialog");
@@ -190,9 +212,7 @@ describe("Group-sectioned segments — one group's table", () => {
   });
 
   it("Verify the assign-user affordance only appears on static segment rows", () => {
-    render(
-      <GroupSection group={GROUP} segments={[BRONZE, DYNAMIC_PENDING]} tenantId="tenant-1" />,
-    );
+    renderSection({ segments: [BRONZE, DYNAMIC_PENDING] });
 
     // One static segment -> exactly one assign-user button.
     expect(screen.getAllByRole("button", { name: "Assign user" })).toHaveLength(1);
@@ -205,7 +225,7 @@ describe("Group-sectioned segments — one group's table", () => {
       message: "No such user.",
     });
     const user = userEvent.setup();
-    render(<GroupSection group={GROUP} segments={[BRONZE]} tenantId="tenant-1" />);
+    renderSection({ segments: [BRONZE] });
 
     await user.click(screen.getByRole("button", { name: "Assign user" }));
     await user.type(screen.getByPlaceholderText("00000000-…"), "not-a-real-id");
@@ -221,11 +241,20 @@ describe("Group-sectioned segments — one group's table", () => {
   });
 
   it("Verify the collapsible header points aria-controls at the body it toggles", () => {
-    render(<GroupSection group={GROUP} segments={[BRONZE]} tenantId="tenant-1" />);
+    renderSection({ segments: [BRONZE] });
 
     const toggle = screen.getByRole("button", { name: /Loyalty/ });
     const controlsId = toggle.getAttribute("aria-controls");
     expect(controlsId).toBeTruthy();
     expect(document.getElementById(controlsId!)).not.toBeNull();
+  });
+
+  it("Verify every segment row — including is_system ones — renders an Edit segment button", () => {
+    renderSection({ segments: [BRONZE, GOLD, DYNAMIC_PENDING] });
+
+    // Bronze and Gold are is_system; DYNAMIC_PENDING isn't — all three still
+    // get the pencil, since only a GROUP MOVE (not the whole row) is
+    // blocked for a system segment.
+    expect(screen.getAllByRole("button", { name: "Edit segment" })).toHaveLength(3);
   });
 });

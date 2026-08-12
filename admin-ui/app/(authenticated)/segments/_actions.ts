@@ -13,8 +13,10 @@ import {
   deleteSegmentGroup,
   previewSegmentCriteria,
   recomputeSegments,
+  updateSegment,
   type CreateSegmentGroupPayload,
   type CreateSegmentPayload,
+  type UpdateSegmentPayload,
 } from "@/lib/api-endpoints";
 import type { SegmentCriteriaDoc } from "@/lib/api-types";
 
@@ -67,6 +69,25 @@ export async function addUserToSegmentAction(
 ): Promise<SegmentActionResult> {
   try {
     await addUserToSegment(segmentId, tenantId, userId);
+    revalidatePath("/segments");
+    return { ok: true };
+  } catch (err) {
+    return toActionError(err);
+  }
+}
+
+/**
+ * Update a segment's description, group, priority, and/or criteria.
+ * Consumed by the Task 11 `<EditSegmentDialog>` — the caller sends only the
+ * fields that actually changed (see `UpdateSegmentPayload`'s docstring).
+ */
+export async function updateSegmentAction(
+  segmentId: string,
+  tenantId: string,
+  payload: UpdateSegmentPayload,
+): Promise<SegmentActionResult> {
+  try {
+    await updateSegment(segmentId, tenantId, payload);
     revalidatePath("/segments");
     return { ok: true };
   } catch (err) {

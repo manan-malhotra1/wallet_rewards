@@ -39,9 +39,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import type { Segment, SegmentGroup } from "@/lib/api-types";
+import type { Segment, SegmentGroup, SegmentMetricInfo, Service } from "@/lib/api-types";
 import { summarizeCriteria } from "@/lib/segment-criteria";
 import { formatTimestamp } from "@/lib/utils";
+
+import { EditSegmentDialog } from "./edit-segment-dialog";
 
 /** Sort segments the way the evaluator ranks them: priority DESC, name ASC on ties. */
 function byPriorityDesc(a: Segment, b: Segment): number {
@@ -70,11 +72,21 @@ export function GroupSection({
   group,
   segments,
   tenantId,
+  groups,
+  metrics,
+  services,
   canDelete = true,
 }: {
   group: SegmentGroup;
   segments: Segment[];
   tenantId: string;
+  // Threaded through to <EditSegmentDialog> for its group-move picker and
+  // (for a segment gaining criteria for the first time) its criteria
+  // builder — page.tsx already fetches all three for the create-segment
+  // dialog, so this just reuses that same fetch rather than re-fetching.
+  groups: SegmentGroup[];
+  metrics: SegmentMetricInfo[];
+  services: Service[];
   canDelete?: boolean;
 }) {
   const [open, setOpen] = React.useState(true);
@@ -184,7 +196,7 @@ export function GroupSection({
                   <TableHeaderCell>Criteria</TableHeaderCell>
                   <TableHeaderCell>Priority</TableHeaderCell>
                   <TableHeaderCell>Last evaluated</TableHeaderCell>
-                  <TableHeaderCell className="w-[50px]">
+                  <TableHeaderCell className="w-[90px]">
                     <span className="sr-only">Actions</span>
                   </TableHeaderCell>
                 </TableRow>
@@ -218,17 +230,30 @@ export function GroupSection({
                           {lastEvaluatedText(s)}
                         </TableCell>
                         <TableCell>
-                          {!isDynamic && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label="Assign user"
-                              disabled={pending === s.id}
-                              onClick={() => setUserIdPrompt({ segmentId: s.id, value: "" })}
-                            >
-                              <UserPlus className="h-3.5 w-3.5 text-primary" />
-                            </Button>
-                          )}
+                          <div className="flex items-center gap-1">
+                            {/* Every segment is editable, including
+                                is_system ones — only a GROUP MOVE is
+                                blocked for those (enforced inside the
+                                dialog itself, not by hiding this button). */}
+                            <EditSegmentDialog
+                              segment={s}
+                              tenantId={tenantId}
+                              groups={groups}
+                              metrics={metrics}
+                              services={services}
+                            />
+                            {!isDynamic && (
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Assign user"
+                                disabled={pending === s.id}
+                                onClick={() => setUserIdPrompt({ segmentId: s.id, value: "" })}
+                              >
+                                <UserPlus className="h-3.5 w-3.5 text-primary" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                       {userIdPrompt?.segmentId === s.id && (

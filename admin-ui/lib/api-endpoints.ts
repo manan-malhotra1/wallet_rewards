@@ -1016,6 +1016,40 @@ export const addUserToSegment = (
     { query: { tenant_id } },
   );
 
+/**
+ * PATCH payload for `updateSegment` — mirrors the backend's
+ * `SegmentUpdateRequest` exactly (Segmentation Phase 1 Task 7/11). Every
+ * field is optional; the edit dialog only ever includes a key when that
+ * field's value actually changed, so the backend's audit row (which records
+ * only the changed fields) stays accurate. `criteria=undefined` (an omitted
+ * key) means "leave criteria alone" — turning a dynamic segment back to
+ * static requires the explicit `clear_criteria: true` flag, never sending
+ * `criteria` and `clear_criteria: true` together (the backend 422s that
+ * combination).
+ */
+export interface UpdateSegmentPayload {
+  // `null` clears the description; omitting the key leaves it untouched.
+  description?: string | null;
+  group_id?: string;
+  priority?: number;
+  criteria?: SegmentCriteriaDoc;
+  clear_criteria?: boolean;
+}
+
+/**
+ * Update a segment's description, group, priority, and/or criteria.
+ * `tenant_id` is a query param on this route (not part of the JSON body) —
+ * see `backend/app/modules/segments/router.py`'s `patch_segment`.
+ */
+export const updateSegment = (
+  segment_id: string,
+  tenant_id: string,
+  payload: UpdateSegmentPayload,
+) =>
+  apiPatch<Segment>(`/api/v1/segments/${segment_id}`, payload, {
+    query: { tenant_id },
+  });
+
 // ---- Segment groups (the exclusive-tier "lens" a segment belongs to) ----
 
 export interface CreateSegmentGroupPayload {

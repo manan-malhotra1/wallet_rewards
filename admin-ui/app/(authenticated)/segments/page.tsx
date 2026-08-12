@@ -164,6 +164,9 @@ export default async function SegmentsPage() {
               group={group}
               segments={segments.filter((s) => s.group_id === group.id)}
               tenantId={activeTenantId}
+              groups={groups}
+              metrics={metrics}
+              services={services}
               canDelete={canDeleteGroups}
             />
           ))}
@@ -182,6 +185,9 @@ export default async function SegmentsPage() {
             }}
             segments={orphanedSegments}
             tenantId={activeTenantId}
+            groups={groups}
+            metrics={metrics}
+            services={services}
             canDelete={false}
           />
         )}

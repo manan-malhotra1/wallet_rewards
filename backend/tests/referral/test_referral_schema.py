@@ -69,6 +69,9 @@ def test_well_formed_signup_referral_rule_validates() -> None:
         referee_reward_value=Decimal("100"),
         reward_type="cashback",
         reward_value=Decimal("50"),
+        # Cashback rules must name a financial currency since rules.reward_currency
+        # (migration 0051) — points rules still omit it.
+        reward_currency="ZAR",
     )
     assert req.referral_trigger == "signup"
     assert req.referee_reward_value == Decimal("100")

@@ -1,10 +1,12 @@
 /**
- * Segments page — list every cohort in the active tenant and create new ones.
+ * Segments page — group-sectioned list of every cohort in the active tenant
+ * (Segmentation Phase 1 Task 11): one collapsible section per segment group,
+ * each holding a priority-ordered table of its segments, plus group CRUD and
+ * a manual recompute trigger for the batch evaluator.
  *
  * Segments are static (admin-assigned) or dynamic (criteria-evaluated by the
- * batch evaluator); the create dialog fetches the group/metric/service
- * vocabulary a dynamic segment needs. NOTE: this fetch wiring is deliberately
- * minimal — the group-sectioned table rewrite is Segmentation Phase 1 Task 11.
+ * batch evaluator); the create-segment dialog fetches the group/metric/
+ * service vocabulary a dynamic segment needs.
  */
 import { Layers, Plus } from "lucide-react";
 
@@ -16,8 +18,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { PageHeader } from "@/components/ui/page-header";
 
+import { CreateGroupDialog } from "./_components/create-group-dialog";
 import { CreateSegmentDialog } from "./_components/create-segment-dialog";
-import { SegmentsTable } from "./_components/segments-table";
+import { GroupSection } from "./_components/group-section";
+import { RecomputeButton } from "./_components/recompute-button";
 
 export const dynamic = "force-dynamic";
 
@@ -61,27 +65,50 @@ export default async function SegmentsPage() {
   const metrics = metricsResult.status === "fulfilled" ? metricsResult.value : [];
   const services = servicesResult.status === "fulfilled" ? servicesResult.value : [];
 
+  // System groups (seeded defaults, e.g. the default tier lens) surface
+  // first — an admin scanning the page expects the platform-provisioned
+  // groups before any custom ones — then alphabetical within each tier.
+  const sortedGroups = [...groups].sort((a, b) => {
+    if (a.is_system !== b.is_system) return a.is_system ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+
   return (
     <div>
       <PageHeader
         title="Segments"
-        subtitle="User cohorts. Bind a campaign or a multiplier to a segment to target a specific group of users."
+        subtitle="User cohorts, grouped into exclusive tiers. Within a group, the highest-priority matching segment wins."
         actions={
-          <CreateSegmentDialog
-            tenantId={activeTenantId}
-            groups={groups}
-            metrics={metrics}
-            services={services}
-            trigger={
-              <button
-                type="button"
-                className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                New segment
-              </button>
-            }
-          />
+          <div className="flex items-center gap-2">
+            <RecomputeButton tenantId={activeTenantId} />
+            <CreateGroupDialog
+              tenantId={activeTenantId}
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New group
+                </button>
+              }
+            />
+            <CreateSegmentDialog
+              tenantId={activeTenantId}
+              groups={groups}
+              metrics={metrics}
+              services={services}
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New segment
+                </button>
+              }
+            />
+          </div>
         }
       />
       <div className="p-6">
@@ -91,15 +118,22 @@ export default async function SegmentsPage() {
             description={`${error.errorCode}: ${error.message}`}
           />
         )}
-        {!error && segments.length === 0 ? (
+        {!error && sortedGroups.length === 0 && (
           <EmptyState
             icon={Layers}
-            title="No segments yet"
-            description="Create a segment to start grouping users. After that, assign users to it via the API or the user detail page."
+            title="No segment groups yet"
+            description="Create a segment group first — the exclusive-tier lens segments live in — then add segments to it."
           />
-        ) : (
-          <SegmentsTable segments={segments} />
         )}
+        {!error &&
+          sortedGroups.map((group) => (
+            <GroupSection
+              key={group.id}
+              group={group}
+              segments={segments.filter((s) => s.group_id === group.id)}
+              tenantId={activeTenantId}
+            />
+          ))}
       </div>
     </div>
   );

@@ -70,9 +70,7 @@ def _limit_body(
 
 def _revise_payload(tenant_id: UUID, max_amount: str) -> dict:
     """A same-scope (p2p) revise body for a limit request."""
-    return {
-        "payload": _limit_body(tenant_id, operation="update", max_amount=max_amount)["payload"]
-    }
+    return {"payload": _limit_body(tenant_id, operation="update", max_amount=max_amount)["payload"]}
 
 
 async def _snapshot_count(session: AsyncSession, request_id: str) -> int:
@@ -146,9 +144,7 @@ async def test_revise_update_scope_mismatch_rejected_matching_succeeds(
     on approval it replaces a DIFFERENT config than the request names. A same-
     scope revise still succeeds (revision bumps, snapshot added).
     """
-    live = await _create_live_limit(
-        async_client, db_session, test_tenant, make_admin_token, "1000"
-    )
+    live = await _create_live_limit(async_client, db_session, test_tenant, make_admin_token, "1000")
     request_id = await _propose_update_changes_requested(
         async_client, test_tenant, make_admin_token, str(live.id)
     )
@@ -192,9 +188,7 @@ async def test_revise_scope_mismatch_leaves_target_untouched_after_approve(
     make_admin_token: Callable[..., str],
 ) -> None:
     """Verify a same-scope revised edit applies to the config it named."""
-    live = await _create_live_limit(
-        async_client, db_session, test_tenant, make_admin_token, "1000"
-    )
+    live = await _create_live_limit(async_client, db_session, test_tenant, make_admin_token, "1000")
     request_id = await _propose_update_changes_requested(
         async_client, test_tenant, make_admin_token, str(live.id)
     )

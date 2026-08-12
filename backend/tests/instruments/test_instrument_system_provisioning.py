@@ -229,9 +229,7 @@ async def test_provisioning_is_idempotent_when_accounts_preexist(
     # Pre-seed the 5 money system accounts for KES (the lazy path having
     # already touched this currency before the instrument was created).
     for account_type in _FINANCIAL_SYSTEM_TYPES:
-        db_session.add(
-            Account(tenant_id=test_tenant.id, account_type=account_type, currency="KES")
-        )
+        db_session.add(Account(tenant_id=test_tenant.id, account_type=account_type, currency="KES"))
     await db_session.commit()
 
     resp = await async_client.post(

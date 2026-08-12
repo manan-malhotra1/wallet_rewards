@@ -447,9 +447,7 @@ async def test_external_withdraw_enforces_type_aware_limit(
     await _seed_wallet(db_session, test_tenant, test_user, balance=Decimal("500"))
     # The gate needs a pricing config too; add it (zero-fee) so the request
     # reaches the limit check and trips AmountAboveMax rather than the gate.
-    await _seed_service_configs(
-        db_session, test_tenant, service="withdraw", with_limit=False
-    )
+    await _seed_service_configs(db_session, test_tenant, service="withdraw", with_limit=False)
     db_session.add(
         LimitConfig(
             tenant_id=test_tenant.id,

@@ -139,9 +139,7 @@ class RuleCreateRequest(BaseModel):
             if self.referral_trigger == "nth_transaction" and (
                 self.referral_trigger_n is None or self.referral_trigger_n < 1
             ):
-                raise ValueError(
-                    "nth_transaction referral rules require referral_trigger_n >= 1"
-                )
+                raise ValueError("nth_transaction referral rules require referral_trigger_n >= 1")
         else:
             # Referral-only fields must not leak onto other rule types.
             if self.referral_trigger is not None:

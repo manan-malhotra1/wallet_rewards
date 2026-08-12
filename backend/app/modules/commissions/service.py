@@ -262,9 +262,7 @@ async def replace_commission_config_for_scope(
         currency=first.currency,
         user_type=first.user_type,
     )
-    existing = list(
-        (await session.execute(select(CommissionConfig).where(*scope))).scalars().all()
-    )
+    existing = list((await session.execute(select(CommissionConfig).where(*scope))).scalars().all())
     before = [_commission_config_state(c) for c in existing]
     for row in existing:
         await session.delete(row)
@@ -328,9 +326,7 @@ async def delete_commission_config_for_scope(
         currency=target.currency,
         user_type=target.user_type,
     )
-    existing = list(
-        (await session.execute(select(CommissionConfig).where(*scope))).scalars().all()
-    )
+    existing = list((await session.execute(select(CommissionConfig).where(*scope))).scalars().all())
     before = [_commission_config_state(c) for c in existing]
     for row in existing:
         await session.delete(row)

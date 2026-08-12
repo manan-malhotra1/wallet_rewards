@@ -81,9 +81,7 @@ class Referral(Base):
 
     __tablename__ = "referrals"
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "referred_user_id", name="uq_referrals_referred_per_tenant"
-        ),
+        UniqueConstraint("tenant_id", "referred_user_id", name="uq_referrals_referred_per_tenant"),
         CheckConstraint(
             "status IN ('pending', 'rewarded', 'void')",
             name="ck_referrals_status",

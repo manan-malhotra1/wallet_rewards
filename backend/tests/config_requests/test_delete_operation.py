@@ -335,9 +335,7 @@ async def test_delete_tax_removes_single_row(
 
     count = (
         await db_session.execute(
-            select(func.count())
-            .select_from(TaxConfig)
-            .where(TaxConfig.tenant_id == test_tenant.id)
+            select(func.count()).select_from(TaxConfig).where(TaxConfig.tenant_id == test_tenant.id)
         )
     ).scalar_one()
     assert count == 0

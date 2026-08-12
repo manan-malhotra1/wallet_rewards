@@ -25,9 +25,7 @@ async def test_get_from_other_tenant_404(
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )
-    resp = await async_client.get(
-        ops_url(other_tenant, f"/{proposed['id']}"), headers=maker_header
-    )
+    resp = await async_client.get(ops_url(other_tenant, f"/{proposed['id']}"), headers=maker_header)
     assert resp.status_code == 404
 
 

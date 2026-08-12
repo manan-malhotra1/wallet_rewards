@@ -146,9 +146,7 @@ async def test_propose_update_nonexistent_target_is_404(
     resp = await _propose(
         async_client,
         test_tenant,
-        _limit_body(
-            test_tenant.id, operation="update", max_amount="2000", target=str(uuid4())
-        ),
+        _limit_body(test_tenant.id, operation="update", max_amount="2000", target=str(uuid4())),
         _maker(make_admin_token),
     )
     assert resp.status_code == 404, resp.text
@@ -202,17 +200,13 @@ async def test_update_limit_config_replaces_in_place(
     make_admin_token: Callable[..., str],
 ) -> None:
     """Verify editing a limit updates its value and leaves a single config."""
-    live = await _create_live_limit(
-        async_client, db_session, test_tenant, make_admin_token, "1000"
-    )
+    live = await _create_live_limit(async_client, db_session, test_tenant, make_admin_token, "1000")
     assert live.max_amount == Decimal("1000")
 
     proposed = await _propose(
         async_client,
         test_tenant,
-        _limit_body(
-            test_tenant.id, operation="update", max_amount="2000", target=str(live.id)
-        ),
+        _limit_body(test_tenant.id, operation="update", max_amount="2000", target=str(live.id)),
         _maker(make_admin_token),
     )
     assert proposed.status_code == 201, proposed.text
@@ -237,15 +231,11 @@ async def test_update_proposal_records_revision_1_snapshot(
     make_admin_token: Callable[..., str],
 ) -> None:
     """Verify a proposed edit records its original version as the first revision."""
-    live = await _create_live_limit(
-        async_client, db_session, test_tenant, make_admin_token, "1000"
-    )
+    live = await _create_live_limit(async_client, db_session, test_tenant, make_admin_token, "1000")
     proposed = await _propose(
         async_client,
         test_tenant,
-        _limit_body(
-            test_tenant.id, operation="update", max_amount="2000", target=str(live.id)
-        ),
+        _limit_body(test_tenant.id, operation="update", max_amount="2000", target=str(live.id)),
         _maker(make_admin_token),
     )
     request_id = proposed.json()["id"]
@@ -361,9 +351,7 @@ async def test_update_tax_config_replaces_in_place(
     updated = await _propose(
         async_client,
         test_tenant,
-        _tax_body(
-            test_tenant.id, operation="update", fee_tax_pct="0.2", target=str(live.id)
-        ),
+        _tax_body(test_tenant.id, operation="update", fee_tax_pct="0.2", target=str(live.id)),
         _maker(make_admin_token),
     )
     assert updated.status_code == 201, updated.text
@@ -396,15 +384,11 @@ async def test_update_apply_failure_leaves_original_intact(
     injecting a failure at the audit step (post-flush, pre-commit) exercises the
     all-or-none guarantee that a partial replace can never persist.
     """
-    live = await _create_live_limit(
-        async_client, db_session, test_tenant, make_admin_token, "1000"
-    )
+    live = await _create_live_limit(async_client, db_session, test_tenant, make_admin_token, "1000")
     proposed = await _propose(
         async_client,
         test_tenant,
-        _limit_body(
-            test_tenant.id, operation="update", max_amount="2000", target=str(live.id)
-        ),
+        _limit_body(test_tenant.id, operation="update", max_amount="2000", target=str(live.id)),
         _maker(make_admin_token),
     )
     request_id = proposed.json()["id"]
@@ -454,9 +438,7 @@ async def test_update_scope_mismatch_rejected_matching_succeeds(
     Otherwise the request would silently replace scope B and leave X untouched.
     A same-scope edit against the same target still succeeds.
     """
-    live = await _create_live_limit(
-        async_client, db_session, test_tenant, make_admin_token, "1000"
-    )
+    live = await _create_live_limit(async_client, db_session, test_tenant, make_admin_token, "1000")
 
     # Same target id, but a payload whose transaction_type (scope) differs.
     mismatched = {
@@ -479,9 +461,7 @@ async def test_update_scope_mismatch_rejected_matching_succeeds(
     ok = await _propose(
         async_client,
         test_tenant,
-        _limit_body(
-            test_tenant.id, operation="update", max_amount="2000", target=str(live.id)
-        ),
+        _limit_body(test_tenant.id, operation="update", max_amount="2000", target=str(live.id)),
         _maker(make_admin_token),
     )
     assert ok.status_code == 201, ok.text
@@ -503,15 +483,11 @@ async def test_update_proposal_can_be_revised_and_resubmitted(
     The request stays operation=update, the snapshot revision bumps, and the
     revised cap is what lands on the live config.
     """
-    live = await _create_live_limit(
-        async_client, db_session, test_tenant, make_admin_token, "1000"
-    )
+    live = await _create_live_limit(async_client, db_session, test_tenant, make_admin_token, "1000")
     proposed = await _propose(
         async_client,
         test_tenant,
-        _limit_body(
-            test_tenant.id, operation="update", max_amount="2000", target=str(live.id)
-        ),
+        _limit_body(test_tenant.id, operation="update", max_amount="2000", target=str(live.id)),
         _maker(make_admin_token),
     )
     request_id = proposed.json()["id"]

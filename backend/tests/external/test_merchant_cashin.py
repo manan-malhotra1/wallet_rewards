@@ -177,9 +177,7 @@ async def merchant_key(
 
 
 @pytest_asyncio.fixture
-async def plain_key(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> AsyncIterator[dict[str, str]]:
+async def plain_key(db_session: AsyncSession, test_tenant: Tenant) -> AsyncIterator[dict[str, str]]:
     """An active API key with NO merchant binding (ordinary partner key)."""
     db_session.add(
         ApiKey(
@@ -222,9 +220,7 @@ def _body(phone: str, amount: str = "100") -> dict:
     }
 
 
-async def _post(
-    client: AsyncClient, key: dict[str, str], body: dict, *, idem: str = "idem-1"
-):
+async def _post(client: AsyncClient, key: dict[str, str], body: dict, *, idem: str = "idem-1"):
     raw = json.dumps(body).encode()
     return await client.post(
         "/api/v1/external/merchant-cashin",

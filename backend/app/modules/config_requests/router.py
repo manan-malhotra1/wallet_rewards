@@ -126,9 +126,7 @@ async def get_config_history(
     never captured as a request id.
     """
     _ = admin
-    outs = await list_config_history_for_scope(
-        session, tenant_id, config_type, target_config_id
-    )
+    outs = await list_config_history_for_scope(session, tenant_id, config_type, target_config_id)
     await _attach_admin_names(session, outs)
     return outs
 

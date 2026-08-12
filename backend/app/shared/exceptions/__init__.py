@@ -65,8 +65,7 @@ class IdentifierNotManuallyVerifiable(AppHTTPException):
         super().__init__(
             422,
             "identifier_not_manually_verifiable",
-            "Only account-number identifiers can be verified by an admin; "
-            "phone/email use OTP.",
+            "Only account-number identifiers can be verified by an admin; phone/email use OTP.",
         )
 
 

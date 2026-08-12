@@ -25,9 +25,7 @@ from app.shared.models import (
 )
 
 
-async def _make_user(
-    session: AsyncSession, tenant_id: object, user_type: str
-) -> User:
+async def _make_user(session: AsyncSession, tenant_id: object, user_type: str) -> User:
     """Persist a bare user of the given type in the tenant, return it."""
     user = User(tenant_id=tenant_id, user_type=user_type)
     session.add(user)
@@ -148,8 +146,10 @@ async def test_create_with_non_merchant_user_422_and_no_key(
     assert resp.status_code == 422
     assert resp.json()["error_code"] == "merchant_user_required"
     count = (
-        await db_session.execute(select(ApiKey).where(ApiKey.tenant_id == test_tenant.id))
-    ).scalars().all()
+        (await db_session.execute(select(ApiKey).where(ApiKey.tenant_id == test_tenant.id)))
+        .scalars()
+        .all()
+    )
     assert count == []
 
 
@@ -169,8 +169,10 @@ async def test_create_with_unknown_merchant_user_422_and_no_key(
     assert resp.status_code == 422
     assert resp.json()["error_code"] == "merchant_user_required"
     keys = (
-        await db_session.execute(select(ApiKey).where(ApiKey.tenant_id == test_tenant.id))
-    ).scalars().all()
+        (await db_session.execute(select(ApiKey).where(ApiKey.tenant_id == test_tenant.id)))
+        .scalars()
+        .all()
+    )
     assert keys == []
 
 
@@ -192,8 +194,10 @@ async def test_create_with_merchant_user_from_another_tenant_rejected(
     assert resp.status_code == 422
     assert resp.json()["error_code"] == "merchant_user_required"
     keys = (
-        await db_session.execute(select(ApiKey).where(ApiKey.tenant_id == test_tenant.id))
-    ).scalars().all()
+        (await db_session.execute(select(ApiKey).where(ApiKey.tenant_id == test_tenant.id)))
+        .scalars()
+        .all()
+    )
     assert keys == []
 
 

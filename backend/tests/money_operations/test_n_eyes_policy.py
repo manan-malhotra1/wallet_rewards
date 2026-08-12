@@ -109,9 +109,7 @@ async def test_policy_op_specific_beats_tenant_default(
 ) -> None:
     """Verify an approval rule set for a specific move overrides the tenant-wide default"""
     await _seed_policy(db_session, test_tenant, operation=None, required=1)
-    await _seed_policy(
-        db_session, test_tenant, operation="create_bank_mirror", required=2
-    )
+    await _seed_policy(db_session, test_tenant, operation="create_bank_mirror", required=2)
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_bank_mirror", _mirror_payload("Specific")
     )

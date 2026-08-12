@@ -149,9 +149,7 @@ class Account(Base):
             "currency",
             "name",
             unique=True,
-            postgresql_where=text(
-                "account_type = 'operator_adjustment' AND user_id IS NULL"
-            ),
+            postgresql_where=text("account_type = 'operator_adjustment' AND user_id IS NULL"),
         ),
     )
 

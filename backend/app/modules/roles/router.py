@@ -68,9 +68,7 @@ async def post_role(
     session: AsyncSession = Depends(get_async_session),
 ) -> RoleOut:
     """Create a role in a tenant. Admin only."""
-    role = await create_role(
-        session, request, admin=admin, ip_address=_client_ip(fastapi_request)
-    )
+    role = await create_role(session, request, admin=admin, ip_address=_client_ip(fastapi_request))
     return RoleOut.model_validate(role)
 
 

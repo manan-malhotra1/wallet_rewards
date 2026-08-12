@@ -136,13 +136,17 @@ async def test_unlock_writes_audit_row(
         headers=admin_auth_header,
     )
     row = (
-        await db_session.execute(
-            select(AuditLog).where(
-                AuditLog.entity_id == str(test_user.id),
-                AuditLog.action == "admin.user_unlocked",
+        (
+            await db_session.execute(
+                select(AuditLog).where(
+                    AuditLog.entity_id == str(test_user.id),
+                    AuditLog.action == "admin.user_unlocked",
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert row is not None
     assert row.after_state == {"was_locked": True}
 

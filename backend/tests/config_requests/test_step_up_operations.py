@@ -68,9 +68,7 @@ async def _propose(client: AsyncClient, tenant: Tenant, body: dict, headers: dic
     return await client.post(_url(tenant), content=json.dumps(body), headers=headers)
 
 
-async def _approve(
-    client: AsyncClient, tenant: Tenant, request_id: str, headers: dict[str, str]
-):
+async def _approve(client: AsyncClient, tenant: Tenant, request_id: str, headers: dict[str, str]):
     return await client.post(_url(tenant, f"/{request_id}/approve"), headers=headers)
 
 

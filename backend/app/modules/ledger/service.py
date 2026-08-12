@@ -257,9 +257,8 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
         from app.shared.tenant_mode import rewards_from_wallet_enabled
 
         rt = request.reward_trigger
-        if (
-            rt.transaction_type in REWARDABLE_TYPES
-            and await rewards_from_wallet_enabled(session, request.tenant_id)
+        if rt.transaction_type in REWARDABLE_TYPES and await rewards_from_wallet_enabled(
+            session, request.tenant_id
         ):
             session.add(
                 RewardOutbox(
@@ -389,8 +388,7 @@ async def _enforce_balance_guard(
     guarded = sorted(
         account_id
         for account_id, delta in deltas.items()
-        if delta != 0
-        and accounts[account_id].account_type in _OVERDRAFT_GUARDED_ACCOUNT_TYPES
+        if delta != 0 and accounts[account_id].account_type in _OVERDRAFT_GUARDED_ACCOUNT_TYPES
     )
     if not guarded:
         return
@@ -503,7 +501,7 @@ async def _next_reference_number(session: AsyncSession, tenant_id: UUID) -> int:
         The next running number (monotonic per tenant, gaps allowed).
     """
     seq_name = _tenant_sequence_name(tenant_id)
-    nextval_stmt = text(f'SELECT nextval(\'"{seq_name}"\')')
+    nextval_stmt = text(f"SELECT nextval('\"{seq_name}\"')")
     try:
         async with session.begin_nested():
             result = await session.execute(nextval_stmt)

@@ -176,10 +176,14 @@ async def test_change_pin_zero_fee_writes_no_transaction(
     ).scalar_one()
     assert pin_change.transaction_id is None
     txns = (
-        await db_session.execute(
-            select(Transaction).where(Transaction.transaction_type == "change_pin")
+        (
+            await db_session.execute(
+                select(Transaction).where(Transaction.transaction_type == "change_pin")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert txns == []
 
 
@@ -202,8 +206,10 @@ async def test_change_pin_zero_fee_is_idempotent(
     assert first.status_code == 200 and second.status_code == 200
     assert first.json() == second.json()
     rows = (
-        await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id))
-    ).scalars().all()
+        (await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id)))
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
 
 
@@ -233,14 +239,20 @@ async def test_change_pin_fee_idempotent_charges_once(
     assert first.json() == second.json()
 
     rows = (
-        await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id))
-    ).scalars().all()
+        (await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id)))
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     txns = (
-        await db_session.execute(
-            select(Transaction).where(Transaction.transaction_type == "change_pin")
+        (
+            await db_session.execute(
+                select(Transaction).where(Transaction.transaction_type == "change_pin")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(txns) == 1
     # Charged exactly once: 100 - 2.30 = 97.70 (not 95.40).
     balance, _ = await derive_balance(db_session, pin_user_wallet.id)
@@ -273,8 +285,10 @@ async def test_change_pin_fails_closed_when_pricing_config_missing(
     pin_hash = await _reload_pin_hash(db_session, pin_user.id)
     assert pin_hash is not None and verify_pin(CURRENT_PIN, pin_hash) is True
     rows = (
-        await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id))
-    ).scalars().all()
+        (await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id)))
+        .scalars()
+        .all()
+    )
     assert rows == []
 
 
@@ -324,8 +338,10 @@ async def test_change_pin_wrong_current_pin_rejected_and_no_change(
     pin_hash = await _reload_pin_hash(db_session, pin_user.id)
     assert pin_hash is not None and verify_pin(CURRENT_PIN, pin_hash) is True
     rows = (
-        await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id))
-    ).scalars().all()
+        (await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id)))
+        .scalars()
+        .all()
+    )
     assert rows == []
 
 
@@ -446,8 +462,10 @@ async def test_change_pin_insufficient_funds_for_fee(
     pin_hash = await _reload_pin_hash(db_session, pin_user.id)
     assert pin_hash is not None and verify_pin(CURRENT_PIN, pin_hash) is True
     rows = (
-        await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id))
-    ).scalars().all()
+        (await db_session.execute(select(PinChange).where(PinChange.user_id == pin_user.id)))
+        .scalars()
+        .all()
+    )
     assert rows == []
 
 
@@ -546,11 +564,15 @@ async def test_change_pin_is_tenant_isolated(
 
     # Two independent rows — one per tenant — despite the shared key.
     row_a = (
-        await db_session.execute(select(PinChange).where(PinChange.tenant_id == test_tenant.id))
-    ).scalars().all()
+        (await db_session.execute(select(PinChange).where(PinChange.tenant_id == test_tenant.id)))
+        .scalars()
+        .all()
+    )
     row_b = (
-        await db_session.execute(select(PinChange).where(PinChange.tenant_id == other_tenant.id))
-    ).scalars().all()
+        (await db_session.execute(select(PinChange).where(PinChange.tenant_id == other_tenant.id)))
+        .scalars()
+        .all()
+    )
     assert len(row_a) == 1 and row_a[0].user_id == user_a.id
     assert len(row_b) == 1 and row_b[0].user_id == user_b.id
 

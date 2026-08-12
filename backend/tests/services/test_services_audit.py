@@ -16,9 +16,7 @@ from app.shared.models import AuditLog, Tenant
 _ADMIN_SUB = "00000000-0000-4000-8000-000000000001"
 
 
-async def _audit_rows(
-    db_session: AsyncSession, *, entity_id: str, action: str
-) -> list[AuditLog]:
+async def _audit_rows(db_session: AsyncSession, *, entity_id: str, action: str) -> list[AuditLog]:
     result = await db_session.execute(
         select(AuditLog).where(
             AuditLog.entity_type == "service",

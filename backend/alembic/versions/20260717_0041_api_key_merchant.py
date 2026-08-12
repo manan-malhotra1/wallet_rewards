@@ -30,9 +30,7 @@ def upgrade() -> None:
         "api_keys",
         sa.Column("merchant_user_id", sa.UUID(), nullable=True),
     )
-    op.create_index(
-        "ix_api_keys_merchant_user_id", "api_keys", ["merchant_user_id"]
-    )
+    op.create_index("ix_api_keys_merchant_user_id", "api_keys", ["merchant_user_id"])
     op.create_foreign_key(
         "fk_api_keys_merchant_user_id_users",
         "api_keys",

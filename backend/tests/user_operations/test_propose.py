@@ -66,9 +66,7 @@ async def test_propose_update_user_is_pending_and_changes_nothing(
     await db_session.refresh(test_user)
     assert test_user.status == "active"  # unchanged
     profile = (
-        await db_session.execute(
-            select(UserProfile).where(UserProfile.user_id == test_user.id)
-        )
+        await db_session.execute(select(UserProfile).where(UserProfile.user_id == test_user.id))
     ).scalar_one_or_none()
     assert profile is None  # no profile written on propose
 

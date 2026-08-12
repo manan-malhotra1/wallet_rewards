@@ -82,9 +82,7 @@ def checker2_header(make_admin_token: Callable[..., str]) -> dict[str, str]:
 @pytest.fixture
 def maker_who_can_approve(make_admin_token: Callable[..., str]) -> dict[str, str]:
     """Same sub as the maker but also holds treasury-approver (self-approval test)."""
-    return _header(
-        make_admin_token(roles=["platform-admin", "treasury-approver"], sub=MAKER_SUB)
-    )
+    return _header(make_admin_token(roles=["platform-admin", "treasury-approver"], sub=MAKER_SUB))
 
 
 def ops_url(tenant: Tenant, suffix: str = "") -> str:
@@ -109,9 +107,7 @@ async def propose(
     return resp.json()
 
 
-async def approve(
-    client: AsyncClient, tenant: Tenant, op_id: str, checker_header: dict[str, str]
-):
+async def approve(client: AsyncClient, tenant: Tenant, op_id: str, checker_header: dict[str, str]):
     """Approve a money operation via the API."""
     return await client.post(ops_url(tenant, f"/{op_id}/approve"), headers=checker_header)
 

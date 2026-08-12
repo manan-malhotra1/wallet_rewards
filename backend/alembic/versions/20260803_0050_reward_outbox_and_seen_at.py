@@ -40,9 +40,7 @@ def upgrade() -> None:
         sa.Column("amount", sa.Numeric(precision=20, scale=4), nullable=False),
         sa.Column("currency", sa.String(length=10), nullable=False),
         sa.Column("merchant_id", sa.UUID(), nullable=True),
-        sa.Column(
-            "status", sa.String(length=20), server_default="pending", nullable=False
-        ),
+        sa.Column("status", sa.String(length=20), server_default="pending", nullable=False),
         sa.Column("attempts", sa.Integer(), server_default="0", nullable=False),
         sa.Column("last_error", sa.String(length=500), nullable=True),
         sa.Column(

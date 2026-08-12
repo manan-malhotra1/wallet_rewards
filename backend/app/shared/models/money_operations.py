@@ -126,9 +126,7 @@ class MoneyOperationRequest(Base):
     # DISTINCT checker approvals needed before this executes, IN ADDITION to
     # the maker: 1 = four-eyes (maker + 1 checker), 2 = six-eyes (maker + 2
     # distinct checkers). Resolved from ApprovalPolicy at propose time.
-    required_approvals: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="1"
-    )
+    required_approvals: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     # The ledger transaction produced when applied (fund/withdraw/adjust). NULL
     # for create_bank_mirror and until the request is APPLIED.
     applied_transaction_id: Mapped[uuid.UUID | None] = mapped_column(

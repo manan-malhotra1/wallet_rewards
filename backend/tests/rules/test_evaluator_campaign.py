@@ -155,9 +155,7 @@ async def test_campaign_does_not_fire_outside_window(
     )
 
     assert (
-        await _ingest(
-            db_session, test_tenant, test_user, datetime.now(UTC) - timedelta(days=5)
-        )
+        await _ingest(db_session, test_tenant, test_user, datetime.now(UTC) - timedelta(days=5))
         == 0
     )
 

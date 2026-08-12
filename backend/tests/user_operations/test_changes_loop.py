@@ -82,9 +82,7 @@ async def test_revise_then_resubmit_resets_round(
     proposed = await propose(
         async_client, test_tenant, maker_header, "create_user", create_user_payload()
     )
-    await request_changes(
-        async_client, test_tenant, proposed["id"], checker_header, "Change type."
-    )
+    await request_changes(async_client, test_tenant, proposed["id"], checker_header, "Change type.")
 
     # Maker revises the payload in place.
     revise = await async_client.patch(

@@ -33,8 +33,12 @@ def upgrade() -> None:
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.UUID(), nullable=False),
         sa.Column("currency", sa.String(length=3), nullable=False),
-        sa.Column("fee_amount", sa.Numeric(precision=20, scale=6), server_default="0", nullable=False),
-        sa.Column("tax_amount", sa.Numeric(precision=20, scale=6), server_default="0", nullable=False),
+        sa.Column(
+            "fee_amount", sa.Numeric(precision=20, scale=6), server_default="0", nullable=False
+        ),
+        sa.Column(
+            "tax_amount", sa.Numeric(precision=20, scale=6), server_default="0", nullable=False
+        ),
         sa.Column("transaction_id", sa.UUID(), nullable=True),
         sa.Column("status", sa.String(length=20), server_default="completed", nullable=False),
         sa.Column("idempotency_key", sa.String(length=255), nullable=False),

@@ -138,14 +138,10 @@ async def test_me_rewards_shows_progress_for_both_tenant(
     """Verify a user sees a milestone rule's current-of-target progress and status."""
     rule = await _seed_milestone_rule(db_session, test_tenant.id)
     # One unit of progress toward the target of 3.
-    db_session.add(
-        UserRuleProgress(user_id=test_user.id, rule_id=rule.id, current_count=1)
-    )
+    db_session.add(UserRuleProgress(user_id=test_user.id, rule_id=rule.id, current_count=1))
     await db_session.commit()
 
-    response = await async_client.get(
-        "/api/v1/identity/me/rewards", headers=alice_auth_header
-    )
+    response = await async_client.get("/api/v1/identity/me/rewards", headers=alice_auth_header)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["enabled"] is True
@@ -168,14 +164,10 @@ async def test_me_rewards_shows_streak_progress_for_both_tenant(
     """Verify a user sees a streak rule's current-streak-of-target progress and status."""
     rule = await _seed_streak_rule(db_session, test_tenant.id)
     # Two units into a 5-unit streak.
-    db_session.add(
-        UserRuleProgress(user_id=test_user.id, rule_id=rule.id, current_streak=2)
-    )
+    db_session.add(UserRuleProgress(user_id=test_user.id, rule_id=rule.id, current_streak=2))
     await db_session.commit()
 
-    response = await async_client.get(
-        "/api/v1/identity/me/rewards", headers=alice_auth_header
-    )
+    response = await async_client.get("/api/v1/identity/me/rewards", headers=alice_auth_header)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["enabled"] is True
@@ -193,14 +185,10 @@ async def test_me_rewards_returns_own_referral_code(
     alice_auth_header: dict[str, str],
 ) -> None:
     """Verify a user sees their own shareable referral code so they can invite friends."""
-    db_session.add(
-        ReferralCode(tenant_id=test_tenant.id, user_id=test_user.id, code="ALICE01")
-    )
+    db_session.add(ReferralCode(tenant_id=test_tenant.id, user_id=test_user.id, code="ALICE01"))
     await db_session.commit()
 
-    response = await async_client.get(
-        "/api/v1/identity/me/rewards", headers=alice_auth_header
-    )
+    response = await async_client.get("/api/v1/identity/me/rewards", headers=alice_auth_header)
     assert response.status_code == 200, response.text
     assert response.json()["referral_code"] == "ALICE01"
 
@@ -214,9 +202,7 @@ async def test_me_rewards_referral_code_null_when_absent(
     alice_auth_header: dict[str, str],
 ) -> None:
     """Verify an older user with no referral code sees null (the read path never mints one)."""
-    response = await async_client.get(
-        "/api/v1/identity/me/rewards", headers=alice_auth_header
-    )
+    response = await async_client.get("/api/v1/identity/me/rewards", headers=alice_auth_header)
     assert response.status_code == 200, response.text
     assert response.json()["referral_code"] is None
     # The read path must NOT create a code as a side effect.
@@ -278,9 +264,7 @@ async def test_me_rewards_tenant_isolation(
     await db_session.refresh(other_user)
     await _seed_reward_event(db_session, user_id=other_user.id, rule_id=other_rule.id)
 
-    response = await async_client.get(
-        "/api/v1/identity/me/rewards", headers=alice_auth_header
-    )
+    response = await async_client.get("/api/v1/identity/me/rewards", headers=alice_auth_header)
     assert response.status_code == 200, response.text
     body = response.json()
     catalog_ids = {item["rule_id"] for item in body["catalog"]}

@@ -107,9 +107,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Drop the two user-operation tables (and their indexes)."""
-    op.drop_index(
-        "ix_user_operation_reviews_request", table_name="user_operation_reviews"
-    )
+    op.drop_index("ix_user_operation_reviews_request", table_name="user_operation_reviews")
     op.drop_table("user_operation_reviews")
     op.drop_index(
         "ix_user_operation_requests_tenant_status",

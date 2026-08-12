@@ -368,17 +368,13 @@ async def propose_config_change(
             session, request_data.config_type, target_config_id, tenant_id
         )
         new_scope = (
-            None
-            if delete_target is None
-            else config_scope(request_data.config_type, delete_target)
+            None if delete_target is None else config_scope(request_data.config_type, delete_target)
         )
 
     # Trust boundary: one in-flight change per config scope. Reject a proposal
     # whose scope already has an OPEN (PENDING / CHANGES_REQUESTED) request — the
     # maker must resolve or revise that one first, not stack a duplicate.
-    if await _open_request_scope_conflict(
-        session, tenant_id, request_data.config_type, new_scope
-    ):
+    if await _open_request_scope_conflict(session, tenant_id, request_data.config_type, new_scope):
         raise ConfigRequestAlreadyOpen()
 
     request = ConfigChangeRequest(

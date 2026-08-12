@@ -210,18 +210,10 @@ async def _provision_system_accounts(
         # not a generic per-currency base account. Auto-creating an unnamed one
         # here would collide with the named mirror's unique constraint.
         await get_or_create_system_cash_inflow(session, tenant_id, currency)
-        await get_or_create_system_fee_account(
-            session, tenant_id=tenant_id, currency=currency
-        )
-        await get_or_create_system_commission(
-            session, tenant_id=tenant_id, currency=currency
-        )
-        await get_or_create_system_tax_service(
-            session, tenant_id=tenant_id, currency=currency
-        )
-        await get_or_create_system_tax_commission(
-            session, tenant_id=tenant_id, currency=currency
-        )
+        await get_or_create_system_fee_account(session, tenant_id=tenant_id, currency=currency)
+        await get_or_create_system_commission(session, tenant_id=tenant_id, currency=currency)
+        await get_or_create_system_tax_service(session, tenant_id=tenant_id, currency=currency)
+        await get_or_create_system_tax_commission(session, tenant_id=tenant_id, currency=currency)
         return 5
 
     if account_type == ACCOUNT_TYPE_POINTS:

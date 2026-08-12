@@ -198,9 +198,7 @@ async def test_composite_and_fires_when_all_conditions_met(
     test_user: User,
 ) -> None:
     """Verify a customer earns a reward when every condition of a combined rule is met"""
-    await _create_composite_rule(
-        async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
-    )
+    await _create_composite_rule(async_client, test_tenant, operator="AND", conditions=_TWO_CONDS)
     await _seed(
         db_session,
         test_tenant,
@@ -225,9 +223,7 @@ async def test_composite_and_does_not_fire_when_one_condition_below(
     test_user: User,
 ) -> None:
     """Verify a customer earns no reward when only some conditions of a combined rule are met"""
-    await _create_composite_rule(
-        async_client, test_tenant, operator="AND", conditions=_TWO_CONDS
-    )
+    await _create_composite_rule(async_client, test_tenant, operator="AND", conditions=_TWO_CONDS)
     await _seed(
         db_session,
         test_tenant,
@@ -303,9 +299,7 @@ async def test_composite_or_fires_when_any_condition_met(
     test_user: User,
 ) -> None:
     """Verify a customer earns a reward when any one condition of a combined rule is met"""
-    await _create_composite_rule(
-        async_client, test_tenant, operator="OR", conditions=_TWO_CONDS
-    )
+    await _create_composite_rule(async_client, test_tenant, operator="OR", conditions=_TWO_CONDS)
     await _seed(
         db_session,
         test_tenant,

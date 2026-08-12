@@ -40,9 +40,7 @@ def _validate_user_types(value: list[str] | None) -> list[str] | None:
         return value
     unknown = [v for v in value if v not in USER_TYPES]
     if unknown:
-        raise ValueError(
-            f"unknown user_type(s) {unknown}; allowed: {list(USER_TYPES)}"
-        )
+        raise ValueError(f"unknown user_type(s) {unknown}; allowed: {list(USER_TYPES)}")
     return value
 
 
@@ -56,9 +54,7 @@ def _validate_channels(value: list[str] | None) -> list[str] | None:
         return value
     unknown = [v for v in value if v not in SERVICE_CHANNELS]
     if unknown:
-        raise ValueError(
-            f"unknown channel(s) {unknown}; allowed: {list(SERVICE_CHANNELS)}"
-        )
+        raise ValueError(f"unknown channel(s) {unknown}; allowed: {list(SERVICE_CHANNELS)}")
     return value
 
 

@@ -90,9 +90,7 @@ async def _approve(
     assert resp.status_code == 200, resp.text
 
 
-async def _live_limit_id(
-    db_session: AsyncSession, tenant: Tenant, currency: str = "ZAR"
-) -> str:
+async def _live_limit_id(db_session: AsyncSession, tenant: Tenant, currency: str = "ZAR") -> str:
     """Return the id of the single live limit row for the currency scope."""
     row = (
         await db_session.execute(
@@ -263,9 +261,7 @@ async def test_history_route_not_shadowed_by_request_id(
 # -----------------------------------------------------------------------------
 
 
-async def test_history_requires_auth(
-    async_client: AsyncClient, test_tenant: Tenant
-) -> None:
+async def test_history_requires_auth(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """Verify version history cannot be viewed without signing in."""
     resp = await async_client.get(_history_url(test_tenant, "limit", str(uuid4())))
     assert resp.status_code == 401, resp.text

@@ -105,12 +105,8 @@ class RewardOutbox(Base):
     amount: Mapped[float] = mapped_column(Numeric(20, 4), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     merchant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default=OUTBOX_PENDING
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=OUTBOX_PENDING)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = created_at_col()
-    processed_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    processed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)

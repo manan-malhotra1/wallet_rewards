@@ -117,13 +117,17 @@ async def test_verify_account_number_happy_path(
     # Exactly one `admin.identifier_verified` audit row, and it never carries the
     # raw account-number value (NFR-0170) — only the type + before/after verified.
     audit_rows = (
-        await db_session.execute(
-            select(AuditLog).where(
-                AuditLog.entity_id == user["id"],
-                AuditLog.action == "admin.identifier_verified",
+        (
+            await db_session.execute(
+                select(AuditLog).where(
+                    AuditLog.entity_id == user["id"],
+                    AuditLog.action == "admin.identifier_verified",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(audit_rows) == 1
     audit = audit_rows[0]
     assert audit.tenant_id == tenant_id

@@ -39,9 +39,7 @@ from tests.conftest import reward_event_count
 # -----------------------------------------------------------------------------
 
 
-async def _seed_referrer(
-    session: AsyncSession, tenant: Tenant, *, code: str = "FRIEND1"
-) -> User:
+async def _seed_referrer(session: AsyncSession, tenant: Tenant, *, code: str = "FRIEND1") -> User:
     """Create a referrer user owning a known referral code in the tenant."""
     referrer = User(tenant_id=tenant.id)
     session.add(referrer)
@@ -90,9 +88,7 @@ async def _user_by_phone(session: AsyncSession, tenant: Tenant, phone: str) -> U
 async def _referral_for(session: AsyncSession, referred: User) -> Referral | None:
     """The single referral row where `referred` is the referred party, or None."""
     return (
-        await session.execute(
-            select(Referral).where(Referral.referred_user_id == referred.id)
-        )
+        await session.execute(select(Referral).where(Referral.referred_user_id == referred.id))
     ).scalar_one_or_none()
 
 

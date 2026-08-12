@@ -190,9 +190,7 @@ async def list_currencies(session: AsyncSession, *, tenant_id: UUID) -> list[Cur
         .order_by(Instrument.code)
     )
     rows = (await session.execute(stmt)).scalars().all()
-    return [
-        CurrencyInfo(code=i.code, symbol=i.symbol, display_name=i.display_name) for i in rows
-    ]
+    return [CurrencyInfo(code=i.code, symbol=i.symbol, display_name=i.display_name) for i in rows]
 
 
 async def _txn_by_currency(

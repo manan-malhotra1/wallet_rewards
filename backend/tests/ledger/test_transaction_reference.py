@@ -66,9 +66,7 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
     return tenant
 
 
-def _balanced(
-    src: Account, dst: Account, amount: Decimal
-) -> list[LedgerEntryRequest]:
+def _balanced(src: Account, dst: Account, amount: Decimal) -> list[LedgerEntryRequest]:
     """Build a balanced 2-entry pair (debit src, credit dst)."""
     return [
         LedgerEntryRequest(account_id=src.id, entry_type=ENTRY_DEBIT, amount=amount),

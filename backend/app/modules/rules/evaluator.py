@@ -482,11 +482,7 @@ async def _evaluate_composite(
         return None
 
     conditions = list(
-        (
-            await session.execute(
-                select(RuleCondition).where(RuleCondition.rule_id == rule.id)
-            )
-        )
+        (await session.execute(select(RuleCondition).where(RuleCondition.rule_id == rule.id)))
         .scalars()
         .all()
     )

@@ -134,18 +134,14 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "tenant_id", "operation", name="uq_approval_policies_tenant_operation"
-        ),
+        sa.UniqueConstraint("tenant_id", "operation", name="uq_approval_policies_tenant_operation"),
     )
 
 
 def downgrade() -> None:
     """Drop the three Epic 18 tables (and their indexes)."""
     op.drop_table("approval_policies")
-    op.drop_index(
-        "ix_money_operation_reviews_request", table_name="money_operation_reviews"
-    )
+    op.drop_index("ix_money_operation_reviews_request", table_name="money_operation_reviews")
     op.drop_table("money_operation_reviews")
     op.drop_index(
         "ix_money_operation_requests_tenant_status",

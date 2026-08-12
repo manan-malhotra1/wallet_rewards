@@ -69,9 +69,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.CheckConstraint(
-            "status IN ('pending', 'rewarded', 'void')", name="ck_referrals_status"
-        ),
+        sa.CheckConstraint("status IN ('pending', 'rewarded', 'void')", name="ck_referrals_status"),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.ForeignKeyConstraint(["referrer_user_id"], ["users.id"]),
         sa.ForeignKeyConstraint(["referred_user_id"], ["users.id"]),

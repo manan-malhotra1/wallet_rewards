@@ -95,15 +95,11 @@ async def _attach_target_names(session: AsyncSession, outs: list[UserOperationOu
             target_id = UUID(str(raw))
         except (ValueError, TypeError):
             continue
-        names = await resolve_user_names(
-            session, tenant_id=out.tenant_id, user_ids=[target_id]
-        )
+        names = await resolve_user_names(session, tenant_id=out.tenant_id, user_ids=[target_id])
         out.target_name = names.get(target_id)
 
 
-async def _serialize(
-    session: AsyncSession, request: UserOperationRequest
-) -> UserOperationOut:
+async def _serialize(session: AsyncSession, request: UserOperationRequest) -> UserOperationOut:
     """Load a single request's reviews, build its OUT, attach names."""
     reviews = await load_reviews(session, request.id)
     out = _build_out(request, reviews)

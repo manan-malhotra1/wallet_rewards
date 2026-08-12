@@ -89,9 +89,7 @@ async def _load_request(
     return request
 
 
-async def load_reviews(
-    session: AsyncSession, request_id: UUID
-) -> list[MoneyOperationReview]:
+async def load_reviews(session: AsyncSession, request_id: UUID) -> list[MoneyOperationReview]:
     """Return a request's review thread, oldest-first (append-only)."""
     result = await session.execute(
         select(MoneyOperationReview)

@@ -35,9 +35,7 @@ async def test_request_not_visible_across_tenants(
         "create_bank_mirror",
         {"currency": "ZAR", "name": "A-only"},
     )
-    resp = await async_client.get(
-        ops_url(other_tenant, f"/{proposed['id']}"), headers=maker_header
-    )
+    resp = await async_client.get(ops_url(other_tenant, f"/{proposed['id']}"), headers=maker_header)
     assert resp.status_code == 404
 
 

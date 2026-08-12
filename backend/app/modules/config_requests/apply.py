@@ -216,9 +216,7 @@ async def load_live_scope_as_bands(
     model = _MODEL_BY_TYPE[config_type]
     result = await session.execute(select(model).where(model.tenant_id == tenant_id))
     target_scope = config_scope(config_type, target)
-    rows = [
-        row for row in result.scalars().all() if config_scope(config_type, row) == target_scope
-    ]
+    rows = [row for row in result.scalars().all() if config_scope(config_type, row) == target_scope]
     # Order bands by amount_from ascending; single-row types have no amount_from
     # (getattr -> None) so the key is uniform and the sort is a no-op for them.
     rows.sort(

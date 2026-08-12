@@ -121,14 +121,10 @@ class UserOperationRequest(Base):
     # DISTINCT checker approvals needed before this applies, IN ADDITION to the
     # maker: 1 = four-eyes (maker + 1 checker), 2 = six-eyes (maker + 2 distinct
     # checkers).
-    required_approvals: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="1"
-    )
+    required_approvals: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     # The user created (create_user) or edited (update_user) when applied. NULL
     # until the request is APPLIED.
-    applied_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    applied_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()

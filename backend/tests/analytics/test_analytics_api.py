@@ -838,11 +838,19 @@ async def test_revenue_by_service_separates_currencies(
     """Verify per-service revenue is split per currency and never summed together"""
     tenant = await _make_tenant(db_session, name="multi-ccy-revenue")
     await _make_txn(
-        db_session, tenant, txn_type="cashout", amount=Decimal("100"), fee=Decimal("5"),
+        db_session,
+        tenant,
+        txn_type="cashout",
+        amount=Decimal("100"),
+        fee=Decimal("5"),
         currency="ZAR",
     )
     await _make_txn(
-        db_session, tenant, txn_type="cashout", amount=Decimal("100"), fee=Decimal("3"),
+        db_session,
+        tenant,
+        txn_type="cashout",
+        amount=Decimal("100"),
+        fee=Decimal("3"),
         currency="MGA",
     )
 

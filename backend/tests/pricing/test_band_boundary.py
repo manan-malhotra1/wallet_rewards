@@ -97,9 +97,7 @@ async def test_upper_bound_is_inclusive(db_session: AsyncSession, test_tenant: T
 
 
 @pytest.mark.asyncio
-async def test_above_top_band_resolves_none(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_above_top_band_resolves_none(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """Verify no fee tier applies to an amount above the highest configured tier."""
     await _seed_three_bands(db_session, test_tenant)
     user = await _make_user(db_session, test_tenant)
@@ -107,9 +105,7 @@ async def test_above_top_band_resolves_none(
 
 
 @pytest.mark.asyncio
-async def test_upper_boundary_fee_is_applied(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_upper_boundary_fee_is_applied(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """Verify a transfer at the exact top of a fee tier is charged that tier's fee."""
     await _seed_three_bands(db_session, test_tenant)
     user = await _make_user(db_session, test_tenant)
@@ -127,9 +123,7 @@ async def test_upper_boundary_fee_is_applied(
 
 
 @pytest.mark.asyncio
-async def test_above_top_band_raises_missing(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_above_top_band_raises_missing(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """Verify a transfer above every configured fee tier is blocked rather than charged nothing."""
     await _seed_three_bands(db_session, test_tenant)
     user = await _make_user(db_session, test_tenant)

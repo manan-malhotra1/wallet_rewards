@@ -64,7 +64,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Drop the snapshot table (and its index)."""
-    op.drop_index(
-        "ix_config_change_revisions_request", table_name="config_change_revisions"
-    )
+    op.drop_index("ix_config_change_revisions_request", table_name="config_change_revisions")
     op.drop_table("config_change_revisions")

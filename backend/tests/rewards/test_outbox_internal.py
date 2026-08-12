@@ -1,4 +1,5 @@
 """Internal wallet → rewards outbox behavior."""
+
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -128,9 +129,9 @@ async def _outbox_count(db_session, tenant_id: UUID) -> int:
     """Count reward_outbox rows for a tenant."""
     return (
         await db_session.execute(
-            select(func.count()).select_from(RewardOutbox).where(
-                RewardOutbox.tenant_id == tenant_id
-            )
+            select(func.count())
+            .select_from(RewardOutbox)
+            .where(RewardOutbox.tenant_id == tenant_id)
         )
     ).scalar_one()
 
@@ -168,18 +169,26 @@ async def test_outbox_row_is_tenant_scoped(db_session, tenant_factory):
 
     # Querying under tenant B's id must return nothing.
     seen_by_b = (
-        await db_session.execute(
-            select(RewardOutbox).where(RewardOutbox.tenant_id == tenant_b.id)
+        (
+            await db_session.execute(
+                select(RewardOutbox).where(RewardOutbox.tenant_id == tenant_b.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert seen_by_b == []
 
     # Tenant A sees exactly its own pending row.
     seen_by_a = (
-        await db_session.execute(
-            select(RewardOutbox).where(RewardOutbox.tenant_id == tenant_a.id)
+        (
+            await db_session.execute(
+                select(RewardOutbox).where(RewardOutbox.tenant_id == tenant_a.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(seen_by_a) == 1
     assert seen_by_a[0].id == outbox.id
     assert seen_by_a[0].status == OUTBOX_PENDING
@@ -206,10 +215,10 @@ async def test_outbox_written_only_in_both_mode(db_session, tenant_factory, user
         db_session, both.id, both_user.id, "cash_in", Decimal("100"), "ZAR"
     )
     rows = (
-        await db_session.execute(
-            select(RewardOutbox).where(RewardOutbox.tenant_id == both.id)
-        )
-    ).scalars().all()
+        (await db_session.execute(select(RewardOutbox).where(RewardOutbox.tenant_id == both.id)))
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     row = rows[0]
     assert row.transaction_id == txn.id
@@ -255,9 +264,7 @@ async def test_idempotent_retry_writes_no_second_outbox(db_session, tenant_facto
         currency="ZAR",
         amount=Decimal("100"),
         entries=[
-            LedgerEntryRequest(
-                account_id=debit.id, entry_type=ENTRY_DEBIT, amount=Decimal("100")
-            ),
+            LedgerEntryRequest(account_id=debit.id, entry_type=ENTRY_DEBIT, amount=Decimal("100")),
             LedgerEntryRequest(
                 account_id=credit.id, entry_type=ENTRY_CREDIT, amount=Decimal("100")
             ),
@@ -432,9 +439,7 @@ async def test_attempt_immediate_issues_and_is_idempotent(
 
     # Second drain: the row is no longer PENDING, so nothing is claimed and the
     # single reward_event stands (idempotent — no double issuance).
-    again = await attempt_immediate(
-        session_factory, tenant_id=test_tenant.id, user_id=test_user.id
-    )
+    again = await attempt_immediate(session_factory, tenant_id=test_tenant.id, user_id=test_user.id)
     assert again == []
     assert await _reward_event_count(db_session, test_user.id, rule.id) == 1
 
@@ -476,14 +481,13 @@ async def test_attempt_immediate_is_fail_open_on_issue_error(
     monkeypatch,
 ):
     """Verify a reward issuance failure never surfaces on the money path."""
+
     # attempt_immediate runs AFTER the wallet txn committed, so a reward hiccup
     # must be swallowed. Force the issuance core to blow up mid-drain.
     async def _boom(*_args, **_kwargs):
         raise RuntimeError("issuance backend down")
 
-    monkeypatch.setattr(
-        "app.modules.rewards.outbox.evaluate_and_issue_firings", _boom
-    )
+    monkeypatch.setattr("app.modules.rewards.outbox.evaluate_and_issue_firings", _boom)
 
     # One PENDING outbox row (no rule needed — issuance is patched to raise).
     await post_rewardable_txn(
@@ -530,9 +534,7 @@ async def test_issue_immediate_points_is_absolutely_fail_open(
 
     monkeypatch.setattr(outbox_mod, "attempt_immediate", _boom)
 
-    earned = await outbox_mod.issue_immediate_points(
-        db_session, tenant_id=uuid4(), user_id=uuid4()
-    )
+    earned = await outbox_mod.issue_immediate_points(db_session, tenant_id=uuid4(), user_id=uuid4())
     assert earned == 0
 
 
@@ -589,6 +591,7 @@ async def test_attempt_immediate_marks_processed_noop_on_unprovisionable(
     monkeypatch,
 ):
     """Verify an unrewardable-account drain resolves the row instead of poisoning it."""
+
     # Defense-in-depth: if issuance genuinely cannot land a reward (no account and
     # none provisionable), the immediate drain must mark the row PROCESSED — not
     # FAILED — so the recon sweep never retries a no-op to MAX_ATTEMPTS.
@@ -628,6 +631,7 @@ async def test_recon_sweep_marks_processed_noop_on_unprovisionable(
     monkeypatch,
 ):
     """Verify the recon sweep resolves an unrewardable row rather than retrying forever."""
+
     async def _raise_unprovisionable(*_args, **_kwargs):
         raise UserPointsAccountMissing()
 
@@ -667,6 +671,7 @@ async def test_attempt_immediate_fails_and_retries_on_missing_financial_wallet(
     be paid once the wallet exists. It must fall through to FAILED (retry +
     stuck-row alert), not be silently marked PROCESSED.
     """
+
     async def _raise_missing_wallet(*_args, **_kwargs):
         raise UserFinancialWalletMissing()
 
@@ -735,9 +740,7 @@ async def test_recon_skips_poison_rows_at_max_attempts(
     # session to avoid db_session's stale identity-map copy.
     async with session_factory() as verify:
         row = (
-            await verify.execute(
-                select(RewardOutbox).where(RewardOutbox.id == poison_id)
-            )
+            await verify.execute(select(RewardOutbox).where(RewardOutbox.id == poison_id))
         ).scalar_one()
         assert row.status == OUTBOX_FAILED
         assert row.attempts == MAX_ATTEMPTS

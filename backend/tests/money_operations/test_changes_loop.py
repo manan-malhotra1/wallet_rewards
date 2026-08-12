@@ -91,9 +91,7 @@ async def test_revise_resubmit_resets_approval_round(
 
     A resubmit resets the round: a prior approval no longer counts, and the
     same checker may approve the fresh round."""
-    db_session.add(
-        ApprovalPolicy(tenant_id=test_tenant.id, operation=None, required_approvals=2)
-    )
+    db_session.add(ApprovalPolicy(tenant_id=test_tenant.id, operation=None, required_approvals=2))
     await db_session.commit()
 
     proposed = await propose(

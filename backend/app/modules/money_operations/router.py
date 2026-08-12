@@ -114,7 +114,10 @@ async def _attach_payload_names(session: AsyncSession, outs: list[MoneyOperation
             if itype and ivalue:
                 try:
                     ident = await resolve_identifier(
-                        session, out.tenant_id, itype, str(ivalue)  # type: ignore[arg-type]
+                        session,
+                        out.tenant_id,
+                        itype,  # type: ignore[arg-type]
+                        str(ivalue),
                     )
                     names = await resolve_user_names(
                         session, tenant_id=out.tenant_id, user_ids=[ident.user_id]

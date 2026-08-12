@@ -142,15 +142,11 @@ async def test_service_policy_query_is_tenant_scoped(
     """Verify a tenant's service-policy query returns only that tenant's services"""
     tenant_a = await create_tenant(
         db_session,
-        TenantCreate(
-            name=f"tenant-a-{uuid4().hex[:8]}", business_type="both", base_currency="USD"
-        ),
+        TenantCreate(name=f"tenant-a-{uuid4().hex[:8]}", business_type="both", base_currency="USD"),
     )
     tenant_b = await create_tenant(
         db_session,
-        TenantCreate(
-            name=f"tenant-b-{uuid4().hex[:8]}", business_type="both", base_currency="KES"
-        ),
+        TenantCreate(name=f"tenant-b-{uuid4().hex[:8]}", business_type="both", base_currency="KES"),
     )
 
     rows = (
@@ -166,13 +162,13 @@ async def test_service_policy_query_is_tenant_scoped(
     assert by_code["p2p"] == (["consumer"], ["mobile"])
     # ...and the query never returned tenant B's rows (distinct tenant_id).
     b_ids = (
-        await db_session.execute(
-            select(Service.id).where(Service.tenant_id == tenant_b.id)
-        )
-    ).scalars().all()
+        (await db_session.execute(select(Service.id).where(Service.tenant_id == tenant_b.id)))
+        .scalars()
+        .all()
+    )
     a_ids = (
-        await db_session.execute(
-            select(Service.id).where(Service.tenant_id == tenant_a.id)
-        )
-    ).scalars().all()
+        (await db_session.execute(select(Service.id).where(Service.tenant_id == tenant_a.id)))
+        .scalars()
+        .all()
+    )
     assert set(a_ids).isdisjoint(set(b_ids))

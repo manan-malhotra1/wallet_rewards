@@ -125,12 +125,13 @@ async def test_multi_band_scope_without_history_synthesizes_all_bands(
     )
     # Insert deliberately OUT of amount order to prove the synthesis sorts.
     bands = [
-        PricingConfig(**scope, amount_from=Decimal("201"), amount_to=None,
-                      fixed_fee=Decimal("3")),
-        PricingConfig(**scope, amount_from=Decimal("0"), amount_to=Decimal("100"),
-                      fixed_fee=Decimal("1")),
-        PricingConfig(**scope, amount_from=Decimal("101"), amount_to=Decimal("200"),
-                      fixed_fee=Decimal("2")),
+        PricingConfig(**scope, amount_from=Decimal("201"), amount_to=None, fixed_fee=Decimal("3")),
+        PricingConfig(
+            **scope, amount_from=Decimal("0"), amount_to=Decimal("100"), fixed_fee=Decimal("1")
+        ),
+        PricingConfig(
+            **scope, amount_from=Decimal("101"), amount_to=Decimal("200"), fixed_fee=Decimal("2")
+        ),
     ]
     for band in bands:
         db_session.add(band)

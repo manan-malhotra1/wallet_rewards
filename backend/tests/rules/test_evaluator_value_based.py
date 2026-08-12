@@ -160,9 +160,7 @@ async def test_value_based_stop_after_n_triggers(
     )
     await db_session.commit()
 
-    outcomes = [
-        await _ingest(db_session, test_tenant, test_user, amount="500") for _ in range(3)
-    ]
+    outcomes = [await _ingest(db_session, test_tenant, test_user, amount="500") for _ in range(3)]
     assert outcomes == [1, 1, 0]
 
 

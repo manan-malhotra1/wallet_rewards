@@ -3,6 +3,7 @@
 Every reward path consults this: wallet activity drives rewards only in
 `both`; external Kafka events issue rewards only in `rewards`.
 """
+
 from uuid import UUID
 
 from sqlalchemy import select
@@ -44,9 +45,7 @@ async def rewards_from_wallet_enabled(session: AsyncSession, tenant_id: UUID) ->
     instead of delegating to `business_type_of` (which raises on a missing
     tenant — read endpoints rely on that).
     """
-    result = await session.execute(
-        select(Tenant.business_type).where(Tenant.id == tenant_id)
-    )
+    result = await session.execute(select(Tenant.business_type).where(Tenant.id == tenant_id))
     return result.scalar_one_or_none() == BUSINESS_TYPE_BOTH
 
 

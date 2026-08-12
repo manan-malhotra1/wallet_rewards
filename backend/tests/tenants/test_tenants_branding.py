@@ -36,9 +36,7 @@ async def test_branding_fields_round_trip(db_session: AsyncSession) -> None:
     await db_session.commit()
 
     db_session.expunge_all()
-    fetched = (
-        await db_session.execute(select(Tenant).where(Tenant.id == tenant.id))
-    ).scalar_one()
+    fetched = (await db_session.execute(select(Tenant).where(Tenant.id == tenant.id))).scalar_one()
 
     assert fetched.brand_accent_color == "#243B8F"
     assert fetched.brand_light_color == "#FFF0C9"
@@ -57,9 +55,7 @@ async def test_branding_fields_default_to_null(db_session: AsyncSession) -> None
     await db_session.commit()
 
     db_session.expunge_all()
-    fetched = (
-        await db_session.execute(select(Tenant).where(Tenant.id == tenant.id))
-    ).scalar_one()
+    fetched = (await db_session.execute(select(Tenant).where(Tenant.id == tenant.id))).scalar_one()
 
     assert fetched.brand_accent_color is None
     assert fetched.brand_light_color is None

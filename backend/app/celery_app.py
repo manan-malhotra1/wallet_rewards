@@ -7,6 +7,7 @@ broker/result backend is Redis (settings.REDIS_URL). Task modules are imported v
 
 Run: `celery -A app.celery_app worker` and `celery -A app.celery_app beat`.
 """
+
 from celery import Celery
 
 from app.config import settings

@@ -296,18 +296,14 @@ async def test_new_propose_succeeds_after_approve(
 
     # The applied update minted a new live row for the scope; edit THAT one.
     new_live = (
-        await db_session.execute(
-            select(LimitConfig).where(LimitConfig.tenant_id == test_tenant.id)
-        )
+        await db_session.execute(select(LimitConfig).where(LimitConfig.tenant_id == test_tenant.id))
     ).scalar_one()
     assert new_live.max_amount == Decimal("2000")
 
     second = await _propose(
         async_client,
         test_tenant,
-        _limit_body(
-            test_tenant.id, operation="update", max_amount="4000", target=str(new_live.id)
-        ),
+        _limit_body(test_tenant.id, operation="update", max_amount="4000", target=str(new_live.id)),
         _maker(make_admin_token),
     )
     assert second.status_code == 201, second.text

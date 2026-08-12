@@ -44,11 +44,7 @@ async def test_create_composite_rule_persists_conditions(
     assert body["composite_operator"] == "AND"
 
     conditions = list(
-        (
-            await db_session.execute(
-                select(RuleCondition).where(RuleCondition.rule_id == body["id"])
-            )
-        )
+        (await db_session.execute(select(RuleCondition).where(RuleCondition.rule_id == body["id"])))
         .scalars()
         .all()
     )

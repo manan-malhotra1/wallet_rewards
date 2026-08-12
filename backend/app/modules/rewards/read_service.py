@@ -129,9 +129,7 @@ def _project(rule: Rule, progress: UserRuleProgress | None) -> dict[str, Any]:
     }
 
 
-async def _eligible_rules(
-    session: AsyncSession, *, tenant_id: UUID, user_id: UUID
-) -> list[Rule]:
+async def _eligible_rules(session: AsyncSession, *, tenant_id: UUID, user_id: UUID) -> list[Rule]:
     """Active rules for the tenant, minus segment-bound rules the user isn't in.
 
     A rule with no `segment_id` is open to everyone; a segment-bound rule is
@@ -139,12 +137,16 @@ async def _eligible_rules(
     membership check the evaluator uses).
     """
     rules = (
-        await session.execute(
-            select(Rule)
-            .where(Rule.tenant_id == tenant_id, Rule.status == "active")
-            .order_by(Rule.created_at.asc())
+        (
+            await session.execute(
+                select(Rule)
+                .where(Rule.tenant_id == tenant_id, Rule.status == "active")
+                .order_by(Rule.created_at.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     eligible: list[Rule] = []
     for rule in rules:
@@ -199,13 +201,17 @@ async def list_my_rewards(
     progress_by_rule: dict[UUID, UserRuleProgress] = {}
     if rules:
         rows = (
-            await session.execute(
-                select(UserRuleProgress).where(
-                    UserRuleProgress.user_id == user_id,
-                    UserRuleProgress.rule_id.in_([r.id for r in rules]),
+            (
+                await session.execute(
+                    select(UserRuleProgress).where(
+                        UserRuleProgress.user_id == user_id,
+                        UserRuleProgress.rule_id.in_([r.id for r in rules]),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         progress_by_rule = {p.rule_id: p for p in rows}
 
     catalog: list[dict[str, Any]] = []

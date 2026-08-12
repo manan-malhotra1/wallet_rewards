@@ -84,13 +84,9 @@ class Service(Base):
     # user-type list plus a channel list of {admin, api}: no wallet user type
     # is singled out, and the admin/api channel gate is what excludes wallet
     # users from initiating it.
-    allowed_user_types: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
+    allowed_user_types: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     # allowed_channels values: web, api, mobile, ussd, admin, system.
-    allowed_channels: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
+    allowed_channels: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)

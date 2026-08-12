@@ -37,7 +37,6 @@ from app.modules.rules.evaluator import (
     RuleFiring,
     evaluate_active_rules_for_event,
 )
-from app.shared.models.rules import REWARD_TYPE_CASHBACK
 from app.shared.exceptions import (
     AppHTTPException,
     SourceKeyAlreadyInUse,
@@ -51,6 +50,7 @@ from app.shared.models import (
     ExternalEventSource,
     Tenant,
 )
+from app.shared.models.rules import REWARD_TYPE_CASHBACK
 from app.shared.tenant_mode import external_events_allowed
 
 # -----------------------------------------------------------------------------

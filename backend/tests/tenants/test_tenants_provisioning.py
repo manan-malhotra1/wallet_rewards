@@ -41,9 +41,7 @@ async def _instrument_codes(session: AsyncSession, tenant_id) -> set[str]:
 async def _service_codes(session: AsyncSession, tenant_id) -> set[str]:
     """Return the set of live service codes for a tenant."""
     result = await session.execute(
-        select(Service.code).where(
-            Service.tenant_id == tenant_id, Service.deleted_at.is_(None)
-        )
+        select(Service.code).where(Service.tenant_id == tenant_id, Service.deleted_at.is_(None))
     )
     return set(result.scalars().all())
 
@@ -89,9 +87,7 @@ async def test_new_tenant_wallet_instrument_uses_own_currency_not_zar(
     # The USD instrument carries the right symbol + display name.
     usd = (
         await db_session.execute(
-            select(Instrument).where(
-                Instrument.tenant_id == tenant.id, Instrument.code == "USD"
-            )
+            select(Instrument).where(Instrument.tenant_id == tenant.id, Instrument.code == "USD")
         )
     ).scalar_one()
     assert usd.symbol == "$"
@@ -112,9 +108,7 @@ async def test_new_tenant_gets_points_instrument(db_session: AsyncSession) -> No
     )
     pts = (
         await db_session.execute(
-            select(Instrument).where(
-                Instrument.tenant_id == tenant.id, Instrument.code == "PTS"
-            )
+            select(Instrument).where(Instrument.tenant_id == tenant.id, Instrument.code == "PTS")
         )
     ).scalar_one()
     assert pts.account_type == "points_account"
@@ -135,13 +129,15 @@ async def test_provisioning_is_idempotent(db_session: AsyncSession) -> None:
     await provision_tenant_defaults(db_session, tenant)
 
     instruments = (
-        await db_session.execute(
-            select(Instrument).where(Instrument.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db_session.execute(select(Instrument).where(Instrument.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     services = (
-        await db_session.execute(select(Service).where(Service.tenant_id == tenant.id))
-    ).scalars().all()
+        (await db_session.execute(select(Service).where(Service.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
 
     assert len(instruments) == 2  # exactly USD + PTS, not four
     assert len(services) == len(_BASELINE_SERVICES)
@@ -152,15 +148,11 @@ async def test_tenant_catalog_is_isolated_per_tenant(db_session: AsyncSession) -
     """Verify one tenant's instruments and services are never visible to another"""
     usd_tenant = await create_tenant(
         db_session,
-        TenantCreate(
-            name=f"iso-usd-{uuid4().hex[:8]}", business_type="both", base_currency="USD"
-        ),
+        TenantCreate(name=f"iso-usd-{uuid4().hex[:8]}", business_type="both", base_currency="USD"),
     )
     eur_tenant = await create_tenant(
         db_session,
-        TenantCreate(
-            name=f"iso-eur-{uuid4().hex[:8]}", business_type="both", base_currency="EUR"
-        ),
+        TenantCreate(name=f"iso-eur-{uuid4().hex[:8]}", business_type="both", base_currency="EUR"),
     )
 
     usd_codes = await _instrument_codes(db_session, usd_tenant.id)
@@ -170,8 +162,10 @@ async def test_tenant_catalog_is_isolated_per_tenant(db_session: AsyncSession) -
 
     # Services are scoped per tenant, never shared.
     usd_svc = (
-        await db_session.execute(select(Service).where(Service.tenant_id == usd_tenant.id))
-    ).scalars().all()
+        (await db_session.execute(select(Service).where(Service.tenant_id == usd_tenant.id)))
+        .scalars()
+        .all()
+    )
     assert {s.tenant_id for s in usd_svc} == {usd_tenant.id}
 
 

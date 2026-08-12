@@ -1,4 +1,5 @@
 """Deployment-mode gating: business_type drives reward behavior."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -106,9 +107,7 @@ async def test_external_event_accepted_for_rewards_tenant(db_session, tenant_fac
     user = await _make_user(db_session, tenant)
     source = await _register_source(db_session, tenant, "rewards-src")
 
-    result = await process_external_event(
-        db_session, _raw_event(tenant, user, source.source_key)
-    )
+    result = await process_external_event(db_session, _raw_event(tenant, user, source.source_key))
 
     assert result.outcome in ("processed", "duplicate")
 
@@ -128,9 +127,7 @@ async def test_external_event_rejected_for_both_tenant(db_session, tenant_factor
     # Rejection is audit-logged in event_ingestion_log with a REJECTED status.
     log = (
         await db_session.execute(
-            select(EventIngestionLog).where(
-                EventIngestionLog.external_event_id == raw.event_id
-            )
+            select(EventIngestionLog).where(EventIngestionLog.external_event_id == raw.event_id)
         )
     ).scalar_one_or_none()
     assert log is not None
@@ -145,9 +142,7 @@ async def test_external_event_rejected_for_wallet_tenant(db_session, tenant_fact
     user = await _make_user(db_session, tenant)
     source = await _register_source(db_session, tenant, "wallet-src")
 
-    result = await process_external_event(
-        db_session, _raw_event(tenant, user, source.source_key)
-    )
+    result = await process_external_event(db_session, _raw_event(tenant, user, source.source_key))
 
     assert result.outcome == "rejected"
     assert result.rejection_reason == "wrong_mode"

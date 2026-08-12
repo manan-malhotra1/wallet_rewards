@@ -174,7 +174,7 @@ palette preview, then revalidates the layout so the whole app re-themes. Brandin
 | `/services` | Service catalog (source of truth for Limits/Pricing/Campaigns dropdowns) + per-service access policy. |
 | `/instruments` | Currencies + points accounts; ZAR/PTS auto-seeded; add more (optional user backfill). |
 | `/budgets` | Reward-issuance caps per (scope, window). |
-| `/segments` | Static cohorts (dynamic = Phase 2). |
+| `/segments` | Group-sectioned cohorts: static + criteria-based dynamic tiers. |
 | `/api-keys` | Partner API credentials; secret revealed once, revoke disables; optional merchant bind. |
 | `/events` | Register external event sources with a shared secret (no list endpoint yet). |
 | `/merchants` | Module 17 placeholder (empty state so the nav entry doesn't 404). |

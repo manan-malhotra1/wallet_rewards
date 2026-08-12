@@ -57,7 +57,7 @@ Referral does **not** flow through this diagram — it has explicit entry points
 | `rule_conditions` | `rules.py:150` | Composite sub-conditions (`transaction_type`, `count_threshold`, opt `min_amount`, `sort_order`). |
 | `user_rule_progress` | `rules.py:165` | Per-`(user_id, rule_id)` tracker, UNIQUE `uq_user_rule_progress`. |
 | `reward_events` | `shared/models/rewards.py:25` | One row per firing; the idempotency ledger (§4). |
-| `segments` / `user_segments` | `shared/models/segments.py` | Static admin-assigned cohorts (§6). |
+| `segments` / `segment_groups` / `user_segments` | `shared/models/segments.py` | Static + dynamic (criteria) cohorts inside exclusive-tier groups (§6). |
 | `referral_codes` / `referrals` | `shared/models/referrals.py` | Code per user; referred→referrer attribution link (§7). |
 
 `user_rule_progress` carries every counter any rule type needs: `current_count`, `current_streak`,
@@ -189,12 +189,27 @@ re-triggers the outbox and rewards can't loop (doc 06 §4).
 
 ## 6. Segments (Module 15)
 
-Static, admin-curated cohorts — dynamic/rule-based segments are deferred to Phase 2. A `Segment` is UNIQUE per
-`(tenant, name)`; a `UserSegment` is UNIQUE per `(user_id, segment_id)`. Rules bind to a segment via
-`rules.segment_id` (nullable). The hot-path check is
-`user_is_in_segment(session, *, user_id, segment_id) -> bool` (`segments/service.py:159`), called by both the
-evaluator's candidate filter and the multiplier resolver. Admin surface: `POST /segments`, `GET /segments`,
-`POST /segments/{id}/users` (idempotent add, cross-tenant → 404).
+Segmentation Phase 1 (2026-08) shipped both halves of Module 15: cohorts live inside **segment groups**
+(`SegmentGroup` — one exclusive-tier lens per group, e.g. "Customer Loyalty"), and a segment can be **static**
+(admin-assigned) or **dynamic** (criteria-evaluated). A `Segment` is UNIQUE per `(tenant, group, name)` — not
+tenant-wide — since two different groups may legitimately reuse a tier name (e.g. "Gold" under both "Customer
+Loyalty" and "Merchant Tiers"); a `UserSegment` is UNIQUE per `(user_id, segment_id)`. Within a group, membership
+is exclusive: the highest-`priority` matching segment wins.
+
+A static segment (`criteria IS NULL`) is admin-assigned via `POST /segments/{id}/users`. A dynamic segment
+(`criteria` set — a flat AND/OR DSL v1 document validated by `app/modules/segments/criteria.py`) has its
+membership computed by a batch evaluator (`app/modules/segments/evaluator.py`) on an hourly Celery-beat schedule
+or on-demand via a manual recompute. Rules bind to a segment via `rules.segment_id` (nullable) regardless of
+static/dynamic. The hot-path check is
+`user_is_in_segment(session, *, user_id, segment_id) -> bool` (`segments/service.py`), called by both the
+evaluator's candidate filter and the multiplier resolver.
+
+Admin surface: `POST /segments`, `GET /segments`, `PATCH /segments/{id}` (description/group/priority/criteria —
+`clear_criteria: true` turns a dynamic segment back to static), `POST /segments/{id}/users` (idempotent add,
+cross-tenant → 404), `GET /segments/metrics` (criteria DSL metric vocabulary), `POST /segments/preview` (dry-run
+match count for a not-yet-saved criteria document), `POST /segments/recompute` (enqueue an async evaluator run
+for one tenant); `POST /segment-groups`, `GET /segment-groups`, `DELETE /segment-groups/{id}` (409 if
+system-seeded or still holding segments). Admin UI (`/segments`) renders one collapsible section per group.
 
 ---
 

@@ -26,7 +26,7 @@ One SQLAlchemy ORM file per domain under `backend/app/shared/models/` (~30 files
 | Rewards | `reward_events`, `reward_outbox` (internal wallet→rewards, `both` mode), badges/tiers/points-expiry (schema only, surfaces Planned) |
 | Redemption | `redemption_providers`, `redemptions` |
 | Events | `external_event_sources`, `event_ingestion_log` |
-| Segments | `segments`, `user_segments` |
+| Segments | `segments`, `segment_groups`, `user_segments` |
 | Referrals | `referral_codes`, `referrals` |
 | Governance (maker-checker) | `config_requests`, `money_operations`, `user_operations` (+ per-subsystem review rows) |
 | Partner API | `api_keys`, `external_user_creations` |

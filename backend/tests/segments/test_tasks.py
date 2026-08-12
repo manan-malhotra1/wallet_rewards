@@ -271,3 +271,26 @@ def test_beat_schedule_registers_segments_recompute() -> None:
     assert beat_entry["task"] == "segments.recompute_all"
     assert beat_entry["schedule"] == float(settings.SEGMENT_RECOMPUTE_INTERVAL_SECS)
     assert "app.modules.segments.tasks" in celery_app_module.celery_app.conf.include
+
+
+def test_shared_tasks_bind_to_configured_celery_app() -> None:
+    """Both `@shared_task` entrypoints resolve against `app.celery_app`, not
+    Celery's bare default app.
+
+    Regression guard for the `app.main` import-order fix (see that module's
+    comment): a `@shared_task`-decorated function binds to whichever Celery
+    app was "current" at decoration time. `celery -A app.celery_app
+    worker/beat` always gets this for free (it IS the entry module), but the
+    `uvicorn app.main:app` web process only does if `app.celery_app` is
+    imported before any router that transitively pulls in a `@shared_task`
+    module — without that import, `.delay()` calls from the web process
+    silently bind to a broker-less default app and raise a connection error
+    instead of reaching Redis (exactly the bug the Task 12 live smoke test
+    caught: `POST /api/v1/segments/recompute` 500ing). Asserting `.app is
+    celery_app` here catches a regression of that import ordering without
+    needing a running worker or broker.
+    """
+    from app.celery_app import celery_app
+
+    assert tasks.recompute_one_tenant.app is celery_app
+    assert tasks.recompute_all_segments.app is celery_app

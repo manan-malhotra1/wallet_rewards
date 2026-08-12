@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # test events without an admin Keycloak token. MUST stay False
     # outside local dev — these routes return 404 when unset.
     SIMULATOR_DEV_MODE: bool = False
+    # Celery beat interval (seconds) for segments.recompute_all — the dynamic
+    # segment membership refresh (segmentation spec §4). Hourly default.
+    SEGMENT_RECOMPUTE_INTERVAL_SECS: int = 3600
 
 
 settings = Settings()  # type: ignore[call-arg]

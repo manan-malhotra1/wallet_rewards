@@ -11,10 +11,13 @@ same split). `db_session` here commits for real against the test DB (see
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog.testing import capture_logs
 
 from app import celery_app as celery_app_module
 from app.modules.segments import tasks
@@ -92,51 +95,167 @@ async def test_recompute_all_isolates_a_poisoned_tenant(
     other_tenant: Tenant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Whichever tenant is visited FIRST raises -> the other is still recomputed.
+    """Whichever tenant is visited FIRST raises AFTER a partial write -> that
+    write is rolled back, while the survivor's own write commits for real.
 
     Mirrors the outbox's poison-row isolation: one tenant's failure is
-    logged (not re-raised) and the loop continues to the next tenant.
+    logged (not re-raised) and the loop continues to the next tenant. This
+    proves TRANSACTIONAL isolation, not just control flow: both spies
+    perform a real write (stamping their own tenant's `Segment.
+    last_evaluated_at`) before the first-attempted one raises. Asserting
+    only on the Python call list (as an earlier version of this test did)
+    would pass even if `_recompute_all`'s `session.rollback()` were a no-op
+    that merely swallowed the exception without undoing the DB write — only
+    re-querying the row proves the rollback actually happened.
 
     Deliberately does NOT key the failure off `test_tenant_id`: the
-    `_recompute_all` tenant query is `SELECT DISTINCT ... ` with no
-    `ORDER BY`, so Postgres is free to plan it as a HashAggregate over the
-    two (random) UUIDs — visitation order is not deterministic across runs.
+    `_recompute_all` tenant query has no tenant-id-based `ORDER BY` (it
+    orders by staleness, and both segments start equally stale/NULL), so
+    which tenant is visited first isn't pinned to a specific fixture.
     Failing off `test_tenant_id` specifically would only exercise the
     continue-after-failure branch on the runs where it happens to be
-    visited first (~half the time), silently no-op-ing the other half.
-    Instead, fail on whichever tenant is attempted FIRST, regardless of
-    which one that is, so the isolation branch is exercised every run.
+    visited first. Instead, fail on whichever tenant is attempted FIRST,
+    regardless of which one that is, so the isolation branch — and the
+    rollback-really-happened assertion below — is exercised every run.
 
     IDs are captured up front: `_recompute_all`'s rollback for the poisoned
     tenant expires every ORM instance tied to this shared session (rollback
     always expires, unlike commit with `expire_on_commit=False`), so
-    `test_tenant.id` / `other_tenant.id` would trigger an out-of-greenlet
-    lazy-load if read after the call.
+    reading `test_tenant.id` / `other_tenant.id`, or the `Segment` objects'
+    attributes, after the call would trigger an out-of-greenlet lazy-load —
+    hence the fresh `select(...)` re-queries below instead of attribute
+    access on the original ORM instances.
     """
     test_tenant_id, other_tenant_id = test_tenant.id, other_tenant.id
-    await _dynamic_segment(db_session, test_tenant_id, name="Loyal")
-    await _dynamic_segment(db_session, other_tenant_id, name="Loyal")
+    seg_a = await _dynamic_segment(db_session, test_tenant_id, name="A")
+    seg_b = await _dynamic_segment(db_session, other_tenant_id, name="B")
+    segment_id_by_tenant = {test_tenant_id: seg_a.id, other_tenant_id: seg_b.id}
     await db_session.commit()
 
     attempted: list[UUID] = []
-    calls: list[UUID] = []
+    stamp = datetime.now(UTC)
 
     async def _spy(session: AsyncSession, tenant_id: UUID, **_: object) -> None:
         attempted.append(tenant_id)
+        # Real write, mirroring what evaluator.recompute_tenant actually
+        # does (stamps Segment.last_evaluated_at) — this is the write whose
+        # fate (rolled back vs. committed) the assertions below check.
+        segment = await session.get(Segment, segment_id_by_tenant[tenant_id])
+        assert segment is not None
+        segment.last_evaluated_at = stamp
         if len(attempted) == 1:
-            raise RuntimeError("simulated poisoned-tenant failure")
-        calls.append(tenant_id)
+            raise RuntimeError("simulated poisoned-tenant failure after a partial write")
 
     monkeypatch.setattr(tasks, "recompute_tenant", _spy)
 
     # Must not raise: the poisoned tenant's exception is caught and logged.
     await tasks._recompute_all(db_session)
 
-    # Both tenants were attempted (poison isolation didn't skip the second),
-    # and the SECOND one attempted is the one that actually got recomputed.
     assert len(attempted) == 2
     assert set(attempted) == {test_tenant_id, other_tenant_id}
-    assert calls == [attempted[1]]
+    poisoned_id, survivor_id = attempted[0], attempted[1]
+
+    poisoned_stamp = (
+        await db_session.execute(
+            select(Segment.last_evaluated_at).where(Segment.id == segment_id_by_tenant[poisoned_id])
+        )
+    ).scalar_one()
+    survivor_stamp = (
+        await db_session.execute(
+            select(Segment.last_evaluated_at).where(Segment.id == segment_id_by_tenant[survivor_id])
+        )
+    ).scalar_one()
+
+    # The poisoned tenant's in-flight write never committed (rolled back);
+    # the survivor's write is durably persisted.
+    assert poisoned_stamp is None
+    assert survivor_stamp == stamp
+
+
+@pytest.mark.asyncio
+async def test_recompute_one_forwards_parsed_uuid_and_commits(
+    db_session: AsyncSession, test_tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_recompute_one` parses the stringified UUID, forwards a real `UUID`,
+    and commits — not just flushes.
+
+    The spy performs a real write (stamps `Segment.last_evaluated_at`)
+    rather than a no-op, so a fresh re-query after `_recompute_one` returns
+    proves the session was actually COMMITTED (a flush-only bug would still
+    show the value via `expire_on_commit=False` on the SAME session/object,
+    but a fresh `select(...)` — as used here — only sees committed data).
+    """
+    test_tenant_id = test_tenant.id
+    segment = await _dynamic_segment(db_session, test_tenant_id, name="Loyal")
+    segment_id = segment.id
+    await db_session.commit()
+
+    forwarded: list[UUID] = []
+    stamp = datetime.now(UTC)
+
+    async def _spy(session: AsyncSession, tenant_id: UUID, **_: object) -> None:
+        forwarded.append(tenant_id)
+        seg = await session.get(Segment, segment_id)
+        assert seg is not None
+        seg.last_evaluated_at = stamp
+
+    monkeypatch.setattr(tasks, "recompute_tenant", _spy)
+    await tasks._recompute_one(db_session, str(test_tenant_id))
+
+    # Forwarded a real UUID (not the raw string) matching the tenant.
+    assert forwarded == [test_tenant_id]
+    assert isinstance(forwarded[0], UUID)
+
+    persisted = (
+        await db_session.execute(select(Segment.last_evaluated_at).where(Segment.id == segment_id))
+    ).scalar_one()
+    assert persisted == stamp
+
+
+@pytest.mark.asyncio
+async def test_recompute_all_summary_log_level_reflects_failures(
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    other_tenant: Tenant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sweep-summary log is `warning` when any tenant failed, `info` otherwise.
+
+    Uses `structlog.testing.capture_logs()`, not `caplog` — this repo's
+    structlog isn't wired through stdlib `logging`, so `caplog` sees
+    nothing (see `test_evaluator.py`'s note on the same limitation).
+    `capture_logs()` needs no configuration wiring, so asserting on the log
+    line directly (rather than only its observable side effects) is cheap
+    here — unlike the evaluator's poison-log case, this one didn't need
+    skipping.
+    """
+    test_tenant_id, other_tenant_id = test_tenant.id, other_tenant.id
+    await _dynamic_segment(db_session, test_tenant_id, name="Loyal")
+    await db_session.commit()
+
+    async def _ok(session: AsyncSession, tenant_id: UUID, **_: object) -> None:
+        return None
+
+    monkeypatch.setattr(tasks, "recompute_tenant", _ok)
+    with capture_logs() as clean_run_logs:
+        await tasks._recompute_all(db_session)
+    summary = next(e for e in clean_run_logs if e["event"] == "segments_recompute_sweep_done")
+    assert summary["log_level"] == "info"
+    assert summary["failed"] == 0
+
+    await _dynamic_segment(db_session, other_tenant_id, name="Loyal")
+    await db_session.commit()
+
+    async def _one_fails(session: AsyncSession, tenant_id: UUID, **_: object) -> None:
+        if tenant_id == other_tenant_id:
+            raise RuntimeError("simulated failure")
+
+    monkeypatch.setattr(tasks, "recompute_tenant", _one_fails)
+    with capture_logs() as failing_run_logs:
+        await tasks._recompute_all(db_session)
+    summary = next(e for e in failing_run_logs if e["event"] == "segments_recompute_sweep_done")
+    assert summary["log_level"] == "warning"
+    assert summary["failed"] == 1
 
 
 def test_beat_schedule_registers_segments_recompute() -> None:

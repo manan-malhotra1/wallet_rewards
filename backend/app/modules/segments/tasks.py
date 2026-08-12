@@ -14,7 +14,9 @@ poison-tenant isolation — mirroring the outbox's per-row commit pattern (see
 that module's docstring): one tenant with corrupt/unparseable criteria (or
 any other failure) must not roll back every other tenant's freshly computed
 membership. Each tenant's recompute is wrapped in its own try/except that
-logs and continues.
+logs and continues — EXCEPT `SoftTimeLimitExceeded`, which logs and
+RE-RAISES instead (see "Time limits" below); everything already committed
+for prior tenants in the loop stays committed either way.
 
 Time limits: `evaluator.recompute_tenant` takes a blocking `FOR UPDATE` on
 the tenant's dynamic segment rows for the whole recompute (see that module's
@@ -27,7 +29,11 @@ docstring notes ~22MB per 100k-user metric map, and a tenant with many
 segments x many distinct metric/window combinations can hold several such
 maps at once. A hard ceiling bounds worst-case worker memory and lets Celery
 reclaim a stuck run instead of letting it wedge the beat schedule
-indefinitely.
+indefinitely. `_recompute_all` explicitly catches
+`celery.exceptions.SoftTimeLimitExceeded` (see its docstring) — the soft
+limit only DOES anything useful because that catch exists; left uncaught,
+Celery's own SIGTERM-based enforcement still applies, but the sweep would
+lose the chance to log which tenants got through before the cutoff.
 """
 
 from __future__ import annotations
@@ -36,7 +42,8 @@ from uuid import UUID
 
 import structlog
 from celery import shared_task
-from sqlalchemy import select
+from celery.exceptions import SoftTimeLimitExceeded
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.segments.evaluator import recompute_tenant
@@ -56,6 +63,20 @@ TIME_LIMIT = 600
 async def _recompute_all(session: AsyncSession) -> None:
     """Recompute every tenant that has at least one dynamic segment.
 
+    Ordering: STALEST FIRST — tenants are visited by ascending
+    `MIN(Segment.last_evaluated_at)` (NULLS FIRST, so a tenant that has
+    never been recomputed at all is always visited before one that has).
+    This is a no-op today (every tenant gets recomputed every run), but it
+    turns any FUTURE fan-out truncation (e.g. a per-run tenant cap, or the
+    soft time limit cutting a run short — see below) into round-robin
+    fairness instead of the same unlucky tenants at the tail of an
+    unordered scan starving indefinitely. Fan-out threshold: once a
+    tenant's own count regularly pushes total sweep runtime close to
+    `SOFT_TIME_LIMIT`, stop growing this single sweep and instead dispatch
+    one `recompute_one_tenant.delay(str(tenant_id))` per tenant (each gets
+    its own time budget and failure isolation at the Celery level, not just
+    the in-process try/except below).
+
     Args:
         session: Active async session. Reused across tenants but committed
             (or rolled back) independently per tenant — see the module
@@ -66,25 +87,47 @@ async def _recompute_all(session: AsyncSession) -> None:
         `evaluator.recompute_tenant` (inserts/deletes `user_segments`,
         stamps `last_evaluated_at`, writes audit rows) and commits. A
         tenant whose recompute raises is rolled back, logged, and skipped —
-        it never prevents the remaining tenants from being recomputed. Logs
-        one ops-visibility summary line at the end (`tenants` attempted,
-        `failed` count) so a beat run that silently poisoned every tenant is
-        still visible in aggregate, not just as N buried exception logs.
+        it never prevents the remaining tenants from being recomputed.
+        `SoftTimeLimitExceeded` is the one exception NOT swallowed this way:
+        it is caught separately (rollback, `log.warning`, then RE-RAISE) so
+        Celery's own soft-limit handling still applies — letting the
+        generic `except Exception` below catch it instead would silently
+        absorb the timeout and defeat the whole point of setting one (see
+        the module docstring's "Time limits" note). Logs one ops-visibility
+        summary line at the end (`tenants` attempted, `failed` count) at
+        `warning` level if anything failed, `info` otherwise, so a beat run
+        that silently poisoned every tenant is still visible in aggregate,
+        not just as N buried exception logs.
     """
-    tenant_ids = (
-        (
-            await session.execute(
-                select(Segment.tenant_id).where(Segment.criteria.is_not(None)).distinct()
-            )
-        )
-        .scalars()
-        .all()
+    stalest_first = (
+        select(Segment.tenant_id)
+        .where(Segment.criteria.is_not(None))
+        .group_by(Segment.tenant_id)
+        .order_by(func.min(Segment.last_evaluated_at).nulls_first())
     )
+    tenant_ids = (await session.execute(stalest_first)).scalars().all()
+    n_succeeded = 0
     n_failed = 0
     for tenant_id in tenant_ids:
         try:
             await recompute_tenant(session, tenant_id)
             await session.commit()
+            n_succeeded += 1
+        except SoftTimeLimitExceeded:
+            # Celery's soft limit fired mid-sweep. Roll back the IN-FLIGHT
+            # tenant's uncommitted work — every tenant already counted in
+            # n_succeeded/n_failed committed/rolled-back and stays that way
+            # — log how far the sweep got, and RE-RAISE. This must reach
+            # Celery so the task is recorded as timed-out, not as a clean
+            # success with a swallowed error.
+            await session.rollback()
+            log.warning(
+                "segments_recompute_sweep_timed_out",
+                tenants=len(tenant_ids),
+                succeeded=n_succeeded,
+                failed=n_failed,
+            )
+            raise
         except Exception:
             # Poison-tenant isolation (mirrors outbox row isolation): one
             # tenant's failure — bad criteria, a transient DB hiccup, etc —
@@ -92,7 +135,8 @@ async def _recompute_all(session: AsyncSession) -> None:
             await session.rollback()
             n_failed += 1
             log.exception("segment_recompute_tenant_failed", tenant_id=str(tenant_id))
-    log.info("segments_recompute_sweep_done", tenants=len(tenant_ids), failed=n_failed)
+    log_fn = log.warning if n_failed > 0 else log.info
+    log_fn("segments_recompute_sweep_done", tenants=len(tenant_ids), failed=n_failed)
 
 
 # celery's @shared_task is untyped, so under mypy --strict it flags the wrapped
@@ -130,6 +174,30 @@ def recompute_all_segments() -> None:
     asyncio.run(_run())
 
 
+async def _recompute_one(session: AsyncSession, tenant_id: str) -> None:
+    """Recompute one tenant, given its stringified UUID, and commit.
+
+    Split out from `recompute_one_tenant` (the Celery entrypoint) purely so
+    the UUID-parse + recompute + commit sequence is unit-testable without a
+    broker — mirrors `_recompute_all`'s split for the beat entrypoint.
+
+    Args:
+        session: Active async session; committed here on success.
+        tenant_id: Stringified UUID (Celery task arguments must be
+            JSON-serializable, so callers pass `str(tenant_id)` rather than
+            a `UUID` object).
+
+    Side effects:
+        Delegates to `evaluator.recompute_tenant` and commits. Does NOT
+        catch exceptions — a single manual/API-triggered recompute has no
+        sibling tenant to isolate from, so a failure should surface to
+        Celery (and, if the caller awaits the AsyncResult, to the caller)
+        rather than being silently swallowed.
+    """
+    await recompute_tenant(session, UUID(tenant_id))
+    await session.commit()
+
+
 @shared_task(  # type: ignore[untyped-decorator]
     name="segments.recompute_tenant", soft_time_limit=SOFT_TIME_LIMIT, time_limit=TIME_LIMIT
 )
@@ -159,8 +227,7 @@ def recompute_one_tenant(tenant_id: str) -> None:
         try:
             factory = async_sessionmaker(engine, expire_on_commit=False)
             async with factory() as session:
-                await recompute_tenant(session, UUID(tenant_id))
-                await session.commit()
+                await _recompute_one(session, tenant_id)
         finally:
             await engine.dispose()
 

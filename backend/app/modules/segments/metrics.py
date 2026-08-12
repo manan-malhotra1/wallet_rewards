@@ -161,21 +161,32 @@ def _wallet_txn_base(tenant_id: UUID) -> Select[Any]:
     At-scale measurement (segmentation Task 5, follow-up to migration 0054's
     docstring): EXPLAIN ANALYZE on a synthetic 500k-row `ledger_entries` table
     (5k accounts, 250k transactions, one tenant) for the `txn_count` query
-    (no `transaction_type` / window filter — the worst case, since every row
-    then matches `status='COMPLETED'`) compared plain vs. with a candidate
-    covering index `ledger_entries (status, created_at) INCLUDE (account_id,
-    transaction_id, amount)` created in the same session. Both runs produced
-    the IDENTICAL plan (`Seq Scan on ledger_entries` + hash joins, cost
-    `0.00..13394.33`) — the planner never chose the new index — and
-    execution time was statistically unchanged (1237.7ms plain vs. 1376.3ms
-    with the index present; the ~11% delta is noise, not a regression from
-    the index). Root cause: with no window filter, every row matches
-    `status='COMPLETED'` (this dataset, and typically true in general), so a
-    `(status, ...)`-leading index has no selectivity advantage over a heap
-    scan. Conclusion: the LedgerEntry leg does NOT benefit from this covering
-    index at this data shape — no migration added. A future measurement
-    with a realistic (non-100%-COMPLETED, or window-bounded) row mix might
-    find a different index shape worth adding; this one wasn't it.
+    compared plain vs. with a candidate covering index `ledger_entries
+    (status, created_at) INCLUDE (account_id, transaction_id, amount)`
+    created in the same session. Both runs produced the IDENTICAL plan
+    (`Seq Scan on ledger_entries` + hash joins, cost `0.00..13394.33`) — the
+    planner never chose the new index at all; the identical plan is itself
+    the proof, no timing comparison needed. Two durable reasons this
+    candidate shape loses, neither specific to this synthetic data mix:
+    (a) NOTHING in this module ever filters on `LedgerEntry.created_at`
+    (grep-verified — the window filter in `txn_count`/`txn_sum` applies to
+    `Transaction.created_at`, one join hop away), so the index's second
+    column can never narrow a scan here, in any tenant's data; (b)
+    `INCLUDE (account_id, transaction_id, amount)` makes each index tuple
+    nearly as wide as the heap row it covers, so even an index-only scan
+    saves little I/O on a query that (with no window bound) aggregates the
+    WHOLE table anyway. Conclusion: THIS candidate index shape is ruled
+    out — no migration added. Migration 0054's broader question (does the
+    LedgerEntry leg need ITS OWN tuning at all) stays open; the shape worth
+    measuring next is an ACCOUNT-leading index — `ix_ledger_entries_account
+    (account_id, status, created_at)` already exists, so the next step is
+    checking whether the planner will use IT once accounts-per-tenant is
+    large enough to make a per-account index probe cheaper than the hash
+    join chosen here, not inventing a new index shape. Caveat: this was a
+    SINGLE tenant's synthetic data; it says nothing about a many-tenant
+    sweep (`_recompute_all` in `segments/tasks.py` runs this query once per
+    tenant, sequentially) where cross-tenant contention/cache pressure could
+    behave differently — not measured here.
 
     Returns:
         A SELECT of `Account.user_id` with the join and base filters applied,

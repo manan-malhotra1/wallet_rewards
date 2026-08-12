@@ -8,6 +8,8 @@ Idempotent — safe to re-run. Creates:
                    Each user gets 1 financial_wallet (ZAR) + 1 points_account (PTS)
   System accounts: 1 system_points_issuance (PTS) — the master reward source
                    1 provider_redemption_wallet (PTS) — sample redemption partner
+  Segments       : 3 default system groups (Customer Loyalty, Transaction
+                   Value, Engagement), each with 3 tiered dynamic segments
 
 The system_points_issuance account is the DEBIT side of every reward issuance.
 Per docs/06-data-architecture.md addendum, its balance trends negative as more
@@ -29,6 +31,7 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parent.parent / "backend"
 sys.path.insert(0, str(BACKEND))
 
+import uuid  # noqa: E402
 from decimal import Decimal  # noqa: E402
 from typing import NotRequired, TypedDict  # noqa: E402
 
@@ -42,6 +45,7 @@ from app.modules.accounts.service import derive_balance  # noqa: E402
 from app.modules.payments.service import fund  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
 from app.modules.redemption.service import register_provider  # noqa: E402
+from app.modules.segments.criteria import SegmentCriteria  # noqa: E402
 from app.modules.step_up.schemas import STEP_UP_TRANSACTION_TYPES  # noqa: E402
 from app.modules.tenants.service import provision_tenant_defaults  # noqa: E402
 from app.modules.treasury.service import (  # noqa: E402
@@ -76,6 +80,8 @@ from app.shared.models import (  # noqa: E402
     Role,
     RolePermission,
     Rule,
+    Segment,
+    SegmentGroup,
     StepUpPolicy,
     TaxConfig,
     Tenant,
@@ -1310,6 +1316,182 @@ async def _topup_agent_efloat(
     print(f"  + Agent e-float top-up: {user.id} +R {delta} ZAR (-> R {target} target)")
 
 
+# Segmentation Phase 1 Task 8 — default system segment groups + tiered dynamic
+# segments. `txn_count`/`txn_sum` are WALLET-ATTRIBUTED (they measure COMPLETED
+# transactions that touched the user's own financial_wallet — send + receive —
+# never the initiator; see app/modules/segments/metrics.py's module docstring).
+# Do not "fix" these thresholds assuming initiator semantics.
+#
+# Each (group_name, group_description, tiers) entry seeds one exclusive-tier
+# group; each tier is (segment_name, priority, criteria) where criteria is a
+# raw dict validated through SegmentCriteria at seed time (see
+# _get_or_create_segment). Priority is highest-wins within a group.
+DEFAULT_SEGMENT_GROUPS: list[tuple[str, str, list[tuple[str, int, dict[str, object]]]]] = [
+    ("Customer Loyalty", "Tenure + engagement tiers.", [
+        ("Gold", 3, {"v": 1, "op": "AND", "conditions": [
+            {"metric": "txn_count", "window_days": 90, "gte": 20}]}),
+        ("Silver", 2, {"v": 1, "op": "AND", "conditions": [
+            {"metric": "txn_count", "window_days": 90, "gte": 5}]}),
+        ("Bronze", 1, {"v": 1, "op": "AND", "conditions": [
+            {"metric": "txn_count", "window_days": 90, "gte": 1}]}),
+    ]),
+    ("Transaction Value", "Gross transaction value bands (rolling 90d, base currency).", [
+        ("High", 3, {"v": 1, "op": "AND", "conditions": [
+            {"metric": "txn_sum", "window_days": 90, "gte": 10000}]}),
+        ("Mid", 2, {"v": 1, "op": "AND", "conditions": [
+            {"metric": "txn_sum", "window_days": 90, "gte": 1000}]}),
+        # NEVER `gte: 0` — that matches every user, including zero-activity
+        # ones. 0.01 is the smallest meaningful increment for a money amount.
+        ("Low", 1, {"v": 1, "op": "AND", "conditions": [
+            {"metric": "txn_sum", "window_days": 90, "gte": 0.01}]}),
+    ]),
+    ("Engagement", "Recency of activity.", [
+        ("Active", 3, {"v": 1, "op": "AND", "conditions": [
+            {"metric": "days_since_last_txn", "lte": 14}]}),
+        ("New", 2, {"v": 1, "op": "AND", "conditions": [
+            {"metric": "account_age_days", "lte": 30}]}),
+        # The DSL only supports closed intervals (no strict `>`, see
+        # criteria.py's module docstring) — spec's "> 60 days since last txn"
+        # maps to the smallest increment above 60, i.e. `gte: 61`.
+        ("Dormant", 1, {"v": 1, "op": "AND", "conditions": [
+            {"metric": "days_since_last_txn", "gte": 61}]}),
+    ]),
+]
+
+
+async def _get_or_create_segment_group(
+    session: AsyncSession, tenant_id: uuid.UUID, *, name: str, description: str
+) -> tuple[SegmentGroup, bool]:
+    """Idempotently create a system segment group (matched by tenant + name).
+
+    Args:
+        tenant_id: The tenant the group belongs to.
+        name: Group name — unique per tenant (uq_segment_groups_name_per_tenant).
+        description: Human-readable description of the lens.
+
+    Returns:
+        (group, created) — `created` is False when a group with this name
+        already existed, so the caller can decide whether to also process its
+        tiers (defensive against a prior partial run) without re-printing a
+        "Created" line for an unchanged group.
+    """
+    result = await session.execute(
+        select(SegmentGroup).where(
+            SegmentGroup.tenant_id == tenant_id, SegmentGroup.name == name
+        )
+    )
+    group = result.scalar_one_or_none()
+    if group is not None:
+        return group, False
+    group = SegmentGroup(
+        tenant_id=tenant_id, name=name, description=description, is_system=True
+    )
+    session.add(group)
+    await session.commit()
+    await session.refresh(group)
+    return group, True
+
+
+async def _get_or_create_segment(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    group: SegmentGroup,
+    *,
+    name: str,
+    priority: int,
+    criteria: dict[str, object],
+) -> bool:
+    """Idempotently create one dynamic segment inside `group`.
+
+    Segment names are unique per (tenant, group) — not tenant-wide
+    (uq_segments_name_per_group) — so the existence check is scoped to
+    `group.id`, matching the model's own uniqueness contract.
+
+    Args:
+        tenant_id: The tenant the segment belongs to.
+        group: The parent segment group (already created/resolved).
+        name: Tier name, unique within `group`.
+        priority: Highest-priority match wins within the group.
+        criteria: Raw criteria dict — ALWAYS validated through
+            `SegmentCriteria` before being checked or persisted, so a typo in
+            this seed data (e.g. an unsupported metric or a DSL drift) fails
+            loudly at seed time instead of silently persisting garbage.
+
+    Returns:
+        True if a new segment row was created, False if one with this name
+        already existed in the group.
+
+    Raises:
+        pydantic.ValidationError: `criteria` doesn't match the DSL contract.
+    """
+    validated = SegmentCriteria.model_validate(criteria)
+    existing = (
+        await session.execute(
+            select(Segment).where(
+                Segment.tenant_id == tenant_id,
+                Segment.group_id == group.id,
+                Segment.name == name,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return False
+    session.add(
+        Segment(
+            tenant_id=tenant_id,
+            group_id=group.id,
+            name=name,
+            priority=priority,
+            criteria=validated.model_dump(),
+            is_system=True,
+        )
+    )
+    await session.commit()
+    return True
+
+
+async def seed_segment_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Seed the three default system segment groups + their tiered dynamic segments.
+
+    Creates "Customer Loyalty" (Gold/Silver/Bronze on txn_count), "Transaction
+    Value" (High/Mid/Low on txn_sum), and "Engagement" (Active/New/Dormant on
+    recency) — see DEFAULT_SEGMENT_GROUPS. Both groups and segments are
+    flagged `is_system=True` (rename/delete protected — see the SegmentGroup
+    model docstring).
+
+    Idempotent: a group is matched by (tenant, name); each of its segments is
+    matched by (tenant, group, name) independently of the group's own
+    creation state — mirroring this script's other multi-row seeders (e.g.
+    `_get_or_create_cashin_charges`) — so a re-run backfills any row missing
+    from a prior partial run instead of assuming all-or-nothing.
+
+    Args:
+        session: Async DB session; committed per group/segment inside the
+            helpers this calls.
+        tenant_id: The tenant to seed groups/segments for.
+    """
+    for group_name, group_description, tiers in DEFAULT_SEGMENT_GROUPS:
+        group, group_created = await _get_or_create_segment_group(
+            session, tenant_id, name=group_name, description=group_description
+        )
+        created_tiers = 0
+        for tier_name, priority, criteria in tiers:
+            created = await _get_or_create_segment(
+                session,
+                tenant_id,
+                group,
+                name=tier_name,
+                priority=priority,
+                criteria=criteria,
+            )
+            if created:
+                created_tiers += 1
+        if group_created or created_tiers:
+            print(f"  + Created segment group: {group_name} ({len(tiers)} tiers)")
+        else:
+            print(f"  - Segment group already exists: {group_name}")
+
+
 async def seed() -> None:
     """Populate the local dev database with the canonical test data."""
     print("Seeding local development database...")
@@ -1534,6 +1716,12 @@ async def seed() -> None:
             name="Invite a friend",
             reward_value=Decimal("200"),
         )
+
+        # Segmentation Phase 1 — default segment groups + tiers. Runs after
+        # users/rules exist (segments target the same seeded users, though
+        # the evaluator's batch recompute — not this script — is what
+        # actually assigns membership).
+        await seed_segment_defaults(session, tenant.id)
 
     print()
     print("Seed complete.")

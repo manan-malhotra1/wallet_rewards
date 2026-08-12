@@ -168,6 +168,36 @@ export function applyFilters(
   });
 }
 
+/**
+ * Count rows awaiting a checker. Case-insensitive because the raw domain
+ * statuses are lowercase while the toolbar normalises to uppercase.
+ */
+export function countPending(rows: { status: string }[]): number {
+  return rows.filter((row) => row.status.toUpperCase() === "PENDING").length;
+}
+
+/**
+ * Pick the approvals tab to land on. An explicit `?tab=` request always wins
+ * (it's a shareable URL); otherwise the first visible tab with pending work —
+ * a checker opens this page to action something, not to stare at an empty
+ * default queue — falling back to the first visible tab when nothing is
+ * pending anywhere.
+ *
+ * @param tabs Visible tabs in display order, each with its pending count.
+ * @param requested The raw `?tab=` search param, if any.
+ * @returns The active tab key, or null when no tabs are visible.
+ */
+export function resolveActiveTab<K extends string>(
+  tabs: { key: K; pending: number }[],
+  requested: string | undefined,
+): K | null {
+  if (tabs.length === 0) return null;
+  const explicit = tabs.find((t) => t.key === requested);
+  if (explicit) return explicit.key;
+  const firstPending = tabs.find((t) => t.pending > 0);
+  return (firstPending ?? tabs[0]).key;
+}
+
 /** Everything the toolbar needs to render in one pass over the active rows. */
 export interface ApprovalSummary {
   /** Rows passing every facet except status — the pool the segments count. */

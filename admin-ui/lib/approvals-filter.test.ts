@@ -9,9 +9,11 @@ import { describe, expect, it } from "vitest";
 import {
   applyFilters,
   countByStatus,
+  countPending,
   DEFAULT_FILTERS,
   dateRangeCutoff,
   matchesSearch,
+  resolveActiveTab,
   summarize,
   withinDateRange,
   type ApprovalFilters,
@@ -232,5 +234,70 @@ describe("summarize (X of Y + segment counts)", () => {
     const { shown, total } = summarize(rows, filters({ status: "ALL" }), NOW);
     expect(shown).toBe(4);
     expect(total).toBe(4);
+  });
+});
+
+describe("countPending — rows awaiting a checker", () => {
+  it("Verify pending rows are counted case-insensitively", () => {
+    expect(
+      countPending([
+        { status: "pending" },
+        { status: "PENDING" },
+        { status: "applied" },
+      ]),
+    ).toBe(2);
+  });
+
+  it("Verify an empty queue counts zero", () => {
+    expect(countPending([])).toBe(0);
+  });
+});
+
+describe("resolveActiveTab — landing the checker where the work is", () => {
+  const tabs = [
+    { key: "configuration", pending: 0 },
+    { key: "transactions", pending: 0 },
+    { key: "users", pending: 1 },
+  ];
+
+  it("Verify the default tab is the first queue with pending items", () => {
+    expect(resolveActiveTab(tabs, undefined)).toBe("users");
+  });
+
+  it("Verify an explicit ?tab= request wins over pending counts", () => {
+    expect(resolveActiveTab(tabs, "configuration")).toBe("configuration");
+  });
+
+  it("Verify an unknown ?tab= falls back to the pending-first default", () => {
+    expect(resolveActiveTab(tabs, "nonsense")).toBe("users");
+  });
+
+  it("Verify the earliest pending queue wins when several have work", () => {
+    expect(
+      resolveActiveTab(
+        [
+          { key: "configuration", pending: 0 },
+          { key: "transactions", pending: 2 },
+          { key: "users", pending: 5 },
+        ],
+        undefined,
+      ),
+    ).toBe("transactions");
+  });
+
+  it("Verify nothing pending anywhere lands on the first visible tab", () => {
+    expect(
+      resolveActiveTab(
+        [
+          { key: "configuration", pending: 0 },
+          { key: "users", pending: 0 },
+        ],
+        undefined,
+      ),
+    ).toBe("configuration");
+  });
+
+  it("Verify no visible tabs resolves to null", () => {
+    expect(resolveActiveTab([], undefined)).toBeNull();
   });
 });

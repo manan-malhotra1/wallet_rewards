@@ -6,8 +6,9 @@
  *   - Users          → user_operations   (role: user-approver)
  *
  * A platform-admin sees every tab; other admins see only the tabs matching an
- * approver role they hold. The active tab defaults to the first one they can
- * see; if they can see none, an empty state is shown.
+ * approver role they hold. Without an explicit ?tab= the active tab defaults
+ * to the first visible queue with PENDING items (falling back to the first
+ * visible tab); if they can see none, an empty state is shown.
  *
  * This server component resolves the visible tabs, fetches each visible queue's
  * FULL dataset (all statuses — the counts on the tab bar need every row), and
@@ -24,6 +25,7 @@ import {
   listUserOperations,
 } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
+import { countPending, resolveActiveTab } from "@/lib/approvals-filter";
 import type {
   ConfigChangeRequest,
   MoneyOperation,
@@ -100,9 +102,6 @@ export default async function ApprovalsPage({
     );
   }
 
-  const activeTab: TabKey =
-    visibleTabs.find((t) => t.key === tab)?.key ?? visibleTabs[0].key;
-
   // Fetch the FULL dataset (all statuses) for every visible queue: the tab-bar
   // counts need every row, and the toolbar filters client-side. Admin volumes
   // are small, so three list calls on load is acceptable. Only visible queues
@@ -147,16 +146,27 @@ export default async function ApprovalsPage({
     else throw err;
   }
 
-  const countFor = (key: TabKey): number => {
-    if (key === "configuration") return configRequests.length;
-    if (key === "transactions") return moneyOperations.length;
-    return userOperations.length;
+  const rowsFor = (key: TabKey): { status: string }[] => {
+    if (key === "configuration") return configRequests;
+    if (key === "transactions") return moneyOperations;
+    return userOperations;
   };
   const tabs: TabMeta[] = visibleTabs.map((t) => ({
     key: t.key,
     label: t.label,
-    count: countFor(t.key),
+    count: rowsFor(t.key).length,
   }));
+
+  // Land the checker where the work is: without an explicit ?tab=, default to
+  // the first visible queue with PENDING items rather than a fixed first tab.
+  const activeTab: TabKey =
+    resolveActiveTab(
+      visibleTabs.map((t) => ({
+        key: t.key,
+        pending: countPending(rowsFor(t.key)),
+      })),
+      tab,
+    ) ?? visibleTabs[0].key;
 
   // The approve/withdraw affordance for the ACTIVE queue's table.
   const canApproveActive =

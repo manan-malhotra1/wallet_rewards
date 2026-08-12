@@ -59,6 +59,11 @@ const SEGMENTS: Segment[] = [
     description: null,
     created_at: "2026-08-01T00:00:00Z",
     updated_at: "2026-08-01T00:00:00Z",
+    group_id: "group-1",
+    priority: 0,
+    criteria: null,
+    is_system: false,
+    last_evaluated_at: null,
   },
 ];
 

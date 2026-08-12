@@ -344,7 +344,49 @@ export interface AdminUnlockResponse {
   was_locked: boolean;
 }
 
-/** A static user cohort (Epic 10 / WAL-79). */
+/** One criteria condition (DSL v1) — mirrors backend SegmentCriteria's `Condition`. */
+export interface CriteriaCondition {
+  metric: string;
+  txn_type?: string | null;
+  window_days?: number | null;
+  gte?: number | null;
+  lte?: number | null;
+  eq?: number | null;
+}
+
+/**
+ * Criteria document for a dynamic segment (DSL v1) — mirrors backend
+ * `SegmentCriteria`. `op` combines 1-10 flat `conditions`.
+ */
+export interface SegmentCriteriaDoc {
+  v: 1;
+  op: "AND" | "OR";
+  conditions: CriteriaCondition[];
+}
+
+/**
+ * A segmentation lens holding mutually-exclusive tiers (e.g. "Loyalty",
+ * "Value"). Every segment belongs to exactly one group; within a group the
+ * highest-`priority` matching segment wins (Segmentation Phase 1).
+ */
+export interface SegmentGroup {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Metric vocabulary entry served by `GET /segments/metrics`. */
+export interface SegmentMetricInfo {
+  name: string;
+  supports_txn_type: boolean;
+  supports_window: boolean;
+}
+
+/** A user cohort (Epic 10 / WAL-79) — static (admin-assigned) or dynamic (criteria-evaluated). */
 export interface Segment {
   id: string;
   tenant_id: string;
@@ -352,6 +394,22 @@ export interface Segment {
   description: string | null;
   created_at: string;
   updated_at: string;
+  /** The exclusive-tier group this segment belongs to. */
+  group_id: string;
+  /** Within a group, the highest-priority matching segment wins. */
+  priority: number;
+  /**
+   * Deliberately lenient (`SegmentCriteriaDoc | null`, not further narrowed):
+   * the backend's `SegmentOut.criteria` is a loose `dict[str, Any] | None` on
+   * purpose so a poisoned/legacy row never breaks `GET /segments` list
+   * rendering. Null = static (admin-assigned) segment; non-null = dynamic
+   * (evaluator-assigned). Don't tighten this type — render defensively.
+   */
+  criteria: SegmentCriteriaDoc | null;
+  /** True for seed-provisioned segments (e.g. default tiers); UI may restrict deletion. */
+  is_system: boolean;
+  /** Last time the batch evaluator recomputed this segment's membership; null if never (or static). */
+  last_evaluated_at: string | null;
 }
 
 /** A reward-amplifying multiplier (Epic 10 / WAL-78). */

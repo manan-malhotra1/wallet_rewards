@@ -54,6 +54,9 @@ import type {
   RuleCondition,
   RulePerformance,
   Segment,
+  SegmentCriteriaDoc,
+  SegmentGroup,
+  SegmentMetricInfo,
   Service,
   ServiceSlice,
   SettableAccessLevel,
@@ -985,8 +988,15 @@ export const withdrawUserOperation = (tenant_id: string, id: string) =>
 
 export interface CreateSegmentPayload {
   tenant_id: string;
+  // Required — every segment belongs to exactly one exclusive-tier group.
+  group_id: string;
   name: string;
   description?: string;
+  // Within a group the highest matching priority wins. Backend default 0.
+  priority?: number;
+  // Present + non-null -> dynamic (evaluator-assigned) segment; omitted ->
+  // static (admin-assigned), matching today's behaviour.
+  criteria?: SegmentCriteriaDoc;
 }
 
 export const listSegments = (tenant_id: string) =>
@@ -1005,6 +1015,51 @@ export const addUserToSegment = (
     { user_id },
     { query: { tenant_id } },
   );
+
+// ---- Segment groups (the exclusive-tier "lens" a segment belongs to) ----
+
+export interface CreateSegmentGroupPayload {
+  tenant_id: string;
+  name: string;
+  description?: string;
+}
+
+export const listSegmentGroups = (tenant_id: string) =>
+  apiGet<SegmentGroup[]>("/api/v1/segment-groups", { query: { tenant_id } });
+
+export const createSegmentGroup = (payload: CreateSegmentGroupPayload) =>
+  apiPost<SegmentGroup>("/api/v1/segment-groups", payload);
+
+/** Delete a segment group. Backend 409s if it's system-owned or still has segments. */
+export const deleteSegmentGroup = (group_id: string, tenant_id: string) =>
+  apiDelete<void>(`/api/v1/segment-groups/${group_id}`, {
+    query: { tenant_id },
+  });
+
+// ---- Dynamic-segment criteria DSL (vocabulary, dry-run preview, recompute) -
+
+/** The criteria DSL's metric vocabulary, sorted by name — drives the criteria builder. */
+export const listSegmentMetrics = () =>
+  apiGet<SegmentMetricInfo[]>("/api/v1/segments/metrics");
+
+/** Dry-run: count users a not-yet-saved criteria document would currently match. */
+export const previewSegmentCriteria = (
+  tenant_id: string,
+  criteria: SegmentCriteriaDoc,
+) =>
+  apiPost<{ match_count: number }>("/api/v1/segments/preview", {
+    tenant_id,
+    criteria,
+  });
+
+/**
+ * Enqueue an async recompute of every dynamic segment for one tenant.
+ * `tenant_id` is a query param on the backend route (no request body).
+ */
+export const recomputeSegments = (tenant_id: string) =>
+  apiPost<{ status: string }>("/api/v1/segments/recompute", undefined, {
+    query: { tenant_id },
+  });
 
 export interface CreateMultiplierPayload {
   tenant_id: string;

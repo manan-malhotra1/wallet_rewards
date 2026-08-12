@@ -6,6 +6,7 @@ group_id/criteria/priority, and the user_segments.source discriminator.
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.models import Segment, SegmentGroup, Tenant, User, UserSegment
@@ -73,3 +74,38 @@ async def test_segment_group_name_unique_per_tenant_only(
         .all()
     )
     assert {r.tenant_id for r in rows} == {test_tenant.id, other_tenant.id}
+
+
+@pytest.mark.asyncio
+async def test_segment_group_name_unique_within_tenant(
+    db_session: AsyncSession, test_tenant: Tenant
+) -> None:
+    """Verify a duplicate group name in the same tenant violates the unique constraint"""
+    db_session.add(SegmentGroup(tenant_id=test_tenant.id, name="Loyalty"))
+    await db_session.flush()
+
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(SegmentGroup(tenant_id=test_tenant.id, name="Loyalty"))
+            await db_session.flush()
+
+
+@pytest.mark.asyncio
+async def test_segment_group_query_is_tenant_scoped(
+    db_session: AsyncSession, test_tenant: Tenant, other_tenant: Tenant
+) -> None:
+    """Verify a tenant-scoped group query never returns another tenant's groups"""
+    db_session.add(SegmentGroup(tenant_id=test_tenant.id, name="Customer Loyalty"))
+    db_session.add(SegmentGroup(tenant_id=other_tenant.id, name="Merchant Tiers"))
+    await db_session.flush()
+
+    rows = (
+        (
+            await db_session.execute(
+                select(SegmentGroup).where(SegmentGroup.tenant_id == other_tenant.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [r.name for r in rows] == ["Merchant Tiers"]

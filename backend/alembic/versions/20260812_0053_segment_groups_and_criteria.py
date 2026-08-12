@@ -5,7 +5,11 @@ attaches every `segments` row to one via a new NOT NULL `group_id`.
 Also adds the criteria-engine columns (`criteria`, `priority`, `is_system`,
 `last_evaluated_at`) to `segments`, and `source` to `user_segments` so the
 Phase-1 batch evaluator (Task 4) can distinguish computed membership from
-today's admin-assigned membership.
+today's admin-assigned membership. `user_segments.source` is CHECK-guarded
+to 'manual' | 'criteria'. Segment-name uniqueness is rescoped from the
+tenant to the group (`uq_segments_name_per_group` on
+`tenant_id, group_id, name`), since a group is now the exclusive-tier lens
+and two different groups may legitimately reuse a tier name.
 
 Backfills a per-tenant system group "General" and attaches every existing
 segment to it so `segments.group_id` can be made NOT NULL in the same
@@ -98,18 +102,41 @@ def upgrade() -> None:
             "WHERE g.tenant_id = s.tenant_id AND g.name = 'General'"
         )
     )
-    op.alter_column("segments", "group_id", nullable=False)
+    op.alter_column(
+        "segments",
+        "group_id",
+        existing_type=UUID(as_uuid=True),
+        existing_nullable=True,
+        nullable=False,
+    )
     op.create_index("ix_segments_group", "segments", ["group_id"])
+
+    # Names are scoped to the group now (a group is the exclusive-tier lens),
+    # not the whole tenant — two different groups may reuse a tier name.
+    op.drop_constraint("uq_segments_name_per_tenant", "segments", type_="unique")
+    op.create_unique_constraint(
+        "uq_segments_name_per_group", "segments", ["tenant_id", "group_id", "name"]
+    )
 
     op.add_column(
         "user_segments",
         sa.Column("source", sa.String(10), nullable=False, server_default=sa.text("'manual'")),
     )
+    op.create_check_constraint(
+        "ck_user_segments_source",
+        "user_segments",
+        "source IN ('manual', 'criteria')",
+    )
 
 
 def downgrade() -> None:
-    """Drop source, the dynamic-segment columns, and segment_groups."""
+    """Drop source (+ its CHECK), the dynamic-segment columns, and segment_groups."""
+    op.drop_constraint("ck_user_segments_source", "user_segments", type_="check")
     op.drop_column("user_segments", "source")
+
+    op.drop_constraint("uq_segments_name_per_group", "segments", type_="unique")
+    op.create_unique_constraint("uq_segments_name_per_tenant", "segments", ["tenant_id", "name"])
+
     op.drop_index("ix_segments_group", table_name="segments")
     op.drop_column("segments", "last_evaluated_at")
     op.drop_column("segments", "is_system")

@@ -41,6 +41,7 @@ from app.shared.models import (
     RewardEvent,
     Rule,
     Segment,
+    SegmentGroup,
     Tenant,
     Transaction,
     User,
@@ -558,7 +559,10 @@ async def test_composite_segment_bound_skips_non_member(
     )
     # Bind the rule to a segment the user is NOT a member of, and seed the
     # accounts + satisfying transactions — all in one commit.
-    segment = Segment(tenant_id=test_tenant.id, name=f"seg-{uuid4().hex[:6]}")
+    group = SegmentGroup(tenant_id=test_tenant.id, name=f"grp-{uuid4().hex[:6]}")
+    db_session.add(group)
+    await db_session.flush()
+    segment = Segment(tenant_id=test_tenant.id, group_id=group.id, name=f"seg-{uuid4().hex[:6]}")
     db_session.add(segment)
     await db_session.flush()
     rule = (await db_session.execute(select(Rule).where(Rule.id == rule_id))).scalar_one()

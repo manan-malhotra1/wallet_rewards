@@ -14,6 +14,7 @@ from app.modules.multipliers.service import resolve_multiplier_for_issuance
 from app.shared.models import (
     BonusMultiplier,
     Segment,
+    SegmentGroup,
     Tenant,
     User,
     UserSegment,
@@ -82,7 +83,10 @@ async def test_segment_multiplier_requires_membership(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User
 ) -> None:
     """Verify a targeted bonus only boosts points for customers in the chosen group"""
-    segment = Segment(tenant_id=test_tenant.id, name=f"seg-{uuid4().hex[:6]}")
+    group = SegmentGroup(tenant_id=test_tenant.id, name=f"grp-{uuid4().hex[:6]}")
+    db_session.add(group)
+    await db_session.flush()
+    segment = Segment(tenant_id=test_tenant.id, group_id=group.id, name=f"seg-{uuid4().hex[:6]}")
     db_session.add(segment)
     await db_session.commit()
     await db_session.refresh(segment)

@@ -203,7 +203,13 @@ from app.shared.models.rules import (
     RuleCondition,
     UserRuleProgress,
 )
-from app.shared.models.segments import Segment, SegmentGroup, UserSegment
+from app.shared.models.segments import (
+    USER_SEGMENT_SOURCE_CRITERIA,
+    USER_SEGMENT_SOURCE_MANUAL,
+    Segment,
+    SegmentGroup,
+    UserSegment,
+)
 from app.shared.models.services import (
     SERVICE_STATUS_ACTIVE,
     SERVICE_STATUS_DISABLED,
@@ -413,6 +419,8 @@ __all__ = [
     "USER_REVIEW_ACTION_WITHDRAWN",
     "USER_REVIEW_ROLE_CHECKER",
     "USER_REVIEW_ROLE_MAKER",
+    "USER_SEGMENT_SOURCE_CRITERIA",
+    "USER_SEGMENT_SOURCE_MANUAL",
     "USER_STATUSES",
     "USER_STATUS_ACTIVE",
     "USER_STATUS_CLOSED",

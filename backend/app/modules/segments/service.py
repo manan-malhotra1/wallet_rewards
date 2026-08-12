@@ -27,6 +27,11 @@ from app.shared.exceptions import (
 )
 from app.shared.models import Segment, Tenant, User, UserSegment
 
+# Postgres SQLSTATE for a unique-constraint violation — the only IntegrityError
+# cause create_segment() should translate into a 409; anything else (e.g. a
+# NOT NULL violation on group_id) is a real bug and must not be swallowed.
+_UNIQUE_VIOLATION_SQLSTATE = "23505"
+
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
     """Raise TenantNotFound if the tenant is unknown."""
@@ -47,7 +52,15 @@ async def create_segment(
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> Segment:
-    """Create a new segment. 409 on duplicate name within the tenant."""
+    """Create a new segment.
+
+    Raises:
+        AppHTTPException: 409 `segment_already_exists` when the insert violates
+            the segment-name unique constraint. Any other IntegrityError (e.g.
+            a NOT NULL violation on `group_id`, not yet wired into this
+            request — see Task 7) propagates instead of being misreported
+            as a duplicate-name conflict.
+    """
     await _assert_tenant_exists(session, request.tenant_id)
 
     segment = Segment(
@@ -60,6 +73,9 @@ async def create_segment(
         await session.flush()
     except IntegrityError as exc:
         await session.rollback()
+        sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+        if sqlstate != _UNIQUE_VIOLATION_SQLSTATE:
+            raise
         raise AppHTTPException(
             409,
             "segment_already_exists",

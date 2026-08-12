@@ -1,7 +1,10 @@
 """Segment, SegmentGroup + UserSegment models — Epic 10 / WAL-79 + segmentation Phase 1.
 
-Segments live inside groups (one lens per group, e.g. Customer Loyalty).
-A segment with non-null `criteria` is dynamic: the batch evaluator
+Segments live inside groups (one lens per group, e.g. Customer Loyalty);
+a segment's name is unique within its group, not tenant-wide, since two
+different groups may legitimately reuse a tier name (e.g. "Gold" under
+both "Customer Loyalty" and "Merchant Tiers"). A segment with non-null
+`criteria` is dynamic: the batch evaluator
 (app/modules/segments/evaluator.py) computes its membership; within a
 group membership is exclusive and the highest `priority` match wins.
 `criteria IS NULL` segments keep today's manual, admin-assigned behaviour.
@@ -16,6 +19,7 @@ from typing import Any
 from sqlalchemy import (
     TIMESTAMP,
     Boolean,
+    CheckConstraint,
     ForeignKey,
     Index,
     Integer,
@@ -26,6 +30,11 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.models.base import Base, created_at_col, updated_at_col, uuid_pk
+
+# UserSegment.source discriminates admin-assigned membership from
+# evaluator-computed membership (see UserSegment.source docstring below).
+USER_SEGMENT_SOURCE_MANUAL = "manual"
+USER_SEGMENT_SOURCE_CRITERIA = "criteria"
 
 
 class SegmentGroup(Base):
@@ -50,11 +59,16 @@ class SegmentGroup(Base):
 
 
 class Segment(Base):
-    """A named user cohort within a tenant, belonging to exactly one group."""
+    """A named user cohort within a tenant, belonging to exactly one group.
+
+    The segment name is unique within its group (`uq_segments_name_per_group`
+    on tenant_id, group_id, name) — not tenant-wide — since a group is the
+    exclusive-tier lens and two different groups may reuse a tier name.
+    """
 
     __tablename__ = "segments"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "name", name="uq_segments_name_per_tenant"),
+        UniqueConstraint("tenant_id", "group_id", "name", name="uq_segments_name_per_group"),
         Index("ix_segments_tenant", "tenant_id"),
         Index("ix_segments_group", "group_id"),
     )
@@ -90,6 +104,7 @@ class UserSegment(Base):
         UniqueConstraint("user_id", "segment_id", name="uq_user_segments_pair"),
         Index("ix_user_segments_user", "user_id"),
         Index("ix_user_segments_segment", "segment_id"),
+        CheckConstraint("source IN ('manual', 'criteria')", name="ck_user_segments_source"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()

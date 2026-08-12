@@ -78,6 +78,14 @@ class Transaction(Base):
             "tenant_id",
             "created_at",
         ),
+        # Serves the segment metric registry's wallet-attributed transaction
+        # aggregates (app.modules.segments.metrics): tenant + COMPLETED status +
+        # a rolling created_at window, joined in from ledger_entries by
+        # transaction_id. EXPLAIN on a 300k-row synthetic transactions table
+        # showed this turns a parallel seq scan into a Bitmap Index Scan,
+        # cutting the wallet-attributed txn_count/txn_sum query from ~358ms to
+        # ~196ms (migration 0054).
+        Index("ix_transactions_tenant_status_created", "tenant_id", "status", "created_at"),
         # Customer-facing reference is unique WITHIN a tenant — each tenant runs
         # its own `txn_ref_seq_<hex>` sequence, so two tenants can legitimately
         # share the same string. Partial (WHERE reference IS NOT NULL) so the

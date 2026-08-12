@@ -38,6 +38,7 @@ from app.modules.analytics.schemas import (
     UsersTimeseries,
     UserTypeSlice,
 )
+from app.modules.ledger.service import signed_balance_expr
 from app.shared.exceptions import InvalidAnalyticsParameter, TenantNotFound
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -727,14 +728,13 @@ def _signed_balance_expr() -> ColumnElement[Decimal]:
 
     Balance for an account is credits minus debits (ledger invariant). The
     caller must already filter to COMPLETED status and the target account set.
+
+    Thin wrapper kept so this module's call sites don't change — the actual
+    signed-amount formula is the single shared `ledger.service.signed_balance_expr`
+    (also used by `sum_completed_balance` and the segment metric registry's
+    `_balance` builder), so a future ledger-schema change is a one-line edit.
     """
-    return func.coalesce(
-        func.sum(
-            cast(LedgerEntry.entry_type == ENTRY_CREDIT, Integer) * LedgerEntry.amount
-            - cast(LedgerEntry.entry_type == ENTRY_DEBIT, Integer) * LedgerEntry.amount
-        ),
-        0,
-    )
+    return func.coalesce(func.sum(signed_balance_expr()), 0)
 
 
 async def _account_type_balance_by_currency(

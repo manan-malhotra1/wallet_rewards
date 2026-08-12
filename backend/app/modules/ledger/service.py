@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import case, func, select, text
+from sqlalchemy import ColumnElement, case, func, select, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -516,6 +516,30 @@ async def _next_reference_number(session: AsyncSession, tenant_id: UUID) -> int:
         return int(result.scalar_one())
 
 
+def signed_balance_expr() -> ColumnElement[Decimal]:
+    """Per-row signed ledger amount: +amount for CREDIT, -amount for DEBIT.
+
+    The ledger balance invariant (NFR-0100) is `SUM(CREDIT) - SUM(DEBIT)` per
+    account; `func.sum(signed_balance_expr())` computes that directly. This is
+    the ONE shared formula behind three call sites — `sum_completed_balance`
+    below, the segment metric registry (`app.modules.segments.metrics._balance`),
+    and the analytics per-currency balance aggregate
+    (`app.modules.analytics.service._signed_balance_expr`, kept as a thin
+    wrapper) — so a future ledger-schema change (e.g. a third entry direction)
+    only needs one edit.
+
+    The caller is responsible for filtering to COMPLETED status and the
+    target account set before summing; this expression only encodes the sign.
+
+    Returns:
+        A CASE SQL expression suitable for `func.sum(...)`.
+    """
+    return case(
+        (LedgerEntry.entry_type == ENTRY_CREDIT, LedgerEntry.amount),
+        else_=-LedgerEntry.amount,
+    )
+
+
 async def sum_completed_balance(session: AsyncSession, account_id: UUID) -> Decimal:
     """Convenience: SUM(CREDIT) - SUM(DEBIT) over COMPLETED entries.
 
@@ -530,17 +554,7 @@ async def sum_completed_balance(session: AsyncSession, account_id: UUID) -> Deci
         Net Decimal balance.
     """
     result = await session.execute(
-        select(
-            func.coalesce(
-                func.sum(
-                    case(
-                        (LedgerEntry.entry_type == ENTRY_CREDIT, LedgerEntry.amount),
-                        else_=-LedgerEntry.amount,
-                    )
-                ),
-                0,
-            )
-        ).where(
+        select(func.coalesce(func.sum(signed_balance_expr()), 0)).where(
             LedgerEntry.account_id == account_id,
             LedgerEntry.status == ENTRY_STATUS_COMPLETED,
         )

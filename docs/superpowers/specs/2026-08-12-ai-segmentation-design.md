@@ -117,6 +117,26 @@ New metrics are additive: register a name + an aggregate SQL builder in one metr
 registry module; the schema enum and the AI prompt derive from the registry (single
 source of truth, no drift).
 
+### Attribution semantics (v1)
+
+`txn_count`, `txn_sum`, and `days_since_last_txn` are **wallet-attributed**, not
+initiator-attributed: they measure COMPLETED transactions that touched the user's own
+`financial_wallet` account (either ledger leg — send or receive), never
+`Transaction.initiated_by`. This was a correctness fix during implementation review —
+`initiated_by` mis-attributes cash-in to the acting agent (the reward for that flow
+deliberately targets the funded customer instead, per `cashin/service.py`), gives a P2P
+*recipient* no row at all, and is NULL on system-initiated inbound activity such as a
+remittance credit. Every wallet-attributed builder instead joins
+`Account (financial_wallet, this tenant) -> LedgerEntry (COMPLETED) -> Transaction (same
+tenant, COMPLETED)` and groups by `Account.user_id` (see
+`app/modules/segments/metrics.py`'s `_wallet_txn_base`).
+
+`txn_sum`'s definition is **gross** value moved through the wallet: every COMPLETED
+ledger entry's amount on the wallet is summed regardless of DEBIT/CREDIT direction, so a
+send, a receive, and a fee leg all count toward the same total. This is deliberately not
+a signed net-flow number (that would need per-entry-type sign handling, which v1 does
+not do) — a tenant that needs net flow should compose `wallet_balance` deltas instead.
+
 ## 4. Evaluator (Phase 1)
 
 `backend/app/modules/segments/evaluator.py`, invoked two ways:

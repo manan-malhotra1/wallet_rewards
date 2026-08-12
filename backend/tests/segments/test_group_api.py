@@ -15,10 +15,11 @@ from app.shared.models import AuditLog, Segment, SegmentGroup, Tenant
 @pytest.mark.asyncio
 async def test_create_and_list_group_happy_path(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify an admin can create a segment group and see it in the tenant list."""
+    """Verify an admin can create a segment group, see it listed, and audit it."""
     resp = await async_client.post(
         "/api/v1/segment-groups",
         headers=admin_auth_header,
@@ -44,6 +45,32 @@ async def test_create_and_list_group_happy_path(
     assert listed.status_code == 200
     names = [g["name"] for g in listed.json()]
     assert names == ["Customer Loyalty"]
+
+    audit_row = (
+        await db_session.execute(
+            select(AuditLog).where(
+                AuditLog.action == "segment_group.created",
+                AuditLog.entity_id == body["id"],
+            )
+        )
+    ).scalar_one_or_none()
+    assert audit_row is not None
+    assert audit_row.after_state == {"name": "Customer Loyalty"}
+
+
+@pytest.mark.asyncio
+async def test_create_group_unknown_tenant_404(
+    async_client: AsyncClient,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify creating a group under a nonexistent tenant 404s."""
+    resp = await async_client.post(
+        "/api/v1/segment-groups",
+        headers=admin_auth_header,
+        json={"tenant_id": str(uuid4()), "name": "Orphan"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "tenant_not_found"
 
 
 @pytest.mark.asyncio

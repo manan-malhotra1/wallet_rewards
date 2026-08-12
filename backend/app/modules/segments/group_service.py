@@ -5,7 +5,8 @@ A `SegmentGroup` is the exclusive-tier container a `Segment` belongs to (e.g.
 `app.modules.segments.service` (tenant assert, flush, narrowed IntegrityError
 handler, `record_audit_for_admin`). Deletion is guarded: system-seeded groups
 can't be removed, and a group still holding segments can't be either — the
-caller must move or delete those segments first (Task 7 wires that up).
+caller must move those segments to another group first, via `group_id` on
+PATCH /segments (Task 7), or delete them.
 """
 
 from __future__ import annotations
@@ -18,21 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
 from app.modules.audit.service import record_audit_for_admin
+from app.modules.segments._common import (
+    UNIQUE_VIOLATION_SQLSTATE,
+    assert_tenant_exists,
+    load_group_or_404,
+)
 from app.modules.segments.schemas import SegmentGroupCreateRequest
-from app.shared.exceptions import AppHTTPException, TenantNotFound
-from app.shared.models import Segment, SegmentGroup, Tenant
-
-# Postgres SQLSTATE for a unique-constraint violation — the only IntegrityError
-# cause create_group() should translate into a 409; anything else is a real
-# bug and must not be swallowed (mirrors segments/service.py's narrowed handler).
-_UNIQUE_VIOLATION_SQLSTATE = "23505"
-
-
-async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
-    """Raise TenantNotFound if the tenant is unknown."""
-    result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
-    if result.scalar_one_or_none() is None:
-        raise TenantNotFound()
+from app.shared.exceptions import AppHTTPException
+from app.shared.models import Segment, SegmentGroup
 
 
 async def create_group(
@@ -63,7 +57,7 @@ async def create_group(
     Side effects:
         Inserts a `segment_groups` row and a `segment_group.created` audit row.
     """
-    await _assert_tenant_exists(session, request.tenant_id)
+    await assert_tenant_exists(session, request.tenant_id)
 
     group = SegmentGroup(
         tenant_id=request.tenant_id,
@@ -76,7 +70,7 @@ async def create_group(
     except IntegrityError as exc:
         await session.rollback()
         sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
-        if sqlstate != _UNIQUE_VIOLATION_SQLSTATE:
+        if sqlstate != UNIQUE_VIOLATION_SQLSTATE:
             raise
         raise AppHTTPException(
             409,
@@ -123,7 +117,8 @@ async def delete_group(
         session: Async DB session (committed here).
         group_id: The group to delete.
         tenant_id: Scope — a group belonging to another tenant is reported
-            as 404, never 403, so tenant existence is never leaked.
+            as 404, never 403, so a group's existence in another tenant is
+            never leaked.
         admin: Acting admin — audited when present.
         ip_address: Caller IP for the audit record.
 
@@ -137,12 +132,7 @@ async def delete_group(
         Deletes the `segment_groups` row and adds a `segment_group.deleted`
         audit row capturing the group's name as `before_state`.
     """
-    result = await session.execute(
-        select(SegmentGroup).where(SegmentGroup.id == group_id, SegmentGroup.tenant_id == tenant_id)
-    )
-    group = result.scalar_one_or_none()
-    if group is None:
-        raise AppHTTPException(404, "segment_group_not_found", "Segment group not found.")
+    group = await load_group_or_404(session, group_id, tenant_id)
 
     if group.is_system:
         raise AppHTTPException(
@@ -160,7 +150,8 @@ async def delete_group(
         raise AppHTTPException(
             409,
             "segment_group_not_empty",
-            "This segment group still has segments assigned to it.",
+            f"This segment group still has {segment_count} segment(s) assigned. "
+            "Move or delete them first.",
         )
 
     before_state = {"name": group.name}

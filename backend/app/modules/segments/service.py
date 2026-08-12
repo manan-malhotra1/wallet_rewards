@@ -19,26 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
 from app.modules.audit.service import record_audit_for_admin
+from app.modules.segments._common import UNIQUE_VIOLATION_SQLSTATE, assert_tenant_exists
 from app.modules.segments.schemas import SegmentCreateRequest, SegmentOut
-from app.shared.exceptions import (
-    AppHTTPException,
-    TenantNotFound,
-    UserNotFound,
-)
-from app.shared.models import Segment, Tenant, User, UserSegment
-
-# Postgres SQLSTATE for a unique-constraint violation — the only IntegrityError
-# cause create_segment() should translate into a 409; anything else (e.g. a
-# NOT NULL violation on group_id) is a real bug and must not be swallowed.
-_UNIQUE_VIOLATION_SQLSTATE = "23505"
-
-
-async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
-    """Raise TenantNotFound if the tenant is unknown."""
-    result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
-    if result.scalar_one_or_none() is None:
-        raise TenantNotFound()
-
+from app.shared.exceptions import AppHTTPException, UserNotFound
+from app.shared.models import Segment, User, UserSegment
 
 # -----------------------------------------------------------------------------
 # CRUD
@@ -61,7 +45,7 @@ async def create_segment(
             request — see Task 7) propagates instead of being misreported
             as a duplicate-name conflict.
     """
-    await _assert_tenant_exists(session, request.tenant_id)
+    await assert_tenant_exists(session, request.tenant_id)
 
     segment = Segment(
         tenant_id=request.tenant_id,
@@ -74,7 +58,7 @@ async def create_segment(
     except IntegrityError as exc:
         await session.rollback()
         sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
-        if sqlstate != _UNIQUE_VIOLATION_SQLSTATE:
+        if sqlstate != UNIQUE_VIOLATION_SQLSTATE:
             raise
         raise AppHTTPException(
             409,

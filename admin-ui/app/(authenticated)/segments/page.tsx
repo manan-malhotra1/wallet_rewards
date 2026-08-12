@@ -1,14 +1,16 @@
 /**
  * Segments page — list every cohort in the active tenant and create new ones.
  *
- * Static cohorts only in this phase: an admin assigns each user explicitly.
- * Dynamic "users who did X" segments are deferred to Phase 2.
+ * Segments are static (admin-assigned) or dynamic (criteria-evaluated by the
+ * batch evaluator); the create dialog fetches the group/metric/service
+ * vocabulary a dynamic segment needs. NOTE: this fetch wiring is deliberately
+ * minimal — the group-sectioned table rewrite is Segmentation Phase 1 Task 11.
  */
 import { Layers, Plus } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { listSegments } from "@/lib/api-endpoints";
+import { listSegmentGroups, listSegmentMetrics, listSegments, listServices } from "@/lib/api-endpoints";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -34,9 +36,19 @@ export default async function SegmentsPage() {
   }
 
   let segments: Awaited<ReturnType<typeof listSegments>> = [];
+  let groups: Awaited<ReturnType<typeof listSegmentGroups>> = [];
+  let metrics: Awaited<ReturnType<typeof listSegmentMetrics>> = [];
+  let services: Awaited<ReturnType<typeof listServices>> = [];
   let error: ApiError | null = null;
   try {
-    segments = await listSegments(activeTenantId);
+    // Groups/metrics/services feed the create dialog's group picker and
+    // criteria builder; fetched together since the page needs all four.
+    [segments, groups, metrics, services] = await Promise.all([
+      listSegments(activeTenantId),
+      listSegmentGroups(activeTenantId),
+      listSegmentMetrics(),
+      listServices(activeTenantId, "active"),
+    ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -50,6 +62,9 @@ export default async function SegmentsPage() {
         actions={
           <CreateSegmentDialog
             tenantId={activeTenantId}
+            groups={groups}
+            metrics={metrics}
+            services={services}
             trigger={
               <button
                 type="button"

@@ -1,0 +1,171 @@
+# Backlog — Sasai Wallet & Rewards Platform
+
+> **Purpose:** Active backlog, started 2026-08-12. The previous
+> `LINEAR_BACKLOG.md` is stale and kept only as an historical record — new
+> items land here.
+>
+> Organised as Epics × Stories with acceptance criteria. Statuses:
+> `Backlog` · `In Progress` · `Done` · `Deferred`.
+
+---
+
+## Epic B1 — Segmentation Phase 1 Hardening · **Backlog**
+
+Segmentation Phase 1 shipped 2026-08-12 (segment groups, criteria DSL, batch
+evaluator, Celery scheduling, admin API + UI — design:
+`docs/superpowers/specs/2026-08-12-ai-segmentation-design.md`, plan:
+`docs/superpowers/plans/2026-08-12-segmentation-phase1.md`). These are the
+follow-ups deferred out of that branch by its reviews. None are blockers; the
+shipped feature is complete and tested without them.
+
+### Story B1.1 — Idempotency-Key policy for admin-config endpoints · Backlog
+
+**Description:** Decide, repo-wide, whether admin configuration endpoints
+require an `Idempotency-Key` header. Segments and segment-groups currently
+follow the multipliers precedent (not required), while invariant #2 in
+CLAUDE.md reads as if every mutating endpoint needs one.
+
+**Acceptance criteria:**
+- A documented decision (CLAUDE.md invariant #2 clarified, or headers added)
+- Segments, segment-groups, and multipliers modules are consistent with it
+- Tests updated to assert whichever behaviour was chosen
+
+### Story B1.2 — Segment-group rename (PATCH) · Backlog
+
+**Description:** `PATCH /api/v1/segment-groups/{id}` for name/description,
+plus an inline edit affordance on the group section header in the UI.
+
+**Acceptance criteria:**
+- Happy path renames; duplicate name in tenant → 409 (sqlstate 23505 mapping
+  in `segments/_common.py`)
+- Tenant isolation (cross-tenant id → 404)
+- Audit row `segment_group.updated` with before/after state
+- System groups are renameable (the flag protects deletion semantics, not
+  cosmetics)
+- UI test with mocked server action
+
+### Story B1.3 — Segment delete endpoint · Backlog
+
+**Description:** `DELETE /api/v1/segments/{id}`. The UI already gates a
+delete affordance by role; there is no backend endpoint yet.
+
+**Acceptance criteria:**
+- Deletes the segment and its `user_segments` memberships
+- Refused with 409 when the segment is bound to a rule or multiplier, naming
+  the binding
+- `is_system` segments refused
+- Tenant isolation; audit row `segment.deleted`
+
+### Story B1.4 — Member counts in the segments list · Backlog
+
+**Description:** Show per-segment membership counts on the segments page,
+with a manual/criteria split.
+
+**Acceptance criteria:**
+- Counts render per segment; computed in one grouped query (no N+1)
+- Manual vs criteria split visible (tooltip or subtext)
+- UI test with mocked action
+
+### Story B1.5 — DRY the Celery NullPool session bootstrap · Backlog
+
+**Description:** The engine-per-task NullPool pattern is copy-pasted in three
+places (rewards outbox, segments recompute, purge jobs). Extract one shared
+helper and migrate all three.
+
+**Acceptance criteria:**
+- One helper in `backend/app/shared/`; three call sites use it
+- No behaviour change; all suites green
+
+### Story B1.6 — Recompute robustness knobs · Backlog
+
+**Description:** Three small evaluator/task refinements: (a) `expires` on the
+`segments-recompute` beat entry so a backed-up queue never stacks stale
+sweeps; (b) explicit `@celery_app.task` binding instead of `@shared_task`,
+removing the import-order coupling that caused the live-smoke 500; (c) a
+two-connection concurrency test proving the `FOR UPDATE` serialization of
+`recompute_tenant`.
+
+**Acceptance criteria:**
+- Beat entry carries `expires`
+- Task binding survives an app process started without importing
+  `app.celery_app`
+- Concurrency test passes (second transaction blocks until the first commits)
+
+### Story B1.7 — Per-tenant fan-out for the recompute sweep · Backlog
+
+**Description:** `segments.recompute_all` sweeps all tenants in one task
+(soft limit 540s). When tenant count or data volume grows, fan out one
+`recompute_tenant` child task per tenant, keeping stalest-first ordering and
+per-tenant poison isolation.
+
+**Acceptance criteria:**
+- Sweep enqueues N child tasks instead of iterating inline
+- A poisoned tenant consumes only its own task's budget
+- Beat cadence and audit rows unchanged
+
+### Story B1.8 — Preview endpoint cost bound · Backlog
+
+**Description:** `POST /segments/preview` runs the full metric computation
+for the tenant. Bound it (row limit / statement timeout / cheapest-first
+short-circuit) so an expensive criteria doc can't hold a worker.
+
+**Acceptance criteria:**
+- Preview on a large tenant returns within the bound
+- Truncation is visible in the response (e.g. `truncated: true`)
+
+### Story B1.9 — Ledger-entry index at scale · Backlog
+
+**Description:** The 500k-row measurement showed the planner ignoring the
+covering index for segment metrics. Re-measure at production-like volume and
+decide on `ix_ledger_entries_account` (or a composite).
+
+**Acceptance criteria:**
+- Documented EXPLAIN comparison at target volume
+- Index added via migration, or explicitly rejected in an ADR
+
+---
+
+## Epic B2 — AI-Assisted Segment Creation (Segmentation Phase 2) · **Backlog**
+
+The AI layer designed in
+`docs/superpowers/specs/2026-08-12-ai-segmentation-design.md` but deliberately
+excluded from Phase 1: per-tenant AI provider configuration and
+natural-language segment creation ("users who sent more than R1000 in the
+last month" → a validated criteria doc). Needs its own implementation plan
+before any story starts.
+
+### Story B2.1 — Per-tenant AI provider config · Backlog
+
+**Description:** Tenant-scoped provider settings (provider, model, API key)
+with an admin UI page.
+
+**Acceptance criteria:**
+- API key stored encrypted at rest; never logged; GET returns a masked
+  read-back only
+- Maker-checker on changes; audit `ai_config.updated`
+- Tenant isolation; 422 on unknown provider
+- No key material ever reaches the browser
+
+### Story B2.2 — Natural-language → criteria translation endpoint · Backlog
+
+**Description:** `POST /segments/translate` takes free text, calls the
+tenant's configured AI provider (external call, so outside any DB
+transaction), and returns a criteria DSL doc validated against the existing
+`SegmentCriteria` schema. Never auto-creates the segment — the admin reviews
+the doc in the criteria builder before saving.
+
+**Acceptance criteria:**
+- Happy path returns a schema-valid doc (mocked provider in tests)
+- Schema-invalid model output retried once, then 422 with reason
+- Missing provider config → 409 `ai_config_missing`, no external call
+- Prompt and response audit-logged with PII masking; rate-limited per tenant
+
+### Story B2.3 — "Describe your segment" UI · Backlog
+
+**Description:** A free-text prompt in the create-segment dialog that calls
+B2.2, pre-fills the criteria builder with the returned doc (fully editable),
+and shows the live preview count before saving.
+
+**Acceptance criteria:**
+- Flow test with mocked action
+- AI failure degrades to the manual builder without losing entered state

@@ -9,6 +9,18 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+# Import BEFORE any router that pulls in a `@shared_task`-decorated module
+# (rewards/outbox.py, segments/tasks.py). `Celery(...)` sets itself as the
+# process-wide "current app" on construction, and `@shared_task` binds to
+# whatever the current app is at decoration time. `celery -A app.celery_app
+# worker/beat` gets this for free (it IS the entry module), but this
+# `uvicorn app.main:app` process never otherwise imports `app.celery_app` —
+# without this import, `@shared_task` tasks silently bind to Celery's bare
+# default app (no broker configured), so any `.delay()` called from this
+# process raises a connection error instead of reaching Redis. Imported as
+# `celery_app` (not `import app.celery_app`) so the name doesn't collide
+# with the `app = FastAPI(...)` variable defined below.
+from app import celery_app  # noqa: F401
 from app.modules.accounts import router as accounts_router
 from app.modules.airtime import router as airtime_router
 from app.modules.analytics.router import router as analytics_router

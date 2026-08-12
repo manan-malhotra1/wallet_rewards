@@ -64,8 +64,9 @@
 | DASH | Analytics / KPI Dashboard | Shipped | 15 | (new) Analytics/Reporting |
 | MOB | Mobile App (Expo) | Partial | 8 | 1 Identity · 4 Payment · 16 Catalog |
 | HARD | Ledger / money-path hardening (cross-cutting) | Partial | 5 | 3 Ledger · 5 Limits |
+| SEG | Customer Segmentation — Phase 1 (rules) + Phase 2 (AI, planned) | Partial | 12 | 16 Rewards Catalog · 14 Config |
 
-**Totals:** 34 epics/initiatives · ~155 catalogued stories.
+**Totals:** 35 epics/initiatives · ~157 catalogued stories.
 
 ---
 
@@ -421,6 +422,20 @@ localhost loopback. Repo policy: no EAS/mobile builds unless explicitly requeste
 - **user.status enforced** — the admin access-lock (login-lock / transaction-lock) now enforces user status (was cosmetic); a status gate guards all money paths; separate from the PIN lockout. **Shipped**
 - **Step-up fail-closed (Part 1)** — a transaction over the configured threshold requires a PIN, and with no policy a PIN is always required. **Shipped**. **Part 2 (route the step-up policy through config maker-checker as a `step_up` config type)** — **Planned**.
 - **Unified Approvals page** — one role-gated `/approvals` inbox aggregating the Configuration / Transactions / Users maker-checker queues. **Shipped** *(step-up slots into the Configuration tab once it becomes a config type).*
+
+### SEG — Customer Segmentation · **Partial** *(Phase 1 shipped, Phase 2 planned)*
+*Tenant-scoped customer segments — a `segment_groups` → `segments` hierarchy (e.g. Engagement,
+Transaction Value, Customer Loyalty), each dynamic segment carrying a JSON criteria DSL evaluated
+by a batch job against a registry of 9 wallet-attributed metrics. Design:
+[`docs/superpowers/specs/2026-08-12-ai-segmentation-design.md`](superpowers/specs/2026-08-12-ai-segmentation-design.md).*
+
+- **Groups + dynamic segments** — `segment_groups` and `segments` models (tenant-scoped, `is_system` seed tiers protected from delete), group CRUD API, and a segment CRUD/list/preview API. **Shipped**
+- **Criteria DSL (v1)** — a versioned JSON AND/OR condition tree over 9 metrics (`txn_count`, `txn_sum`, `wallet_balance`, `points_balance`, `points_redeemed`, `rewards_earned`, `account_age_days`, `days_since_last_txn`, `referral_count`), each with a single-source-of-truth registry entry (SQL builder + schema enum + AI-prompt vocabulary). **Shipped**
+- **Wallet-attribution decision** — `txn_count`/`txn_sum`/`days_since_last_txn` are attributed to the wallet account touched by a COMPLETED transaction (either ledger leg), not `Transaction.initiated_by`, so a P2P recipient and a cash-in-funded customer are correctly counted, not just the initiating agent. **Shipped**
+- **Batch evaluator** — Celery beat recomputes every tenant's dynamic segments hourly (`segments.recompute_all`); an admin-triggered manual recompute (`segments.recompute_tenant`, 202-accepted) is also enqueued from the API for immediate refresh after a criteria edit. **Shipped**
+- **Seeded default tiers** — 3 system groups × 3 tiers each (Engagement: Dormant/New/Active; Transaction Value: Low/Mid/High; Customer Loyalty: Bronze/Silver/Gold) ship via `make seed`. **Shipped**
+- **Admin UI** — a group-sectioned `/segments` page with a criteria builder dialog (metric/operator/value rows, AND/OR composition, live match-count preview) and a manual "Recompute now" action. **Shipped**
+- **AI layer (Phase 2)** — natural-language → criteria DSL generation, reviewed before save. **Planned**; see the design doc above.
 
 ---
 

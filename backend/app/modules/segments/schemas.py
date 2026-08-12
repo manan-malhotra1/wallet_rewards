@@ -33,3 +33,25 @@ class AddUserToSegmentRequest(BaseModel):
     """Admin payload to assign a user to a segment."""
 
     user_id: UUID
+
+
+class SegmentGroupCreateRequest(BaseModel):
+    """Admin create payload for a segment group."""
+
+    tenant_id: UUID
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class SegmentGroupOut(BaseModel):
+    """Segment-group resource returned by the API."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    name: str
+    description: str | None
+    is_system: bool
+    created_at: datetime
+    updated_at: datetime

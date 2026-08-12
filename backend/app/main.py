@@ -33,6 +33,7 @@ from app.modules.reconciliation import router as reconciliation_router
 from app.modules.redemption import router as redemption_router
 from app.modules.roles import router as roles_router
 from app.modules.rules import router as rules_router
+from app.modules.segments import groups_router as segment_groups_router
 from app.modules.segments import router as segments_router
 from app.modules.services import router as services_router
 from app.modules.step_up import router as step_up_router
@@ -135,6 +136,7 @@ app.include_router(taxes_router)
 app.include_router(step_up_router)
 app.include_router(treasury_router)
 app.include_router(segments_router)
+app.include_router(segment_groups_router)
 app.include_router(multipliers_router)
 # Phase 2 — services catalog
 app.include_router(services_router)

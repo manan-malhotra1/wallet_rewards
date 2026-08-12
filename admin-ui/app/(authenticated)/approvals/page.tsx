@@ -116,16 +116,15 @@ export default async function ApprovalsPage({
     const jobs: Promise<void>[] = [];
     if (canSee("config-approver")) {
       jobs.push(
-        (async () => {
-          const [requests, services] = await Promise.all([
-            listConfigRequests(activeTenantId, undefined, undefined),
-            listServices(activeTenantId, "active"),
-          ]);
+        Promise.all([
+          listConfigRequests(activeTenantId, undefined, undefined),
+          listServices(activeTenantId, "active"),
+        ]).then(([requests, services]) => {
           configRequests = requests;
           serviceNames = Object.fromEntries(
             services.map((s: Service) => [s.code, s.display_name]),
           );
-        })(),
+        }),
       );
     }
     if (canSee("treasury-approver")) {

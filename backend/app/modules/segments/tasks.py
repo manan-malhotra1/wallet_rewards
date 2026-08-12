@@ -66,7 +66,10 @@ async def _recompute_all(session: AsyncSession) -> None:
         `evaluator.recompute_tenant` (inserts/deletes `user_segments`,
         stamps `last_evaluated_at`, writes audit rows) and commits. A
         tenant whose recompute raises is rolled back, logged, and skipped —
-        it never prevents the remaining tenants from being recomputed.
+        it never prevents the remaining tenants from being recomputed. Logs
+        one ops-visibility summary line at the end (`tenants` attempted,
+        `failed` count) so a beat run that silently poisoned every tenant is
+        still visible in aggregate, not just as N buried exception logs.
     """
     tenant_ids = (
         (
@@ -77,6 +80,7 @@ async def _recompute_all(session: AsyncSession) -> None:
         .scalars()
         .all()
     )
+    n_failed = 0
     for tenant_id in tenant_ids:
         try:
             await recompute_tenant(session, tenant_id)
@@ -86,7 +90,9 @@ async def _recompute_all(session: AsyncSession) -> None:
             # tenant's failure — bad criteria, a transient DB hiccup, etc —
             # must not roll back or block every other tenant's recompute.
             await session.rollback()
+            n_failed += 1
             log.exception("segment_recompute_tenant_failed", tenant_id=str(tenant_id))
+    log.info("segments_recompute_sweep_done", tenants=len(tenant_ids), failed=n_failed)
 
 
 # celery's @shared_task is untyped, so under mypy --strict it flags the wrapped

@@ -92,10 +92,20 @@ async def test_recompute_all_isolates_a_poisoned_tenant(
     other_tenant: Tenant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`test_tenant`'s recompute raises -> `other_tenant` is still recomputed.
+    """Whichever tenant is visited FIRST raises -> the other is still recomputed.
 
     Mirrors the outbox's poison-row isolation: one tenant's failure is
     logged (not re-raised) and the loop continues to the next tenant.
+
+    Deliberately does NOT key the failure off `test_tenant_id`: the
+    `_recompute_all` tenant query is `SELECT DISTINCT ... ` with no
+    `ORDER BY`, so Postgres is free to plan it as a HashAggregate over the
+    two (random) UUIDs — visitation order is not deterministic across runs.
+    Failing off `test_tenant_id` specifically would only exercise the
+    continue-after-failure branch on the runs where it happens to be
+    visited first (~half the time), silently no-op-ing the other half.
+    Instead, fail on whichever tenant is attempted FIRST, regardless of
+    which one that is, so the isolation branch is exercised every run.
 
     IDs are captured up front: `_recompute_all`'s rollback for the poisoned
     tenant expires every ORM instance tied to this shared session (rollback
@@ -108,10 +118,12 @@ async def test_recompute_all_isolates_a_poisoned_tenant(
     await _dynamic_segment(db_session, other_tenant_id, name="Loyal")
     await db_session.commit()
 
+    attempted: list[UUID] = []
     calls: list[UUID] = []
 
     async def _spy(session: AsyncSession, tenant_id: UUID, **_: object) -> None:
-        if tenant_id == test_tenant_id:
+        attempted.append(tenant_id)
+        if len(attempted) == 1:
             raise RuntimeError("simulated poisoned-tenant failure")
         calls.append(tenant_id)
 
@@ -120,11 +132,23 @@ async def test_recompute_all_isolates_a_poisoned_tenant(
     # Must not raise: the poisoned tenant's exception is caught and logged.
     await tasks._recompute_all(db_session)
 
-    assert calls == [other_tenant_id]
+    # Both tenants were attempted (poison isolation didn't skip the second),
+    # and the SECOND one attempted is the one that actually got recomputed.
+    assert len(attempted) == 2
+    assert set(attempted) == {test_tenant_id, other_tenant_id}
+    assert calls == [attempted[1]]
 
 
 def test_beat_schedule_registers_segments_recompute() -> None:
-    """`celery_app` wires the hourly segment recompute into beat + include."""
+    """`celery_app` wires the hourly segment recompute into beat + include.
+
+    Asserts the schedule reads LIVE from `settings.SEGMENT_RECOMPUTE_INTERVAL_SECS`
+    (not just that SOME float is present) — a hard-coded `3600.0` in
+    `celery_app.py` would otherwise still pass this test.
+    """
+    from app.config import settings
+
     beat_entry = celery_app_module.celery_app.conf.beat_schedule["segments-recompute"]
     assert beat_entry["task"] == "segments.recompute_all"
+    assert beat_entry["schedule"] == float(settings.SEGMENT_RECOMPUTE_INTERVAL_SECS)
     assert "app.modules.segments.tasks" in celery_app_module.celery_app.conf.include

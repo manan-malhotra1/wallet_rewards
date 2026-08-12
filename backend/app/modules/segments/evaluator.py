@@ -17,13 +17,18 @@ segment rows — a second caller blocks until the first commits or rolls back
 — rather than racing to insert/delete the same `user_segments` rows.
 Because the lock is held for the whole function, callers must NOT hold this
 transaction open across external work (network calls, Celery dispatch,
-etc.) — do the recompute, then commit promptly.
+etc.) — do the recompute, then commit promptly. NOTE: this FOR UPDATE
+serialization is NOT exercised by this module's test suite — a single
+`AsyncSession`/connection can't produce the two independent, concurrently
+open transactions needed to prove the second caller actually blocks; that
+would require a dedicated two-connection concurrency test.
 
 Spec: docs/superpowers/specs/2026-08-12-ai-segmentation-design.md §4.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -220,7 +225,7 @@ async def _compute_all_metric_keys(
 async def _load_candidate_universe(
     session: AsyncSession,
     tenant_id: UUID,
-    criteria_and_conditions: list[tuple[str, list[_CompiledCondition]]],
+    criteria_and_conditions: Iterable[tuple[str, list[_CompiledCondition]]],
 ) -> set[UUID]:
     """Build the set of users to evaluate every criteria document against.
 
@@ -236,7 +241,9 @@ async def _load_candidate_universe(
         session: Async DB session.
         tenant_id: Tenant being evaluated.
         criteria_and_conditions: One (op, compiled_conditions) pair per
-            criteria document being evaluated this run.
+            criteria document being evaluated this run. Consumed twice (once
+            per loop below), so callers must pass a list/tuple, not a
+            one-shot generator.
 
     Returns:
         The full candidate user_id set.
@@ -336,9 +343,12 @@ async def _apply_segment_delta(
 
     if to_add:
         # Core bulk insert (not per-row ORM `session.add`) — one round trip
-        # for the whole batch; sorted() gives a canonical insert order that
-        # matches the row-lock order used elsewhere, reducing deadlock risk
-        # when multiple segments' deltas touch overlapping users.
+        # for the whole batch. sorted() gives a canonical per-user insert
+        # order (independent of set-iteration order) — same rationale as the
+        # `Segment.id` FOR UPDATE lock order above: acquiring/inserting
+        # contended rows in a fixed order across concurrent transactions
+        # reduces deadlock risk, here when multiple segments' deltas touch
+        # overlapping users.
         await session.execute(
             insert(UserSegment),
             [
@@ -386,9 +396,16 @@ async def recompute_tenant(
 
     Returns:
         Mapping of segment_id -> {"added": int, "removed": int,
-        "member_count": int}. Static (criteria-NULL) segments are absent, and
-        so is any segment whose `criteria` fails DSL validation (see the
-        poison-criteria handling below) — both are left completely untouched.
+        "member_count": int}. Static (criteria-NULL) segments are absent.
+        Also absent: any segment whose `criteria` fails DSL validation, AND
+        every other segment sharing its `group_id` — poison isolation
+        quarantines the WHOLE exclusive group, not just the poisoned
+        segment, because exclusivity only holds when every segment in the
+        group was evaluated together; leaving the group's membership
+        stale-but-internally-consistent beats recomputing some tiers
+        fresh while leaving others stale (which could let one user hold
+        two tiers of the same lens at once). All quarantined segments are
+        left completely untouched (no writes, no stamp, no audit).
 
     Side effects:
         Inserts/deletes `user_segments` rows with `source='criteria'`, sets
@@ -434,17 +451,37 @@ async def recompute_tenant(
         except ValidationError as exc:
             # Poison-criteria isolation: a segment whose stored criteria no
             # longer parses (hand-edited row, DSL version drift, etc) must
-            # not take down the whole tenant's recompute. Skip it ENTIRELY —
-            # not "desired=empty" — so its existing membership (manual or
-            # stale criteria rows) is left exactly as-is, and it never
-            # appears in the returned summary.
+            # not take down the whole tenant's recompute. Skip it — so its
+            # existing membership (manual or stale criteria rows) is left
+            # exactly as-is, and it never appears in the returned summary.
             log.warning(
                 "segment_criteria_invalid",
                 segment_id=str(seg.id),
                 tenant_id=str(tenant_id),
                 error=str(exc),
             )
-    valid_segments = [seg for seg in segments if seg.id in parsed]
+
+    # Whole-GROUP quarantine, not just the poisoned segment: exclusivity
+    # within a group means a lower-priority segment's "not desired" outcome
+    # is only correct relative to a higher-priority segment that DID get
+    # evaluated. If Gold is poisoned and skipped alone, Bronze would stop
+    # being suppressed by Gold's (unknown) match — a user could then hold
+    # BOTH a stale Gold row and a freshly added Bronze row in the same
+    # exclusive group, reaching any segment-bound reward rule twice. Stale
+    # but internally consistent (the whole group frozen at its last-known
+    # membership) beats fresh but contradictory (some tiers recomputed,
+    # others not, in the same exclusive lens). So any segment sharing a
+    # group_id with a poisoned segment is ALSO left untouched this run.
+    poisoned_group_ids = {seg.group_id for seg in segments if seg.id not in parsed}
+    valid_segments = [
+        seg for seg in segments if seg.id in parsed and seg.group_id not in poisoned_group_ids
+    ]
+    if poisoned_group_ids:
+        log.warning(
+            "segment_group_quarantined",
+            tenant_id=str(tenant_id),
+            group_ids=[str(g) for g in poisoned_group_ids],
+        )
     if not valid_segments:
         return {}
 

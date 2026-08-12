@@ -9,6 +9,7 @@ own `financial_wallet` account.
 
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -492,19 +493,32 @@ async def test_audit_row_written_on_change(
 
 @pytest.mark.asyncio
 async def test_poison_criteria_segment_is_skipped_entirely(
-    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_wallet: Account,
+    user_factory: Any,
 ) -> None:
     """A segment whose stored `criteria` fails DSL validation (inserted
     directly via the ORM, bypassing the Pydantic layer — e.g. a hand-edited
     row or DSL version drift) is skipped ENTIRELY: omitted from the summary,
     its membership left completely untouched, and `last_evaluated_at` stays
-    NULL. A good segment in the same tenant still recomputes normally.
+    NULL. A good segment in a DIFFERENT group still recomputes normally.
+
+    The "membership untouched" claim is made non-vacuous by seeding a
+    `source='criteria'` row for a user who would NOT match if the criteria
+    were re-evaluated fresh — proving the row survives because the segment
+    is skipped, not merely because nothing would have changed anyway.
 
     Note: this repo has no existing precedent for asserting structlog output
     via `caplog` (structlog here isn't wired through stdlib `logging`), so
     per the coordinator's guidance this test verifies the poison-isolation
     behaviour through its observable effect (summary omission + untouched
-    membership) rather than asserting on the warning log line itself.
+    membership) rather than asserting on the warning log line itself. If a
+    future test DOES want to assert the log line, `structlog.testing.
+    capture_logs()` works out of the box with zero configuration wiring
+    (unlike `caplog`, which needs stdlib-`logging` integration this repo
+    doesn't have).
     """
     poison_group = SegmentGroup(tenant_id=test_tenant.id, name="Poisoned Group")
     db_session.add(poison_group)
@@ -520,6 +534,19 @@ async def test_poison_criteria_segment_is_skipped_entirely(
         criteria={"v": 1, "op": "AND", "conditions": []},
     )
     db_session.add(poisoned)
+    await db_session.flush()
+    # A stale criteria-source row for a user with ZERO activity — this user
+    # would not match any real "has activity" criteria, so if the poisoned
+    # segment were (incorrectly) re-evaluated with desired=empty, this row
+    # would be deleted. Its survival proves the skip is a true no-op.
+    stale_member = await user_factory(test_tenant)
+    db_session.add(
+        UserSegment(
+            user_id=stale_member.id, segment_id=poisoned.id, source=USER_SEGMENT_SOURCE_CRITERIA
+        )
+    )
+    await db_session.flush()
+
     good_group = SegmentGroup(tenant_id=test_tenant.id, name="Good Group")
     db_session.add(good_group)
     await db_session.flush()
@@ -542,9 +569,74 @@ async def test_poison_criteria_segment_is_skipped_entirely(
         .scalars()
         .all()
     )
-    assert poisoned_members == []
+    assert [m.user_id for m in poisoned_members] == [stale_member.id]
+    assert poisoned_members[0].source == USER_SEGMENT_SOURCE_CRITERIA
     await db_session.refresh(poisoned)
     assert poisoned.last_evaluated_at is None
+
+
+@pytest.mark.asyncio
+async def test_poisoned_group_quarantines_healthy_sibling_segment(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+) -> None:
+    """A poisoned Gold alongside a healthy Bronze in the SAME exclusive group
+    quarantines the WHOLE group: Bronze is NOT added even though the user
+    matches it, no new rows land in that group at all, and a segment in an
+    UNRELATED group still recomputes normally.
+
+    This is the double-reward-path regression this quarantine prevents: if
+    only Gold were skipped, Bronze would stop being suppressed by Gold (whose
+    real match outcome is now unknown) and the user could end up holding two
+    tiers of one lens simultaneously.
+    """
+    group = SegmentGroup(tenant_id=test_tenant.id, name="Customer Loyalty")
+    db_session.add(group)
+    await db_session.flush()
+    poisoned_gold = Segment(
+        tenant_id=test_tenant.id,
+        group_id=group.id,
+        name="Gold",
+        priority=3,
+        criteria={"v": 1, "op": "AND", "conditions": []},
+    )
+    db_session.add(poisoned_gold)
+    healthy_bronze = await _txn_count_segment(
+        db_session, test_tenant.id, group, name="Bronze", priority=1, gte=1
+    )
+
+    other_group = SegmentGroup(tenant_id=test_tenant.id, name="Unrelated")
+    db_session.add(other_group)
+    await db_session.flush()
+    unrelated = await _txn_count_segment(
+        db_session, test_tenant.id, other_group, name="Active", priority=1, gte=1
+    )
+
+    counterpart = await _wallet_account(db_session, test_tenant.id, None)
+    await _wallet_txn(
+        db_session, test_tenant.id, debit_account=user_wallet, credit_account=counterpart
+    )
+
+    summary = await recompute_tenant(db_session, test_tenant.id)
+
+    assert poisoned_gold.id not in summary
+    assert healthy_bronze.id not in summary
+    assert unrelated.id in summary
+    assert summary[unrelated.id] == {"added": 1, "removed": 0, "member_count": 1}
+
+    group_members = (
+        (
+            await db_session.execute(
+                select(UserSegment).where(
+                    UserSegment.segment_id.in_([poisoned_gold.id, healthy_bronze.id])
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert group_members == []
+    await db_session.refresh(healthy_bronze)
+    assert healthy_bronze.last_evaluated_at is None
 
 
 @pytest.mark.asyncio
@@ -661,10 +753,24 @@ async def test_shared_metric_key_computed_once_across_conditions(
 
     calls: list[tuple[str, str | None, int | None]] = []
     original_compute_metric = evaluator.compute_metric
+    original_signature = inspect.signature(original_compute_metric)
 
     async def _spy(*args: Any, **kwargs: Any) -> dict[UUID, Decimal]:
-        """Record the (metric, txn_type, window_days) key each call used."""
-        calls.append((args[2], kwargs.get("txn_type"), kwargs.get("window_days")))
+        """Record the (metric, txn_type, window_days) key each call used.
+
+        Binds against `compute_metric`'s real signature rather than assuming
+        `metric` is positional index 2 — keeps this spy correct if the
+        function's parameter order/shape ever changes.
+        """
+        bound = original_signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        calls.append(
+            (
+                bound.arguments["metric"],
+                bound.arguments.get("txn_type"),
+                bound.arguments.get("window_days"),
+            )
+        )
         return await original_compute_metric(*args, **kwargs)
 
     monkeypatch.setattr(evaluator, "compute_metric", _spy)

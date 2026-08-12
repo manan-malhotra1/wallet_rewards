@@ -1,29 +1,40 @@
-"""Segment + UserSegment models — Epic 10 / WAL-79.
+"""Segment, SegmentGroup + UserSegment models — Epic 10 / WAL-79 + segmentation Phase 1.
 
-Static cohorts of users that admins can target with rules or
-multipliers. Membership is explicit (admin assigns each user); dynamic
-"users who did X" segments are deferred to Phase 2.
+Segments live inside groups (one lens per group, e.g. Customer Loyalty).
+A segment with non-null `criteria` is dynamic: the batch evaluator
+(app/modules/segments/evaluator.py) computes its membership; within a
+group membership is exclusive and the highest `priority` match wins.
+`criteria IS NULL` segments keep today's manual, admin-assigned behaviour.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    TIMESTAMP,
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.models.base import Base, created_at_col, updated_at_col, uuid_pk
 
 
-class Segment(Base):
-    """A named user cohort within a tenant."""
+class SegmentGroup(Base):
+    """A segmentation lens (e.g. Customer Loyalty) holding exclusive tiers."""
 
-    __tablename__ = "segments"
+    __tablename__ = "segment_groups"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "name", name="uq_segments_name_per_tenant"),
-        Index("ix_segments_tenant", "tenant_id"),
+        UniqueConstraint("tenant_id", "name", name="uq_segment_groups_name_per_tenant"),
+        Index("ix_segment_groups_tenant", "tenant_id"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -32,6 +43,41 @@ class Segment(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Seeded groups (incl. the "General" backfill group): rename/delete protected.
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    created_at: Mapped[datetime] = created_at_col()
+    updated_at: Mapped[datetime] = updated_at_col()
+
+
+class Segment(Base):
+    """A named user cohort within a tenant, belonging to exactly one group."""
+
+    __tablename__ = "segments"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_segments_name_per_tenant"),
+        Index("ix_segments_tenant", "tenant_id"),
+        Index("ix_segments_group", "group_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Every segment belongs to exactly one group (backfilled to "General").
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("segment_groups.id"), nullable=False
+    )
+    # NULL = static/manual segment (legacy behaviour). Non-null = dynamic;
+    # shape is validated by app.modules.segments.criteria.SegmentCriteria.
+    criteria: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Within an exclusive group the highest matching priority wins (Gold=3 > Bronze=1).
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
 
@@ -53,4 +99,6 @@ class UserSegment(Base):
     segment_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("segments.id"), nullable=False
     )
+    # 'manual' = admin-assigned (never touched by the evaluator); 'criteria' = computed.
+    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="manual")
     assigned_at: Mapped[datetime] = created_at_col()

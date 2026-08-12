@@ -203,7 +203,7 @@ from app.shared.models.rules import (
     RuleCondition,
     UserRuleProgress,
 )
-from app.shared.models.segments import Segment, UserSegment
+from app.shared.models.segments import Segment, SegmentGroup, UserSegment
 from app.shared.models.services import (
     SERVICE_STATUS_ACTIVE,
     SERVICE_STATUS_DISABLED,
@@ -481,6 +481,7 @@ __all__ = [
     "Rule",
     "RuleCondition",
     "Segment",
+    "SegmentGroup",
     # Services catalog (Phase 2)
     "Service",
     "StepUpPolicy",

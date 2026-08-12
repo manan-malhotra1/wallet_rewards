@@ -15,7 +15,9 @@ class BonusMultiplierCreateRequest(BaseModel):
     tenant_id: UUID
     rule_id: UUID | None = None
     segment_id: UUID | None = None
-    multiplier: Decimal = Field(gt=Decimal("0"))
+    # le mirrors the Numeric(5,2) column bound so an oversized factor is a
+    # clean 422 instead of a DB-level numeric-overflow 500.
+    multiplier: Decimal = Field(gt=Decimal("0"), le=Decimal("999.99"))
     valid_from: datetime | None = None
     valid_until: datetime | None = None
 

@@ -16,7 +16,15 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import TIMESTAMP, CheckConstraint, ForeignKey, Index, Numeric
+from sqlalchemy import (
+    TIMESTAMP,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,6 +40,14 @@ class BonusMultiplier(Base):
         CheckConstraint(
             "valid_from IS NULL OR valid_until IS NULL OR valid_from < valid_until",
             name="ck_bonus_multipliers_window",
+        ),
+        # Idempotency at the admin-create layer — a duplicate
+        # (tenant, idempotency_key) replays the original row (Pay-PRD-0200).
+        # Postgres treats NULLs as distinct, so pre-idempotency rows coexist.
+        UniqueConstraint(
+            "tenant_id",
+            "idempotency_key",
+            name="uq_bonus_multipliers_idempotency_per_tenant",
         ),
         Index("ix_bonus_multipliers_tenant", "tenant_id"),
         Index("ix_bonus_multipliers_rule", "rule_id"),
@@ -51,6 +67,8 @@ class BonusMultiplier(Base):
         UUID(as_uuid=True), ForeignKey("segments.id"), nullable=True
     )
     multiplier: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    # Nullable: rows created before the idempotency requirement carry no key.
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     valid_from: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     valid_until: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = created_at_col()

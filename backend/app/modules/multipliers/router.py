@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
@@ -32,12 +32,30 @@ def _client_ip(request: Request) -> str | None:
 async def post_multiplier(
     request: BonusMultiplierCreateRequest,
     fastapi_request: Request,
+    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=255),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> BonusMultiplierOut:
-    """Create a new bonus multiplier."""
+    """Create a new bonus multiplier.
+
+    The `Idempotency-Key` header is mandatory (Pay-PRD-0200) — a replay with
+    the same key returns the original multiplier without a duplicate row.
+    """
+    if not idempotency_key.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "missing_idempotency_key",
+                "message": "Idempotency-Key header is required.",
+            },
+        )
+
     row = await create_multiplier(
-        session, request, admin=admin, ip_address=_client_ip(fastapi_request)
+        session,
+        request,
+        idempotency_key=idempotency_key,
+        admin=admin,
+        ip_address=_client_ip(fastapi_request),
     )
     return BonusMultiplierOut.model_validate(row)
 

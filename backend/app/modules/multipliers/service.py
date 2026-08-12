@@ -21,6 +21,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
@@ -110,15 +111,56 @@ async def resolve_multiplier_for_issuance(
 # -----------------------------------------------------------------------------
 
 
+async def _find_multiplier_by_key(
+    session: AsyncSession, tenant_id: UUID, idempotency_key: str
+) -> BonusMultiplier | None:
+    """Return the multiplier already created under this key, or None."""
+    return (
+        await session.execute(
+            select(BonusMultiplier).where(
+                BonusMultiplier.tenant_id == tenant_id,
+                BonusMultiplier.idempotency_key == idempotency_key,
+            )
+        )
+    ).scalar_one_or_none()
+
+
 async def create_multiplier(
     session: AsyncSession,
     request: BonusMultiplierCreateRequest,
     *,
+    idempotency_key: str,
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> BonusMultiplier:
-    """Persist a new multiplier."""
+    """Persist a new multiplier, keyed idempotently on the `Idempotency-Key`.
+
+    A replay with the same `(tenant, idempotency_key)` returns the ORIGINAL
+    row without inserting a duplicate or writing a second audit record
+    (Pay-PRD-0200).
+
+    Args:
+        session: Async DB session (committed here).
+        request: The validated create payload.
+        idempotency_key: The required `Idempotency-Key` header value.
+        admin: Acting admin — audited when present.
+        ip_address: Caller IP for the audit record.
+
+    Returns:
+        The created (or replayed) BonusMultiplier.
+
+    Raises:
+        TenantNotFound: request.tenant_id is unknown.
+
+    Side effects:
+        Inserts a `bonus_multipliers` row and a `multiplier.created` audit row.
+    """
     await _assert_tenant_exists(session, request.tenant_id)
+
+    # Idempotency fast-path — a replay returns the original row before any write.
+    replay = await _find_multiplier_by_key(session, request.tenant_id, idempotency_key)
+    if replay is not None:
+        return replay
 
     row = BonusMultiplier(
         tenant_id=request.tenant_id,
@@ -127,6 +169,7 @@ async def create_multiplier(
         multiplier=request.multiplier,
         valid_from=request.valid_from,
         valid_until=request.valid_until,
+        idempotency_key=idempotency_key,
     )
     session.add(row)
     await session.flush()
@@ -149,7 +192,18 @@ async def create_multiplier(
             ip_address=ip_address,
         )
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # A concurrent same-key request won the UNIQUE (tenant, key) race
+        # between our fast-path miss and this commit. Roll back our row/audit
+        # and replay the winner's multiplier — a concurrent retry must still
+        # return the original, never surface a 409/500.
+        await session.rollback()
+        replay = await _find_multiplier_by_key(session, request.tenant_id, idempotency_key)
+        if replay is not None:
+            return replay
+        raise
     await session.refresh(row)
     return row
 

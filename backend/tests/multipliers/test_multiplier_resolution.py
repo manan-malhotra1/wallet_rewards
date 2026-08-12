@@ -149,7 +149,7 @@ async def test_admin_create_multiplier_happy_path(
     """Verify an admin can create a bonus multiplier"""
     resp = await async_client.post(
         "/api/v1/multipliers",
-        headers=admin_auth_header,
+        headers={**admin_auth_header, "Idempotency-Key": f"idem-{uuid4().hex}"},
         json={"tenant_id": str(test_tenant.id), "multiplier": "1.5"},
     )
     assert resp.status_code == 201, resp.text
@@ -164,7 +164,7 @@ async def test_admin_create_rejects_inverted_window(
     """Verify a bonus multiplier with an end date before its start date is rejected"""
     resp = await async_client.post(
         "/api/v1/multipliers",
-        headers=admin_auth_header,
+        headers={**admin_auth_header, "Idempotency-Key": f"idem-{uuid4().hex}"},
         json={
             "tenant_id": str(test_tenant.id),
             "multiplier": "2",
@@ -184,7 +184,7 @@ async def test_admin_create_rejects_nonpositive_multiplier(
     """Verify a bonus multiplier that is zero or negative is rejected"""
     resp = await async_client.post(
         "/api/v1/multipliers",
-        headers=admin_auth_header,
+        headers={**admin_auth_header, "Idempotency-Key": f"idem-{uuid4().hex}"},
         json={"tenant_id": str(test_tenant.id), "multiplier": "0"},
     )
     assert resp.status_code == 422

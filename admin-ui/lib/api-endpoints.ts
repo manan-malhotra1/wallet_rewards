@@ -1019,7 +1019,11 @@ export const listMultipliers = (tenant_id: string) =>
   apiGet<BonusMultiplier[]>("/api/v1/multipliers", { query: { tenant_id } });
 
 export const createMultiplier = (payload: CreateMultiplierPayload) =>
-  apiPost<BonusMultiplier>("/api/v1/multipliers", payload);
+  // Backend requires an Idempotency-Key on this create (Pay-PRD-0200); a
+  // fresh UUID per invocation — server-side fetch retries reuse it.
+  apiPost<BonusMultiplier>("/api/v1/multipliers", payload, {
+    idempotencyKey: crypto.randomUUID(),
+  });
 
 export const deleteMultiplier = (multiplier_id: string, tenant_id: string) =>
   apiDelete<void>(`/api/v1/multipliers/${multiplier_id}`, {

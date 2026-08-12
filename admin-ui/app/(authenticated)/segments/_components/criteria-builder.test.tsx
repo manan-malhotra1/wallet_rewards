@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { CriteriaBuilder } from "@/app/(authenticated)/segments/_components/criteria-builder";
 import type { SegmentCriteriaDoc, SegmentMetricInfo, Service } from "@/lib/api-types";
-import { emptyCriteria } from "@/lib/segment-criteria";
+import { emptyCriteria, summarizeCriteria } from "@/lib/segment-criteria";
 
 const METRICS: SegmentMetricInfo[] = [
   { name: "txn_sum", supports_txn_type: true, supports_window: true },
@@ -34,10 +34,10 @@ const SERVICES: Service[] = [
 ];
 
 /** Render the builder with a fresh spy for onChange and return both. */
-function renderBuilder(value: SegmentCriteriaDoc) {
+function renderBuilder(value: SegmentCriteriaDoc, metrics: SegmentMetricInfo[] = METRICS) {
   const onChange = vi.fn();
   render(
-    <CriteriaBuilder value={value} metrics={METRICS} services={SERVICES} onChange={onChange} />,
+    <CriteriaBuilder value={value} metrics={metrics} services={SERVICES} onChange={onChange} />,
   );
   return { onChange };
 }
@@ -69,8 +69,8 @@ describe("CriteriaBuilder — building a dynamic segment's conditions", () => {
     };
     renderBuilder(doc);
 
-    expect(screen.getByLabelText("Txn type")).toBeInTheDocument();
-    expect(screen.getByLabelText("Window (days)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Condition 1 transaction type")).toBeInTheDocument();
+    expect(screen.getByLabelText("Condition 1 window in days")).toBeInTheDocument();
   });
 
   it("Verify a metric with no supported filters hides the txn-type and window inputs", () => {
@@ -81,8 +81,8 @@ describe("CriteriaBuilder — building a dynamic segment's conditions", () => {
     };
     renderBuilder(doc);
 
-    expect(screen.queryByLabelText("Txn type")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Window (days)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Condition 1 transaction type")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Condition 1 window in days")).not.toBeInTheDocument();
   });
 
   it("Verify switching to a metric without filter support clears txn_type and window_days", async () => {
@@ -102,5 +102,73 @@ describe("CriteriaBuilder — building a dynamic segment's conditions", () => {
       op: "AND",
       conditions: [{ metric: "account_age_days", txn_type: undefined, window_days: undefined, gte: 100 }],
     });
+  });
+
+  it("Verify removing a condition emits the document with just that row dropped", async () => {
+    const user = userEvent.setup();
+    const doc: SegmentCriteriaDoc = {
+      v: 1,
+      op: "AND",
+      conditions: [
+        { metric: "txn_sum", gte: 100 },
+        { metric: "account_age_days", gte: 30 },
+      ],
+    };
+    const { onChange } = renderBuilder(doc);
+
+    await user.click(screen.getByRole("button", { name: "Remove condition 1" }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      v: 1,
+      op: "AND",
+      conditions: [{ metric: "account_age_days", gte: 30 }],
+    });
+  });
+
+  it("Verify a valid document's footer renders the summarizeCriteria text as a live status region", () => {
+    const doc: SegmentCriteriaDoc = {
+      v: 1,
+      op: "AND",
+      conditions: [{ metric: "txn_sum", gte: 100 }],
+    };
+    renderBuilder(doc);
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(summarizeCriteria(doc));
+  });
+
+  it("Verify clearing a threshold field back to empty emits undefined, not 0", async () => {
+    const user = userEvent.setup();
+    const doc: SegmentCriteriaDoc = {
+      v: 1,
+      op: "AND",
+      conditions: [{ metric: "txn_sum", gte: 100 }],
+    };
+    const { onChange } = renderBuilder(doc);
+
+    await user.clear(screen.getByLabelText("Condition 1 minimum"));
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      v: 1,
+      op: "AND",
+      conditions: [{ metric: "txn_sum", gte: undefined }],
+    });
+  });
+
+  it("Verify Add condition is disabled once the document already has 10 conditions", () => {
+    const doc: SegmentCriteriaDoc = {
+      v: 1,
+      op: "AND",
+      conditions: Array.from({ length: 10 }, () => ({ metric: "account_age_days", gte: 1 })),
+    };
+    renderBuilder(doc);
+
+    expect(screen.getByRole("button", { name: "Add condition" })).toBeDisabled();
+  });
+
+  it("Verify Add condition is disabled when there is no metric vocabulary to add from", () => {
+    renderBuilder(emptyCriteria(), []);
+
+    expect(screen.getByRole("button", { name: "Add condition" })).toBeDisabled();
   });
 });

@@ -36,23 +36,30 @@ export default async function SegmentsPage() {
   }
 
   let segments: Awaited<ReturnType<typeof listSegments>> = [];
-  let groups: Awaited<ReturnType<typeof listSegmentGroups>> = [];
-  let metrics: Awaited<ReturnType<typeof listSegmentMetrics>> = [];
-  let services: Awaited<ReturnType<typeof listServices>> = [];
   let error: ApiError | null = null;
   try {
-    // Groups/metrics/services feed the create dialog's group picker and
-    // criteria builder; fetched together since the page needs all four.
-    [segments, groups, metrics, services] = await Promise.all([
-      listSegments(activeTenantId),
-      listSegmentGroups(activeTenantId),
-      listSegmentMetrics(),
-      listServices(activeTenantId, "active"),
-    ]);
+    segments = await listSegments(activeTenantId);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
   }
+
+  // Groups/metrics/services only feed the create dialog's pickers — they're
+  // never why an admin loads this page. A failure fetching any one of them
+  // must not blank the segments list above (which may have already loaded
+  // fine), so they're fetched independently of `segments` AND of each other
+  // via `Promise.allSettled` rather than a `Promise.all` that would abort
+  // all three the moment the first one rejects. A rejected auxiliary fetch
+  // just leaves that picker empty (the dialog already handles an empty
+  // `groups`/`metrics`/`services` list gracefully).
+  const [groupsResult, metricsResult, servicesResult] = await Promise.allSettled([
+    listSegmentGroups(activeTenantId),
+    listSegmentMetrics(),
+    listServices(activeTenantId, "active"),
+  ]);
+  const groups = groupsResult.status === "fulfilled" ? groupsResult.value : [];
+  const metrics = metricsResult.status === "fulfilled" ? metricsResult.value : [];
+  const services = servicesResult.status === "fulfilled" ? servicesResult.value : [];
 
   return (
     <div>

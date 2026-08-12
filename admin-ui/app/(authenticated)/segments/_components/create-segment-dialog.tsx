@@ -82,6 +82,10 @@ export function CreateSegmentDialog({
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [previewCount, setPreviewCount] = React.useState<number | null>(null);
+  // Kept separate from `error` (the create-submit failure) so a preview
+  // rejection renders under its own "Couldn't preview" banner rather than
+  // stacking under — or being confused with — a create failure.
+  const [previewError, setPreviewError] = React.useState<string | null>(null);
   const [previewing, setPreviewing] = React.useState(false);
   const { toast } = useToast();
 
@@ -90,6 +94,7 @@ export function CreateSegmentDialog({
       setForm(initialState(groups[0]?.id ?? ""));
       setError(null);
       setPreviewCount(null);
+      setPreviewError(null);
     }
     // groups only changes on remount of the page, not while the dialog is
     // open — re-running this on `open` alone avoids resetting the form
@@ -101,18 +106,21 @@ export function CreateSegmentDialog({
 
   const setCriteria = (criteria: SegmentCriteriaDoc) => {
     setForm((prev) => ({ ...prev, criteria }));
-    // A changed document invalidates any previously fetched match count.
+    // A changed document invalidates any previously fetched match count (or
+    // a previous preview failure — the admin is about to retry it fresh).
     setPreviewCount(null);
+    setPreviewError(null);
   };
 
   const onPreview = async () => {
+    setPreviewError(null);
     setPreviewing(true);
     const res = await previewCriteriaAction(tenantId, form.criteria);
     setPreviewing(false);
     if (res.ok) {
       setPreviewCount(res.count);
     } else {
-      setError(`${res.errorCode}: ${res.message}`);
+      setPreviewError(`${res.errorCode}: ${res.message}`);
     }
   };
 
@@ -124,6 +132,12 @@ export function CreateSegmentDialog({
     }
     if (!form.groupId) {
       setError("Create a segment group first.");
+      return;
+    }
+    // Number("") is 0 — an explicit emptiness check first, so a cleared
+    // priority field is rejected rather than silently defaulting to 0.
+    if (form.priority.trim() === "") {
+      setError("Priority is required.");
       return;
     }
     const priority = Number(form.priority);
@@ -260,6 +274,9 @@ export function CreateSegmentDialog({
                     </span>
                   )}
                 </div>
+              )}
+              {previewError && (
+                <ErrorBanner title="Couldn't preview" description={previewError} />
               )}
             </div>
           )}

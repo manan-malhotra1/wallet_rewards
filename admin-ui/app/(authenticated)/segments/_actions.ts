@@ -27,6 +27,27 @@ export type PreviewActionResult =
   | { ok: true; count: number }
   | { ok: false; errorCode: string; message: string };
 
+/**
+ * Map a caught error to the `{ ok: false, errorCode, message }` shape every
+ * action below returns on failure — `ApiError`'s code/message pass through
+ * unchanged; anything else (a thrown non-`ApiError`, e.g. a network failure)
+ * collapses to a generic `internal_error` rather than leaking a raw stack
+ * trace to the client. Local to this file on purpose — the segments route's
+ * own copy, not a shared `lib/` util (see coding-guidelines §1's "3 = must
+ * be a util" threshold: no other route's `_actions.ts` shares this exact
+ * shape today, so a premature shared abstraction isn't warranted yet).
+ */
+function toActionError(err: unknown): { ok: false; errorCode: string; message: string } {
+  if (err instanceof ApiError) {
+    return { ok: false, errorCode: err.errorCode, message: err.message };
+  }
+  return {
+    ok: false,
+    errorCode: "internal_error",
+    message: err instanceof Error ? err.message : "Unknown error",
+  };
+}
+
 export async function createSegmentAction(
   payload: CreateSegmentPayload,
 ): Promise<SegmentActionResult> {
@@ -35,14 +56,7 @@ export async function createSegmentAction(
     revalidatePath("/segments");
     return { ok: true };
   } catch (err) {
-    if (err instanceof ApiError) {
-      return { ok: false, errorCode: err.errorCode, message: err.message };
-    }
-    return {
-      ok: false,
-      errorCode: "internal_error",
-      message: err instanceof Error ? err.message : "Unknown error",
-    };
+    return toActionError(err);
   }
 }
 
@@ -56,14 +70,7 @@ export async function addUserToSegmentAction(
     revalidatePath("/segments");
     return { ok: true };
   } catch (err) {
-    if (err instanceof ApiError) {
-      return { ok: false, errorCode: err.errorCode, message: err.message };
-    }
-    return {
-      ok: false,
-      errorCode: "internal_error",
-      message: err instanceof Error ? err.message : "Unknown error",
-    };
+    return toActionError(err);
   }
 }
 
@@ -79,18 +86,15 @@ export async function previewCriteriaAction(
     const { match_count } = await previewSegmentCriteria(tenantId, criteria);
     return { ok: true, count: match_count };
   } catch (err) {
-    if (err instanceof ApiError) {
-      return { ok: false, errorCode: err.errorCode, message: err.message };
-    }
-    return {
-      ok: false,
-      errorCode: "internal_error",
-      message: err instanceof Error ? err.message : "Unknown error",
-    };
+    return toActionError(err);
   }
 }
 
-/** Create a new segment group (the exclusive-tier "lens" segments belong to). */
+/**
+ * Create a new segment group (the exclusive-tier "lens" segments belong to).
+ * Consumed by the Task 11 group-sectioned page (group management UI), not
+ * by the Task 10 create-segment dialog.
+ */
 export async function createSegmentGroupAction(
   payload: CreateSegmentGroupPayload,
 ): Promise<SegmentActionResult> {
@@ -99,18 +103,14 @@ export async function createSegmentGroupAction(
     revalidatePath("/segments");
     return { ok: true };
   } catch (err) {
-    if (err instanceof ApiError) {
-      return { ok: false, errorCode: err.errorCode, message: err.message };
-    }
-    return {
-      ok: false,
-      errorCode: "internal_error",
-      message: err instanceof Error ? err.message : "Unknown error",
-    };
+    return toActionError(err);
   }
 }
 
-/** Delete a segment group. Backend 409s if it's system-owned or still has segments. */
+/**
+ * Delete a segment group. Backend 409s if it's system-owned or still has
+ * segments. Consumed by the Task 11 group-sectioned page.
+ */
 export async function deleteSegmentGroupAction(
   groupId: string,
   tenantId: string,
@@ -120,18 +120,14 @@ export async function deleteSegmentGroupAction(
     revalidatePath("/segments");
     return { ok: true };
   } catch (err) {
-    if (err instanceof ApiError) {
-      return { ok: false, errorCode: err.errorCode, message: err.message };
-    }
-    return {
-      ok: false,
-      errorCode: "internal_error",
-      message: err instanceof Error ? err.message : "Unknown error",
-    };
+    return toActionError(err);
   }
 }
 
-/** Enqueue an async recompute of every dynamic segment for the tenant. */
+/**
+ * Enqueue an async recompute of every dynamic segment for the tenant.
+ * Consumed by the Task 11 group-sectioned page's "Recompute" action.
+ */
 export async function recomputeSegmentsAction(
   tenantId: string,
 ): Promise<SegmentActionResult> {
@@ -140,13 +136,6 @@ export async function recomputeSegmentsAction(
     revalidatePath("/segments");
     return { ok: true };
   } catch (err) {
-    if (err instanceof ApiError) {
-      return { ok: false, errorCode: err.errorCode, message: err.message };
-    }
-    return {
-      ok: false,
-      errorCode: "internal_error",
-      message: err instanceof Error ? err.message : "Unknown error",
-    };
+    return toActionError(err);
   }
 }

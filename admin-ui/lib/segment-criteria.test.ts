@@ -1,7 +1,8 @@
 /**
  * Unit tests for the segment-criteria lib helpers — the pure functions
  * behind the criteria builder: constructing an empty document, rendering a
- * human summary, and mirroring the backend DSL's client-side validation.
+ * human summary (defensively, for poisoned/legacy rows), and checking a
+ * client-side subset of the backend DSL's structural validation.
  */
 import { describe, expect, it } from "vitest";
 
@@ -36,6 +37,23 @@ describe("summarizeCriteria — human-readable rendering", () => {
       conditions: [{ metric: "referral_count", eq: 3 }],
     };
     expect(summarizeCriteria(doc)).toBe("referral_count = 3");
+  });
+
+  it("Verify a zero minimum renders as '≥ 0', not as absent", () => {
+    const doc: SegmentCriteriaDoc = {
+      v: 1,
+      op: "AND",
+      conditions: [{ metric: "referral_count", gte: 0 }],
+    };
+    expect(summarizeCriteria(doc)).toBe("referral_count ≥ 0");
+  });
+
+  it("Verify a poisoned/legacy row with no conditions array renders the empty-state text instead of throwing", () => {
+    // Segment.criteria is typed SegmentCriteriaDoc but is, at the wire level,
+    // the backend's lenient dict[str, Any] | None — a hand-edited or
+    // pre-DSL row can reach here without a `conditions` array at all.
+    const poisoned = { v: 1, op: "AND" } as unknown as SegmentCriteriaDoc;
+    expect(summarizeCriteria(poisoned)).toBe("No conditions yet.");
   });
 });
 
@@ -100,5 +118,45 @@ describe("validateCriteria — client-side mirror of the backend DSL rules", () 
     expect(validateCriteria(doc)).toEqual([
       "Condition 1: thresholds must be ≥ 0.",
     ]);
+  });
+
+  it("Verify a zero minimum is a valid threshold, not treated as absent", () => {
+    const doc: SegmentCriteriaDoc = {
+      v: 1,
+      op: "AND",
+      conditions: [{ metric: "referral_count", gte: 0 }],
+    };
+    expect(validateCriteria(doc)).toEqual([]);
+  });
+
+  it("Verify more than 10 conditions is rejected", () => {
+    const doc: SegmentCriteriaDoc = {
+      v: 1,
+      op: "AND",
+      conditions: Array.from({ length: 11 }, () => ({ metric: "txn_count", gte: 1 })),
+    };
+    expect(validateCriteria(doc)).toContain("At most 10 conditions.");
+  });
+
+  it.each([
+    [0, "Condition 1: window must be a whole number of days between 1 and 365."],
+    [400, "Condition 1: window must be a whole number of days between 1 and 365."],
+    [1.5, "Condition 1: window must be a whole number of days between 1 and 365."],
+  ])("Verify an out-of-range or fractional window_days (%s) is rejected", (window_days, message) => {
+    const doc: SegmentCriteriaDoc = {
+      v: 1,
+      op: "AND",
+      conditions: [{ metric: "txn_sum", gte: 1, window_days }],
+    };
+    expect(validateCriteria(doc)).toContain(message);
+  });
+
+  it("Verify a valid window_days (within 1-365, whole number) passes", () => {
+    const doc: SegmentCriteriaDoc = {
+      v: 1,
+      op: "AND",
+      conditions: [{ metric: "txn_sum", gte: 1, window_days: 90 }],
+    };
+    expect(validateCriteria(doc)).toEqual([]);
   });
 });

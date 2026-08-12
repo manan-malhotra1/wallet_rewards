@@ -162,7 +162,7 @@ describe("Managing reward segments — creating a segment", () => {
     expect(createSegmentAction).not.toHaveBeenCalled();
 
     await user.click(within(dialog).getByRole("button", { name: "Add condition" }));
-    await user.type(within(dialog).getByLabelText("≥"), "5000");
+    await user.type(within(dialog).getByLabelText("Condition 1 minimum"), "5000");
     await user.click(within(dialog).getByRole("button", { name: "Create" }));
 
     await waitFor(() => expect(createSegmentAction).toHaveBeenCalledTimes(1));
@@ -180,7 +180,7 @@ describe("Managing reward segments — creating a segment", () => {
 
     await user.click(within(dialog).getByLabelText("Dynamic segment (criteria-based)"));
     await user.click(within(dialog).getByRole("button", { name: "Add condition" }));
-    await user.type(within(dialog).getByLabelText("≥"), "1");
+    await user.type(within(dialog).getByLabelText("Condition 1 minimum"), "1");
     await user.click(within(dialog).getByRole("button", { name: "Preview matches" }));
 
     await waitFor(() => expect(previewCriteriaAction).toHaveBeenCalledTimes(1));
@@ -189,5 +189,37 @@ describe("Managing reward segments — creating a segment", () => {
       expect.objectContaining({ conditions: [{ metric: "txn_sum", gte: 1 }] }),
     );
     expect(await within(dialog).findByText("~42 users match")).toBeInTheDocument();
+  });
+
+  it("Verify an emptied priority field blocks submit instead of silently defaulting to 0", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+
+    await user.type(within(dialog).getByLabelText("Name"), "vip-users");
+    await user.clear(within(dialog).getByLabelText("Priority"));
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    expect(await screen.findByText("Priority is required.")).toBeInTheDocument();
+    expect(createSegmentAction).not.toHaveBeenCalled();
+  });
+
+  it("Verify a failed preview shows its own banner and never masks a create failure", async () => {
+    previewCriteriaAction.mockResolvedValue({
+      ok: false,
+      errorCode: "tenant_not_found",
+      message: "Unknown tenant.",
+    });
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+
+    await user.click(within(dialog).getByLabelText("Dynamic segment (criteria-based)"));
+    await user.click(within(dialog).getByRole("button", { name: "Add condition" }));
+    await user.type(within(dialog).getByLabelText("Condition 1 minimum"), "1");
+    await user.click(within(dialog).getByRole("button", { name: "Preview matches" }));
+
+    expect(await within(dialog).findByText("Couldn't preview")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Unknown tenant\./)).toBeInTheDocument();
+    // The create-submit failure banner never fired — only the preview one did.
+    expect(within(dialog).queryByText("Couldn't create")).not.toBeInTheDocument();
   });
 });

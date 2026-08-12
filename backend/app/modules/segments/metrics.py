@@ -40,6 +40,8 @@ Shared builder contract:
     missing user to `Decimal(0)` — EXCEPT `days_since_last_txn`, which
     already fills in every tenant user, using the `NEVER_TRANSACTED_DAYS`
     sentinel for those with no wallet-touching COMPLETED transaction.
+  - Every returned user_id belongs to `tenant_id` — no builder ever leaks a
+    key from another tenant into the map.
 """
 
 from __future__ import annotations

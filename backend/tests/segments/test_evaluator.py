@@ -18,6 +18,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.segments import evaluator
 from app.modules.segments.criteria import SegmentCriteria
 from app.modules.segments.evaluator import preview_criteria, recompute_tenant
 from app.shared.models import (
@@ -137,6 +138,16 @@ async def _txn_count_segment(
 async def _user_segment_count(db_session: AsyncSession) -> int:
     """Total row count of `user_segments`, for before/after write assertions."""
     result = await db_session.execute(select(func.count()).select_from(UserSegment))
+    return int(result.scalar_one())
+
+
+async def _audit_count_for_segment(db_session: AsyncSession, segment_id: UUID) -> int:
+    """Count `segment.recomputed` audit_log rows written for one segment."""
+    result = await db_session.execute(
+        select(func.count())
+        .select_from(AuditLog)
+        .where(AuditLog.action == "segment.recomputed", AuditLog.entity_id == str(segment_id))
+    )
     return int(result.scalar_one())
 
 
@@ -261,10 +272,13 @@ async def test_recompute_is_idempotent_and_moves_users_between_tiers(
     first = await recompute_tenant(db_session, test_tenant.id)
     assert first[bronze.id] == {"added": 1, "removed": 0, "member_count": 1}
     assert first[gold.id] == {"added": 0, "removed": 0, "member_count": 0}
+    assert await _audit_count_for_segment(db_session, bronze.id) == 1
 
     second = await recompute_tenant(db_session, test_tenant.id)
     assert second[bronze.id] == {"added": 0, "removed": 0, "member_count": 1}
     assert second[gold.id] == {"added": 0, "removed": 0, "member_count": 0}
+    # No-change rerun must NOT write a second audit row for bronze.
+    assert await _audit_count_for_segment(db_session, bronze.id) == 1
 
     for _ in range(2):
         await _wallet_txn(
@@ -274,6 +288,10 @@ async def test_recompute_is_idempotent_and_moves_users_between_tiers(
     third = await recompute_tenant(db_session, test_tenant.id)
     assert third[gold.id] == {"added": 1, "removed": 0, "member_count": 1}
     assert third[bronze.id] == {"added": 0, "removed": 1, "member_count": 0}
+    # Bronze changed again (a removal) -> a second audit row; Gold's first
+    # ever change -> exactly one audit row so far.
+    assert await _audit_count_for_segment(db_session, bronze.id) == 2
+    assert await _audit_count_for_segment(db_session, gold.id) == 1
 
 
 @pytest.mark.asyncio
@@ -470,3 +488,268 @@ async def test_audit_row_written_on_change(
     assert audit_row.actor_type == "system"
     assert audit_row.tenant_id == test_tenant.id
     assert audit_row.after_state == {"added": 1, "removed": 0, "member_count": 1}
+
+
+@pytest.mark.asyncio
+async def test_poison_criteria_segment_is_skipped_entirely(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+) -> None:
+    """A segment whose stored `criteria` fails DSL validation (inserted
+    directly via the ORM, bypassing the Pydantic layer — e.g. a hand-edited
+    row or DSL version drift) is skipped ENTIRELY: omitted from the summary,
+    its membership left completely untouched, and `last_evaluated_at` stays
+    NULL. A good segment in the same tenant still recomputes normally.
+
+    Note: this repo has no existing precedent for asserting structlog output
+    via `caplog` (structlog here isn't wired through stdlib `logging`), so
+    per the coordinator's guidance this test verifies the poison-isolation
+    behaviour through its observable effect (summary omission + untouched
+    membership) rather than asserting on the warning log line itself.
+    """
+    poison_group = SegmentGroup(tenant_id=test_tenant.id, name="Poisoned Group")
+    db_session.add(poison_group)
+    await db_session.flush()
+    poisoned = Segment(
+        tenant_id=test_tenant.id,
+        group_id=poison_group.id,
+        name="Poisoned",
+        priority=1,
+        # Empty `conditions` fails SegmentCriteria's min_length=1 — a DSL-
+        # invalid document that could only land here by bypassing validation
+        # (e.g. direct ORM/SQL manipulation), not through the service layer.
+        criteria={"v": 1, "op": "AND", "conditions": []},
+    )
+    db_session.add(poisoned)
+    good_group = SegmentGroup(tenant_id=test_tenant.id, name="Good Group")
+    db_session.add(good_group)
+    await db_session.flush()
+    good = await _txn_count_segment(
+        db_session, test_tenant.id, good_group, name="Bronze", priority=1, gte=1
+    )
+    counterpart = await _wallet_account(db_session, test_tenant.id, None)
+    await _wallet_txn(
+        db_session, test_tenant.id, debit_account=user_wallet, credit_account=counterpart
+    )
+
+    summary = await recompute_tenant(db_session, test_tenant.id)
+
+    assert poisoned.id not in summary
+    assert good.id in summary
+    assert summary[good.id] == {"added": 1, "removed": 0, "member_count": 1}
+
+    poisoned_members = (
+        (await db_session.execute(select(UserSegment).where(UserSegment.segment_id == poisoned.id)))
+        .scalars()
+        .all()
+    )
+    assert poisoned_members == []
+    await db_session.refresh(poisoned)
+    assert poisoned.last_evaluated_at is None
+
+
+@pytest.mark.asyncio
+async def test_user_wins_two_different_groups_simultaneously(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+) -> None:
+    """A user can win a segment in TWO independent groups at once — exclusivity
+    is scoped per group_id, not tenant-wide (the central multi-group claim)."""
+    loyalty_group = SegmentGroup(tenant_id=test_tenant.id, name="Customer Loyalty")
+    dormant_group = SegmentGroup(tenant_id=test_tenant.id, name="Dormant Points")
+    db_session.add_all([loyalty_group, dormant_group])
+    await db_session.flush()
+
+    bronze = await _txn_count_segment(
+        db_session, test_tenant.id, loyalty_group, name="Bronze", priority=1, gte=1
+    )
+    no_points = Segment(
+        tenant_id=test_tenant.id,
+        group_id=dormant_group.id,
+        name="No Points",
+        priority=1,
+        criteria={"v": 1, "op": "AND", "conditions": [{"metric": "points_balance", "lte": 0}]},
+    )
+    db_session.add(no_points)
+    await db_session.flush()
+
+    counterpart = await _wallet_account(db_session, test_tenant.id, None)
+    await _wallet_txn(
+        db_session, test_tenant.id, debit_account=user_wallet, credit_account=counterpart
+    )
+
+    summary = await recompute_tenant(db_session, test_tenant.id)
+
+    assert summary[bronze.id] == {"added": 1, "removed": 0, "member_count": 1}
+    assert summary[no_points.id] == {"added": 1, "removed": 0, "member_count": 1}
+    memberships = (
+        (await db_session.execute(select(UserSegment).where(UserSegment.user_id == test_user.id)))
+        .scalars()
+        .all()
+    )
+    assert {m.segment_id for m in memberships} == {bronze.id, no_points.id}
+
+
+@pytest.mark.asyncio
+async def test_or_criteria_matches_on_either_condition(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User
+) -> None:
+    """An `op: OR` segment matches when only ONE of its two conditions holds:
+    txn_count gte 100 (unmet — no activity) OR points_balance lte 0 (met —
+    no points account at all)."""
+    group = SegmentGroup(tenant_id=test_tenant.id, name="OR Group")
+    db_session.add(group)
+    await db_session.flush()
+    segment = Segment(
+        tenant_id=test_tenant.id,
+        group_id=group.id,
+        name="Either",
+        priority=1,
+        criteria={
+            "v": 1,
+            "op": "OR",
+            "conditions": [
+                {"metric": "txn_count", "gte": 100},
+                {"metric": "points_balance", "lte": 0},
+            ],
+        },
+    )
+    db_session.add(segment)
+    await db_session.flush()
+
+    summary = await recompute_tenant(db_session, test_tenant.id)
+
+    assert summary[segment.id] == {"added": 1, "removed": 0, "member_count": 1}
+    row = (
+        await db_session.execute(select(UserSegment).where(UserSegment.segment_id == segment.id))
+    ).scalar_one()
+    assert row.user_id == test_user.id
+
+
+@pytest.mark.asyncio
+async def test_shared_metric_key_computed_once_across_conditions(
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_wallet: Account,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two conditions referencing the SAME (metric, txn_type, window_days) key
+    trigger exactly one `compute_metric` call — proves the dedup-by-MetricKey
+    behaviour, not just that the end result happens to be correct."""
+    group = SegmentGroup(tenant_id=test_tenant.id, name="Customer Loyalty")
+    db_session.add(group)
+    await db_session.flush()
+    segment = Segment(
+        tenant_id=test_tenant.id,
+        group_id=group.id,
+        name="Between One And Ten",
+        priority=1,
+        criteria={
+            "v": 1,
+            "op": "AND",
+            "conditions": [
+                {"metric": "txn_count", "gte": 1},
+                {"metric": "txn_count", "lte": 10},
+            ],
+        },
+    )
+    db_session.add(segment)
+    await db_session.flush()
+    counterpart = await _wallet_account(db_session, test_tenant.id, None)
+    await _wallet_txn(
+        db_session, test_tenant.id, debit_account=user_wallet, credit_account=counterpart
+    )
+
+    calls: list[tuple[str, str | None, int | None]] = []
+    original_compute_metric = evaluator.compute_metric
+
+    async def _spy(*args: Any, **kwargs: Any) -> dict[UUID, Decimal]:
+        """Record the (metric, txn_type, window_days) key each call used."""
+        calls.append((args[2], kwargs.get("txn_type"), kwargs.get("window_days")))
+        return await original_compute_metric(*args, **kwargs)
+
+    monkeypatch.setattr(evaluator, "compute_metric", _spy)
+
+    summary = await recompute_tenant(db_session, test_tenant.id)
+
+    assert calls.count(("txn_count", None, None)) == 1
+    assert summary[segment.id] == {"added": 1, "removed": 0, "member_count": 1}
+
+
+@pytest.mark.asyncio
+async def test_windowed_criteria_under_explicit_now_excludes_old_transaction(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_wallet: Account
+) -> None:
+    """`window_days=30` with an explicit `now=` excludes a transaction from
+    100 days before that instant: `txn_count eq 1` only holds if the window
+    correctly drops the old transaction (an `eq` bound, not `gte`, so a
+    window bug that let the old txn through would flip this to 2 and fail)."""
+    group = SegmentGroup(tenant_id=test_tenant.id, name="Recent Activity")
+    db_session.add(group)
+    await db_session.flush()
+    segment = Segment(
+        tenant_id=test_tenant.id,
+        group_id=group.id,
+        name="Recently Active",
+        priority=1,
+        criteria={
+            "v": 1,
+            "op": "AND",
+            "conditions": [{"metric": "txn_count", "window_days": 30, "eq": 1}],
+        },
+    )
+    db_session.add(segment)
+    await db_session.flush()
+
+    frozen_now = datetime.now(UTC)
+    counterpart = await _wallet_account(db_session, test_tenant.id, None)
+    await _wallet_txn(
+        db_session,
+        test_tenant.id,
+        debit_account=user_wallet,
+        credit_account=counterpart,
+        days_ago=100,
+    )
+    await _wallet_txn(
+        db_session, test_tenant.id, debit_account=user_wallet, credit_account=counterpart
+    )
+
+    summary = await recompute_tenant(db_session, test_tenant.id, now=frozen_now)
+
+    assert summary[segment.id] == {"added": 1, "removed": 0, "member_count": 1}
+
+
+@pytest.mark.asyncio
+async def test_preview_and_recompute_agree_on_lte_zero_widening(
+    db_session: AsyncSession, test_tenant: Tenant, test_user: User
+) -> None:
+    """`preview_criteria` and `recompute_tenant` agree on the absent-user
+    universe widening for an `lte`-zero condition (points_balance lte 0)."""
+    group = SegmentGroup(tenant_id=test_tenant.id, name="Dormant Points")
+    db_session.add(group)
+    await db_session.flush()
+    criteria_dict = {
+        "v": 1,
+        "op": "AND",
+        "conditions": [{"metric": "points_balance", "lte": 0}],
+    }
+    segment = Segment(
+        tenant_id=test_tenant.id,
+        group_id=group.id,
+        name="No Points",
+        priority=1,
+        criteria=criteria_dict,
+    )
+    db_session.add(segment)
+    await db_session.flush()
+
+    frozen_now = datetime.now(UTC)
+    summary = await recompute_tenant(db_session, test_tenant.id, now=frozen_now)
+    preview_count = await preview_criteria(
+        db_session,
+        test_tenant.id,
+        SegmentCriteria.model_validate(criteria_dict),
+        now=frozen_now,
+    )
+
+    assert preview_count == 1
+    assert summary[segment.id]["member_count"] == preview_count

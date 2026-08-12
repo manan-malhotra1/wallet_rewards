@@ -1321,41 +1321,56 @@ async def _topup_agent_efloat(
 # transactions that touched the user's own financial_wallet — send + receive —
 # never the initiator; see app/modules/segments/metrics.py's module docstring).
 # Do not "fix" these thresholds assuming initiator semantics.
-#
+
+
+def _criteria(metric: str, **bounds: float | int) -> dict[str, object]:
+    """Build one single-condition AND criteria envelope (DSL v1).
+
+    Every default tier below is a single-condition AND, so this wraps the
+    repeated `{"v": 1, "op": "AND", "conditions": [...]}` envelope to let each
+    tier in DEFAULT_SEGMENT_GROUPS read as one line. This is a plain data
+    builder, not a validator — shape/bounds checking happens later, once,
+    via `SegmentCriteria.model_validate` inside `_get_or_create_segment`.
+
+    Args:
+        metric: The MetricName this tier filters on (e.g. "txn_count").
+        **bounds: The Condition's remaining fields — `gte`/`lte`/`eq` and,
+            where applicable, `window_days`/`txn_type`.
+
+    Returns:
+        A raw criteria dict shaped `{"v": 1, "op": "AND", "conditions": [...]}`.
+    """
+    return {"v": 1, "op": "AND", "conditions": [{"metric": metric, **bounds}]}
+
+
 # Each (group_name, group_description, tiers) entry seeds one exclusive-tier
-# group; each tier is (segment_name, priority, criteria) where criteria is a
-# raw dict validated through SegmentCriteria at seed time (see
-# _get_or_create_segment). Priority is highest-wins within a group.
+# group; each tier is (segment_name, priority, criteria). Priority is
+# highest-wins within a group.
 DEFAULT_SEGMENT_GROUPS: list[tuple[str, str, list[tuple[str, int, dict[str, object]]]]] = [
-    ("Customer Loyalty", "Tenure + engagement tiers.", [
-        ("Gold", 3, {"v": 1, "op": "AND", "conditions": [
-            {"metric": "txn_count", "window_days": 90, "gte": 20}]}),
-        ("Silver", 2, {"v": 1, "op": "AND", "conditions": [
-            {"metric": "txn_count", "window_days": 90, "gte": 5}]}),
-        ("Bronze", 1, {"v": 1, "op": "AND", "conditions": [
-            {"metric": "txn_count", "window_days": 90, "gte": 1}]}),
+    ("Customer Loyalty", "Transaction-count tiers (rolling 90d).", [
+        ("Gold", 3, _criteria("txn_count", window_days=90, gte=20)),
+        ("Silver", 2, _criteria("txn_count", window_days=90, gte=5)),
+        ("Bronze", 1, _criteria("txn_count", window_days=90, gte=1)),
     ]),
     ("Transaction Value", "Gross transaction value bands (rolling 90d, base currency).", [
-        ("High", 3, {"v": 1, "op": "AND", "conditions": [
-            {"metric": "txn_sum", "window_days": 90, "gte": 10000}]}),
-        ("Mid", 2, {"v": 1, "op": "AND", "conditions": [
-            {"metric": "txn_sum", "window_days": 90, "gte": 1000}]}),
-        # NEVER `gte: 0` — that matches every user, including zero-activity
+        ("High", 3, _criteria("txn_sum", window_days=90, gte=10000)),
+        ("Mid", 2, _criteria("txn_sum", window_days=90, gte=1000)),
+        # NEVER `gte=0` — that matches every user, including zero-activity
         # ones. 0.01 is the smallest meaningful increment for a money amount.
-        ("Low", 1, {"v": 1, "op": "AND", "conditions": [
-            {"metric": "txn_sum", "window_days": 90, "gte": 0.01}]}),
+        ("Low", 1, _criteria("txn_sum", window_days=90, gte=0.01)),
     ]),
-    ("Engagement", "Recency of activity.", [
-        ("Active", 3, {"v": 1, "op": "AND", "conditions": [
-            {"metric": "days_since_last_txn", "lte": 14}]}),
-        ("New", 2, {"v": 1, "op": "AND", "conditions": [
-            {"metric": "account_age_days", "lte": 30}]}),
-        # The DSL only supports closed intervals (no strict `>`, see
-        # criteria.py's module docstring) — spec's "> 60 days since last txn"
-        # maps to the smallest increment above 60, i.e. `gte: 61`.
-        ("Dormant", 1, {"v": 1, "op": "AND", "conditions": [
-            {"metric": "days_since_last_txn", "gte": 61}]}),
-    ]),
+    (
+        "Engagement",
+        "Recency of activity. Active outranks New for users matching both.",
+        [
+            ("Active", 3, _criteria("days_since_last_txn", lte=14)),
+            ("New", 2, _criteria("account_age_days", lte=30)),
+            # The DSL only supports closed intervals (no strict `>`, see
+            # criteria.py's module docstring) — spec's "> 60 days since last
+            # txn" maps to the smallest increment above 60, i.e. `gte=61`.
+            ("Dormant", 1, _criteria("days_since_last_txn", gte=61)),
+        ],
+    ),
 ]
 
 
@@ -1371,9 +1386,10 @@ async def _get_or_create_segment_group(
 
     Returns:
         (group, created) — `created` is False when a group with this name
-        already existed, so the caller can decide whether to also process its
-        tiers (defensive against a prior partial run) without re-printing a
-        "Created" line for an unchanged group.
+        already existed. This flag ONLY selects which print message the
+        caller (`seed_segment_defaults`) emits; tier processing itself is
+        unconditional either way, so a prior partial run still gets
+        backfilled even when the group already exists.
     """
     result = await session.execute(
         select(SegmentGroup).where(
@@ -1456,8 +1472,10 @@ async def seed_segment_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> 
     Creates "Customer Loyalty" (Gold/Silver/Bronze on txn_count), "Transaction
     Value" (High/Mid/Low on txn_sum), and "Engagement" (Active/New/Dormant on
     recency) — see DEFAULT_SEGMENT_GROUPS. Both groups and segments are
-    flagged `is_system=True` (rename/delete protected — see the SegmentGroup
-    model docstring).
+    flagged `is_system=True` (rename/delete protected — see the `is_system`
+    column comments on SegmentGroup/Segment in app/shared/models/segments.py
+    and the enforcing guard in app/modules/segments/group_service.py's
+    delete-group path).
 
     Idempotent: a group is matched by (tenant, name); each of its segments is
     matched by (tenant, group, name) independently of the group's own
@@ -1465,13 +1483,31 @@ async def seed_segment_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> 
     `_get_or_create_cashin_charges`) — so a re-run backfills any row missing
     from a prior partial run instead of assuming all-or-nothing.
 
+    Drift intent: existing rows are NEVER updated by this function.
+    `criteria`/`priority`/`description` are admin-editable (spec §2), so an
+    operator's tuning of a seeded default is authoritative — the same
+    "never overwrite a customised value" rule the brand-anchor defaults
+    follow above (see DEFAULT_BRAND_ACCENT_COLOR / `_get_or_create_tenant`).
+    A later edit to DEFAULT_SEGMENT_GROUPS in this file therefore only
+    affects tenants seeded AFTER that edit; changing a seeded default on an
+    already-seeded DB is a migration, not a re-seed.
+
+    Print convention: unlike most of this script's helpers (which stay
+    silent on a no-op), this prints one line per group either way — a
+    "+ ... N tier(s) created" line whenever at least one tier was newly
+    created (a brand-new group, or a backfill onto a partially-seeded one),
+    and a "- ... already exists" line when nothing changed — chosen so a
+    `make seed` run always visibly confirms all three segment groups
+    resolved, mirroring scripts/bootstrap_keycloak.py's "already exists"
+    style rather than this file's usual silence.
+
     Args:
         session: Async DB session; committed per group/segment inside the
             helpers this calls.
         tenant_id: The tenant to seed groups/segments for.
     """
     for group_name, group_description, tiers in DEFAULT_SEGMENT_GROUPS:
-        group, group_created = await _get_or_create_segment_group(
+        group, _group_created = await _get_or_create_segment_group(
             session, tenant_id, name=group_name, description=group_description
         )
         created_tiers = 0
@@ -1486,8 +1522,8 @@ async def seed_segment_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> 
             )
             if created:
                 created_tiers += 1
-        if group_created or created_tiers:
-            print(f"  + Created segment group: {group_name} ({len(tiers)} tiers)")
+        if created_tiers:
+            print(f"  + Segment group {group_name}: {created_tiers} tier(s) created")
         else:
             print(f"  - Segment group already exists: {group_name}")
 

@@ -32,7 +32,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import AdminPrincipal
 from app.database import get_async_session
 from app.dependencies import require_admin_role
-from app.modules.segments.evaluator import preview_criteria
 from app.modules.segments.group_service import create_group, delete_group, list_groups
 from app.modules.segments.schemas import (
     AddUserToSegmentRequest,
@@ -42,15 +41,26 @@ from app.modules.segments.schemas import (
     SegmentGroupOut,
     SegmentOut,
     SegmentPreviewRequest,
+    SegmentPreviewResponse,
+    SegmentRecomputeResponse,
     SegmentUpdateRequest,
 )
 from app.modules.segments.service import (
     add_user_to_segment,
     create_segment,
+    enqueue_recompute,
     list_metrics,
     list_segments_for_tenant,
+    preview_segment_criteria,
     update_segment,
 )
+
+# `tasks.py` imports `celery.shared_task` at module scope, but by the time
+# this router module loads, Celery is already in the FastAPI import graph
+# via `payments.service` -> `rewards.outbox` (also a module-scope
+# `shared_task` import) — so importing the task here at module scope is not
+# the first thing to pull Celery into the process; no lazy-import is needed.
+from app.modules.segments.tasks import recompute_one_tenant
 
 router = APIRouter(prefix="/api/v1/segments", tags=["segments"])
 groups_router = APIRouter(prefix="/api/v1/segment-groups", tags=["segments"])
@@ -96,33 +106,35 @@ async def get_segment_metrics(
     return list_metrics()
 
 
-@router.post("/preview")
+@router.post("/preview", response_model=SegmentPreviewResponse)
 async def post_segment_preview(
     request: SegmentPreviewRequest,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
-) -> dict[str, int]:
-    """Dry-run: count users a criteria document would currently match."""
+) -> SegmentPreviewResponse:
+    """Dry-run: count users a criteria document would currently match. 404 on unknown tenant."""
     _ = admin
-    match_count = await preview_criteria(session, request.tenant_id, request.criteria)
-    return {"match_count": match_count}
+    match_count = await preview_segment_criteria(session, request.tenant_id, request.criteria)
+    return SegmentPreviewResponse(match_count=match_count)
 
 
-@router.post("/recompute", status_code=202)
+@router.post("/recompute", response_model=SegmentRecomputeResponse, status_code=202)
 async def post_segment_recompute(
     tenant_id: UUID,
+    fastapi_request: Request,
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
-) -> dict[str, str]:
-    """Enqueue an async recompute of every dynamic segment for one tenant."""
-    _ = admin
-    # Imported inside the handler, not at module scope: `tasks.py` imports
-    # `celery.shared_task` at import time, and no other router in this
-    # codebase pulls its own module's Celery tasks into the FastAPI import
-    # graph — keeping that import local avoids being the first to do so.
-    from app.modules.segments.tasks import recompute_one_tenant
+    session: AsyncSession = Depends(get_async_session),
+) -> SegmentRecomputeResponse:
+    """Enqueue an async recompute of every dynamic segment for one tenant.
 
+    `enqueue_recompute` validates the tenant and commits its audit row
+    FIRST; only once that has returned successfully do we call `.delay()` —
+    the external Celery enqueue happens strictly after the DB commit
+    (invariant #6), never from inside a still-open transaction.
+    """
+    await enqueue_recompute(session, tenant_id, admin=admin, ip_address=_client_ip(fastapi_request))
     recompute_one_tenant.delay(str(tenant_id))
-    return {"status": "enqueued"}
+    return SegmentRecomputeResponse(status="enqueued")
 
 
 @router.patch("/{segment_id}", response_model=SegmentOut)

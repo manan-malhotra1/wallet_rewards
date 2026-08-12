@@ -18,6 +18,7 @@ this file doesn't grow into a second copy of the evaluation engine.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -32,7 +33,13 @@ from app.modules.segments._common import (
     assert_tenant_exists,
     load_group_or_404,
 )
-from app.modules.segments.criteria import ALL_METRICS, TRANSACTIONAL_METRICS, WINDOWED_METRICS
+from app.modules.segments.criteria import (
+    ALL_METRICS,
+    TRANSACTIONAL_METRICS,
+    WINDOWED_METRICS,
+    SegmentCriteria,
+)
+from app.modules.segments.evaluator import preview_criteria
 from app.modules.segments.schemas import (
     MetricInfo,
     SegmentCreateRequest,
@@ -119,6 +126,61 @@ async def create_segment(
     return segment
 
 
+def _audit_value(value: Any) -> Any:
+    """Coerce one ORM attribute value into a JSON-safe form for audit snapshots.
+
+    The `audit_log.before_state`/`after_state` columns are JSONB written
+    through asyncpg with no custom JSON encoder configured, so anything not
+    natively `json.dumps`-able (a `UUID`, a `datetime`) must be pre-stringified
+    here rather than handed to `AuditLog` as-is.
+
+    Args:
+        value: The raw attribute value (already read off the ORM instance).
+
+    Returns:
+        `str(value)` for a `UUID`, `value.isoformat()` for a `datetime`,
+        otherwise `value` unchanged (already JSON-native: str, int, dict, None).
+    """
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+
+def _apply_changes(
+    segment: Segment, changes: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Apply a field->new-value mapping to `segment`, skipping true no-ops.
+
+    The caller is responsible for deciding WHICH fields belong in `changes`
+    and what their final value should be (group-move validation, the
+    clear_criteria/criteria exclusivity, etc. — see `update_segment`); this
+    helper's only job is "for each candidate change, if the new value differs
+    from the current one, set it and record it," so that logic isn't repeated
+    once per field.
+
+    Args:
+        segment: The ORM instance mutated in place.
+        changes: Mapping of `Segment` attribute name -> desired new value.
+
+    Returns:
+        (before, after) — audit-ready dicts (via `_audit_value`) containing
+        only the subset of `changes` whose value actually differed from the
+        segment's current one.
+    """
+    before: dict[str, Any] = {}
+    after: dict[str, Any] = {}
+    for field, new_value in changes.items():
+        old_value = getattr(segment, field)
+        if old_value == new_value:
+            continue
+        before[field] = _audit_value(old_value)
+        setattr(segment, field, new_value)
+        after[field] = _audit_value(new_value)
+    return before, after
+
+
 async def update_segment(
     session: AsyncSession,
     segment_id: UUID,
@@ -132,9 +194,24 @@ async def update_segment(
 
     Only fields explicitly present in the request are touched — distinguished
     via `request.model_fields_set`, so an omitted field is left alone even
-    though its default happens to equal `None`/`False`. Clearing criteria
+    though its default happens to equal `None`/`False`. `description` honours
+    an explicit `null` as "clear it"; criteria does NOT — clearing criteria
     (turning a dynamic segment static) requires the explicit
     `clear_criteria=True` flag (see `SegmentUpdateRequest`'s docstring).
+    Clearing criteria does NOT remove the segment's existing `criteria`-sourced
+    `user_segments` rows — membership computed under the old criteria is
+    frozen in place (no longer refreshed by the evaluator, since a
+    criteria-NULL segment is invisible to `recompute_tenant`'s query) until an
+    admin manually removes those members; this mirrors how a static segment's
+    membership always behaves and avoids a surprise mass-removal as a side
+    effect of a criteria edit.
+
+    A `group_id` move is a no-op — validated or not, audited or not — whenever
+    it names the segment's CURRENT group; only an ACTUAL move (a different
+    target group) is checked against `is_system` and against
+    `load_group_or_404`. This lets a client PATCH `group_id` unconditionally
+    (e.g. re-submitting a whole form) without tripping the system-segment
+    guard on a value that wouldn't have changed anything anyway.
 
     Args:
         session: Async DB session (committed here).
@@ -151,15 +228,20 @@ async def update_segment(
     Raises:
         AppHTTPException: 404 `segment_not_found` when the segment doesn't
             exist in this tenant (including cross-tenant); 404
-            `segment_group_not_found` when a `group_id` move target doesn't
+            `segment_group_not_found` when a `group_id` MOVE target doesn't
             resolve inside the tenant; 409 `segment_protected` when a
-            `group_id` move is attempted on an `is_system` segment — system
+            `group_id` MOVE is attempted on an `is_system` segment — system
             tiers stay in the lens they were seeded into.
 
     Side effects:
-        Updates the `segments` row and, if anything actually changed, writes
-        one `segment.updated` audit row capturing only the changed fields'
-        before/after values.
+        Updates the `segments` row. If criteria actually changed (set,
+        replaced, or cleared), also resets `last_evaluated_at` to NULL — the
+        previous timestamp described membership computed under the OLD
+        criteria, which is now stale; the admin UI renders a NULL
+        `last_evaluated_at` on a dynamic segment as "pending recompute" until
+        the next evaluator run. If anything changed at all, writes one
+        `segment.updated` audit row capturing only the changed fields'
+        before/after values (including `last_evaluated_at` when it was reset).
     """
     segment = (
         await session.execute(
@@ -170,14 +252,16 @@ async def update_segment(
         raise AppHTTPException(404, "segment_not_found", "Segment not found.")
 
     fields_set = request.model_fields_set
+    changes: dict[str, Any] = {}
 
-    # Validate the group move BEFORE mutating anything, so a rejected PATCH
-    # (system-protected, or an unknown target group) never leaves the
-    # segment partially updated. The `request.group_id is not None` check is
-    # inside this `if`, not hoisted to a separate bool, so mypy narrows
-    # `request.group_id` to `UUID` for the `load_group_or_404` call below.
-    target_group = None
-    if "group_id" in fields_set and request.group_id is not None:
+    # Only a REAL move (a different target group) is validated at all — see
+    # the docstring's "no-op" note. This also means re-submitting the
+    # segment's own current group_id never trips the is_system guard below.
+    if (
+        "group_id" in fields_set
+        and request.group_id is not None
+        and request.group_id != segment.group_id
+    ):
         if segment.is_system:
             raise AppHTTPException(
                 409,
@@ -185,40 +269,29 @@ async def update_segment(
                 "System segments cannot change group — they stay in their seeded lens.",
             )
         target_group = await load_group_or_404(session, request.group_id, tenant_id)
+        changes["group_id"] = target_group.id
 
-    before: dict[str, Any] = {}
-    after: dict[str, Any] = {}
+    if "description" in fields_set:
+        changes["description"] = request.description
 
-    if target_group is not None and target_group.id != segment.group_id:
-        before["group_id"] = str(segment.group_id)
-        segment.group_id = target_group.id
-        after["group_id"] = str(target_group.id)
-
-    if "description" in fields_set and request.description != segment.description:
-        before["description"] = segment.description
-        segment.description = request.description
-        after["description"] = request.description
-
-    if (
-        "priority" in fields_set
-        and request.priority is not None
-        and request.priority != segment.priority
-    ):
-        before["priority"] = segment.priority
-        segment.priority = request.priority
-        after["priority"] = request.priority
+    if "priority" in fields_set and request.priority is not None:
+        changes["priority"] = request.priority
 
     if request.clear_criteria:
-        if segment.criteria is not None:
-            before["criteria"] = segment.criteria
-            segment.criteria = None
-            after["criteria"] = None
+        changes["criteria"] = None
     elif "criteria" in fields_set and request.criteria is not None:
-        new_criteria = request.criteria.model_dump()
-        if segment.criteria != new_criteria:
-            before["criteria"] = segment.criteria
-            segment.criteria = new_criteria
-            after["criteria"] = new_criteria
+        changes["criteria"] = request.criteria.model_dump()
+
+    before, after = _apply_changes(segment, changes)
+
+    if "criteria" in after:
+        # Criteria actually changed value — the evaluator's next recompute
+        # (or lack thereof, for a newly-static segment) makes the existing
+        # last_evaluated_at stamp describe a stale, no-longer-relevant run.
+        if segment.last_evaluated_at is not None:
+            before["last_evaluated_at"] = _audit_value(segment.last_evaluated_at)
+            after["last_evaluated_at"] = None
+        segment.last_evaluated_at = None
 
     if admin is not None and after:
         record_audit_for_admin(
@@ -267,6 +340,83 @@ def list_metrics() -> list[MetricInfo]:
         )
         for name in sorted(ALL_METRICS)
     ]
+
+
+# -----------------------------------------------------------------------------
+# Preview + recompute (Task 7 review fixes: both now 404 on an unknown tenant)
+# -----------------------------------------------------------------------------
+
+
+async def preview_segment_criteria(
+    session: AsyncSession, tenant_id: UUID, criteria: SegmentCriteria
+) -> int:
+    """Validate the tenant exists, then dry-run count criteria matches.
+
+    Thin wrapper around `evaluator.preview_criteria`: the evaluator itself
+    has no reason to know about tenant existence (every other caller reaches
+    it with an already-validated tenant), but the public preview endpoint
+    does — without this check an unknown `tenant_id` silently "matched" zero
+    users instead of 404ing.
+
+    Args:
+        session: Async DB session.
+        tenant_id: Tenant to evaluate against.
+        criteria: The (not-yet-persisted) criteria document being previewed.
+
+    Returns:
+        The count of matching users.
+
+    Raises:
+        TenantNotFound: `tenant_id` is unknown.
+    """
+    await assert_tenant_exists(session, tenant_id)
+    return await preview_criteria(session, tenant_id, criteria)
+
+
+async def enqueue_recompute(
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Validate + audit a manual recompute request. Does NOT enqueue the task.
+
+    Deliberately stops short of calling `recompute_one_tenant.delay(...)` —
+    invariant #6 (external calls happen after DB commit, never inside a
+    transaction) means the Celery enqueue must happen strictly AFTER this
+    function's `session.commit()` has returned, not from inside a service
+    function whose caller might still be mid-transaction. The router calls
+    this first, then — once it returns successfully — calls `.delay()` itself.
+
+    Args:
+        session: Async DB session (committed here).
+        tenant_id: Tenant whose dynamic segments should be recomputed.
+        admin: Acting admin — audited when present.
+        ip_address: Caller IP for the audit record.
+
+    Raises:
+        TenantNotFound: `tenant_id` is unknown.
+
+    Side effects:
+        Writes a `segment.recompute_requested` audit row (entity_type
+        "tenant", since this action targets every dynamic segment in the
+        tenant, not one specific segment) and commits.
+    """
+    await assert_tenant_exists(session, tenant_id)
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=tenant_id,
+            action="segment.recompute_requested",
+            entity_type="tenant",
+            entity_id=str(tenant_id),
+            ip_address=ip_address,
+        )
+
+    await session.commit()
 
 
 # -----------------------------------------------------------------------------

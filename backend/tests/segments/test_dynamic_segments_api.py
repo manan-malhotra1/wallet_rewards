@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -135,6 +136,18 @@ async def test_get_metrics_vocabulary(
     assert by_name["wallet_balance"]["supports_window"] is False
 
 
+@pytest.mark.asyncio
+async def test_get_metrics_requires_auth_401(
+    async_client: AsyncClient,
+) -> None:
+    """Verify the metrics vocabulary cannot be read without a valid admin token."""
+    resp = await async_client.get(
+        "/api/v1/segments/metrics",
+        headers={"Authorization": ""},
+    )
+    assert resp.status_code == 401
+
+
 # -----------------------------------------------------------------------------
 # POST /segments/preview
 # -----------------------------------------------------------------------------
@@ -171,19 +184,35 @@ async def test_preview_requires_auth_401(
     assert resp.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_preview_unknown_tenant_404(
+    async_client: AsyncClient,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify preview 404s for an unknown tenant instead of silently returning zero."""
+    resp = await async_client.post(
+        "/api/v1/segments/preview",
+        headers=admin_auth_header,
+        json={"tenant_id": str(uuid4()), "criteria": _ANY_USER_CRITERIA},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "tenant_not_found"
+
+
 # -----------------------------------------------------------------------------
 # POST /segments/recompute
 # -----------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_recompute_enqueues_task_with_tenant_id(
+async def test_recompute_enqueues_task_with_tenant_id_and_audits(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify POST /segments/recompute enqueues the Celery task with str(tenant_id)."""
+    """Verify POST /segments/recompute enqueues the task with str(tenant_id) and audits it."""
     calls: list[str] = []
 
     def _spy(tenant_id_str: str) -> None:
@@ -199,6 +228,51 @@ async def test_recompute_enqueues_task_with_tenant_id(
     assert resp.status_code == 202, resp.text
     assert resp.json() == {"status": "enqueued"}
     assert calls == [str(test_tenant.id)]
+
+    audit_row = (
+        await db_session.execute(
+            select(AuditLog).where(
+                AuditLog.action == "segment.recompute_requested",
+                AuditLog.entity_id == str(test_tenant.id),
+            )
+        )
+    ).scalar_one_or_none()
+    assert audit_row is not None
+    assert audit_row.entity_type == "tenant"
+
+
+@pytest.mark.asyncio
+async def test_recompute_requires_auth_401(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+) -> None:
+    """Verify recompute cannot be called without a valid admin token."""
+    resp = await async_client.post(
+        "/api/v1/segments/recompute",
+        headers={"Authorization": ""},
+        params={"tenant_id": str(test_tenant.id)},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_recompute_unknown_tenant_404(
+    async_client: AsyncClient,
+    admin_auth_header: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify recompute 404s for an unknown tenant and never reaches `.delay()`."""
+    calls: list[str] = []
+    monkeypatch.setattr(tasks_module.recompute_one_tenant, "delay", calls.append)
+
+    resp = await async_client.post(
+        "/api/v1/segments/recompute",
+        headers=admin_auth_header,
+        params={"tenant_id": str(uuid4())},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "tenant_not_found"
+    assert calls == []
 
 
 # -----------------------------------------------------------------------------
@@ -255,11 +329,12 @@ async def test_patch_segment_updates_criteria_and_priority_and_audits(
 @pytest.mark.asyncio
 async def test_patch_segment_moves_group_for_non_system_segment(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
     make_segment_group: Callable[..., Awaitable[str]],
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify a non-system segment can be moved to a different group via PATCH."""
+    """Verify a non-system segment can be moved to a different group via PATCH, durably."""
     group_a = await make_segment_group(test_tenant.id)
     group_b = await make_segment_group(test_tenant.id)
 
@@ -278,6 +353,14 @@ async def test_patch_segment_moves_group_for_non_system_segment(
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["group_id"] == group_b
+
+    # Re-query via a session that never loaded this row before the PATCH —
+    # proves the move is durably persisted, not just reflected in the
+    # response body from the same (possibly stale) request-scoped session.
+    persisted = (
+        await db_session.execute(select(Segment).where(Segment.id == UUID(seg_id)))
+    ).scalar_one()
+    assert str(persisted.group_id) == group_b
 
 
 @pytest.mark.asyncio
@@ -348,10 +431,175 @@ async def test_patch_segment_clear_criteria_turns_dynamic_static(
     assert resp.status_code == 200, resp.text
     assert resp.json()["criteria"] is None
 
-    persisted = (
-        await db_session.execute(select(Segment).where(Segment.id == UUID(seg_id)))
-    ).scalar_one()
-    assert persisted.criteria is None
+    # `persisted.criteria is None` on its own is INERT: it passes whether
+    # the column holds a real SQL NULL or a deserialized JSON 'null' literal
+    # (see `Segment.criteria`'s `none_as_null=True` docstring) — Python sees
+    # `None` either way once the JSONB value round-trips back. A SQL-level
+    # predicate is the only way to actually distinguish them: `IS NOT NULL`
+    # (as `evaluator.recompute_tenant` uses to select dynamic segments) would
+    # still match a stored 'null' literal, so proving `criteria IS NULL`
+    # matches this row is what proves the column got a real NULL.
+    sql_null_id = (
+        await db_session.execute(
+            select(Segment.id).where(Segment.id == UUID(seg_id), Segment.criteria.is_(None))
+        )
+    ).scalar_one_or_none()
+    assert sql_null_id is not None, "criteria must be a real SQL NULL, not a JSONB 'null' literal"
+
+
+@pytest.mark.asyncio
+async def test_patch_segment_clear_criteria_conflicts_with_criteria_payload_422(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    test_segment_group: str,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify sending both clear_criteria=True and a criteria payload is rejected."""
+    create = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "conflicting-patch",
+            "criteria": _ANY_USER_CRITERIA,
+        },
+    )
+    seg_id = create.json()["id"]
+
+    resp = await async_client.patch(
+        f"/api/v1/segments/{seg_id}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+        json={"clear_criteria": True, "criteria": _ANY_USER_CRITERIA},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_segment_criteria_change_resets_last_evaluated_at(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_segment_group: str,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify changing criteria resets a previously-stamped last_evaluated_at to NULL.
+
+    The old stamp describes membership computed under the OLD criteria — once
+    criteria changes, it's stale, and the admin UI should render "pending
+    recompute" rather than an out-of-date timestamp.
+    """
+    create = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "was-evaluated",
+            "criteria": _ANY_USER_CRITERIA,
+        },
+    )
+    seg_id = create.json()["id"]
+
+    # Simulate a prior evaluator run having stamped this segment.
+    segment = await db_session.get(Segment, UUID(seg_id))
+    assert segment is not None
+    segment.last_evaluated_at = datetime.now(UTC)
+    await db_session.commit()
+
+    resp = await async_client.patch(
+        f"/api/v1/segments/{seg_id}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+        json={"criteria": {**_ANY_USER_CRITERIA, "op": "OR"}},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["last_evaluated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_segment_requires_auth_401(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    test_segment_group: str,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify PATCH cannot be called without a valid admin token."""
+    create = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "no-auth-patch",
+        },
+    )
+    seg_id = create.json()["id"]
+
+    resp = await async_client.patch(
+        f"/api/v1/segments/{seg_id}",
+        headers={"Authorization": ""},
+        params={"tenant_id": str(test_tenant.id)},
+        json={"priority": 1},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_patch_segment_empty_body_422(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    test_segment_group: str,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify an empty PATCH body ({}) is rejected as a likely client bug, not a silent no-op."""
+    create = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "empty-patch-target",
+        },
+    )
+    seg_id = create.json()["id"]
+
+    resp = await async_client.patch(
+        f"/api/v1/segments/{seg_id}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+        json={},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_segment_unknown_field_rejected_422(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    test_segment_group: str,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a typo'd/unknown field in the PATCH body 422s instead of a silent no-op."""
+    create = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "typo-patch-target",
+        },
+    )
+    seg_id = create.json()["id"]
+
+    resp = await async_client.patch(
+        f"/api/v1/segments/{seg_id}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+        json={"piority": 5},
+    )
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio

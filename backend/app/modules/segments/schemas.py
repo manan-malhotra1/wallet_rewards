@@ -38,8 +38,16 @@ class SegmentUpdateRequest(BaseModel):
     segment back into a static one requires the explicit `clear_criteria=True`
     flag — this is the only way `Segment.criteria` is set to SQL NULL via this
     endpoint. Sending both `criteria` and `clear_criteria=True` is rejected as
-    a contradictory request.
+    a contradictory request. `description`, by contrast, honours an explicit
+    `null` as "clear it" — there's no separate "not provided vs. clear" split
+    for a plain nullable string the way there is for the criteria/flag pair.
+
+    `extra="forbid"`: a typo'd field name (e.g. `piority`) would otherwise be
+    silently ignored by Pydantic, producing a 200 no-op PATCH instead of a
+    422 the caller can actually notice.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     description: str | None = Field(default=None, max_length=500)
     # Moves the segment to a different group. `None` (the default, or
@@ -66,6 +74,28 @@ class SegmentUpdateRequest(BaseModel):
             raise ValueError("clear_criteria cannot be combined with a criteria payload")
         return self
 
+    @model_validator(mode="after")
+    def _check_not_empty(self) -> Self:
+        """Reject a PATCH body with no fields at all — mirrors `TenantUpdateRequest`.
+
+        An empty `{}` body would otherwise be a silent 200 no-op, which
+        almost always indicates a client bug (a field that failed to
+        serialize, a typo'd key already caught by `extra="forbid"` above,
+        etc.) rather than a deliberate request. `model_fields_set` — not a
+        check for "every field is at its default" — is what makes this
+        correctly reject `{}` while still accepting `{"priority": 0}` (an
+        explicit value equal to the default is still a real request).
+
+        Returns:
+            The validated `SegmentUpdateRequest`, unchanged.
+
+        Raises:
+            ValueError: No field was present in the request body.
+        """
+        if not self.model_fields_set:
+            raise ValueError("PATCH body must include at least one field to update")
+        return self
+
 
 class SegmentOut(BaseModel):
     """Segment resource returned by the API."""
@@ -78,6 +108,12 @@ class SegmentOut(BaseModel):
     name: str
     description: str | None
     priority: int
+    # Deliberately `dict[str, Any]`, not `SegmentCriteria` — lenient by
+    # design. `GET /segments` must never 500 the whole list because one row
+    # holds hand-edited/poisoned criteria that no longer parses against the
+    # strict DSL schema (see `evaluator.recompute_tenant`'s poison-isolation
+    # note); a loosely-typed passthrough here can always render, even for a
+    # row the evaluator itself would skip.
     criteria: dict[str, Any] | None
     is_system: bool
     last_evaluated_at: datetime | None
@@ -90,6 +126,18 @@ class SegmentPreviewRequest(BaseModel):
 
     tenant_id: UUID
     criteria: SegmentCriteria
+
+
+class SegmentPreviewResponse(BaseModel):
+    """Response for `POST /segments/preview`."""
+
+    match_count: int
+
+
+class SegmentRecomputeResponse(BaseModel):
+    """Response for `POST /segments/recompute`."""
+
+    status: str
 
 
 class MetricInfo(BaseModel):

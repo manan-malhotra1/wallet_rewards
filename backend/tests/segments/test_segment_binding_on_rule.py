@@ -81,6 +81,7 @@ async def test_segment_bound_rule_fires_only_for_members(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
+    test_segment_group: str,
     admin_auth_header: dict[str, str],
     user_points,
 ) -> None:
@@ -90,7 +91,11 @@ async def test_segment_bound_rule_fires_only_for_members(
     seg_resp = await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "name": "vip-bind-test"},
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "vip-bind-test",
+        },
     )
     segment_id = seg_resp.json()["id"]
 

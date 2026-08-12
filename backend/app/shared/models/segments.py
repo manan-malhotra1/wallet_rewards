@@ -85,7 +85,19 @@ class Segment(Base):
     )
     # NULL = static/manual segment (legacy behaviour). Non-null = dynamic;
     # shape is validated by app.modules.segments.criteria.SegmentCriteria.
-    criteria: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # `none_as_null=True`: without it, JSONB's default encodes a Python
+    # `None` VALUE assigned to an already-mapped column as the JSON literal
+    # 'null' rather than a SQL NULL (client-side only — no DDL change). That
+    # bit us in Task 4: `evaluator.recompute_tenant`'s `IS NOT NULL` filter is
+    # satisfied by a stored 'null', so a segment explicitly cleared via
+    # `criteria=None` would still be picked up as dynamic and crash on
+    # `SegmentCriteria.model_validate(None)`. With `none_as_null=True`,
+    # `Segment(criteria=None)` now persists a real SQL NULL, matching the
+    # `criteria IS NULL` = static-segment contract everywhere else in this
+    # module. The evaluator's own defense-in-depth guard (treating a
+    # deserialized JSON-null the same as a real NULL) stays in place —
+    # belt-and-suspenders for any row written before this fix, or hand-edited.
+    criteria: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     # Within an exclusive group the highest matching priority wins (Gold=3 > Bronze=1).
     priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")

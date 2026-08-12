@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 import pytest
@@ -14,6 +15,7 @@ from app.shared.models import Tenant, User
 async def test_create_segment_happy_path(
     async_client: AsyncClient,
     test_tenant: Tenant,
+    test_segment_group: str,
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify an admin can create a customer segment"""
@@ -22,6 +24,7 @@ async def test_create_segment_happy_path(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
             "name": "vip-users",
             "description": "Top 1% by lifetime spend.",
         },
@@ -30,16 +33,26 @@ async def test_create_segment_happy_path(
     body = resp.json()
     assert body["name"] == "vip-users"
     assert body["tenant_id"] == str(test_tenant.id)
+    assert body["group_id"] == test_segment_group
+    assert body["priority"] == 0
+    assert body["criteria"] is None
+    assert body["is_system"] is False
+    assert body["last_evaluated_at"] is None
 
 
 @pytest.mark.asyncio
 async def test_create_segment_duplicate_name_409(
     async_client: AsyncClient,
     test_tenant: Tenant,
+    test_segment_group: str,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify a segment cannot reuse an existing segment name"""
-    payload = {"tenant_id": str(test_tenant.id), "name": "dup"}
+    """Verify a segment cannot reuse an existing segment name within the same group."""
+    payload = {
+        "tenant_id": str(test_tenant.id),
+        "group_id": test_segment_group,
+        "name": "dup",
+    }
     a = await async_client.post("/api/v1/segments", headers=admin_auth_header, json=payload)
     assert a.status_code == 201
     b = await async_client.post("/api/v1/segments", headers=admin_auth_header, json=payload)
@@ -48,22 +61,72 @@ async def test_create_segment_duplicate_name_409(
 
 
 @pytest.mark.asyncio
+async def test_create_segment_duplicate_name_ok_in_different_group(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    test_segment_group: str,
+    make_segment_group: Callable[..., Awaitable[str]],
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify the same segment name is free to reuse in a DIFFERENT group.
+
+    Proves the uniqueness constraint is now scoped per (tenant, group), not
+    tenant-wide (see `Segment.__table_args__`'s `uq_segments_name_per_group`).
+    """
+    other_group_id = await make_segment_group(test_tenant.id)
+
+    a = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "rescoped-dup",
+        },
+    )
+    assert a.status_code == 201
+
+    b = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": other_group_id,
+            "name": "rescoped-dup",
+        },
+    )
+    assert b.status_code == 201, b.text
+
+
+@pytest.mark.asyncio
 async def test_list_segments_tenant_scoped(
     async_client: AsyncClient,
     test_tenant: Tenant,
     other_tenant: Tenant,
+    make_segment_group: Callable[..., Awaitable[str]],
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify a business only sees its own customer segments"""
+    in_tenant_group = await make_segment_group(test_tenant.id)
+    other_tenant_group = await make_segment_group(other_tenant.id)
+
     await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "name": "in-tenant"},
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": in_tenant_group,
+            "name": "in-tenant",
+        },
     )
     await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
-        json={"tenant_id": str(other_tenant.id), "name": "other-tenant"},
+        json={
+            "tenant_id": str(other_tenant.id),
+            "group_id": other_tenant_group,
+            "name": "other-tenant",
+        },
     )
     resp = await async_client.get(
         "/api/v1/segments",
@@ -79,6 +142,7 @@ async def test_list_segments_tenant_scoped(
 async def test_add_user_to_segment_idempotent(
     async_client: AsyncClient,
     test_tenant: Tenant,
+    test_segment_group: str,
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
@@ -86,7 +150,11 @@ async def test_add_user_to_segment_idempotent(
     create = await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "name": "early-adopters"},
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "early-adopters",
+        },
     )
     seg_id = create.json()["id"]
 
@@ -111,6 +179,7 @@ async def test_add_user_cross_tenant_returns_404(
     async_client: AsyncClient,
     test_tenant: Tenant,
     other_tenant: Tenant,
+    test_segment_group: str,
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
@@ -118,7 +187,11 @@ async def test_add_user_cross_tenant_returns_404(
     create = await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "name": "scope-test"},
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "scope-test",
+        },
     )
     seg_id = create.json()["id"]
 
@@ -135,13 +208,18 @@ async def test_add_user_cross_tenant_returns_404(
 async def test_add_unknown_user_returns_404(
     async_client: AsyncClient,
     test_tenant: Tenant,
+    test_segment_group: str,
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify an unknown customer cannot be added to a segment"""
     create = await async_client.post(
         "/api/v1/segments",
         headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "name": "unknown-user-test"},
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "unknown-user-test",
+        },
     )
     seg_id = create.json()["id"]
 

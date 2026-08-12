@@ -5,7 +5,7 @@
 > items land here.
 >
 > Organised as Epics × Stories with acceptance criteria. Statuses:
-> `Backlog` · `In Progress` · `Done` · `Deferred`.
+> `Backlog` · `In Progress` · `Done` · `Deferred` · `On Hold`.
 
 ---
 
@@ -125,7 +125,10 @@ decide on `ix_ledger_entries_account` (or a composite).
 
 ---
 
-## Epic B2 — AI-Assisted Segment Creation (Segmentation Phase 2) · **Backlog**
+## Epic B2 — AI-Assisted Segment Creation (Segmentation Phase 2) · **On Hold**
+
+> **2026-08-12 — ON HOLD by product decision.** Do not plan or start any B2
+> story until this hold is explicitly lifted.
 
 The AI layer designed in
 `docs/superpowers/specs/2026-08-12-ai-segmentation-design.md` but deliberately

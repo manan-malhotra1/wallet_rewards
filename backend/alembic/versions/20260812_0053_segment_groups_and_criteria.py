@@ -130,7 +130,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Drop source (+ its CHECK), the dynamic-segment columns, and segment_groups."""
+    """Drop source (+ its CHECK), the dynamic-segment columns, and segment_groups.
+
+    Restoring uq_segments_name_per_tenant fails if any tenant reused a segment
+    name across groups after the upgrade; dedupe those names before rolling back.
+    """
     op.drop_constraint("ck_user_segments_source", "user_segments", type_="check")
     op.drop_column("user_segments", "source")
 

@@ -9,7 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.models import Segment, SegmentGroup, Tenant, User, UserSegment
+from app.shared.models import (
+    USER_SEGMENT_SOURCE_CRITERIA,
+    Segment,
+    SegmentGroup,
+    Tenant,
+    User,
+    UserSegment,
+)
 
 
 @pytest.mark.asyncio
@@ -35,7 +42,9 @@ async def test_segment_group_roundtrip_and_dynamic_segment_columns(
     db_session.add(segment)
     await db_session.flush()
 
-    membership = UserSegment(user_id=test_user.id, segment_id=segment.id, source="criteria")
+    membership = UserSegment(
+        user_id=test_user.id, segment_id=segment.id, source=USER_SEGMENT_SOURCE_CRITERIA
+    )
     db_session.add(membership)
     await db_session.flush()
 

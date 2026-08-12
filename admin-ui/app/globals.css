@@ -85,7 +85,7 @@
 
 /* Light — default */
 /*
- * Default palette = the Sasai brand (Blueberry #243B8F + Cream #FFF0C9) derived
+ * Default palette = the Sasai brand (Ocean #0C5888 + White #FFFFFF) derived
  * via the golden-ratio OKLab engine in lib/brand-palette.ts (deriveTokens with
  * the defaults). A tenant with custom brand colours overrides these at runtime
  * via a <style> block injected in the authenticated layout — so this block is the
@@ -94,75 +94,75 @@
  */
 :root {
   --radius: 0.5rem;
-  --background: #fff0c9;
-  --foreground: #0f1882;
-  --card: #ffffcc;
-  --card-foreground: #0f1882;
-  --popover: #ffffcc;
-  --popover-foreground: #0f1882;
-  --primary: #243b8f;
-  --primary-foreground: #fff0c9;
-  --secondary: #e7dec6;
-  --secondary-foreground: #243b8f;
-  --muted: #e2dac5;
-  --muted-foreground: #5167a1;
-  --accent: #dad5c4;
-  --accent-foreground: #243b8f;
+  --background: #ffffff;
+  --foreground: #004076;
+  --card: #ffffff;
+  --card-foreground: #004076;
+  --popover: #ffffff;
+  --popover-foreground: #004076;
+  --primary: #0c5888;
+  --primary-foreground: #ffffff;
+  --secondary: #e7eef3;
+  --secondary-foreground: #0c5888;
+  --muted: #e2eaf1;
+  --muted-foreground: #4e7ea4;
+  --accent: #dbe5ed;
+  --accent-foreground: #0c5888;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #cfccc1;
-  --input: #cfccc1;
-  --ring: #5167a1;
-  --chart-1: #243b8f;
-  --chart-2: #5167a1;
-  --chart-3: #7081ab;
-  --chart-4: #a4abb9;
+  --border: #cfdce7;
+  --input: #cfdce7;
+  --ring: #4e7ea4;
+  --chart-1: #0c5888;
+  --chart-2: #4e7ea4;
+  --chart-3: #6f96b6;
+  --chart-4: #a5bdd2;
   --chart-5: #b7791f;
-  --sidebar: #243b8f;
-  --sidebar-foreground: #fff0c9;
-  --sidebar-primary: #fff0c9;
-  --sidebar-primary-foreground: #243b8f;
-  --sidebar-accent: #3f579a;
-  --sidebar-accent-foreground: #fff0c9;
-  --sidebar-border: #0f1882;
-  --sidebar-ring: #5167a1;
+  --sidebar: #0c5888;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #0c5888;
+  --sidebar-accent: #396f9a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #004076;
+  --sidebar-ring: #4e7ea4;
 }
 
-/* Dark — the default theme (toggled via .dark class). Deep Blueberry surfaces,
-   Cream ink. Surfaces are darken()-ed toward black so they stay calm navy. */
+/* Dark — the default theme (toggled via .dark class). Deep Ocean surfaces,
+   white ink. Surfaces are darken()-ed toward black so they stay calm navy. */
 .dark {
-  --background: #050d2c;
-  --foreground: #fff0c9;
-  --card: #0b1741;
-  --card-foreground: #fff0c9;
-  --popover: #0b1741;
-  --popover-foreground: #fff0c9;
-  --primary: #fff0c9;
-  --primary-foreground: #243b8f;
-  --secondary: #122157;
-  --secondary-foreground: #fff0c9;
-  --muted: #0d1a48;
-  --muted-foreground: #a4abb9;
-  --accent: #3f579a;
-  --accent-foreground: #fff0c9;
+  --background: #011829;
+  --foreground: #ffffff;
+  --card: #02263e;
+  --card-foreground: #ffffff;
+  --popover: #02263e;
+  --popover-foreground: #ffffff;
+  --primary: #ffffff;
+  --primary-foreground: #0c5888;
+  --secondary: #043352;
+  --secondary-foreground: #ffffff;
+  --muted: #032a45;
+  --muted-foreground: #a5bdd2;
+  --accent: #396f9a;
+  --accent-foreground: #ffffff;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #122157;
-  --input: #122157;
-  --ring: #7081ab;
-  --chart-1: #fff0c9;
-  --chart-2: #a4abb9;
-  --chart-3: #7081ab;
-  --chart-4: #5167a1;
+  --border: #043352;
+  --input: #043352;
+  --ring: #6f96b6;
+  --chart-1: #ffffff;
+  --chart-2: #a5bdd2;
+  --chart-3: #6f96b6;
+  --chart-4: #4e7ea4;
   --chart-5: #e7b24b;
-  --sidebar: #030821;
-  --sidebar-foreground: #fff0c9;
-  --sidebar-primary: #fff0c9;
-  --sidebar-primary-foreground: #243b8f;
-  --sidebar-accent: #3f579a;
-  --sidebar-accent-foreground: #fff0c9;
-  --sidebar-border: #09143b;
-  --sidebar-ring: #7081ab;
+  --sidebar: #01101f;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #0c5888;
+  --sidebar-accent: #396f9a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #022137;
+  --sidebar-ring: #6f96b6;
 }
 
 * {

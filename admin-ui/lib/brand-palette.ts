@@ -296,11 +296,11 @@ export function brandScale(accent: string, light: string): BrandScale {
   };
 }
 
-/** The default Sasai brand accent (deep "Blueberry" navy). */
-export const DEFAULT_ACCENT = "#243B8F";
+/** The default Sasai brand accent (deep "Ocean" blue). */
+export const DEFAULT_ACCENT = "#0C5888";
 
-/** The default Sasai brand light companion (pale "Cream"). */
-export const DEFAULT_LIGHT = "#FFF0C9";
+/** The default Sasai brand light companion (white). */
+export const DEFAULT_LIGHT = "#FFFFFF";
 
 /**
  * Every shadcn/ui CSS-variable name this app themes, excluding the semantic

@@ -215,7 +215,7 @@ ramp reads as evenly spaced to the eye rather than bunching in the shadows.
 | `ramp()` | Interpolates accent→light in OKLab at 7 golden-ratio stops (`GOLDEN_STOPS`). |
 | `darken()` | Scales the accent toward black for calm dark surfaces — **not** `t<0` extrapolation, which would go electric. |
 
-Defaults: accent `#243B8F`, light `#FFF0C9`. `--destructive` is deliberately excluded so status colours stay
+Defaults: accent `#0C5888`, light `#FFFFFF`. `--destructive` is deliberately excluded so status colours stay
 constant across tenants. The token map is emitted server-side by
 [`components/branding/tenant-theme-style.tsx`](../../admin-ui/components/branding/tenant-theme-style.tsx) as an
 inline `<style>` overriding the shadcn CSS vars for `:root` + `.dark` (no FOUC). `BrandingDialog` previews the

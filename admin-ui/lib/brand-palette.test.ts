@@ -38,13 +38,13 @@ function expectClose(actual: string, expected: string, tol = 2): void {
 describe("brand-palette", () => {
   it("Verify the golden-ratio scale reproduces the seven brand stops", () => {
     const expected = [
-      "#243B8F",
-      "#3F579A",
-      "#5167A1",
-      "#7081AB",
-      "#A4ABB9",
-      "#D1CDC2",
-      "#FFF0C9",
+      "#0C5888",
+      "#396F9A",
+      "#4E7EA4",
+      "#6F96B6",
+      "#A5BDD2",
+      "#D1DEE8",
+      "#FFFFFF",
     ];
     GOLDEN_STOPS.forEach((t, i) => {
       const got = ramp(DEFAULT_ACCENT, DEFAULT_LIGHT, t);

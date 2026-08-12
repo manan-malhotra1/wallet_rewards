@@ -99,8 +99,8 @@ TENANT_CURRENCY = "ZAR"
 # the admin UI's derived theme palette; the logo URL is left null so the UI falls
 # back to its default mark. Applied only when the tenant has no brand set yet —
 # a tenant with a custom brand is never overwritten (see _get_or_create_tenant).
-DEFAULT_BRAND_ACCENT_COLOR = "#243B8F"  # Blueberry
-DEFAULT_BRAND_LIGHT_COLOR = "#FFF0C9"  # Cream Soda
+DEFAULT_BRAND_ACCENT_COLOR = "#0C5888"  # Ocean
+DEFAULT_BRAND_LIGHT_COLOR = "#FFFFFF"  # White
 
 # The merchant_cashin funding merchant (bound to the dev API key below).
 CASHIN_MERCHANT_PHONE = "+27825557001"

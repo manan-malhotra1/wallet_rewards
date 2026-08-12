@@ -108,12 +108,12 @@ function ColorField({
           maxLength={7}
           aria-invalid={invalid}
           className="font-mono uppercase tabular-nums"
-          placeholder="#243B8F"
+          placeholder="#0C5888"
         />
       </div>
       {invalid && (
         <p className="mt-1 text-[11px] text-[--color-danger]">
-          Enter a 6-digit hex colour, e.g. #243B8F.
+          Enter a 6-digit hex colour, e.g. #0C5888.
         </p>
       )}
     </div>

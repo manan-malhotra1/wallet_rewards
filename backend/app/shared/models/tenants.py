@@ -71,10 +71,10 @@ class Tenant(Base):
     # nullable — an unbranded tenant falls back to the app's default theme, so
     # absence is meaningful (do not backfill a non-null default at the DB level).
     #
-    # brand_accent_color: primary anchor hex, e.g. "#243B8F" (Blueberry). 9 chars
+    # brand_accent_color: primary anchor hex, e.g. "#0C5888" (Ocean). 9 chars
     #   accommodates "#RRGGBBAA"; the UI validates format, the column just stores.
     brand_accent_color: Mapped[str | None] = mapped_column(String(9), nullable=True)
-    # brand_light_color: light anchor hex, e.g. "#FFF0C9" (Cream Soda). Pairs with
+    # brand_light_color: light anchor hex, e.g. "#FFFFFF" (White). Pairs with
     #   the accent to seed the derived palette (backgrounds, tints).
     brand_light_color: Mapped[str | None] = mapped_column(String(9), nullable=True)
     # brand_icon_url: hosted image URL for the tenant logo shown in the sidebar.

@@ -5,11 +5,14 @@
  * a manual recompute trigger for the batch evaluator.
  *
  * Segments are static (admin-assigned) or dynamic (criteria-evaluated by the
- * batch evaluator); the create-segment dialog fetches the group/metric/
- * service vocabulary a dynamic segment needs.
+ * batch evaluator). Groups now drive the page body itself (one
+ * `<GroupSection>` per group), not just the create-segment dialog's picker —
+ * so a failed groups fetch is surfaced with its own error banner rather than
+ * silently rendering a false "No segment groups yet" empty state.
  */
 import { Layers, Plus } from "lucide-react";
 
+import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import { listSegmentGroups, listSegmentMetrics, listSegments, listServices } from "@/lib/api-endpoints";
@@ -26,6 +29,13 @@ import { RecomputeButton } from "./_components/recompute-button";
 export const dynamic = "force-dynamic";
 
 export default async function SegmentsPage() {
+  const session = await auth();
+  // Only platform-admins may delete a segment group; the backend also 409s a
+  // non-platform-admin's attempt, this just hides the affordance up front
+  // per frontend-admin.md's "read role from session, conditionally render
+  // action affordances" convention (see limits/page.tsx for the same check).
+  const canDeleteGroups = session?.user?.roles?.includes("platform-admin") ?? false;
+
   const activeTenantId = await getActiveTenantId();
   if (!activeTenantId) {
     return (
@@ -48,20 +58,27 @@ export default async function SegmentsPage() {
     else throw err;
   }
 
-  // Groups/metrics/services only feed the create dialog's pickers — they're
-  // never why an admin loads this page. A failure fetching any one of them
-  // must not blank the segments list above (which may have already loaded
-  // fine), so they're fetched independently of `segments` AND of each other
-  // via `Promise.allSettled` rather than a `Promise.all` that would abort
-  // all three the moment the first one rejects. A rejected auxiliary fetch
-  // just leaves that picker empty (the dialog already handles an empty
-  // `groups`/`metrics`/`services` list gracefully).
+  // Metrics/services only feed the create-segment dialog's pickers — a
+  // failure fetching either just leaves that picker empty (the dialog
+  // already handles an empty `metrics`/`services` list gracefully), so they
+  // stay best-effort. Groups are different: they now drive the page body
+  // itself (one `<GroupSection>` per group, below), so silently collapsing a
+  // rejected groups fetch to `[]` would render a false "No segment groups
+  // yet" empty state over a tenant that actually has groups — `groupsError`
+  // is captured separately and surfaced as its own banner instead. All
+  // three still go through one `Promise.allSettled` (not `Promise.all`) so
+  // a metrics/services rejection can't take the groups fetch down with it,
+  // and vice versa.
   const [groupsResult, metricsResult, servicesResult] = await Promise.allSettled([
     listSegmentGroups(activeTenantId),
     listSegmentMetrics(),
     listServices(activeTenantId, "active"),
   ]);
   const groups = groupsResult.status === "fulfilled" ? groupsResult.value : [];
+  const groupsError =
+    groupsResult.status === "rejected" && groupsResult.reason instanceof ApiError
+      ? groupsResult.reason
+      : null;
   const metrics = metricsResult.status === "fulfilled" ? metricsResult.value : [];
   const services = servicesResult.status === "fulfilled" ? servicesResult.value : [];
 
@@ -72,6 +89,15 @@ export default async function SegmentsPage() {
     if (a.is_system !== b.is_system) return a.is_system ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
+
+  // A segment whose group_id doesn't match any fetched group — its real
+  // group was deleted out from under it, or the groups fetch above only
+  // partially/never succeeded — would otherwise vanish from the page: every
+  // segment below is rendered via a `group_id` filter keyed off a real
+  // group, so an orphan needs its own catch-all section rather than
+  // silently under-reporting the tenant's segment count.
+  const knownGroupIds = new Set(groups.map((g) => g.id));
+  const orphanedSegments = segments.filter((s) => !knownGroupIds.has(s.group_id));
 
   return (
     <div>
@@ -118,7 +144,13 @@ export default async function SegmentsPage() {
             description={`${error.errorCode}: ${error.message}`}
           />
         )}
-        {!error && sortedGroups.length === 0 && (
+        {groupsError && (
+          <ErrorBanner
+            title="Couldn't load segment groups"
+            description={`${groupsError.errorCode}: ${groupsError.message}`}
+          />
+        )}
+        {!error && !groupsError && sortedGroups.length === 0 && (
           <EmptyState
             icon={Layers}
             title="No segment groups yet"
@@ -132,8 +164,27 @@ export default async function SegmentsPage() {
               group={group}
               segments={segments.filter((s) => s.group_id === group.id)}
               tenantId={activeTenantId}
+              canDelete={canDeleteGroups}
             />
           ))}
+        {!error && orphanedSegments.length > 0 && (
+          <GroupSection
+            key="unknown-group"
+            group={{
+              id: "__unknown__",
+              tenant_id: activeTenantId,
+              name: "Unknown group",
+              description:
+                "These segments reference a group that no longer resolves — deleted, or missing because the groups fetch above failed.",
+              is_system: false,
+              created_at: "",
+              updated_at: "",
+            }}
+            segments={orphanedSegments}
+            tenantId={activeTenantId}
+            canDelete={false}
+          />
+        )}
       </div>
     </div>
   );

@@ -42,13 +42,19 @@ export function CreateGroupDialog({
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
 
-  React.useEffect(() => {
-    if (!open) {
+  // Every path that closes the dialog — Radix (Esc/overlay/X), Cancel, and a
+  // successful submit — routes through this one handler so the form always
+  // resets, without a `useEffect` watching `open` (which would set state
+  // synchronously on the render right after close, tripping
+  // react-hooks/set-state-in-effect for no real benefit over doing it here).
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
       setName("");
       setDescription("");
       setError(null);
     }
-  }, [open]);
+  };
 
   const onSubmit = async () => {
     setError(null);
@@ -65,14 +71,14 @@ export function CreateGroupDialog({
     setSubmitting(false);
     if (res.ok) {
       toast({ title: "Group created", description: name.trim() });
-      setOpen(false);
+      onOpenChange(false);
     } else {
       setError(`${res.errorCode}: ${res.message}`);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -108,7 +114,7 @@ export function CreateGroupDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={submitting}>

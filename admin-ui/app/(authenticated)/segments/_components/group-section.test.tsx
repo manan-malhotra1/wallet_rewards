@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GroupSection } from "@/app/(authenticated)/segments/_components/group-section";
 import type { Segment, SegmentGroup } from "@/lib/api-types";
+import { formatTimestamp } from "@/lib/utils";
 
 const deleteSegmentGroupAction = vi.fn();
 const addUserToSegmentAction = vi.fn();
@@ -52,6 +53,10 @@ function makeSegment(overrides: Partial<Segment>): Segment {
 
 const BRONZE = makeSegment({ id: "seg-bronze", name: "Bronze", priority: 1, is_system: true });
 const GOLD = makeSegment({ id: "seg-gold", name: "Gold", priority: 10, is_system: true });
+// Equal priority (5) on purpose — exercises the name-ASC tiebreak in
+// `byPriorityDesc` rather than the priority comparison itself.
+const TIE_ALPHA = makeSegment({ id: "seg-alpha", name: "Alpha", priority: 5 });
+const TIE_ZETA = makeSegment({ id: "seg-zeta", name: "Zeta", priority: 5 });
 const DYNAMIC_PENDING = makeSegment({
   id: "seg-dynamic",
   name: "Big spenders",
@@ -70,6 +75,7 @@ const DYNAMIC_EVALUATED = makeSegment({
 beforeEach(() => {
   vi.clearAllMocks();
   deleteSegmentGroupAction.mockResolvedValue({ ok: true });
+  addUserToSegmentAction.mockResolvedValue({ ok: true });
 });
 
 describe("Group-sectioned segments — one group's table", () => {
@@ -81,6 +87,19 @@ describe("Group-sectioned segments — one group's table", () => {
     const rows = screen.getAllByRole("row").filter((r) => within(r).queryByText(/Gold|Bronze/));
     expect(within(rows[0]).getByText("Gold")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Bronze")).toBeInTheDocument();
+  });
+
+  it("Verify equal-priority segments break the tie alphabetically by name", () => {
+    // Passed in Zeta-then-Alpha order so a passing test can only mean the
+    // component itself re-sorted them, not that they happened to already be
+    // in the right order.
+    render(
+      <GroupSection group={GROUP} segments={[TIE_ZETA, TIE_ALPHA]} tenantId="tenant-1" />,
+    );
+
+    const rows = screen.getAllByRole("row").filter((r) => within(r).queryByText(/Alpha|Zeta/));
+    expect(within(rows[0]).getByText("Alpha")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Zeta")).toBeInTheDocument();
   });
 
   it("Verify a dynamic segment shows a Dynamic badge and a static one shows Static", () => {
@@ -108,6 +127,12 @@ describe("Group-sectioned segments — one group's table", () => {
     render(<GroupSection group={GROUP} segments={[DYNAMIC_EVALUATED]} tenantId="tenant-1" />);
 
     expect(screen.queryByText("Pending recompute")).not.toBeInTheDocument();
+    // Assert the actual rendered text, not just the absence of "Pending" —
+    // pins the cell to `formatTimestamp`'s output rather than any string
+    // that happens not to say "Pending recompute".
+    expect(
+      screen.getByText(formatTimestamp(DYNAMIC_EVALUATED.last_evaluated_at!)),
+    ).toBeInTheDocument();
   });
 
   it("Verify the delete-group button is hidden for a system group", () => {
@@ -118,6 +143,14 @@ describe("Group-sectioned segments — one group's table", () => {
     // (system group) plus Bronze's (a system-seeded segment) — just assert
     // at least one renders rather than pinning an exact count.
     expect(screen.getAllByText("System").length).toBeGreaterThan(0);
+  });
+
+  it("Verify the delete-group button is hidden when canDelete is false, even for a non-system group", () => {
+    render(
+      <GroupSection group={GROUP} segments={[BRONZE]} tenantId="tenant-1" canDelete={false} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Delete group" })).not.toBeInTheDocument();
   });
 
   it("Verify confirming group delete calls the action with (group.id, tenantId)", async () => {
@@ -163,5 +196,36 @@ describe("Group-sectioned segments — one group's table", () => {
 
     // One static segment -> exactly one assign-user button.
     expect(screen.getAllByRole("button", { name: "Assign user" })).toHaveLength(1);
+  });
+
+  it("Verify a failed assign keeps the user-id row open with the typed value intact", async () => {
+    addUserToSegmentAction.mockResolvedValue({
+      ok: false,
+      errorCode: "user_not_found",
+      message: "No such user.",
+    });
+    const user = userEvent.setup();
+    render(<GroupSection group={GROUP} segments={[BRONZE]} tenantId="tenant-1" />);
+
+    await user.click(screen.getByRole("button", { name: "Assign user" }));
+    await user.type(screen.getByPlaceholderText("00000000-…"), "not-a-real-id");
+    await user.click(screen.getByRole("button", { name: "Assign" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Couldn't add", variant: "danger" }),
+      ),
+    );
+    // The prompt row (and what the admin typed) is still there to fix and retry.
+    expect(screen.getByPlaceholderText("00000000-…")).toHaveValue("not-a-real-id");
+  });
+
+  it("Verify the collapsible header points aria-controls at the body it toggles", () => {
+    render(<GroupSection group={GROUP} segments={[BRONZE]} tenantId="tenant-1" />);
+
+    const toggle = screen.getByRole("button", { name: /Loyalty/ });
+    const controlsId = toggle.getAttribute("aria-controls");
+    expect(controlsId).toBeTruthy();
+    expect(document.getElementById(controlsId!)).not.toBeNull();
   });
 });

@@ -81,12 +81,15 @@ export function GroupSection({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [pending, setPending] = React.useState<string | null>(null);
+  // No `tenantId` field here — `onAddUser` below always submits the
+  // segment's own `tenant_id` (looked up fresh from `s.tenant_id` at call
+  // time), so a copy on this prompt's state would just be dead weight.
   const [userIdPrompt, setUserIdPrompt] = React.useState<{
     segmentId: string;
-    tenantId: string;
     value: string;
   } | null>(null);
   const { toast } = useToast();
+  const bodyId = React.useId();
 
   const sorted = [...segments].sort(byPriorityDesc);
   const showDelete = canDelete && !group.is_system;
@@ -112,8 +115,12 @@ export function GroupSection({
     setPending(segmentId);
     const res = await addUserToSegmentAction(segmentId, segTenantId, userId.trim());
     setPending(null);
-    setUserIdPrompt(null);
     if (res.ok) {
+      // Only a success clears the prompt — a rejected user id (typo'd UUID,
+      // already-a-member, etc.) is exactly when the admin most needs the
+      // row to stay open with what they typed still in the box, so they can
+      // fix it and retry instead of re-opening the prompt from scratch.
+      setUserIdPrompt(null);
       toast({ title: "User added to segment" });
     } else {
       toast({
@@ -131,6 +138,7 @@ export function GroupSection({
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
+          aria-controls={bodyId}
           className="flex flex-1 items-center gap-2 text-left"
         >
           {open ? (
@@ -161,118 +169,115 @@ export function GroupSection({
         )}
       </div>
 
-      {open &&
-        (sorted.length === 0 ? (
-          <div className="border-t px-3 py-6 text-center text-sm text-muted-foreground">
-            No segments in this group yet.
-          </div>
-        ) : (
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell>Type</TableHeaderCell>
-                <TableHeaderCell>Criteria</TableHeaderCell>
-                <TableHeaderCell>Priority</TableHeaderCell>
-                <TableHeaderCell>Last evaluated</TableHeaderCell>
-                <TableHeaderCell className="w-[50px]">
-                  <span className="sr-only">Actions</span>
-                </TableHeaderCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {sorted.map((s) => {
-                const isDynamic = s.criteria != null;
-                const text = criteriaText(s);
-                return (
-                  <React.Fragment key={s.id}>
-                    <TableRow>
-                      <TableCell className="font-medium">
-                        <span className="inline-flex items-center gap-1.5">
-                          {s.name}
-                          {s.is_system && <Badge variant="secondary">System</Badge>}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={isDynamic ? "info" : "secondary"}>
-                          {isDynamic ? "Dynamic" : "Static"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-[220px] truncate text-sm text-muted-foreground"
-                        title={text !== "—" ? text : undefined}
-                      >
-                        {text}
-                      </TableCell>
-                      <TableCell className="font-mono tabular-nums">{s.priority}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {lastEvaluatedText(s)}
-                      </TableCell>
-                      <TableCell>
-                        {!isDynamic && (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label="Assign user"
-                            disabled={pending === s.id}
-                            onClick={() =>
-                              setUserIdPrompt({
-                                segmentId: s.id,
-                                tenantId: s.tenant_id,
-                                value: "",
-                              })
-                            }
-                          >
-                            <UserPlus className="h-3.5 w-3.5 text-primary" />
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                    {userIdPrompt?.segmentId === s.id && (
+      {open && (
+        <div id={bodyId}>
+          {sorted.length === 0 ? (
+            <div className="border-t px-3 py-6 text-center text-sm text-muted-foreground">
+              No segments in this group yet.
+            </div>
+          ) : (
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableHeaderCell>Name</TableHeaderCell>
+                  <TableHeaderCell>Type</TableHeaderCell>
+                  <TableHeaderCell>Criteria</TableHeaderCell>
+                  <TableHeaderCell>Priority</TableHeaderCell>
+                  <TableHeaderCell>Last evaluated</TableHeaderCell>
+                  <TableHeaderCell className="w-[50px]">
+                    <span className="sr-only">Actions</span>
+                  </TableHeaderCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {sorted.map((s) => {
+                  const isDynamic = s.criteria != null;
+                  const text = criteriaText(s);
+                  return (
+                    <React.Fragment key={s.id}>
                       <TableRow>
-                        <TableCell colSpan={6} className="bg-muted/30">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">User ID:</span>
-                            <Input
-                              autoFocus
-                              value={userIdPrompt.value}
-                              onChange={(e) =>
-                                setUserIdPrompt({ ...userIdPrompt, value: e.target.value })
-                              }
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter")
-                                  onAddUser(s.id, s.tenant_id, userIdPrompt.value);
-                                if (e.key === "Escape") setUserIdPrompt(null);
-                              }}
-                              placeholder="00000000-…"
-                              className="max-w-sm font-mono text-xs"
-                            />
-                            <Button
-                              size="sm"
-                              onClick={() => onAddUser(s.id, s.tenant_id, userIdPrompt.value)}
-                              disabled={pending === s.id}
-                            >
-                              Assign
-                            </Button>
+                        <TableCell className="font-medium">
+                          <span className="inline-flex items-center gap-1.5">
+                            {s.name}
+                            {s.is_system && <Badge variant="secondary">System</Badge>}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={isDynamic ? "info" : "secondary"}>
+                            {isDynamic ? "Dynamic" : "Static"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell
+                          className="max-w-[220px] truncate text-sm text-muted-foreground"
+                          title={text !== "—" ? text : undefined}
+                        >
+                          {text}
+                        </TableCell>
+                        <TableCell className="font-mono tabular-nums">{s.priority}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {lastEvaluatedText(s)}
+                        </TableCell>
+                        <TableCell>
+                          {!isDynamic && (
                             <Button
                               variant="ghost"
-                              size="sm"
-                              onClick={() => setUserIdPrompt(null)}
+                              size="icon-sm"
+                              aria-label="Assign user"
+                              disabled={pending === s.id}
+                              onClick={() => setUserIdPrompt({ segmentId: s.id, value: "" })}
                             >
-                              Cancel
+                              <UserPlus className="h-3.5 w-3.5 text-primary" />
                             </Button>
-                          </div>
+                          )}
                         </TableCell>
                       </TableRow>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
-        ))}
+                      {userIdPrompt?.segmentId === s.id && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="bg-muted/30">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">User ID:</span>
+                              <Input
+                                autoFocus
+                                value={userIdPrompt.value}
+                                onChange={(e) =>
+                                  setUserIdPrompt({ ...userIdPrompt, value: e.target.value })
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter")
+                                    onAddUser(s.id, s.tenant_id, userIdPrompt.value);
+                                  if (e.key === "Escape") setUserIdPrompt(null);
+                                }}
+                                placeholder="00000000-…"
+                                className="max-w-sm font-mono text-xs"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={() => onAddUser(s.id, s.tenant_id, userIdPrompt.value)}
+                                disabled={pending === s.id}
+                              >
+                                Assign
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setUserIdPrompt(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      )}
 
-      <Dialog open={confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(false)}>
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

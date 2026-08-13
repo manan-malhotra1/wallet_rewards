@@ -50,3 +50,6 @@ sasai-wallet-infra/data/
 # bind-mounted backend/ dir; a runtime artifact, never source.
 celerybeat-schedule
 backend/celerybeat-schedule
+
+# Superpowers brainstorm sessions
+.superpowers/

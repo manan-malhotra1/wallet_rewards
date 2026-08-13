@@ -4,12 +4,18 @@
  * These prove that `deriveGlassTokens` produces well-formed CSS values
  * (gradient images, rgba tints, blur radii) for both colour schemes, that
  * atmosphere blob alphas stay within the spec bounds (dark ≤ 0.55, light ≤
- * 0.25), and that the derivation actually re-tints per tenant rather than
- * collapsing to a brand-invariant constant.
+ * 0.25), that the derivation actually re-tints per tenant rather than
+ * collapsing to a brand-invariant constant, that `glassVarsCss` emits every
+ * token, and — the sync guard — that the static Ocean defaults baked into
+ * `app/globals.css` have not drifted from `deriveGlassTokens(DEFAULT_ACCENT,
+ * DEFAULT_LIGHT)`.
  */
+import fs from "node:fs";
+import path from "node:path";
+
 import { describe, it, expect } from "vitest";
 
-import { deriveGlassTokens } from "./glass-tokens";
+import { deriveGlassTokens, glassVarsCss, GLASS_VAR_NAMES, type GlassTokens } from "./glass-tokens";
 
 /** Matches an uppercase `#RRGGBB` string. */
 const HEX = /^#[0-9A-F]{6}$/;
@@ -74,5 +80,64 @@ describe("deriveGlassTokens", () => {
     expect(oceanOverlay.a).toBeGreaterThanOrEqual(0.7);
     expect([oceanOverlay.r, oceanOverlay.g, oceanOverlay.b]).not.toEqual([255, 255, 255]);
     expect(berry.dark.overlay).not.toBe(ocean.dark.overlay);
+  });
+});
+
+describe("glassVarsCss", () => {
+  it("Verify it emits all 9 --glass-* declarations", () => {
+    const css = glassVarsCss(deriveGlassTokens().light);
+    // GLASS_VAR_NAMES is the single source of truth for field -> CSS name;
+    // iterate it so a field added to GlassTokens without a var name (a
+    // compile error) or dropped from emission (this assertion) both fail
+    // loudly instead of silently shipping a partial token set.
+    const names = Object.values(GLASS_VAR_NAMES);
+    expect(names).toHaveLength(9);
+    for (const name of names) {
+      expect(css).toContain(`--${name}:`);
+    }
+    expect(css.match(/--glass-/g)).toHaveLength(9);
+  });
+});
+
+/** Collapse whitespace and case so CSS-file formatting (line breaks, the
+ * deliberate lowercase hex in globals.css) can't cause a false-positive
+ * diff against the JS-derived values. */
+function normalizeCss(s: string): string {
+  return s.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** Extract the declaration body of a top-level `selector { ... }` block
+ * (assumes no nested braces inside it, true for `:root`/`.dark` in
+ * globals.css). */
+function extractBlock(css: string, selector: string): string {
+  const match = css.match(new RegExp(`${selector}\\s*\\{([^}]*)\\}`));
+  if (!match) throw new Error(`Could not find "${selector} { ... }" block`);
+  return match[1];
+}
+
+describe("globals.css sync guard", () => {
+  // Reads admin-ui/app/globals.css relative to this test file. If someone
+  // hand-edits the static --glass-* defaults there without re-running
+  // `deriveGlassTokens(DEFAULT_ACCENT, DEFAULT_LIGHT)` (see the sync comment
+  // above each block in that file), this test goes red instead of the
+  // drift going unnoticed until a tenant with no brand override renders a
+  // stale atmosphere.
+  const cssPath = path.join(__dirname, "../app/globals.css");
+  const css = fs.readFileSync(cssPath, "utf-8");
+  const rootBlock = normalizeCss(extractBlock(css, ":root"));
+  const darkBlock = normalizeCss(extractBlock(css, "\\.dark"));
+
+  it("Verify :root's static glass defaults match deriveGlassTokens(...).light verbatim", () => {
+    const light: GlassTokens = deriveGlassTokens().light;
+    for (const value of Object.values(light)) {
+      expect(rootBlock).toContain(normalizeCss(value));
+    }
+  });
+
+  it("Verify .dark's static glass defaults match deriveGlassTokens(...).dark verbatim", () => {
+    const dark: GlassTokens = deriveGlassTokens().dark;
+    for (const value of Object.values(dark)) {
+      expect(darkBlock).toContain(normalizeCss(value));
+    }
   });
 });

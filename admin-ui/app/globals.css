@@ -127,15 +127,22 @@
   --sidebar-border: #004076;
   --sidebar-ring: #4e7ea4;
 
-  /* Glassmorphism (spec 2026-08-13) — Ocean defaults; overridden per tenant
-     by TenantThemeStyle exactly like the palette tokens above. */
-  --glass-atmosphere-image: radial-gradient(ellipse 60% 50% at 15% 10%, rgba(12, 88, 136, 0.22), transparent 60%), radial-gradient(ellipse 50% 45% at 85% 90%, rgba(111, 150, 182, 0.14), transparent 60%), radial-gradient(ellipse 45% 40% at 70% 20%, rgba(5, 57, 91, 0.1), transparent 55%);
-  --glass-atmosphere-base: #F5F8FA;
+  /* Glassmorphism (spec 2026-08-13) — Ocean defaults; kept in sync with
+     deriveGlassTokens(DEFAULT_ACCENT, DEFAULT_LIGHT) in lib/glass-tokens.ts
+     (glass-tokens.test.ts asserts these values verbatim), and overridden
+     per tenant by TenantThemeStyle exactly like the palette tokens above. */
+  --glass-atmosphere-image:
+    radial-gradient(ellipse 60% 50% at 15% 10%, rgba(12, 88, 136, 0.22), transparent 60%),
+    radial-gradient(ellipse 50% 45% at 85% 90%, rgba(111, 150, 182, 0.14), transparent 60%),
+    radial-gradient(ellipse 45% 40% at 70% 20%, rgba(5, 57, 91, 0.1), transparent 55%);
+  --glass-atmosphere-base: #f5f8fa;
   --glass-panel: rgba(255, 255, 255, 0.55);
   --glass-overlay: rgba(255, 255, 255, 0.8);
   --glass-border: rgba(255, 255, 255, 0.75);
   --glass-blur-panel: 14px;
   --glass-blur-overlay: 18px;
+  --glass-shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 6px 22px rgba(0, 0, 0, 0.25);
+  --glass-shadow-overlay: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 16px 48px rgba(0, 0, 0, 0.45);
 }
 
 /* Dark — the default theme (toggled via .dark class). Deep Ocean surfaces,
@@ -174,27 +181,45 @@
   --sidebar-border: #022137;
   --sidebar-ring: #6f96b6;
 
-  /* Glassmorphism (spec 2026-08-13) — Ocean defaults; overridden per tenant
-     by TenantThemeStyle exactly like the palette tokens above. */
-  --glass-atmosphere-image: radial-gradient(ellipse 60% 50% at 15% 10%, rgba(12, 88, 136, 0.5), transparent 60%), radial-gradient(ellipse 50% 45% at 85% 90%, rgba(111, 150, 182, 0.28), transparent 60%), radial-gradient(ellipse 45% 40% at 70% 20%, rgba(5, 57, 91, 0.4), transparent 55%);
-  --glass-atmosphere-base: #01101F;
+  /* Glassmorphism (spec 2026-08-13) — Ocean defaults; kept in sync with
+     deriveGlassTokens(DEFAULT_ACCENT, DEFAULT_LIGHT) in lib/glass-tokens.ts
+     (glass-tokens.test.ts asserts these values verbatim), and overridden
+     per tenant by TenantThemeStyle exactly like the palette tokens above. */
+  --glass-atmosphere-image:
+    radial-gradient(ellipse 60% 50% at 15% 10%, rgba(12, 88, 136, 0.5), transparent 60%),
+    radial-gradient(ellipse 50% 45% at 85% 90%, rgba(111, 150, 182, 0.28), transparent 60%),
+    radial-gradient(ellipse 45% 40% at 70% 20%, rgba(5, 57, 91, 0.4), transparent 55%);
+  --glass-atmosphere-base: #01101f;
   --glass-panel: rgba(255, 255, 255, 0.06);
   --glass-overlay: rgba(1, 24, 41, 0.78);
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-blur-panel: 14px;
   --glass-blur-overlay: 18px;
+  --glass-shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 6px 22px rgba(0, 0, 0, 0.25);
+  --glass-shadow-overlay: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 16px 48px rgba(0, 0, 0, 0.45);
 }
 
-* {
-  border-color: var(--border);
+/* Layered so @layer components (.glass-panel/.glass-overlay/.glass-inset)
+   can override border-color per class — an unlayered `*` rule would beat
+   @layer components regardless of source order, making --glass-border
+   inert on every glass surface. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 body {
-  /* Glass atmosphere: tenant-tinted radial blobs over a base colour. The
-     fallback blocks below strip the image and restore --background. */
+  /* Glass atmosphere: tenant-tinted radial blobs over a base colour.
+     background-attachment: fixed sizes the gradient against the viewport
+     (deterministic blob geometry) rather than the (taller) document, which
+     also makes no-repeat a guard rather than load-bearing. The fallback
+     blocks below swap the vars to strip the image and restore solid
+     surfaces — no separate `body` rule needed there. */
   background-color: var(--glass-atmosphere-base);
   background-image: var(--glass-atmosphere-image);
   background-attachment: fixed;
+  background-repeat: no-repeat;
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -217,21 +242,26 @@ body {
     border: 1px solid var(--glass-border);
     -webkit-backdrop-filter: blur(var(--glass-blur-panel));
     backdrop-filter: blur(var(--glass-blur-panel));
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 6px 22px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--glass-shadow-panel);
   }
   /* Floating layer: dialogs, drawers, popovers, dropdowns, toasts, tooltips.
      Higher opacity + stronger blur/shadow so content beneath never bleeds
-     through text. */
+     through text.
+     Invariant: never stack this on a near-opaque scrim — a heavy backdrop
+     (e.g. black/80+) behind the blur turns the glass into a flat slab with
+     nothing visible to refract, defeating the effect. Keep dialog/drawer
+     scrims around black/40 so the atmosphere still reads through. Glass
+     only reads as glass when there's a visible atmosphere behind it.
+     Also: backdrop-filter recomputes every frame it's animated alongside a
+     transform, which can flicker on some engines — keep entrance/exit
+     animations to opacity/zoom, never combine with a moving backdrop-filter
+     radius. */
   .glass-overlay {
     background-color: var(--glass-overlay);
     border: 1px solid var(--glass-border);
     -webkit-backdrop-filter: blur(var(--glass-blur-overlay));
     backdrop-filter: blur(var(--glass-blur-overlay));
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 16px 48px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--glass-shadow-overlay);
   }
   /* Nested regions INSIDE a glass panel: tint only, no blur — blur inside
      blur produces the double-blur artifact. */
@@ -241,42 +271,47 @@ body {
   }
 }
 
+/* Both fallbacks below are pure variable swaps, never recipe restatements:
+   .glass-panel/.glass-overlay/.glass-inset keep consuming the same vars via
+   @layer components, so there is exactly one place (that layer) that can
+   define what a glass surface looks like — these blocks can't drift from it
+   because they don't repeat it. Swapping --glass-atmosphere-base to
+   --background etc. also means `body` needs no fallback rule of its own: it
+   already reads the swapped vars. Blur collapses to 0px (a harmless
+   backdrop-filter no-op) and every tint/border points at the existing solid
+   design tokens, so reduced-transparency / no-backdrop-filter users get
+   today's actual UI, not an approximation of it. */
+
 /* Fallback 1: engines without backdrop-filter get today's solid surfaces. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  body {
-    background-image: none;
-    background-color: var(--background);
-  }
-  .glass-panel,
-  .glass-inset {
-    background-color: var(--card);
-    border-color: var(--border);
-    box-shadow: none;
-  }
-  .glass-overlay {
-    background-color: var(--popover);
-    border-color: var(--border);
+  :root,
+  .dark {
+    --glass-atmosphere-image: none;
+    --glass-atmosphere-base: var(--background);
+    --glass-panel: var(--card);
+    --glass-overlay: var(--popover);
+    --glass-border: var(--border);
+    --glass-blur-panel: 0px;
+    --glass-blur-overlay: 0px;
+    /* Fallback keeps modest pre-glass elevation (spec §4: fallback = today's UI). */
+    --glass-shadow-panel: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --glass-shadow-overlay: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   }
 }
 
 /* Fallback 2: users who ask for reduced transparency get the same solid UI. */
 @media (prefers-reduced-transparency: reduce) {
-  body {
-    background-image: none;
-    background-color: var(--background);
-  }
-  .glass-panel,
-  .glass-inset {
-    background-color: var(--card);
-    border-color: var(--border);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    box-shadow: none;
-  }
-  .glass-overlay {
-    background-color: var(--popover);
-    border-color: var(--border);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+  :root,
+  .dark {
+    --glass-atmosphere-image: none;
+    --glass-atmosphere-base: var(--background);
+    --glass-panel: var(--card);
+    --glass-overlay: var(--popover);
+    --glass-border: var(--border);
+    --glass-blur-panel: 0px;
+    --glass-blur-overlay: 0px;
+    /* Fallback keeps modest pre-glass elevation (spec §4: fallback = today's UI). */
+    --glass-shadow-panel: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --glass-shadow-overlay: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   }
 }

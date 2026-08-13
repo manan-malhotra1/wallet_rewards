@@ -43,9 +43,10 @@ hexes it derives, for **dark** and **light** schemes:
 - **Blur radii**: panel ~14px, overlay ~18px (hard cap 20px).
 
 Emission: `components/branding/tenant-theme-style.tsx` adds the new vars
-(`--glass-atmosphere-1..3`, `--glass-panel`, `--glass-overlay`,
-`--glass-border`, `--glass-blur-panel`, `--glass-blur-overlay`) to the
-inline `<style>` it already renders server-side for `:root` + `.dark` —
+(`--glass-atmosphere-image`, `--glass-atmosphere-base`, `--glass-panel`,
+`--glass-overlay`, `--glass-border`, `--glass-blur-panel`,
+`--glass-blur-overlay`, `--glass-shadow-panel`, `--glass-shadow-overlay`) to
+the inline `<style>` it already renders server-side for `:root` + `.dark` —
 same no-FOUC path as the existing theme tokens. Defaults (no tenant brand)
 derive from `DEFAULT_ACCENT`/`DEFAULT_LIGHT` (Ocean `#0C5888` / white).
 `--destructive` and all status colours stay constant across tenants, as

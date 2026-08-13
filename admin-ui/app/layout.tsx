@@ -27,7 +27,11 @@ export default function RootLayout({
       className={`${GeistSans.variable} ${GeistMono.variable}`}
       suppressHydrationWarning
     >
-      <body className="min-h-screen bg-background font-sans antialiased">
+      <body className="min-h-screen font-sans antialiased">
+        {/* No bg-background here: globals.css's `body` rule paints the glass
+            atmosphere (gradient over --glass-atmosphere-base); a Tailwind
+            utility class here would only win the cascade by accident and
+            contradict that atmosphere. */}
         {/* next-themes injects `.dark` on <html>; globals.css token block
             overrides on that class. Dark is the product default (deep navy);
             `enableSystem` is off so a viewer's OS preference never silently

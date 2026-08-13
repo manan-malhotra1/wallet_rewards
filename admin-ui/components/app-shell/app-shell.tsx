@@ -29,6 +29,7 @@ export function AppShell({
   children,
 }: AppShellProps) {
   return (
+    // bg-transparent (not bg-background) so the body atmosphere shows through.
     <div className="flex h-screen w-screen overflow-hidden bg-transparent text-foreground">
       <Sidebar
         pendingCount={pendingReconciliationCount}

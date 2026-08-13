@@ -2,10 +2,16 @@
  * Glassmorphism token generator.
  *
  * Derives the per-tenant frosted-glass design tokens — atmosphere gradients,
- * panel/overlay tints, hairline borders, and backdrop blur radii — from the
- * same two brand colours (`accent`/`light`) that `./brand-palette`
- * uses for the shadcn theme. See the glassmorphism design spec:
- * `docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md` §2.
+ * panel/overlay tints, hairline borders, backdrop blur radii, and elevation
+ * shadows — from the same two brand colours (`accent`/`light`) that
+ * `./brand-palette` uses for the shadcn theme. See the glassmorphism design
+ * spec: `docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md`
+ * §2.
+ *
+ * `admin-ui/app/globals.css` bakes the Ocean defaults (`deriveGlassTokens(
+ * DEFAULT_ACCENT, DEFAULT_LIGHT)`) into `:root`/`.dark` as static values —
+ * `glass-tokens.test.ts` has a sync-guard test that reads that file and
+ * fails if it drifts from this function's output.
  *
  * Pure TypeScript: no React, no backend, no third-party dependencies.
  */
@@ -16,6 +22,12 @@ const PANEL_BLUR = "14px";
 
 /** Backdrop blur radius for floating overlay surfaces (spec cap: 20px). */
 const OVERLAY_BLUR = "18px";
+
+/** Elevation shadow for `.glass-panel` — identical across schemes (spec §3). */
+const PANEL_SHADOW = "inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 6px 22px rgba(0, 0, 0, 0.25)";
+
+/** Elevation shadow for `.glass-overlay` — identical across schemes (spec §3). */
+const OVERLAY_SHADOW = "inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 16px 48px rgba(0, 0, 0, 0.45)";
 
 /** The glass design tokens for one colour scheme (see the glassmorphism spec). */
 export interface GlassTokens {
@@ -33,6 +45,46 @@ export interface GlassTokens {
   blurPanel: string;
   /** Backdrop blur radius for overlays, e.g. `"18px"` (spec cap: 20px). */
   blurOverlay: string;
+  /** `box-shadow` value for `.glass-panel` (inset highlight + drop shadow). */
+  shadowPanel: string;
+  /** `box-shadow` value for `.glass-overlay` (inset highlight + drop shadow). */
+  shadowOverlay: string;
+}
+
+/**
+ * Maps every {@link GlassTokens} field to its CSS custom-property name.
+ *
+ * Single source of truth for the field ↔ `--glass-*` name pairing: adding a
+ * field to {@link GlassTokens} without adding it here is a TypeScript error
+ * (`Record<keyof GlassTokens, string>` demands total coverage), so the CSS
+ * emission in {@link glassVarsCss} can never silently drop a token.
+ */
+export const GLASS_VAR_NAMES: Record<keyof GlassTokens, string> = {
+  atmosphereImage: "glass-atmosphere-image",
+  atmosphereBase: "glass-atmosphere-base",
+  panel: "glass-panel",
+  overlay: "glass-overlay",
+  border: "glass-border",
+  blurPanel: "glass-blur-panel",
+  blurOverlay: "glass-blur-overlay",
+  shadowPanel: "glass-shadow-panel",
+  shadowOverlay: "glass-shadow-overlay",
+};
+
+/**
+ * Serialise one scheme's glass tokens into `--name:value;` CSS custom
+ * property declarations, in {@link GLASS_VAR_NAMES} order.
+ *
+ * Used by both `globals.css`'s static defaults (indirectly, via the sync
+ * test) and `TenantThemeStyle`'s per-tenant inline `<style>` override.
+ *
+ * @param g - one scheme's derived glass tokens
+ * @returns a concatenated string of `--glass-*:value;` declarations
+ */
+export function glassVarsCss(g: GlassTokens): string {
+  return (Object.keys(GLASS_VAR_NAMES) as (keyof GlassTokens)[])
+    .map((field) => `--${GLASS_VAR_NAMES[field]}:${g[field]};`)
+    .join("");
 }
 
 /** Dark + light glass token sets for a tenant. */
@@ -81,6 +133,8 @@ export function deriveGlassTokens(
       border: "rgba(255, 255, 255, 0.12)",
       blurPanel: PANEL_BLUR,
       blurOverlay: OVERLAY_BLUR,
+      shadowPanel: PANEL_SHADOW,
+      shadowOverlay: OVERLAY_SHADOW,
     },
     light: {
       atmosphereImage: blobs(0.22, 0.14, 0.1),
@@ -90,6 +144,8 @@ export function deriveGlassTokens(
       border: "rgba(255, 255, 255, 0.75)",
       blurPanel: PANEL_BLUR,
       blurOverlay: OVERLAY_BLUR,
+      shadowPanel: PANEL_SHADOW,
+      shadowOverlay: OVERLAY_SHADOW,
     },
   };
 }

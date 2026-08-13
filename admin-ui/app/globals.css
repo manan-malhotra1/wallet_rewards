@@ -252,10 +252,11 @@ body {
      nothing visible to refract, defeating the effect. Keep dialog/drawer
      scrims around black/40 so the atmosphere still reads through. Glass
      only reads as glass when there's a visible atmosphere behind it.
-     Also: backdrop-filter recomputes every frame it's animated alongside a
-     transform, which can flicker on some engines — keep entrance/exit
-     animations to opacity/zoom, never combine with a moving backdrop-filter
-     radius. */
+     Also: the hazard is ANIMATING the blur radius itself, or moving a
+     backdrop-filtered element mid-animation (translate/scale) — both force
+     the engine to recompute the filter every frame and can flicker. A
+     *static* blur with a brief opacity/zoom entrance (e.g. the existing
+     `zoom-in-95`) is fine and is exactly what Task 3 should keep using. */
   .glass-overlay {
     background-color: var(--glass-overlay);
     border: 1px solid var(--glass-border);
@@ -277,15 +278,22 @@ body {
    define what a glass surface looks like — these blocks can't drift from it
    because they don't repeat it. Swapping --glass-atmosphere-base to
    --background etc. also means `body` needs no fallback rule of its own: it
-   already reads the swapped vars. Blur collapses to 0px (a harmless
-   backdrop-filter no-op) and every tint/border points at the existing solid
-   design tokens, so reduced-transparency / no-backdrop-filter users get
-   today's actual UI, not an approximation of it. */
+   already reads the swapped vars. Blur collapses to 0px (visually a no-op,
+   though it still forms a stacking/backdrop context — see the explicit
+   `backdrop-filter: none` in the reduced-transparency block below) and every
+   tint/border points at the existing solid design tokens, so
+   reduced-transparency / no-backdrop-filter users get today's actual UI, not
+   an approximation of it. */
 
-/* Fallback 1: engines without backdrop-filter get today's solid surfaces. */
+/* Fallback 1: engines without backdrop-filter get today's solid surfaces.
+   :root:root (not :root) — TenantThemeStyle emits an unlayered `:root{…}`
+   later in the document; a plain :root here would tie on specificity and
+   lose, silently reinstating glass for every branded tenant. The palette
+   vars this re-points to (--card, --popover, --border, --background) are
+   already scheme-aware (`.dark` sets its own), so one doubled selector
+   covers both schemes — no separate `.dark:root`/`.dark` needed. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root,
-  .dark {
+  :root:root {
     --glass-atmosphere-image: none;
     --glass-atmosphere-base: var(--background);
     --glass-panel: var(--card);
@@ -299,10 +307,12 @@ body {
   }
 }
 
-/* Fallback 2: users who ask for reduced transparency get the same solid UI. */
+/* Fallback 2: users who ask for reduced transparency get the same solid UI.
+   :root:root (not :root) — TenantThemeStyle emits an unlayered `:root{…}`
+   later in the document; a plain :root here would tie on specificity and
+   lose, silently reinstating glass for every branded tenant. */
 @media (prefers-reduced-transparency: reduce) {
-  :root,
-  .dark {
+  :root:root {
     --glass-atmosphere-image: none;
     --glass-atmosphere-base: var(--background);
     --glass-panel: var(--card);
@@ -313,5 +323,11 @@ body {
     /* Fallback keeps modest pre-glass elevation (spec §4: fallback = today's UI). */
     --glass-shadow-panel: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --glass-shadow-overlay: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+  /* blur(0px) still creates a stacking/backdrop context; none removes it. */
+  .glass-panel,
+  .glass-overlay {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }

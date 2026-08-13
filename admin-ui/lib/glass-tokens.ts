@@ -75,15 +75,19 @@ export const GLASS_VAR_NAMES: Record<keyof GlassTokens, string> = {
  * Serialise one scheme's glass tokens into `--name:value;` CSS custom
  * property declarations, in {@link GLASS_VAR_NAMES} order.
  *
- * Used by both `globals.css`'s static defaults (indirectly, via the sync
- * test) and `TenantThemeStyle`'s per-tenant inline `<style>` override.
+ * Single consumer: `TenantThemeStyle`'s per-tenant inline `<style>` override
+ * (the same job `toCssVars` does there for the palette tokens). The static
+ * Ocean defaults baked into `globals.css` are NOT produced by this function —
+ * they're hand-written CSS kept in sync by a separate sync-guard test in
+ * `glass-tokens.test.ts`, which compares `deriveGlassTokens()`'s output
+ * directly against `globals.css`'s text.
  *
- * @param g - one scheme's derived glass tokens
+ * @param tokens - one scheme's derived glass tokens
  * @returns a concatenated string of `--glass-*:value;` declarations
  */
-export function glassVarsCss(g: GlassTokens): string {
+export function glassVarsCss(tokens: GlassTokens): string {
   return (Object.keys(GLASS_VAR_NAMES) as (keyof GlassTokens)[])
-    .map((field) => `--${GLASS_VAR_NAMES[field]}:${g[field]};`)
+    .map((field) => `--${GLASS_VAR_NAMES[field]}:${tokens[field]};`)
     .join("");
 }
 

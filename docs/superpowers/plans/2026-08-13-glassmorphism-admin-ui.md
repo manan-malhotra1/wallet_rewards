@@ -308,46 +308,35 @@ body {
   }
 }
 
-/* Fallback 1: engines without backdrop-filter get today's solid surfaces. */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  body {
-    background-image: none;
-    background-color: var(--background);
-  }
-  .glass-panel,
-  .glass-inset {
-    background-color: var(--card);
-    border-color: var(--border);
-    box-shadow: none;
-  }
-  .glass-overlay {
-    background-color: var(--popover);
-    border-color: var(--border);
-  }
-}
-
-/* Fallback 2: users who ask for reduced transparency get the same solid UI. */
-@media (prefers-reduced-transparency: reduce) {
-  body {
-    background-image: none;
-    background-color: var(--background);
-  }
-  .glass-panel,
-  .glass-inset {
-    background-color: var(--card);
-    border-color: var(--border);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    box-shadow: none;
-  }
-  .glass-overlay {
-    background-color: var(--popover);
-    border-color: var(--border);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-}
+/* Fallback 1: engines without backdrop-filter, and Fallback 2: reduced-
+   transparency users — both defined below as CSS-variable swaps, not
+   per-class recipe restatements (see globals.css for the as-implemented
+   version — it is the source of truth, not this plan). */
 ```
+
+> **As-implemented note (fix round, 2026-08-13):** the two fallback blocks
+> above were reworked from per-class rules into pure `:root`/`.dark`
+> variable swaps (redefining `--glass-*` back to the solid design tokens,
+> with blur collapsed to `0px`), so `.glass-panel`/`.glass-overlay`/
+> `.glass-inset` never have their recipe restated outside `@layer
+> components` and can't drift from it. Three details the original snippet
+> above doesn't capture — see `admin-ui/app/globals.css` for the exact,
+> current CSS:
+> - The universal `* { border-color: var(--border) }` reset is wrapped in
+>   `@layer base { ... }`, because an unlayered version beats `@layer
+>   components` regardless of source order and made `--glass-border` inert.
+> - `.glass-panel`/`.glass-overlay` shadows are tokenised as
+>   `--glass-shadow-panel`/`--glass-shadow-overlay` (also swapped by the
+>   fallbacks) instead of literal `box-shadow` values, so the fallback can
+>   restore a flatter elevation without repeating the glass recipe.
+> - Both fallback blocks use the selector `:root:root` (specificity 0,2,0),
+>   not `:root, .dark` — `TenantThemeStyle` emits an unlayered `:root{…}`
+>   later in the document, and a plain `:root` here ties on specificity and
+>   loses, silently reinstating glass for every branded tenant. The
+>   reduced-transparency block additionally sets `.glass-panel`/
+>   `.glass-overlay`'s `backdrop-filter`/`-webkit-backdrop-filter` to `none`
+>   explicitly, since `blur(0px)` is visually a no-op but still opens a
+>   stacking/backdrop context.
 
 - [ ] **Step 4: Let the atmosphere show through the shell** — `admin-ui/components/app-shell/app-shell.tsx:32`, change:
 
@@ -387,24 +376,26 @@ git commit -m "feat(admin-ui): glass CSS vars, atmosphere background, glass util
    `"glass-overlay text-card-foreground data-[state=open]:animate-in … rounded-lg p-6 duration-200 sm:max-w-lg"` (all other fragments unchanged)
 4. `admin-ui/components/ui/drawer.tsx:42` — remove `bg-card`, `border-l`, `shadow-2xl`; prepend `glass-overlay`:
    `"glass-overlay text-card-foreground fixed right-0 top-0 z-50 flex h-full w-full max-w-[480px] flex-col"`
-5. `admin-ui/components/ui/select.tsx:46` — remove `bg-popover`, `border`, `shadow-md`; prepend `glass-overlay`:
+5. `admin-ui/components/ui/dialog.tsx:26` — scrim: `bg-black/70` → `bg-black/40` (glass invariant documented above `.glass-overlay` in globals.css — a near-opaque scrim turns the glass into a flat slab with nothing to refract; the atmosphere needs to read through).
+6. `admin-ui/components/ui/drawer.tsx:25` — scrim: `bg-black/60` → `bg-black/40` (same invariant).
+7. `admin-ui/components/ui/select.tsx:46` — remove `bg-popover`, `border`, `shadow-md`; prepend `glass-overlay`:
    `"glass-overlay text-popover-foreground data-[state=open]:animate-in … rounded-md"` (rest unchanged)
-6. `admin-ui/components/ui/tooltip.tsx:25` — remove `border`, `border-border`, `bg-popover`, `shadow-md`; prepend `glass-overlay`:
+8. `admin-ui/components/ui/tooltip.tsx:25` — remove `border`, `border-border`, `bg-popover`, `shadow-md`; prepend `glass-overlay`:
    `"glass-overlay z-50 max-w-sm rounded-md px-3 py-2 text-xs text-popover-foreground"`
-7. `admin-ui/components/ui/toast.tsx:36` — replace `group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg` with `glass-overlay group-[.toaster]:text-foreground`:
+9. `admin-ui/components/ui/toast.tsx:36` — replace `group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg` with `glass-overlay group-[.toaster]:text-foreground`:
    `"group toast glass-overlay group-[.toaster]:text-foreground"`
 
 - [ ] **Step 2: App shell.**
 
-8. `admin-ui/components/app-shell/sidebar.tsx:232` — remove `border-r border-sidebar-border bg-sidebar`; prepend `glass-panel rounded-none border-0 border-r`:
-   `"glass-panel rounded-none border-0 border-r flex h-full w-[240px] shrink-0 flex-col"`
-9. `admin-ui/components/app-shell/topbar.tsx:68` — remove `bg-background`; prepend `glass-panel rounded-none border-0 border-b`:
-   `"glass-panel rounded-none border-0 border-b flex h-14 shrink-0 items-center gap-3 px-4"`
-10. `admin-ui/components/ui/page-header.tsx:17` — remove `border-b bg-background`; prepend `glass-panel rounded-none border-0 border-b`:
+10. `admin-ui/components/app-shell/sidebar.tsx:232` — remove `border-r border-sidebar-border bg-sidebar`; prepend `glass-panel rounded-none border-0 border-r`:
+    `"glass-panel rounded-none border-0 border-r flex h-full w-[240px] shrink-0 flex-col"`
+11. `admin-ui/components/app-shell/topbar.tsx:68` — remove `bg-background`; prepend `glass-panel rounded-none border-0 border-b`:
+    `"glass-panel rounded-none border-0 border-b flex h-14 shrink-0 items-center gap-3 px-4"`
+12. `admin-ui/components/ui/page-header.tsx:17` — remove `border-b bg-background`; prepend `glass-panel rounded-none border-0 border-b`:
     `"glass-panel rounded-none border-0 border-b flex flex-wrap items-end justify-between gap-4 px-6 py-5"`
-11. `admin-ui/components/app-shell/tenant-switcher.tsx:55` — remove `border bg-popover shadow-md`; prepend `glass-overlay`:
+13. `admin-ui/components/app-shell/tenant-switcher.tsx:55` — remove `border bg-popover shadow-md`; prepend `glass-overlay`:
     `"glass-overlay z-50 w-[260px] rounded-md p-1 text-popover-foreground"`
-12. `admin-ui/components/app-shell/user-menu.tsx:38` — remove `border bg-popover shadow-md`; prepend `glass-overlay`:
+14. `admin-ui/components/app-shell/user-menu.tsx:38` — remove `border bg-popover shadow-md`; prepend `glass-overlay`:
     `"glass-overlay z-50 w-[240px] rounded-md p-1 text-popover-foreground"`
 
 The command palette needs no edit — it renders through `DialogContent` (already glass via edit 3).

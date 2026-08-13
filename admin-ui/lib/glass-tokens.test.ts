@@ -127,17 +127,28 @@ describe("globals.css sync guard", () => {
   const rootBlock = normalizeCss(extractBlock(css, ":root"));
   const darkBlock = normalizeCss(extractBlock(css, "\\.dark"));
 
-  it("Verify :root's static glass defaults match deriveGlassTokens(...).light verbatim", () => {
+  // Asserts the NAME is bound to the VALUE (`--glass-blur-panel: 14px;`),
+  // not just that the value string happens to occur somewhere in the block.
+  // A bare value-presence check can't catch two vars' values being swapped
+  // (e.g. blur-panel/blur-overlay) since both values would still be present
+  // in the block, just under the wrong name — the trailing `;` also stops a
+  // short value being satisfied as a prefix of a longer one.
+  function expectVarBound(block: string, field: keyof GlassTokens, tokens: GlassTokens): void {
+    const name = GLASS_VAR_NAMES[field];
+    expect(block).toContain(normalizeCss(`--${name}: ${tokens[field]};`));
+  }
+
+  it("Verify :root's static glass defaults bind each --glass-* name to deriveGlassTokens(...).light's value", () => {
     const light: GlassTokens = deriveGlassTokens().light;
-    for (const value of Object.values(light)) {
-      expect(rootBlock).toContain(normalizeCss(value));
+    for (const field of Object.keys(GLASS_VAR_NAMES) as (keyof GlassTokens)[]) {
+      expectVarBound(rootBlock, field, light);
     }
   });
 
-  it("Verify .dark's static glass defaults match deriveGlassTokens(...).dark verbatim", () => {
+  it("Verify .dark's static glass defaults bind each --glass-* name to deriveGlassTokens(...).dark's value", () => {
     const dark: GlassTokens = deriveGlassTokens().dark;
-    for (const value of Object.values(dark)) {
-      expect(darkBlock).toContain(normalizeCss(value));
+    for (const field of Object.keys(GLASS_VAR_NAMES) as (keyof GlassTokens)[]) {
+      expectVarBound(darkBlock, field, dark);
     }
   });
 });

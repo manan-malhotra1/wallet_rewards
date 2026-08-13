@@ -54,6 +54,14 @@ describe("deriveGlassTokens", () => {
     for (const a of lightAlphas) expect(a).toBeLessThanOrEqual(0.25);
   });
 
+  it("Verify the dark atmosphere base stays brand-tinted", () => {
+    // Guards against darken(accent, 0.9)-style regressions, which collapse to
+    // a brand-invariant near-black (#000001) regardless of the tenant accent.
+    const ocean = deriveGlassTokens();
+    const berry = deriveGlassTokens("#7A1F1F", "#FFFFFF");
+    expect(ocean.dark.atmosphereBase).not.toBe(berry.dark.atmosphereBase);
+  });
+
   it("Verify it re-tints with the tenant brand and differs between schemes", () => {
     const ocean = deriveGlassTokens();
     const berry = deriveGlassTokens("#243B8F", "#FFF0C9");

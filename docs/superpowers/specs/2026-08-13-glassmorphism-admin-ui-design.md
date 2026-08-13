@@ -36,7 +36,7 @@ hexes it derives, for **dark** and **light** schemes:
   bounded: dark ≤ 0.55, light ≤ 0.25.
 - **Panel tint**: `rgba` — dark: white at ~5–7% alpha; light: white at
   ~50–60% alpha.
-- **Overlay tint**: same hue, higher alpha (dark ~55%, light ~75%) so
+- **Overlay tint**: same hue, higher alpha (dark ~78%, light ~80%) so
   floating surfaces occlude what's beneath them.
 - **Border alpha**: hairline `rgba(255,255,255, …)` — dark ~0.12,
   light ~0.75.

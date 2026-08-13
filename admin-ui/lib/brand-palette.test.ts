@@ -2,7 +2,7 @@
  * Unit tests for the brand palette generator.
  *
  * These lock the perceptual OKLab ramp against a known-good reference scale
- * (the default Sasai "Blueberry" accent + "Cream" light), prove that every
+ * (the default Sasai "Ocean" accent + white light), prove that every
  * shadcn token derives to a valid renderable colour in both themes, prove
  * that extrapolated stops beyond the two anchors stay inside the sRGB gamut,
  * and cover the `hexToRgba` primitive that the glass token system in
@@ -98,7 +98,7 @@ describe("brand-palette", () => {
 });
 
 describe("hexToRgba", () => {
-  it("converts a hex colour and alpha into an rgba() string", () => {
+  it("Verify it converts a hex colour and alpha into an rgba() string", () => {
     expect(hexToRgba("#0C5888", 0.5)).toBe("rgba(12, 88, 136, 0.5)");
     expect(hexToRgba("#FFFFFF", 1)).toBe("rgba(255, 255, 255, 1)");
   });

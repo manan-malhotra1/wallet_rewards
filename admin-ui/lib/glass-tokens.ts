@@ -3,7 +3,7 @@
  *
  * Derives the per-tenant frosted-glass design tokens — atmosphere gradients,
  * panel/overlay tints, hairline borders, and backdrop blur radii — from the
- * same two brand colours (`accent`/`light`) that {@link ../brand-palette.ts}
+ * same two brand colours (`accent`/`light`) that `./brand-palette`
  * uses for the shadcn theme. See the glassmorphism design spec:
  * `docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md` §2.
  *

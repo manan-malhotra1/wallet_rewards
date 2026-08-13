@@ -3,15 +3,18 @@
  *
  * Turns a tenant's two brand colours (an `accent` — the deep, saturated brand
  * hue — and a `light` — the pale companion) into the full shadcn/ui design-token
- * set for both the dark (default) and light themes.
+ * set for both the dark (default) and light themes. It also exports the colour
+ * primitives (`ramp`, `darken`, `hexToRgba`) that the glassmorphism system in
+ * `./glass-tokens.ts` builds on to derive gradient, tint, and blur values for
+ * frosted-glass surfaces.
  *
  * The engine works entirely in the OKLab perceptual colour space so that the
  * interpolated ramp reads as evenly spaced to the human eye rather than evenly
  * spaced in gamma-encoded sRGB (which bunches up in the shadows). Stops are
  * placed on a golden-ratio scale for a naturally balanced tonal spread.
  *
- * Pure TypeScript: no React, no backend, no third-party dependencies. Every
- * token is derived from {@link ramp}, so a tenant only ever supplies two hex
+ * Pure TypeScript: no React, no backend, no third-party dependencies. Most
+ * tokens are derived from {@link ramp}, so a tenant only ever supplies two hex
  * colours and the whole UI re-skins deterministically.
  */
 
@@ -42,6 +45,17 @@ interface LinearRGB {
  */
 function clamp(x: number, lo = 0, hi = 1): number {
   return x < lo ? lo : x > hi ? hi : x;
+}
+
+/**
+ * Clamp a gamma-encoded [0, 1] channel and scale it to a rounded 0..255 byte.
+ * Shared by every hex/rgba string formatter so channel rounding stays consistent.
+ *
+ * @param v - a channel value, nominally in [0, 1]
+ * @returns the channel as an integer in [0, 255]
+ */
+function to255(v: number): number {
+  return Math.round(clamp(v) * 255);
 }
 
 /**
@@ -79,7 +93,6 @@ export function hexToSrgb(hex: string): { r: number; g: number; b: number } {
  * @returns an uppercase `#RRGGBB` hex string
  */
 export function srgbToHex(c: { r: number; g: number; b: number }): string {
-  const to255 = (v: number) => Math.round(clamp(v) * 255);
   const hex = (v: number) => to255(v).toString(16).padStart(2, "0");
   return `#${hex(c.r)}${hex(c.g)}${hex(c.b)}`.toUpperCase();
 }
@@ -445,83 +458,9 @@ export function deriveTokens(
  * @param hex - a `#RGB`/`#RRGGBB` colour
  * @param alpha - opacity in [0, 1], emitted verbatim
  * @returns an `rgba(...)` string usable in CSS values
+ * @throws if `hex` is not a valid 3- or 6-digit hex colour (propagated from {@link hexToSrgb})
  */
 export function hexToRgba(hex: string, alpha: number): string {
   const c = hexToSrgb(hex);
-  const ch = (v: number) => Math.round(clamp(v) * 255);
-  return `rgba(${ch(c.r)}, ${ch(c.g)}, ${ch(c.b)}, ${alpha})`;
-}
-
-/** The glass design tokens for one colour scheme (see the glassmorphism spec). */
-export interface GlassTokens {
-  /** Comma-joined radial gradients — the atmosphere `background-image`. */
-  atmosphereImage: string;
-  /** Hex base colour painted under the gradient blobs (`background-color`). */
-  atmosphereBase: string;
-  /** Panel tint for in-flow surfaces (`.glass-panel`). */
-  panel: string;
-  /** Higher-opacity tint for floating surfaces (`.glass-overlay`). */
-  overlay: string;
-  /** Hairline border colour shared by all glass surfaces. */
-  border: string;
-  /** Backdrop blur radius for panels, e.g. `"14px"`. */
-  blurPanel: string;
-  /** Backdrop blur radius for overlays, e.g. `"18px"` (spec cap: 20px). */
-  blurOverlay: string;
-}
-
-/** Dark + light glass token sets for a tenant. */
-export interface DerivedGlass {
-  light: GlassTokens;
-  dark: GlassTokens;
-}
-
-/**
- * Derive the glassmorphism token set from a tenant's two brand colours
- * (spec: docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md §2).
- *
- * The atmosphere is three accent-tinted radial blobs (accent, the 0.382 ramp
- * companion, a darkened deep) over a near-black (dark) / near-white (light)
- * base. Panel/overlay tints are white-frost rgba values; the dark overlay
- * carries the darkened brand hue at high alpha so floating surfaces occlude
- * what's beneath them. Blob alphas stay within the spec bounds
- * (dark ≤ 0.55, light ≤ 0.25) and blur is capped below 20px.
- *
- * @param accent - the deep brand hex colour (defaults to {@link DEFAULT_ACCENT})
- * @param light - the pale brand hex colour (defaults to {@link DEFAULT_LIGHT})
- * @returns `{ light, dark }` glass token sets
- */
-export function deriveGlassTokens(
-  accent: string = DEFAULT_ACCENT,
-  light: string = DEFAULT_LIGHT,
-): DerivedGlass {
-  const mid = ramp(accent, light, 0.382);
-  const deep = darken(accent, 0.25);
-  const blobs = (a1: number, a2: number, a3: number) =>
-    [
-      `radial-gradient(ellipse 60% 50% at 15% 10%, ${hexToRgba(accent, a1)}, transparent 60%)`,
-      `radial-gradient(ellipse 50% 45% at 85% 90%, ${hexToRgba(mid, a2)}, transparent 60%)`,
-      `radial-gradient(ellipse 45% 40% at 70% 20%, ${hexToRgba(deep, a3)}, transparent 55%)`,
-    ].join(", ");
-
-  return {
-    dark: {
-      atmosphereImage: blobs(0.5, 0.28, 0.4),
-      atmosphereBase: darken(accent, 0.9),
-      panel: "rgba(255, 255, 255, 0.06)",
-      overlay: hexToRgba(darken(accent, 0.55), 0.78),
-      border: "rgba(255, 255, 255, 0.12)",
-      blurPanel: "14px",
-      blurOverlay: "18px",
-    },
-    light: {
-      atmosphereImage: blobs(0.22, 0.14, 0.1),
-      atmosphereBase: ramp(accent, light, 0.96),
-      panel: "rgba(255, 255, 255, 0.55)",
-      overlay: "rgba(255, 255, 255, 0.8)",
-      border: "rgba(255, 255, 255, 0.75)",
-      blurPanel: "14px",
-      blurOverlay: "18px",
-    },
-  };
+  return `rgba(${to255(c.r)}, ${to255(c.g)}, ${to255(c.b)}, ${alpha})`;
 }

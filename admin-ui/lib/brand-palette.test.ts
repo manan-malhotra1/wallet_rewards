@@ -3,17 +3,17 @@
  *
  * These lock the perceptual OKLab ramp against a known-good reference scale
  * (the default Sasai "Blueberry" accent + "Cream" light), prove that every
- * shadcn token derives to a valid renderable colour in both themes, and prove
- * that extrapolated stops beyond the two anchors stay inside the sRGB gamut.
+ * shadcn token derives to a valid renderable colour in both themes, prove
+ * that extrapolated stops beyond the two anchors stay inside the sRGB gamut,
+ * and cover the `hexToRgba` primitive that the glass token system in
+ * `./glass-tokens.ts` (tested separately in `glass-tokens.test.ts`) builds on.
  */
 import { describe, it, expect } from "vitest";
 
 import {
   ramp,
   deriveTokens,
-  deriveGlassTokens,
   hexToRgba,
-  darken,
   GOLDEN_STOPS,
   DEFAULT_ACCENT,
   DEFAULT_LIGHT,
@@ -97,48 +97,9 @@ describe("brand-palette", () => {
   });
 });
 
-/** Pull every `rgba(..., A)` alpha out of a gradient-image string. */
-function alphas(image: string): number[] {
-  return [...image.matchAll(/rgba\(\d+, \d+, \d+, ([0-9.]+)\)/g)].map((m) =>
-    parseFloat(m[1]),
-  );
-}
-
 describe("hexToRgba", () => {
   it("converts a hex colour and alpha into an rgba() string", () => {
     expect(hexToRgba("#0C5888", 0.5)).toBe("rgba(12, 88, 136, 0.5)");
     expect(hexToRgba("#FFFFFF", 1)).toBe("rgba(255, 255, 255, 1)");
-  });
-});
-
-describe("deriveGlassTokens", () => {
-  it("derives gradient images, tints and blur radii for both schemes", () => {
-    const g = deriveGlassTokens();
-    for (const scheme of [g.dark, g.light]) {
-      expect(scheme.atmosphereImage).toMatch(/^radial-gradient\(/);
-      expect(scheme.atmosphereImage.match(/radial-gradient\(/g)).toHaveLength(3);
-      expect(scheme.atmosphereBase).toMatch(HEX);
-      expect(scheme.panel).toMatch(/^rgba\(/);
-      expect(scheme.overlay).toMatch(/^rgba\(/);
-      expect(scheme.border).toMatch(/^rgba\(/);
-      expect(scheme.blurPanel).toBe("14px");
-      expect(scheme.blurOverlay).toBe("18px");
-    }
-  });
-
-  it("keeps atmosphere blob alphas within the spec bounds", () => {
-    const g = deriveGlassTokens();
-    // Spec §2: dark blob alphas ≤ 0.55, light blob alphas ≤ 0.25.
-    for (const a of alphas(g.dark.atmosphereImage)) expect(a).toBeLessThanOrEqual(0.55);
-    for (const a of alphas(g.light.atmosphereImage)) expect(a).toBeLessThanOrEqual(0.25);
-  });
-
-  it("re-tints with the tenant brand and differs between schemes", () => {
-    const ocean = deriveGlassTokens();
-    const berry = deriveGlassTokens("#243B8F", "#FFF0C9");
-    expect(berry.dark.atmosphereImage).not.toBe(ocean.dark.atmosphereImage);
-    expect(ocean.dark.atmosphereImage).not.toBe(ocean.light.atmosphereImage);
-    // Dark overlay carries the brand hue (occluding, not pure white).
-    expect(ocean.dark.overlay).toBe(hexToRgba(darken(DEFAULT_ACCENT, 0.55), 0.78));
   });
 });

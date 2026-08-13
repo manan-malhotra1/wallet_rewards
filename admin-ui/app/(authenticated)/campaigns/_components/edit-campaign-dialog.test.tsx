@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EditCampaignDialog } from "@/app/(authenticated)/campaigns/_components/edit-campaign-dialog";
+import { SEGMENT_GROUPS, SEGMENTS } from "@/app/(authenticated)/campaigns/_components/segment-fixtures";
 import type { Rule } from "@/lib/api-types";
 
 const updateCampaignAction = vi.fn();
@@ -56,11 +57,13 @@ beforeEach(() => {
 });
 
 /** Render the dialog already open (parent controls its visibility). */
-function renderOpen() {
+function renderOpen(rule: Rule = RULE) {
   return render(
     <EditCampaignDialog
-      rule={RULE}
+      rule={rule}
       tenantId="tenant-1"
+      segments={SEGMENTS}
+      segmentGroups={SEGMENT_GROUPS}
       open
       onOpenChange={onOpenChange}
     />,
@@ -126,5 +129,54 @@ describe("Managing reward campaigns — editing a campaign", () => {
       await screen.findByText(/This campaign is locked while rewards are in flight\./),
     ).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+});
+
+describe("Managing reward campaigns — retargeting the audience (WAL-79)", () => {
+  it("Verify an admin can retarget an all-users campaign at a segment", async () => {
+    const user = userEvent.setup();
+    renderOpen();
+    const dialog = screen.getByRole("dialog");
+
+    await user.click(within(dialog).getByRole("combobox", { name: "Segment group" }));
+    await user.click(await screen.findByRole("option", { name: "Customer Loyalty" }));
+    await user.click(within(dialog).getByRole("combobox", { name: "Segment" }));
+    await user.click(await screen.findByRole("option", { name: "Silver" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(updateCampaignAction).toHaveBeenCalledTimes(1));
+    expect(updateCampaignAction.mock.calls[0][2]).toMatchObject({
+      segment_id: "seg-silver",
+    });
+  });
+
+  it("Verify clearing the audience sends an explicit null to unbind", async () => {
+    const user = userEvent.setup();
+    renderOpen({ ...RULE, segment_id: "seg-gold" });
+    const dialog = screen.getByRole("dialog");
+
+    await user.click(within(dialog).getByRole("combobox", { name: "Segment group" }));
+    await user.click(await screen.findByRole("option", { name: "All users" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(updateCampaignAction).toHaveBeenCalledTimes(1));
+    expect(updateCampaignAction.mock.calls[0][2]).toMatchObject({
+      segment_id: null,
+    });
+  });
+
+  it("Verify untouched targeting is omitted so the binding is preserved", async () => {
+    const user = userEvent.setup();
+    renderOpen({ ...RULE, segment_id: "seg-gold" });
+    const dialog = screen.getByRole("dialog");
+
+    const name = within(dialog).getByLabelText("Name");
+    await user.clear(name);
+    await user.type(name, "Renamed, still Gold-only");
+    await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(updateCampaignAction).toHaveBeenCalledTimes(1));
+    // Omitted ≠ null: null would CLEAR the binding on the backend.
+    expect(updateCampaignAction.mock.calls[0][2]).not.toHaveProperty("segment_id");
   });
 });

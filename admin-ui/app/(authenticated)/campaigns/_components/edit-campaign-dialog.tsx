@@ -5,6 +5,12 @@
  * min_amount, etc.) are intentionally read-only — they're load-bearing
  * for in-flight `user_rule_progress`. Operators wanting to change them
  * should deactivate this campaign and create a new one.
+ *
+ * Audience targeting (WAL-79) IS editable: the segment binding is an
+ * eligibility gate checked at evaluation time, not a trigger condition,
+ * so retargeting never corrupts in-flight progress. The payload carries
+ * `segment_id` only when the operator actually changed it — an explicit
+ * null clears the binding (back to all users).
  */
 "use client";
 
@@ -31,16 +37,28 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { Rule } from "@/lib/api-types";
+import type { Rule, Segment, SegmentGroup } from "@/lib/api-types";
+
+import { ALL_USERS, SegmentTargetPicker } from "./segment-target-picker";
+
+/** The group a rule's current segment binding lives in, or the ALL sentinel. */
+function groupOfSegment(segments: Segment[], segmentId: string | null | undefined): string {
+  if (!segmentId) return ALL_USERS;
+  return segments.find((s) => s.id === segmentId)?.group_id ?? ALL_USERS;
+}
 
 export function EditCampaignDialog({
   rule,
   tenantId,
+  segments,
+  segmentGroups,
   open,
   onOpenChange,
 }: {
   rule: Rule;
   tenantId: string;
+  segments: Segment[];
+  segmentGroups: SegmentGroup[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -49,6 +67,8 @@ export function EditCampaignDialog({
   const [status, setStatus] = React.useState<"active" | "inactive">(
     (rule.status as "active" | "inactive") ?? "active",
   );
+  const [groupId, setGroupId] = React.useState(groupOfSegment(segments, rule.segment_id));
+  const [segmentId, setSegmentId] = React.useState(rule.segment_id ?? "");
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
@@ -58,9 +78,11 @@ export function EditCampaignDialog({
       setName(rule.name);
       setRewardValue(String(rule.reward_value));
       setStatus((rule.status as "active" | "inactive") ?? "active");
+      setGroupId(groupOfSegment(segments, rule.segment_id));
+      setSegmentId(rule.segment_id ?? "");
       setError(null);
     }
-  }, [open, rule]);
+  }, [open, rule, segments]);
 
   const onSubmit = async () => {
     setError(null);
@@ -73,11 +95,23 @@ export function EditCampaignDialog({
       setError("Reward value must be a positive number.");
       return;
     }
+    // A group without a segment is an incomplete target — refuse rather
+    // than silently widening the campaign back to everyone.
+    if (groupId !== ALL_USERS && !segmentId) {
+      setError(
+        "Choose a segment in the selected group, or set the target audience to All users.",
+      );
+      return;
+    }
+    const targetChanged = (segmentId || null) !== (rule.segment_id ?? null);
     setSubmitting(true);
     const result = await updateCampaignAction(rule.id, tenantId, {
       name: name.trim(),
       reward_value: rewardValue,
       status,
+      // Only send targeting when it changed: an explicit null CLEARS the
+      // binding on the backend, so an untouched field must stay omitted.
+      ...(targetChanged ? { segment_id: segmentId || null } : {}),
     });
     setSubmitting(false);
     if (result.ok) {
@@ -94,9 +128,9 @@ export function EditCampaignDialog({
         <DialogHeader>
           <DialogTitle>Edit campaign</DialogTitle>
           <DialogDescription>
-            Editable: name, reward value, status. Trigger conditions are
-            locked once a campaign is live — deactivate this one and create
-            a new one if those need to change.
+            Editable: name, reward value, status, target audience. Trigger
+            conditions are locked once a campaign is live — deactivate this
+            one and create a new one if those need to change.
           </DialogDescription>
         </DialogHeader>
 
@@ -122,6 +156,14 @@ export function EditCampaignDialog({
               className="mt-1 tabular-nums"
             />
           </div>
+          <SegmentTargetPicker
+            groups={segmentGroups}
+            segments={segments}
+            groupId={groupId}
+            segmentId={segmentId}
+            onGroupChange={setGroupId}
+            onSegmentChange={setSegmentId}
+          />
           <div>
             <Label>Status</Label>
             <Select

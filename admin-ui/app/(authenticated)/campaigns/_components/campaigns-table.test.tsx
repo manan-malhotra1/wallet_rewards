@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CampaignsTable } from "@/app/(authenticated)/campaigns/_components/campaigns-table";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SEGMENT_GROUPS, SEGMENTS } from "@/app/(authenticated)/campaigns/_components/segment-fixtures";
 import type { Rule, RulePerformance } from "@/lib/api-types";
 
 // Stub the three action surfaces to markers keyed on their `open` prop.
@@ -68,7 +69,7 @@ const performance: Record<string, RulePerformance | null> = {
 function renderTable() {
   render(
     <TooltipProvider>
-      <CampaignsTable rules={[rule]} performance={performance} tenantId="tenant-1" />
+      <CampaignsTable rules={[rule]} performance={performance} tenantId="tenant-1" segments={SEGMENTS} segmentGroups={SEGMENT_GROUPS} />
     </TooltipProvider>,
   );
 }

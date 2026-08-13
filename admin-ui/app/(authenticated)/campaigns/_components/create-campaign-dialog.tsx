@@ -12,7 +12,7 @@
  */
 "use client";
 
-import { Coins, PiggyBank, Plus, Trash2 } from "lucide-react";
+import { Coins, PiggyBank, Plus, Trash2, Users } from "lucide-react";
 import * as React from "react";
 
 import { createCampaignWithBudgetAction } from "@/app/(authenticated)/campaigns/_actions";
@@ -44,8 +44,12 @@ import type {
   CompositeOperator,
   ReferralTrigger,
   Rule,
+  Segment,
+  SegmentGroup,
   Service,
 } from "@/lib/api-types";
+
+import { ALL_USERS, SegmentTargetPicker } from "./segment-target-picker";
 
 /** One editable composite sub-condition row (strings while in the form). */
 interface ConditionRow {
@@ -137,6 +141,10 @@ interface FormState {
   referral_trigger: ReferralTrigger;
   referral_trigger_n: string;
   referee_reward_value: string;
+  // WAL-79 — audience targeting: the segment-group lens ("all" = everyone)
+  // and the segment inside it ("" until one is chosen).
+  segment_group_id: string;
+  segment_id: string;
   reward_type: Rule["reward_type"];
   reward_value: string;
   // Financial currency for a cashback reward. Ignored (and not sent) when
@@ -171,6 +179,8 @@ const INITIAL: FormState = {
   referral_trigger: "signup",
   referral_trigger_n: "",
   referee_reward_value: "",
+  segment_group_id: ALL_USERS,
+  segment_id: "",
   reward_type: "points",
   reward_value: "",
   reward_currency: "",
@@ -333,12 +343,16 @@ function ConditionsEditor({
 export function CreateCampaignDialog({
   tenantId,
   services,
+  segments,
+  segmentGroups,
   financialCurrencies,
   pointsCurrency,
   trigger,
 }: {
   tenantId: string;
   services: Service[];
+  segments: Segment[];
+  segmentGroups: SegmentGroup[];
   financialCurrencies: string[];
   pointsCurrency: string;
   trigger: React.ReactNode;
@@ -425,6 +439,14 @@ export function CreateCampaignDialog({
         return;
       }
     }
+    // A group without a segment is an incomplete target — never silently
+    // fall back to "everyone" when the operator asked for a narrower reach.
+    if (form.segment_group_id !== ALL_USERS && !form.segment_id) {
+      setErrorBanner(
+        "Choose a segment in the selected group, or set the target audience to All users.",
+      );
+      return;
+    }
     setSubmitting(true);
     const result = await createCampaignWithBudgetAction(
       {
@@ -482,6 +504,8 @@ export function CreateCampaignDialog({
           form.rule_type === "referral" && form.referee_reward_value
             ? form.referee_reward_value
             : undefined,
+        // WAL-79 — omit when targeting all users so the backend stores NULL.
+        segment_id: form.segment_id || undefined,
         reward_type: form.reward_type,
         reward_value: form.reward_value,
         // Cashback carries the chosen financial currency; points MUST omit
@@ -887,6 +911,16 @@ export function CreateCampaignDialog({
               </div>
             </div>
 
+            {/* --- Audience targeting (WAL-79) ------------------------ */}
+            <SegmentTargetPicker
+              groups={segmentGroups}
+              segments={segments}
+              groupId={form.segment_group_id}
+              segmentId={form.segment_id}
+              onGroupChange={(v) => update("segment_group_id", v)}
+              onSegmentChange={(v) => update("segment_id", v)}
+            />
+
             {/* --- Inline budget section ----------------------------- */}
             <div className="rounded-lg border bg-card">
               <label className="flex cursor-pointer items-start gap-3 p-4">
@@ -1006,6 +1040,17 @@ export function CreateCampaignDialog({
               <div className="flex items-start gap-2">
                 <Coins className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                 <span>{summarise(form)}</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>
+                  {form.segment_id
+                    ? `Targets "${segments.find((s) => s.id === form.segment_id)?.name ?? "?"}" in ${
+                        segmentGroups.find((g) => g.id === form.segment_group_id)?.name ??
+                        "the selected group"
+                      }.`
+                    : "Targets all users."}
+                </span>
               </div>
               <div className="flex items-start gap-2">
                 <PiggyBank className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />

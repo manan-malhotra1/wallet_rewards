@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/drawer";
 import { Badge } from "@/components/ui/badge";
 import { StatusPill } from "@/components/ui/status-pill";
-import type { Rule, RulePerformance } from "@/lib/api-types";
+import type { Rule, RulePerformance, Segment, SegmentGroup } from "@/lib/api-types";
 import { formatTimestamp } from "@/lib/utils";
 
 import {
@@ -38,14 +38,33 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 export function CampaignDetailDrawer({
   rule,
   performance,
+  segments,
+  segmentGroups,
   open,
   onOpenChange,
 }: {
   rule: Rule;
   performance: RulePerformance | null;
+  segments: Segment[];
+  segmentGroups: SegmentGroup[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  // WAL-79 — resolve the segment binding to "Group → Segment" for display.
+  // A binding whose segment was deleted out from under the rule still shows
+  // the raw id rather than lying with "All users".
+  const targetSegment = rule.segment_id
+    ? segments.find((s) => s.id === rule.segment_id)
+    : undefined;
+  const targetGroup = targetSegment
+    ? segmentGroups.find((g) => g.id === targetSegment.group_id)
+    : undefined;
+  const audience = !rule.segment_id
+    ? "All users"
+    : targetSegment
+      ? `${targetGroup?.name ?? "Unknown group"} → ${targetSegment.name}`
+      : `Unknown segment (${rule.segment_id})`;
+
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
@@ -64,6 +83,7 @@ export function CampaignDetailDrawer({
             <dl>
               <Row label="Type" value={<Badge tone="brand">{rule.rule_type}</Badge>} />
               <Row label="Transaction" value={rule.transaction_type} />
+              <Row label="Audience" value={audience} />
               <Row
                 label="Reward"
                 value={

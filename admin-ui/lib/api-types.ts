@@ -290,6 +290,9 @@ export interface Rule {
   referral_trigger?: ReferralTrigger | null;
   referral_trigger_n?: number | null;
   referee_reward_value?: string | null;
+  // Epic 10 / WAL-79 — segment targeting. Null = all users; otherwise only
+  // members of this segment are eligible (enforced in the rules evaluator).
+  segment_id?: string | null;
   reward_type: "points" | "cashback";
   reward_value: string;
   // The financial currency a cashback reward pays out in (ISO 4217, e.g.

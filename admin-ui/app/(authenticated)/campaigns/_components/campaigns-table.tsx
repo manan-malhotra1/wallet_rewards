@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { Rule, RulePerformance } from "@/lib/api-types";
+import type { Rule, RulePerformance, Segment, SegmentGroup } from "@/lib/api-types";
 import { formatAmount } from "@/lib/utils";
 
 import { describeBudgetScope, describeCampaignFull } from "../_lib/describe-campaign";
@@ -62,10 +62,14 @@ export function CampaignsTable({
   rules,
   performance,
   tenantId,
+  segments,
+  segmentGroups,
 }: {
   rules: Rule[];
   performance: Record<string, RulePerformance | null>;
   tenantId: string;
+  segments: Segment[];
+  segmentGroups: SegmentGroup[];
 }) {
   const [active, setActive] = React.useState<ActiveAction | null>(null);
 
@@ -203,12 +207,16 @@ export function CampaignsTable({
           <CampaignDetailDrawer
             rule={active.rule}
             performance={active.performance}
+            segments={segments}
+            segmentGroups={segmentGroups}
             open={active.action === "view"}
             onOpenChange={(o) => (o ? null : close())}
           />
           <EditCampaignDialog
             rule={active.rule}
             tenantId={tenantId}
+            segments={segments}
+            segmentGroups={segmentGroups}
             open={active.action === "edit"}
             onOpenChange={(o) => (o ? null : close())}
           />

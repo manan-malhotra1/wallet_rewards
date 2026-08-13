@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CampaignDetailDrawer } from "@/app/(authenticated)/campaigns/_components/campaign-detail-drawer";
+import { SEGMENT_GROUPS, SEGMENTS } from "@/app/(authenticated)/campaigns/_components/segment-fixtures";
 import type { Rule, RulePerformance } from "@/lib/api-types";
 
 const RULE: Rule = {
@@ -60,6 +61,8 @@ describe("Managing reward campaigns — viewing a campaign", () => {
       <CampaignDetailDrawer
         rule={RULE}
         performance={PERFORMANCE}
+        segments={SEGMENTS}
+        segmentGroups={SEGMENT_GROUPS}
         open
         onOpenChange={onOpenChange}
       />,
@@ -85,6 +88,8 @@ describe("Managing reward campaigns — viewing a campaign", () => {
       <CampaignDetailDrawer
         rule={RULE}
         performance={null}
+        segments={SEGMENTS}
+        segmentGroups={SEGMENT_GROUPS}
         open
         onOpenChange={onOpenChange}
       />,
@@ -103,6 +108,8 @@ describe("Managing reward campaigns — viewing a campaign", () => {
       <CampaignDetailDrawer
         rule={RULE}
         performance={PERFORMANCE}
+        segments={SEGMENTS}
+        segmentGroups={SEGMENT_GROUPS}
         open
         onOpenChange={onOpenChange}
       />,
@@ -110,5 +117,35 @@ describe("Managing reward campaigns — viewing a campaign", () => {
 
     await user.click(screen.getByRole("button", { name: "Close drawer" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("Verify the audience row resolves the segment binding to Group → Segment", () => {
+    render(
+      <CampaignDetailDrawer
+        rule={{ ...RULE, segment_id: "seg-gold" }}
+        performance={PERFORMANCE}
+        segments={SEGMENTS}
+        segmentGroups={SEGMENT_GROUPS}
+        open
+        onOpenChange={onOpenChange}
+      />,
+    );
+    const drawer = screen.getByRole("dialog");
+    expect(within(drawer).getByText("Customer Loyalty → Gold")).toBeInTheDocument();
+  });
+
+  it("Verify an untargeted campaign reports its audience as all users", () => {
+    render(
+      <CampaignDetailDrawer
+        rule={RULE}
+        performance={PERFORMANCE}
+        segments={SEGMENTS}
+        segmentGroups={SEGMENT_GROUPS}
+        open
+        onOpenChange={onOpenChange}
+      />,
+    );
+    const drawer = screen.getByRole("dialog");
+    expect(within(drawer).getByText("All users")).toBeInTheDocument();
   });
 });

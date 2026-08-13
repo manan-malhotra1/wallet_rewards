@@ -17,8 +17,8 @@ from app.modules.rules.schemas import (
     RulePerformanceOut,
     RuleUpdateRequest,
 )
-from app.shared.exceptions import RuleNotFound, TenantNotFound
-from app.shared.models import RewardBudget, RewardEvent, Rule, RuleCondition, Tenant
+from app.shared.exceptions import AppHTTPException, RuleNotFound, TenantNotFound
+from app.shared.models import RewardBudget, RewardEvent, Rule, RuleCondition, Segment, Tenant
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -26,6 +26,24 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
     result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
     if result.scalar_one_or_none() is None:
         raise TenantNotFound()
+
+
+async def _assert_segment_in_tenant(
+    session: AsyncSession, *, tenant_id: UUID, segment_id: UUID
+) -> None:
+    """Reject a segment binding that doesn't resolve inside this tenant.
+
+    Cross-tenant segment ids are reported as 404, never 403 — no existence
+    leak (NFR-0220), matching the segments module's own loader.
+
+    Raises:
+        AppHTTPException: 404 `segment_not_found`.
+    """
+    result = await session.execute(
+        select(Segment.id).where(Segment.id == segment_id, Segment.tenant_id == tenant_id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise AppHTTPException(404, "segment_not_found", "Segment not found.")
 
 
 async def create_rule(
@@ -51,8 +69,14 @@ async def create_rule(
 
     Raises:
         TenantNotFound: 404 when tenant_id is unknown.
+        AppHTTPException: 404 `segment_not_found` when a segment_id binding
+            doesn't resolve inside the tenant.
     """
     await _assert_tenant_exists(session, request.tenant_id)
+    if request.segment_id is not None:
+        await _assert_segment_in_tenant(
+            session, tenant_id=request.tenant_id, segment_id=request.segment_id
+        )
 
     rule = Rule(
         tenant_id=request.tenant_id,
@@ -75,6 +99,8 @@ async def create_rule(
         referral_trigger=request.referral_trigger,
         referral_trigger_n=request.referral_trigger_n,
         referee_reward_value=request.referee_reward_value,
+        # Epic 10 / WAL-79 — segment targeting (validated above).
+        segment_id=request.segment_id,
         reward_type=request.reward_type,
         reward_value=request.reward_value,
         reward_currency=request.reward_currency,
@@ -112,6 +138,7 @@ async def create_rule(
                 "transaction_type": rule.transaction_type,
                 "reward_type": rule.reward_type,
                 "reward_value": str(rule.reward_value),
+                "segment_id": str(rule.segment_id) if rule.segment_id else None,
             },
             ip_address=ip_address,
         )
@@ -161,6 +188,12 @@ async def update_rule(
     after: dict[str, str | None] = {}
 
     fields = request.model_dump(exclude_unset=True)
+    # A new segment binding must resolve inside this tenant; an explicit
+    # null simply clears the targeting and needs no lookup.
+    if fields.get("segment_id") is not None:
+        await _assert_segment_in_tenant(
+            session, tenant_id=tenant_id, segment_id=fields["segment_id"]
+        )
     for field, new_value in fields.items():
         old_value = getattr(rule, field)
         # Decimal/None comparison is fine; Pydantic normalises numerics.

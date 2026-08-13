@@ -18,10 +18,18 @@ import {
   getRulePerformance,
   listInstruments,
   listRules,
+  listSegmentGroups,
+  listSegments,
   listServices,
 } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
-import type { Instrument, RulePerformance, Service } from "@/lib/api-types";
+import type {
+  Instrument,
+  RulePerformance,
+  Segment,
+  SegmentGroup,
+  Service,
+} from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -49,12 +57,16 @@ export default async function CampaignsPage() {
   let rules: Awaited<ReturnType<typeof listRules>> = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
+  let segments: Segment[] = [];
+  let segmentGroups: SegmentGroup[] = [];
   let error: ApiError | null = null;
   try {
-    [rules, services, instruments] = await Promise.all([
+    [rules, services, instruments, segments, segmentGroups] = await Promise.all([
       listRules(activeTenantId),
       listServices(activeTenantId, "active"),
       listInstruments(activeTenantId, "active"),
+      listSegments(activeTenantId),
+      listSegmentGroups(activeTenantId),
     ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
@@ -96,6 +108,8 @@ export default async function CampaignsPage() {
           <CreateCampaignDialog
             tenantId={activeTenantId}
             services={services}
+            segments={segments}
+            segmentGroups={segmentGroups}
             financialCurrencies={financialCurrencies}
             pointsCurrency={pointsCurrency}
             trigger={
@@ -129,6 +143,8 @@ export default async function CampaignsPage() {
             rules={rules}
             performance={performance}
             tenantId={activeTenantId}
+            segments={segments}
+            segmentGroups={segmentGroups}
           />
         )}
       </div>

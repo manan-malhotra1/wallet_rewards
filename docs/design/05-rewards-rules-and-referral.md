@@ -200,7 +200,12 @@ A static segment (`criteria IS NULL`) is admin-assigned via `POST /segments/{id}
 (`criteria` set — a flat AND/OR DSL v1 document validated by `app/modules/segments/criteria.py`) has its
 membership computed by a batch evaluator (`app/modules/segments/evaluator.py`) on an hourly Celery-beat schedule
 or on-demand via a manual recompute. Rules bind to a segment via `rules.segment_id` (nullable) regardless of
-static/dynamic. The hot-path check is
+static/dynamic; the binding is settable at rule creation (`POST /api/v1/rules` accepts `segment_id`, 404
+`segment_not_found` when it doesn't resolve in the tenant) and editable afterwards (`PATCH /api/v1/rules/{id}`
+— targeting is an eligibility gate, not a trigger condition, so retargeting never corrupts in-flight progress;
+an explicit `"segment_id": null` clears it). The Campaigns UI exposes this as a group → segment cascade
+("Target audience": pick the segment group, then a segment within it) on both the create wizard and the edit
+dialog, with the resolved "Group → Segment" audience shown in the detail drawer. The hot-path check is
 `user_is_in_segment(session, *, user_id, segment_id) -> bool` (`segments/service.py`), called by both the
 evaluator's candidate filter and the multiplier resolver.
 

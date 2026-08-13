@@ -369,6 +369,9 @@ export interface CreateRulePayload {
   referral_trigger?: ReferralTrigger;
   referral_trigger_n?: number;
   referee_reward_value?: string;
+  // Epic 10 / WAL-79 — target only members of this segment (any rule type).
+  // Omit to target all users.
+  segment_id?: string;
   reward_type: Rule["reward_type"];
   reward_value: string;
   // Financial currency for a cashback reward (3-char ISO 4217). REQUIRED
@@ -391,6 +394,9 @@ export interface UpdateRulePayload {
   description?: string;
   reward_value?: string;
   stop_after_n_triggers?: number;
+  // Retarget the rule at a segment; an explicit null clears the binding
+  // (back to all users). Omit to leave targeting unchanged.
+  segment_id?: string | null;
   status?: "active" | "inactive";
 }
 

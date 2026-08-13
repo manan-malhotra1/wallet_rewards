@@ -69,6 +69,12 @@ class RuleCreateRequest(BaseModel):
     referral_trigger_n: int | None = Field(default=None, ge=1)
     referee_reward_value: Decimal | None = Field(default=None, ge=Decimal("0"))
 
+    # Epic 10 / WAL-79 — segment targeting. NULL = all users; otherwise only
+    # members of this segment are eligible (enforced in the rules evaluator).
+    # Valid for every rule type — targeting is an eligibility gate, not a
+    # trigger condition.
+    segment_id: UUID | None = None
+
     reward_type: RewardType
     reward_value: Decimal = Field(gt=Decimal("0"))
     # Cashback pays in this financial currency (and it scopes the reward budget).
@@ -185,6 +191,8 @@ class RuleOut(BaseModel):
     referral_trigger: str | None = None
     referral_trigger_n: int | None = None
     referee_reward_value: Decimal | None = None
+    # NULL = targets all users; otherwise only members of this segment.
+    segment_id: UUID | None = None
     reward_type: str
     reward_value: Decimal
     reward_currency: str | None = None
@@ -203,12 +211,18 @@ class RuleUpdateRequest(BaseModel):
     intentionally not editable: an in-flight `user_rule_progress` row
     assumes those values are stable. Operators wanting to change them
     should deactivate this rule and create a new one.
+
+    `segment_id` IS editable: targeting is an eligibility gate checked at
+    evaluation time, not a trigger condition — retargeting never corrupts
+    in-flight progress. Sending an explicit `"segment_id": null` clears the
+    binding (back to all users); omitting the field leaves it unchanged.
     """
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     reward_value: Decimal | None = Field(default=None, gt=Decimal("0"))
     stop_after_n_triggers: int | None = Field(default=None, ge=1)
+    segment_id: UUID | None = None
     status: Literal["active", "inactive"] | None = None
 
 

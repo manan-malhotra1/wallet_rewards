@@ -14,6 +14,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateCampaignDialog } from "@/app/(authenticated)/campaigns/_components/create-campaign-dialog";
+import { SEGMENT_GROUPS, SEGMENTS } from "@/app/(authenticated)/campaigns/_components/segment-fixtures";
 import type { Service } from "@/lib/api-types";
 
 const createCampaignWithBudgetAction = vi.fn();
@@ -60,6 +61,8 @@ async function openWizardAt(
     <CreateCampaignDialog
       tenantId="tenant-1"
       services={SERVICES}
+      segments={SEGMENTS}
+      segmentGroups={SEGMENT_GROUPS}
       financialCurrencies={["ZAR", "USD"]}
       pointsCurrency="PTS"
       trigger={<button type="button">New campaign</button>}
@@ -192,5 +195,74 @@ describe("Managing reward campaigns — creating a campaign", () => {
       await screen.findByText(/pricing_config_missing/),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("Managing reward campaigns — audience targeting (WAL-79)", () => {
+  it("Verify a campaign left on All users sends no segment binding", async () => {
+    const user = userEvent.setup();
+    await openWizardAt(user, "Milestone");
+
+    await user.type(screen.getByLabelText("Name"), "Everyone milestone");
+    await user.type(screen.getByLabelText("Count threshold"), "5");
+    await user.type(screen.getByLabelText("Reward value"), "200");
+    await user.click(screen.getByRole("button", { name: "Activate campaign" }));
+
+    await waitFor(() =>
+      expect(createCampaignWithBudgetAction).toHaveBeenCalledTimes(1),
+    );
+    expect(createCampaignWithBudgetAction.mock.calls[0][0].segment_id).toBeUndefined();
+  });
+
+  it("Verify picking a group narrows the segment options to that group", async () => {
+    const user = userEvent.setup();
+    await openWizardAt(user, "Milestone");
+
+    await user.click(screen.getByRole("combobox", { name: "Segment group" }));
+    await user.click(await screen.findByRole("option", { name: "Customer Loyalty" }));
+    await user.click(screen.getByRole("combobox", { name: "Segment" }));
+
+    expect(await screen.findByRole("option", { name: "Gold" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Silver" })).toBeInTheDocument();
+    // High Rollers lives in Transaction Value — the cascade must hide it.
+    expect(screen.queryByRole("option", { name: "High Rollers" })).toBeNull();
+  });
+
+  it("Verify a targeted campaign sends the chosen segment", async () => {
+    const user = userEvent.setup();
+    await openWizardAt(user, "Milestone");
+
+    await user.type(screen.getByLabelText("Name"), "Gold-only milestone");
+    await user.type(screen.getByLabelText("Count threshold"), "5");
+    await user.type(screen.getByLabelText("Reward value"), "200");
+    await user.click(screen.getByRole("combobox", { name: "Segment group" }));
+    await user.click(await screen.findByRole("option", { name: "Customer Loyalty" }));
+    await user.click(screen.getByRole("combobox", { name: "Segment" }));
+    await user.click(await screen.findByRole("option", { name: "Gold" }));
+    await user.click(screen.getByRole("button", { name: "Activate campaign" }));
+
+    await waitFor(() =>
+      expect(createCampaignWithBudgetAction).toHaveBeenCalledTimes(1),
+    );
+    expect(createCampaignWithBudgetAction.mock.calls[0][0]).toMatchObject({
+      segment_id: "seg-gold",
+    });
+  });
+
+  it("Verify a group without a chosen segment is refused before submitting", async () => {
+    const user = userEvent.setup();
+    await openWizardAt(user, "Milestone");
+
+    await user.type(screen.getByLabelText("Name"), "Half-targeted milestone");
+    await user.type(screen.getByLabelText("Count threshold"), "5");
+    await user.type(screen.getByLabelText("Reward value"), "200");
+    await user.click(screen.getByRole("combobox", { name: "Segment group" }));
+    await user.click(await screen.findByRole("option", { name: "Customer Loyalty" }));
+    await user.click(screen.getByRole("button", { name: "Activate campaign" }));
+
+    expect(
+      await screen.findByText(/Choose a segment in the selected group/),
+    ).toBeInTheDocument();
+    expect(createCampaignWithBudgetAction).not.toHaveBeenCalled();
   });
 });

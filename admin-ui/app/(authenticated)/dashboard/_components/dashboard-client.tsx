@@ -55,7 +55,7 @@ function SectionHeading({ title, hint }: { title: string; hint?: string }) {
 /** A small label + value stat block (used for DAU/WAU/MAU and liquidity). */
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="glass-panel rounded-lg p-4">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-xl font-bold tabular-nums text-foreground">{value}</div>
     </div>
@@ -250,7 +250,7 @@ export function DashboardClient({ initial, initialRange, initialGranularity }: P
           .map((code) => (data.liquidity ?? []).find((l) => l.currency === code))
           .filter((l): l is NonNullable<typeof l> => Boolean(l))
           .map((l) => (
-            <div key={l.currency} className="rounded-lg border bg-card p-4">
+            <div key={l.currency} className="glass-panel rounded-lg p-4">
               <div className="text-xs font-semibold text-muted-foreground">{l.currency}</div>
               <div className="mt-1 flex items-baseline justify-between gap-2">
                 <span className="text-[11px] text-muted-foreground">Wallet liability</span>

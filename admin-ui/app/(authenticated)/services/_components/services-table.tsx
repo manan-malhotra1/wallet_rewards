@@ -106,7 +106,7 @@ export function ServicesTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-surface-1]">
+    <div className="glass-panel overflow-hidden rounded-lg">
       <Table>
         <TableHead>
           <TableRow>

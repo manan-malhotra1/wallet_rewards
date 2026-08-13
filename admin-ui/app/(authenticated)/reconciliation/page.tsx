@@ -81,7 +81,7 @@ export default async function ReconciliationPage() {
                 description="All PENDING redemptions are within the 5-minute threshold."
               />
             ) : (
-              <div className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-surface-1]">
+              <div className="glass-panel overflow-hidden rounded-lg">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -125,7 +125,7 @@ export default async function ReconciliationPage() {
                 description="When a redemption exceeds its provider's max_retries, the sweep parks it here for operator review."
               />
             ) : (
-              <div className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-surface-1]">
+              <div className="glass-panel overflow-hidden rounded-lg">
                 <Table>
                   <TableHead>
                     <TableRow>

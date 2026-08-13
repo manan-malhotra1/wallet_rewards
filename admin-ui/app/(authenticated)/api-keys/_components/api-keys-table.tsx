@@ -49,7 +49,7 @@ export function ApiKeysTable({ keys, tenantId }: { keys: ApiKey[]; tenantId: str
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-card">
+    <div className="glass-panel overflow-hidden rounded-lg">
       <Table>
         <TableHead>
           <TableRow>

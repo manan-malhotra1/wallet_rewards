@@ -89,7 +89,7 @@ function StatCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="glass-panel rounded-lg p-4">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </p>
@@ -113,7 +113,7 @@ function Section({
   return (
     <details
       open={defaultOpen}
-      className="group overflow-hidden rounded-lg border bg-card"
+      className="glass-panel group overflow-hidden rounded-lg"
     >
       <summary className="flex cursor-pointer items-center justify-between px-5 py-3.5 text-sm font-medium marker:content-none hover:bg-muted/40">
         <span className="flex flex-col">

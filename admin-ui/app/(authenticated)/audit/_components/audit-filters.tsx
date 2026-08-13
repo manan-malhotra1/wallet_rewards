@@ -39,7 +39,7 @@ export function AuditFilters({
   return (
     <form
       onSubmit={onSubmit}
-      className="flex flex-wrap items-end gap-3 rounded-lg border border-[--color-border] bg-[--color-surface-1] p-3"
+      className="glass-panel flex flex-wrap items-end gap-3 rounded-lg p-3"
     >
       <div className="w-[200px]">
         <Label htmlFor="entity-type">Entity type</Label>

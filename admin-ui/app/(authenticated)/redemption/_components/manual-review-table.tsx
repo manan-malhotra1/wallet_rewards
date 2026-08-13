@@ -16,7 +16,7 @@ import { formatAmount, shortId } from "@/lib/utils";
 
 export function ManualReviewTable({ items }: { items: ManualReviewItem[] }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-surface-1]">
+    <div className="glass-panel overflow-hidden rounded-lg">
       <Table>
         <TableHead>
           <TableRow>

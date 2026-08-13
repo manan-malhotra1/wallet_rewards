@@ -144,7 +144,7 @@ export function GroupSection({
   };
 
   return (
-    <div className="mb-4 overflow-hidden rounded-lg border bg-card">
+    <div className="glass-panel mb-4 overflow-hidden rounded-lg">
       <div className="flex items-center gap-2 p-3">
         <button
           type="button"

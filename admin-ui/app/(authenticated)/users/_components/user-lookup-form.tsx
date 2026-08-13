@@ -55,7 +55,7 @@ export function UserLookupForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="flex flex-wrap items-end gap-3 rounded-lg border border-[--color-border] bg-[--color-surface-1] p-4"
+      className="glass-panel flex flex-wrap items-end gap-3 rounded-lg p-4"
     >
       <div className="w-[140px]">
         <Label htmlFor="lookup-type">Identifier</Label>

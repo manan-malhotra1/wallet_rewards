@@ -922,7 +922,7 @@ export function CreateCampaignDialog({
             />
 
             {/* --- Inline budget section ----------------------------- */}
-            <div className="rounded-lg border bg-card">
+            <div className="glass-inset rounded-lg">
               <label className="flex cursor-pointer items-start gap-3 p-4">
                 <input
                   type="checkbox"

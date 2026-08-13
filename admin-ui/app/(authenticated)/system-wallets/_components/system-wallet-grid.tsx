@@ -115,7 +115,7 @@ export function SystemWalletGrid({
   const mirrors =
     mirrorsProp ?? wallets.filter((w) => w.account_type === "operator_adjustment");
   return (
-    <div className="overflow-hidden rounded-lg border border-[--color-border] bg-[--color-surface-1]">
+    <div className="glass-panel overflow-hidden rounded-lg">
       <Table>
         <TableHead>
           <TableRow>

@@ -82,7 +82,7 @@ export function TenantCard({
   }
 
   return (
-    <div className="rounded-lg border border-[--color-border] bg-[--color-surface-1] p-5">
+    <div className="glass-panel rounded-lg p-5">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div className="flex-1">
           <Label htmlFor={`name-${tenant.id}`}>Name</Label>

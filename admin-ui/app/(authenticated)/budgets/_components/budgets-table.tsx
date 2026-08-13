@@ -77,7 +77,7 @@ export function BudgetsTable({
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-card">
+    <div className="glass-panel overflow-hidden rounded-lg">
       <Table>
         <TableHead>
           <TableRow>

@@ -52,7 +52,7 @@ export function TenantSwitcher({ tenants, activeTenantId }: TenantSwitcherProps)
         <Popover.Content
           align="start"
           sideOffset={6}
-          className="z-50 w-[260px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          className="glass-overlay z-50 w-[260px] rounded-md p-1 text-popover-foreground"
         >
           <div className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Switch tenant

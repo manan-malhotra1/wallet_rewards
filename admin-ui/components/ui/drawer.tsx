@@ -21,8 +21,11 @@ const DrawerOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      // Heavier scrim + blur so drawer reads distinctly when same colour as page.
-      "fixed inset-0 z-40 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      // Light scrim (~black/40) so the glass-overlay drawer content still
+      // reads as glass against the atmosphere behind it — see the invariant
+      // above `.glass-overlay` in globals.css (a heavy scrim turns the glass
+      // into a flat slab with nothing to refract).
+      "fixed inset-0 z-40 bg-black/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -39,7 +42,7 @@ export const DrawerContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "bg-card text-card-foreground fixed right-0 top-0 z-50 flex h-full w-full max-w-[480px] flex-col border-l shadow-2xl",
+        "glass-overlay text-card-foreground fixed right-0 top-0 z-50 flex h-full w-full max-w-[480px] flex-col",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
         className,
       )}

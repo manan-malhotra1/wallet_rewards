@@ -65,7 +65,7 @@ export function Topbar({ tenants, activeTenantId, user, unreadAlerts = 0 }: Topb
     window.dispatchEvent(new CustomEvent("open-command-palette"));
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">
+    <header className="glass-panel rounded-none border-0 border-b flex h-14 shrink-0 items-center gap-3 px-4">
       <TenantSwitcher tenants={tenants} activeTenantId={activeTenantId} />
       <button
         type="button"

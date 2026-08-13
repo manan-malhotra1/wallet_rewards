@@ -229,7 +229,7 @@ export function Sidebar({
     return entry;
   });
   return (
-    <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+    <aside className="glass-panel rounded-none border-0 border-r flex h-full w-[240px] shrink-0 flex-col">
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         <Link href="/dashboard" aria-label="Sasai Wallet Admin home" className="flex items-center">
           {brandIconUrl ? (

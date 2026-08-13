@@ -14,7 +14,7 @@ export function PageHeader({ title, subtitle, actions, className }: PageHeaderPr
   return (
     <div
       className={cn(
-        "flex flex-wrap items-end justify-between gap-4 border-b bg-background px-6 py-5",
+        "glass-panel rounded-none border-0 border-b flex flex-wrap items-end justify-between gap-4 px-6 py-5",
         className,
       )}
     >

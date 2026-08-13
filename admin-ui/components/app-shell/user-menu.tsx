@@ -35,7 +35,7 @@ export function UserMenu({ user }: { user: TopbarUser }) {
         <DropdownMenu.Content
           align="end"
           sideOffset={6}
-          className="z-50 w-[240px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          className="glass-overlay z-50 w-[240px] rounded-md p-1 text-popover-foreground"
         >
           <div className="px-2.5 py-2">
             <div className="text-sm font-semibold text-foreground">

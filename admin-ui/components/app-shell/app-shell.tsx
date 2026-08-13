@@ -29,7 +29,7 @@ export function AppShell({
   children,
 }: AppShellProps) {
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-screen w-screen overflow-hidden bg-transparent text-foreground">
       <Sidebar
         pendingCount={pendingReconciliationCount}
         approvalsPendingCount={approvalsPendingCount}

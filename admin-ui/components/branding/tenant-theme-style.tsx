@@ -4,9 +4,12 @@
  * Given a tenant's two brand colours, derives the full shadcn token set with
  * {@link deriveTokens} and emits a single inline `<style>` that overrides the
  * CSS custom properties for BOTH themes: `:root { … }` for light and
- * `.dark { … }` for dark. Because it is rendered on the server inside the
- * layout, the override ships in the initial HTML — there is no client round
- * trip and therefore no flash of the default palette.
+ * `.dark { … }` for dark. It also derives the glassmorphism tokens with
+ * {@link deriveGlassTokens} and emits those alongside the palette so the
+ * atmosphere background and `.glass-*` utilities pick up the tenant's brand
+ * colours too. Because it is rendered on the server inside the layout, the
+ * override ships in the initial HTML — there is no client round trip and
+ * therefore no flash of the default palette.
  *
  * When either colour is missing it renders `null`, so the defaults baked into
  * `globals.css` apply unchanged. The semantic `--destructive` pair is never
@@ -15,6 +18,7 @@
 import * as React from "react";
 
 import { deriveTokens, type TokenMap } from "@/lib/brand-palette";
+import { deriveGlassTokens, type GlassTokens } from "@/lib/glass-tokens";
 
 interface TenantThemeStyleProps {
   /** The tenant's deep brand accent hex, or null when unset. */
@@ -30,6 +34,19 @@ function toCssVars(tokens: TokenMap): string {
     .join("");
 }
 
+/** Serialise one scheme's glass tokens into CSS custom-property declarations. */
+function toGlassVars(g: GlassTokens): string {
+  return (
+    `--glass-atmosphere-image:${g.atmosphereImage};` +
+    `--glass-atmosphere-base:${g.atmosphereBase};` +
+    `--glass-panel:${g.panel};` +
+    `--glass-overlay:${g.overlay};` +
+    `--glass-border:${g.border};` +
+    `--glass-blur-panel:${g.blurPanel};` +
+    `--glass-blur-overlay:${g.blurOverlay};`
+  );
+}
+
 export function TenantThemeStyle({
   accent,
   light,
@@ -38,7 +55,10 @@ export function TenantThemeStyle({
   if (!accent || !light) return null;
 
   const { light: lightTokens, dark: darkTokens } = deriveTokens(accent, light);
-  const css = `:root{${toCssVars(lightTokens)}}.dark{${toCssVars(darkTokens)}}`;
+  const glass = deriveGlassTokens(accent, light);
+  const css =
+    `:root{${toCssVars(lightTokens)}${toGlassVars(glass.light)}}` +
+    `.dark{${toCssVars(darkTokens)}${toGlassVars(glass.dark)}}`;
 
   return <style dangerouslySetInnerHTML={{ __html: css }} />;
 }

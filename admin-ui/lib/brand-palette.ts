@@ -438,3 +438,90 @@ export function deriveTokens(
 
   return { light: lightTheme, dark };
 }
+
+/**
+ * Convert a hex colour + alpha into an `rgba(r, g, b, a)` CSS string.
+ *
+ * @param hex - a `#RGB`/`#RRGGBB` colour
+ * @param alpha - opacity in [0, 1], emitted verbatim
+ * @returns an `rgba(...)` string usable in CSS values
+ */
+export function hexToRgba(hex: string, alpha: number): string {
+  const c = hexToSrgb(hex);
+  const ch = (v: number) => Math.round(clamp(v) * 255);
+  return `rgba(${ch(c.r)}, ${ch(c.g)}, ${ch(c.b)}, ${alpha})`;
+}
+
+/** The glass design tokens for one colour scheme (see the glassmorphism spec). */
+export interface GlassTokens {
+  /** Comma-joined radial gradients — the atmosphere `background-image`. */
+  atmosphereImage: string;
+  /** Hex base colour painted under the gradient blobs (`background-color`). */
+  atmosphereBase: string;
+  /** Panel tint for in-flow surfaces (`.glass-panel`). */
+  panel: string;
+  /** Higher-opacity tint for floating surfaces (`.glass-overlay`). */
+  overlay: string;
+  /** Hairline border colour shared by all glass surfaces. */
+  border: string;
+  /** Backdrop blur radius for panels, e.g. `"14px"`. */
+  blurPanel: string;
+  /** Backdrop blur radius for overlays, e.g. `"18px"` (spec cap: 20px). */
+  blurOverlay: string;
+}
+
+/** Dark + light glass token sets for a tenant. */
+export interface DerivedGlass {
+  light: GlassTokens;
+  dark: GlassTokens;
+}
+
+/**
+ * Derive the glassmorphism token set from a tenant's two brand colours
+ * (spec: docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md §2).
+ *
+ * The atmosphere is three accent-tinted radial blobs (accent, the 0.382 ramp
+ * companion, a darkened deep) over a near-black (dark) / near-white (light)
+ * base. Panel/overlay tints are white-frost rgba values; the dark overlay
+ * carries the darkened brand hue at high alpha so floating surfaces occlude
+ * what's beneath them. Blob alphas stay within the spec bounds
+ * (dark ≤ 0.55, light ≤ 0.25) and blur is capped below 20px.
+ *
+ * @param accent - the deep brand hex colour (defaults to {@link DEFAULT_ACCENT})
+ * @param light - the pale brand hex colour (defaults to {@link DEFAULT_LIGHT})
+ * @returns `{ light, dark }` glass token sets
+ */
+export function deriveGlassTokens(
+  accent: string = DEFAULT_ACCENT,
+  light: string = DEFAULT_LIGHT,
+): DerivedGlass {
+  const mid = ramp(accent, light, 0.382);
+  const deep = darken(accent, 0.25);
+  const blobs = (a1: number, a2: number, a3: number) =>
+    [
+      `radial-gradient(ellipse 60% 50% at 15% 10%, ${hexToRgba(accent, a1)}, transparent 60%)`,
+      `radial-gradient(ellipse 50% 45% at 85% 90%, ${hexToRgba(mid, a2)}, transparent 60%)`,
+      `radial-gradient(ellipse 45% 40% at 70% 20%, ${hexToRgba(deep, a3)}, transparent 55%)`,
+    ].join(", ");
+
+  return {
+    dark: {
+      atmosphereImage: blobs(0.5, 0.28, 0.4),
+      atmosphereBase: darken(accent, 0.9),
+      panel: "rgba(255, 255, 255, 0.06)",
+      overlay: hexToRgba(darken(accent, 0.55), 0.78),
+      border: "rgba(255, 255, 255, 0.12)",
+      blurPanel: "14px",
+      blurOverlay: "18px",
+    },
+    light: {
+      atmosphereImage: blobs(0.22, 0.14, 0.1),
+      atmosphereBase: ramp(accent, light, 0.96),
+      panel: "rgba(255, 255, 255, 0.55)",
+      overlay: "rgba(255, 255, 255, 0.8)",
+      border: "rgba(255, 255, 255, 0.75)",
+      blurPanel: "14px",
+      blurOverlay: "18px",
+    },
+  };
+}

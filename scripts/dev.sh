@@ -5,7 +5,7 @@
 # Usage:
 #   scripts/dev.sh <action> [service]
 #     action  : start | stop | restart | status | logs
-#     service : docker | backend | admin-ui | sim | all   (default: all)
+#     service : docker | backend | admin-ui | sim | report | all   (default: all)
 #
 # Examples:
 #   scripts/dev.sh start                # bring the whole stack up (docker → backend → ui → sim)
@@ -16,7 +16,8 @@
 #   scripts/dev.sh status               # health of everything
 #   scripts/dev.sh logs backend         # tail one service's log
 #
-# Service aliases: ui|admin → admin-ui ; mobile-sim|simulator → sim
+# Service aliases: ui|admin → admin-ui ; mobile-sim|simulator → sim ;
+#                  reports|test-report → report
 #
 # Services managed:
 #   - docker    : compose stack in `sasai-wallet-infra/`
@@ -24,6 +25,9 @@
 #   - backend   : FastAPI on :8000 (project venv)
 #   - admin-ui  : Next.js dev on :3000 (npm)
 #   - sim       : Next.js mobile simulator on :3002 (npm) — dev-only harness
+#   - report    : static test report on :8377 (python http.server over test-reports/)
+#                 regenerate content with `make test-report` (backend) +
+#                 `npm run test:report` (admin-ui)
 #
 # State: PIDs under `.run/`, logs under `.run/logs/` (both .gitignored).
 
@@ -39,12 +43,17 @@ SIM_DIR="${ROOT_DIR}/mobile-simulator"
 RUN_DIR="${ROOT_DIR}/.run"
 LOG_DIR="${RUN_DIR}/logs"
 
+REPORT_DIR="${ROOT_DIR}/test-reports"
+REPORT_PORT=8377
+
 BACKEND_PID="${RUN_DIR}/backend.pid"
 UI_PID="${RUN_DIR}/admin-ui.pid"
 SIM_PID="${RUN_DIR}/mobile-simulator.pid"
+REPORT_PID="${RUN_DIR}/test-report.pid"
 BACKEND_LOG="${LOG_DIR}/backend.log"
 UI_LOG="${LOG_DIR}/admin-ui.log"
 SIM_LOG="${LOG_DIR}/mobile-simulator.log"
+REPORT_LOG="${LOG_DIR}/test-report.log"
 
 mkdir -p "${RUN_DIR}" "${LOG_DIR}"
 
@@ -122,6 +131,7 @@ canon_service() {
     backend|api) echo backend ;;
     admin-ui|ui|admin) echo admin-ui ;;
     sim|mobile-sim|simulator|mobile) echo sim ;;
+    report|reports|test-report|test-reports) echo report ;;
     all|"") echo all ;;
     *) echo "UNKNOWN" ;;
   esac
@@ -210,6 +220,26 @@ start_sim() {
   done
 }
 
+start_report() {
+  if is_running "${REPORT_PID}"; then
+    warn "Test report already running (PID $(cat "${REPORT_PID}"))"; return 0
+  fi
+  if [[ -n "$(port_holders "${REPORT_PORT}")" ]]; then
+    warn "Something is already on :${REPORT_PORT} — treating the test report as up."; return 0
+  fi
+  if [[ ! -f "${REPORT_DIR}/index.html" ]]; then
+    warn "No ${REPORT_DIR}/index.html yet — serving anyway. Generate it with" \
+         "\`make test-report\` (backend) + \`npm run test:report\` (admin-ui)."
+  fi
+  info "Starting test report (http.server :${REPORT_PORT})…"
+  # --directory keeps the server's cwd out of the picture; localhost-only bind
+  # because the report is a dev artefact, not something to expose on the LAN.
+  nohup python3 -m http.server "${REPORT_PORT}" --bind 127.0.0.1 \
+    --directory "${REPORT_DIR}" >"${REPORT_LOG}" 2>&1 &
+  echo $! >"${REPORT_PID}"
+  wait_for_http "http://127.0.0.1:${REPORT_PORT}/" "test report" 10 || true
+}
+
 # --- Per-service STOP --------------------------------------------------------
 
 # Stop a Node dev server (kills child workers too) by pidfile, with a port fallback.
@@ -235,6 +265,8 @@ _stop_node() {
 
 stop_sim()     { _stop_node "mobile simulator" "${SIM_PID}" 3002; }
 stop_ui()      { _stop_node "admin UI" "${UI_PID}" 3000; }
+# _stop_node's pidfile + stray-port cleanup is process-agnostic — fine for python too.
+stop_report()  { _stop_node "test report" "${REPORT_PID}" "${REPORT_PORT}"; }
 
 stop_backend() {
   if is_running "${BACKEND_PID}"; then
@@ -270,7 +302,8 @@ cmd_start() {
     backend) start_backend ;;
     admin-ui) start_ui ;;
     sim) start_sim ;;
-    all) start_docker; start_backend; start_ui; start_sim ;;
+    report) start_report ;;
+    all) start_docker; start_backend; start_ui; start_sim; start_report ;;
   esac
   echo
   cmd_status
@@ -284,8 +317,9 @@ cmd_stop() {
     backend) stop_backend ;;
     admin-ui) stop_ui ;;
     sim) stop_sim ;;
+    report) stop_report ;;
     # Apps first, then docker, so nothing 5xx's mid-shutdown.
-    all) stop_sim; stop_ui; stop_backend; stop_docker ;;
+    all) stop_report; stop_sim; stop_ui; stop_backend; stop_docker ;;
   esac
 }
 
@@ -317,9 +351,10 @@ cmd_status() {
   status_row "backend"  "8000" "curl -fs http://localhost:8000/healthz"
   status_row "admin-ui" "3000" "curl -fs -o /dev/null -w '%{http_code}' http://localhost:3000 | grep -qE '^(2|3)..'"
   status_row "sim"      "3002" "curl -fs -o /dev/null -w '%{http_code}' http://localhost:3002 | grep -qE '^(2|3)..'" "dev-only"
+  status_row "report"   "${REPORT_PORT}" "curl -fs -o /dev/null http://127.0.0.1:${REPORT_PORT}/" "test report"
 
   echo
-  echo "${DIM}Logs:${RESET} scripts/dev.sh logs <backend|admin-ui|sim|postgres|keycloak|redis|kafka>"
+  echo "${DIM}Logs:${RESET} scripts/dev.sh logs <backend|admin-ui|sim|report|postgres|keycloak|redis|kafka>"
 }
 
 cmd_logs() {
@@ -328,6 +363,7 @@ cmd_logs() {
     backend)  tail -n 80 -f "${BACKEND_LOG}" ;;
     admin-ui) tail -n 80 -f "${UI_LOG}" ;;
     sim)      tail -n 80 -f "${SIM_LOG}" ;;
+    report)   tail -n 80 -f "${REPORT_LOG}" ;;
     docker)   (cd "${INFRA_DIR}" && docker compose logs -f --tail 80) ;;
     *)
       # Allow the raw container names too.
@@ -348,7 +384,7 @@ ${BOLD}Sasai Wallet — local dev script${RESET}
 
   scripts/dev.sh <action> [service]
     action  : start | stop | restart | status | logs
-    service : docker | backend | admin-ui | sim | all   (default: all)
+    service : docker | backend | admin-ui | sim | report | all   (default: all)
 
 Examples:
   scripts/dev.sh start                 whole stack up
@@ -356,6 +392,7 @@ Examples:
   scripts/dev.sh restart admin-ui      bounce the admin UI only
   scripts/dev.sh stop sim              stop the simulator only
   scripts/dev.sh restart docker        restart infra only
+  scripts/dev.sh start report          serve test-reports/ on :8377
   scripts/dev.sh status                health of everything
   scripts/dev.sh logs backend          tail one log
 
@@ -368,7 +405,7 @@ action="${1:-status}"
 target="$(canon_service "${2:-all}")"
 
 if [[ "${target}" == "UNKNOWN" ]]; then
-  err "unknown service '${2:-}' — use docker | backend | admin-ui | sim | all"
+  err "unknown service '${2:-}' — use docker | backend | admin-ui | sim | report | all"
   exit 1
 fi
 

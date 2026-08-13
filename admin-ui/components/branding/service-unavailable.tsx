@@ -39,10 +39,7 @@ export function ServiceUnavailable({
     });
 
   return (
-    <div
-      className="flex min-h-screen items-center justify-center p-6"
-      style={{ backgroundColor: "#144989" }}
-    >
+    <div className="flex min-h-screen items-center justify-center p-6">
       <div className="glass-panel w-full max-w-md rounded-2xl p-8 text-center">
         <div className="mb-6 flex items-center justify-center gap-3">
           <SasaiLogo height={32} />

@@ -36,7 +36,7 @@ export function StatTile({ id, label, value, current, previous, selected, onSele
       onClick={() => onSelect(id)}
       aria-pressed={selected}
       className={cn(
-        "flex flex-col items-start gap-1 rounded-lg border bg-card p-4 text-left transition-colors",
+        "glass-panel flex flex-col items-start gap-1 rounded-lg p-4 text-left transition-colors",
         selected ? "border-primary ring-1 ring-primary" : "hover:border-primary/40",
       )}
     >

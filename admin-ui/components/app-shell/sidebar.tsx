@@ -229,8 +229,11 @@ export function Sidebar({
     return entry;
   });
   return (
+    // `border-0 border-r`: Tailwind's utilities layer outranks @layer
+    // components, so `border-0` zeroes out `.glass-panel`'s all-side glass
+    // border and `border-r` re-adds just the rail's outer edge.
     <aside className="glass-panel rounded-none border-0 border-r flex h-full w-[240px] shrink-0 flex-col">
-      <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
+      <div className="flex h-16 items-center justify-between border-b px-4">
         <Link href="/dashboard" aria-label="Sasai Wallet Admin home" className="flex items-center">
           {brandIconUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -254,7 +257,7 @@ export function Sidebar({
         <NavGroup title="Configuration" items={config} />
         <NavGroup title="Audit" items={AUDIT} />
       </nav>
-      <div className="flex items-center justify-between border-t border-sidebar-border px-4 py-3">
+      <div className="flex items-center justify-between border-t px-4 py-3">
         <span className="text-[10px] font-medium text-sidebar-foreground/50">
           v0.1
         </span>

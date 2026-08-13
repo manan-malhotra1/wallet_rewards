@@ -439,13 +439,17 @@ export function deriveTokens(
     "chart-3": r(0.382),
     "chart-4": r(0.618),
     "chart-5": "#B7791F",
-    sidebar: r(0),
-    "sidebar-foreground": r(1),
-    "sidebar-primary": r(1),
-    "sidebar-primary-foreground": r(0),
-    "sidebar-accent": r(0.1459),
-    "sidebar-accent-foreground": r(1),
-    "sidebar-border": r(-0.15),
+    // The sidebar rail is now a glass panel (light frost in light mode, per
+    // the glassmorphism spec), not a solid navy fill — so light-mode sidebar
+    // ink must invert to dark-on-light, matching the other light-theme
+    // surfaces above rather than the dark theme's white-on-navy sidebar.
+    sidebar: r(1),
+    "sidebar-foreground": r(-0.15),
+    "sidebar-primary": r(0),
+    "sidebar-primary-foreground": r(1),
+    "sidebar-accent": r(0.85),
+    "sidebar-accent-foreground": r(0),
+    "sidebar-border": r(0.8),
     "sidebar-ring": r(0.236),
   };
 

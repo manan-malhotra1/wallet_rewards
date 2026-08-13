@@ -12,6 +12,7 @@ export interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, actions, className }: PageHeaderProps) {
   return (
+    // border idiom: see sidebar.tsx
     <div
       className={cn(
         "glass-panel rounded-none border-0 border-b flex flex-wrap items-end justify-between gap-4 px-6 py-5",

@@ -21,6 +21,8 @@ export function UserMenu({ user }: { user: TopbarUser }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
+        {/* Solid `bg-background` (not glass) — form controls stay solid for
+            readability against a glass container; see input.tsx. */}
         <button
           type="button"
           className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"

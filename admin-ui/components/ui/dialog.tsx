@@ -22,10 +22,7 @@ export const DialogOverlay = React.forwardRef<
     ref={ref}
     data-slot="dialog-overlay"
     className={cn(
-      // Light scrim (~black/40) so the glass-overlay dialog content still reads
-      // as glass against the atmosphere behind it — see the invariant above
-      // `.glass-overlay` in globals.css (a heavy scrim turns the glass into a
-      // flat slab with nothing to refract).
+      // Light scrim (black/40) — see the glass-overlay invariant in globals.css.
       "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/40 backdrop-blur-sm",
       className,
     )}
@@ -44,10 +41,7 @@ export const DialogContent = React.forwardRef<
       ref={ref}
       data-slot="dialog-content"
       className={cn(
-        // `glass-overlay` — frosted floating surface, distinct from the page
-        // (which paints the tenant-branded atmosphere) so the dialog reads as
-        // a discrete surface in both light and dark.
-        "glass-overlay text-card-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg p-6 duration-200 sm:max-w-lg",
+        "glass-overlay text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg p-6 duration-200 sm:max-w-lg",
         className,
       )}
       {...props}

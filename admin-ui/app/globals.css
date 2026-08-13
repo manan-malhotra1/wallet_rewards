@@ -118,13 +118,13 @@
   --chart-3: #6f96b6;
   --chart-4: #a5bdd2;
   --chart-5: #b7791f;
-  --sidebar: #0c5888;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #ffffff;
-  --sidebar-primary-foreground: #0c5888;
-  --sidebar-accent: #396f9a;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #004076;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #004076;
+  --sidebar-primary: #0c5888;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #dbe5ed;
+  --sidebar-accent-foreground: #0c5888;
+  --sidebar-border: #cfdce7;
   --sidebar-ring: #4e7ea4;
 
   /* Glassmorphism (spec 2026-08-13) — Ocean defaults; kept in sync with
@@ -252,11 +252,11 @@ body {
      nothing visible to refract, defeating the effect. Keep dialog/drawer
      scrims around black/40 so the atmosphere still reads through. Glass
      only reads as glass when there's a visible atmosphere behind it.
-     Also: the hazard is ANIMATING the blur radius itself, or moving a
-     backdrop-filtered element mid-animation (translate/scale) — both force
-     the engine to recompute the filter every frame and can flicker. A
-     *static* blur with a brief opacity/zoom entrance (e.g. the existing
-     `zoom-in-95`) is fine and is exactly what Task 3 should keep using. */
+     Also: the hazard is ANIMATING the blur radius itself, or continuously
+     moving/scaling a large filtered surface — both force the engine to
+     recompute the filter every frame and can flicker. Brief opacity/zoom
+     entrances (e.g. the existing `zoom-in-95`) and one-shot slide-ins are
+     acceptable — just verify them visually (Task 5). */
   .glass-overlay {
     background-color: var(--glass-overlay);
     border: 1px solid var(--glass-border);
@@ -270,6 +270,15 @@ body {
     background-color: var(--glass-panel);
     border: 1px solid var(--glass-border);
   }
+}
+
+/* Unlayered on purpose: sonner injects its own unlayered [data-sonner-toast]
+   rule at runtime, which outranks @layer components. Consumes the same vars,
+   so both fallback blocks still collapse it correctly. */
+[data-sonner-toast][data-styled="true"].glass-overlay {
+  background: var(--glass-overlay);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-overlay);
 }
 
 /* Both fallbacks below are pure variable swaps, never recipe restatements:

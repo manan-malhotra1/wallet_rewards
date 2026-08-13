@@ -65,6 +65,7 @@ export function Topbar({ tenants, activeTenantId, user, unreadAlerts = 0 }: Topb
     window.dispatchEvent(new CustomEvent("open-command-palette"));
 
   return (
+    // border idiom: see sidebar.tsx
     <header className="glass-panel rounded-none border-0 border-b flex h-14 shrink-0 items-center gap-3 px-4">
       <TenantSwitcher tenants={tenants} activeTenantId={activeTenantId} />
       <button

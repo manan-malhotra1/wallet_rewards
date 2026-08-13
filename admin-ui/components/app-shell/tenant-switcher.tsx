@@ -38,6 +38,8 @@ export function TenantSwitcher({ tenants, activeTenantId }: TenantSwitcherProps)
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
+        {/* Solid `bg-background` (not glass) — form controls stay solid for
+            readability against a glass container; see input.tsx. */}
         <button
           type="button"
           className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"

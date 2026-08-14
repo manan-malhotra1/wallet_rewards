@@ -13,6 +13,11 @@
  * initial HTML — there is no client round trip and therefore no flash of
  * the default palette.
  *
+ * `glassTransparency` (0-100, from the tenant's nullable
+ * `brand_glass_transparency` column) tunes the `.glass-panel` alpha; a null
+ * value is coerced to 50, `deriveGlassTokens`'s default, which reproduces
+ * today's static look.
+ *
  * When either colour is missing it renders `null`, so the defaults baked into
  * `globals.css` apply unchanged. The semantic `--destructive` pair is never
  * part of {@link deriveTokens}, so status colours stay constant across tenants.
@@ -27,6 +32,11 @@ interface TenantThemeStyleProps {
   accent: string | null;
   /** The tenant's pale brand companion hex, or null when unset. */
   light: string | null;
+  /**
+   * The tenant's glass-panel transparency slider (0-100), or null/undefined
+   * to fall back to the default of 50 (today's static look).
+   */
+  glassTransparency?: number | null;
 }
 
 /** Serialise a token map into a CSS declaration block (`--name: value;`). */
@@ -39,12 +49,13 @@ function toCssVars(tokens: TokenMap): string {
 export function TenantThemeStyle({
   accent,
   light,
+  glassTransparency,
 }: TenantThemeStyleProps): React.ReactElement | null {
   // Both colours are required — a partial palette would derive half a theme.
   if (!accent || !light) return null;
 
   const { light: lightTokens, dark: darkTokens } = deriveTokens(accent, light);
-  const glass = deriveGlassTokens(accent, light);
+  const glass = deriveGlassTokens(accent, light, glassTransparency ?? 50);
   const css =
     `:root{${toCssVars(lightTokens)}${glassVarsCss(glass.light)}}` +
     `.dark{${toCssVars(darkTokens)}${glassVarsCss(glass.dark)}}`;

@@ -7,7 +7,7 @@
  * action, and a server error surfaces in the dialog. The server action is
  * mocked — the dialog is unit-tested for what it submits, not the backend.
  */
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -32,6 +32,7 @@ const tenant: Tenant = {
   brand_accent_color: "#112233",
   brand_light_color: "#EEDDCC",
   brand_icon_url: null,
+  brand_glass_transparency: null,
 };
 
 /** The accent hex text field (its own accessible name from the label). */
@@ -130,7 +131,30 @@ describe("Tenant branding dialog", () => {
       brand_accent_color: "#123456",
       brand_light_color: "#EEDDCC",
       brand_icon_url: "https://cdn.example.com/logo.png",
+      brand_glass_transparency: 50,
     });
+  });
+
+  it("Verify the transparency slider is present and its value is included in the submitted payload", async () => {
+    const user = userEvent.setup();
+    render(
+      <BrandingDialog tenant={tenant} trigger={<button>Customize theme</button>} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Customize theme" }));
+
+    const slider = screen.getByLabelText("Glass transparency") as HTMLInputElement;
+    expect(slider).toBeInTheDocument();
+    expect(slider.value).toBe("50"); // tenant has no override -> default 50
+
+    fireEvent.change(slider, { target: { value: "80" } });
+
+    await user.click(screen.getByRole("button", { name: "Save branding" }));
+
+    await waitFor(() =>
+      expect(updateTenantBrandingAction).toHaveBeenCalledTimes(1),
+    );
+    const [, payload] = updateTenantBrandingAction.mock.calls[0];
+    expect(payload).toMatchObject({ brand_glass_transparency: 80 });
   });
 
   it("Verify a server error surfaces in the dialog", async () => {

@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -48,6 +49,10 @@ class Tenant(Base):
             "status IN ('active', 'inactive')",
             name="ck_tenants_status",
         ),
+        CheckConstraint(
+            "brand_glass_transparency BETWEEN 0 AND 100",
+            name="ck_tenants_glass_transparency_range",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -80,6 +85,11 @@ class Tenant(Base):
     # brand_icon_url: hosted image URL for the tenant logo shown in the sidebar.
     #   Text (not String(n)) because signed/CDN URLs can be long.
     brand_icon_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # brand_glass_transparency: 0-100 slider value for the admin UI's glassmorphism
+    #   panel alphas (higher = more transparent). NULL = default 50, which
+    #   reproduces the static globals.css glass tokens. CHECK-constrained to
+    #   [0, 100] at the DB (ck_tenants_glass_transparency_range).
+    brand_glass_transparency: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)

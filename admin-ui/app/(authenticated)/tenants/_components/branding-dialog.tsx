@@ -3,11 +3,15 @@
 /**
  * <BrandingDialog> — per-tenant cosmetic branding editor (platform-admin only).
  *
- * Lets an admin set a tenant's two brand colours (deep `accent` + pale `light`)
- * and an optional icon URL, with a LIVE palette preview: the seven-stop
- * `brandScale` rendered as swatches, plus a tiny mock UI themed with the actual
- * `deriveTokens(accent, light).dark` map (dark is the app's default theme) so
- * the admin sees the real result before saving.
+ * Lets an admin set a tenant's two brand colours (deep `accent` + pale `light`),
+ * an optional icon URL, and the glass-panel transparency slider (0-100,
+ * higher = more transparent; null persists as the default of 50), with a LIVE
+ * palette preview: the seven-stop `brandScale` rendered as swatches, plus a
+ * tiny mock UI themed with the actual `deriveTokens(accent, light).dark` map
+ * (dark is the app's default theme) so the admin sees the real result before
+ * saving. The mock's own surface is additionally tinted with
+ * `deriveGlassTokens(...).dark.panel` at the chosen transparency, so dragging
+ * the slider visibly changes the preview.
  *
  * The preview reuses the exact token-override approach of
  * `components/branding/tenant-theme-style.tsx`: the derived shadcn tokens are
@@ -28,6 +32,7 @@ import {
   DEFAULT_LIGHT,
   type TokenMap,
 } from "@/lib/brand-palette";
+import { deriveGlassTokens } from "@/lib/glass-tokens";
 import type { Tenant } from "@/lib/api-types";
 
 import { Button } from "@/components/ui/button";
@@ -141,6 +146,9 @@ export function BrandingDialog({
     tenant.brand_light_color ?? DEFAULT_LIGHT,
   );
   const [iconUrl, setIconUrl] = React.useState(tenant.brand_icon_url ?? "");
+  const [glassTransparency, setGlassTransparency] = React.useState(
+    tenant.brand_glass_transparency ?? 50,
+  );
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
@@ -152,6 +160,7 @@ export function BrandingDialog({
       setAccent(tenant.brand_accent_color ?? DEFAULT_ACCENT);
       setLight(tenant.brand_light_color ?? DEFAULT_LIGHT);
       setIconUrl(tenant.brand_icon_url ?? "");
+      setGlassTransparency(tenant.brand_glass_transparency ?? 50);
       setError(null);
     }
   }, [open, tenant]);
@@ -168,6 +177,7 @@ export function BrandingDialog({
   const previewLight = lightValid ? light : DEFAULT_LIGHT;
   const scale = brandScale(previewAccent, previewLight);
   const darkTokens = deriveTokens(previewAccent, previewLight).dark;
+  const darkGlass = deriveGlassTokens(previewAccent, previewLight, glassTransparency).dark;
 
   function handleReset() {
     setAccent(DEFAULT_ACCENT);
@@ -190,6 +200,7 @@ export function BrandingDialog({
       brand_accent_color: accent,
       brand_light_color: light,
       brand_icon_url: iconTrimmed === "" ? null : iconTrimmed,
+      brand_glass_transparency: glassTransparency,
     });
     setSubmitting(false);
     if (result.ok) {
@@ -258,6 +269,31 @@ export function BrandingDialog({
           </div>
 
           <div>
+            <div className="flex items-baseline justify-between">
+              <Label htmlFor="glass-transparency">Glass transparency</Label>
+              <span className="text-[11px] tabular-nums text-[--color-text-3]">
+                {glassTransparency}
+                {glassTransparency <= 25
+                  ? " — more frosted"
+                  : glassTransparency >= 75
+                    ? " — more clear"
+                    : ""}
+              </span>
+            </div>
+            <input
+              id="glass-transparency"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={glassTransparency}
+              onChange={(e) => setGlassTransparency(Number(e.target.value))}
+              disabled={submitting}
+              className="mt-1 w-full"
+            />
+          </div>
+
+          <div>
             <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[--color-text-3]">
               Live preview
             </div>
@@ -280,8 +316,15 @@ export function BrandingDialog({
                 default theme), so the admin previews the actual result. */}
             <div
               data-testid="brand-preview-mock"
-              style={tokenStyle(darkTokens)}
-              className="mt-3 rounded-lg border border-border bg-card p-4 text-card-foreground"
+              // Tint the mock's own surface with the derived glass-panel alpha
+              // over the dark-theme atmosphere base, so dragging the slider
+              // visibly changes the preview, not just a number on screen.
+              style={{
+                ...tokenStyle(darkTokens),
+                backgroundColor: darkGlass.atmosphereBase,
+                backgroundImage: `linear-gradient(${darkGlass.panel}, ${darkGlass.panel})`,
+              }}
+              className="mt-3 rounded-lg border border-border p-4 text-card-foreground"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm font-semibold">Card title</div>

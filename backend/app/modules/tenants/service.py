@@ -424,7 +424,7 @@ async def update_tenant_branding(
 
     This is a *direct* edit — branding is purely cosmetic, so it is NOT
     routed through maker-checker and writes no audit trail. The PUT is
-    idempotent by construction: it assigns the three fields to exactly the
+    idempotent by construction: it assigns the four fields to exactly the
     values in the payload (a provided value sets it, an explicit `null`
     clears it), so replaying the same body yields the same row.
 
@@ -444,6 +444,7 @@ async def update_tenant_branding(
     tenant.brand_accent_color = payload.brand_accent_color
     tenant.brand_light_color = payload.brand_light_color
     tenant.brand_icon_url = payload.brand_icon_url
+    tenant.brand_glass_transparency = payload.brand_glass_transparency
 
     await session.commit()
     await session.refresh(tenant)
@@ -454,5 +455,6 @@ async def update_tenant_branding(
         has_accent=tenant.brand_accent_color is not None,
         has_light=tenant.brand_light_color is not None,
         has_icon=tenant.brand_icon_url is not None,
+        glass_transparency=tenant.brand_glass_transparency,
     )
     return tenant

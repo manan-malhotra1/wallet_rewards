@@ -83,6 +83,58 @@ describe("deriveGlassTokens", () => {
   });
 });
 
+describe("deriveGlassTokens transparency slider", () => {
+  it("Verify the default transparency (50) matches the explicit t=50 call", () => {
+    // The caller-side default (TenantThemeStyle etc. coerce null -> 50) must
+    // be indistinguishable from omitting the argument entirely.
+    const implicit = deriveGlassTokens();
+    const explicit = deriveGlassTokens(undefined, undefined, 50);
+    expect(explicit).toEqual(implicit);
+  });
+
+  it("Verify a higher transparency produces a lower panel alpha in both schemes", () => {
+    const low = deriveGlassTokens(undefined, undefined, 0);
+    const high = deriveGlassTokens(undefined, undefined, 100);
+    expect(parseRgba(high.light.panel).a).toBeLessThan(parseRgba(low.light.panel).a);
+    expect(parseRgba(high.dark.panel).a).toBeLessThan(parseRgba(low.dark.panel).a);
+  });
+
+  it("Verify t=0 and t=100 hit the documented panel alpha bounds", () => {
+    const t0 = deriveGlassTokens(undefined, undefined, 0);
+    const t50 = deriveGlassTokens(undefined, undefined, 50);
+    const t100 = deriveGlassTokens(undefined, undefined, 100);
+    expect(parseRgba(t0.light.panel).a).toBeCloseTo(0.8, 3);
+    expect(parseRgba(t50.light.panel).a).toBeCloseTo(0.4, 3);
+    expect(parseRgba(t100.light.panel).a).toBeCloseTo(0.08, 3);
+    expect(parseRgba(t0.dark.panel).a).toBeCloseTo(0.08, 3);
+    expect(parseRgba(t50.dark.panel).a).toBeCloseTo(0.04, 3);
+    expect(parseRgba(t100.dark.panel).a).toBeCloseTo(0.01, 3);
+  });
+
+  it("Verify an out-of-range transparency clamps to the same floor as t=100", () => {
+    // t=200 pushes the raw linear value well past the floor; the clamp on
+    // the OUTPUT (not the input) means it still lands exactly on the t=100
+    // alpha rather than continuing to fall or erroring.
+    const overshoot = deriveGlassTokens(undefined, undefined, 200);
+    const floor = deriveGlassTokens(undefined, undefined, 100);
+    expect(overshoot.light.panel).toBe(floor.light.panel);
+    expect(overshoot.dark.panel).toBe(floor.dark.panel);
+  });
+
+  it("Verify only the panel tint changes with transparency — overlay/border/blur stay fixed", () => {
+    // Floating-surface occlusion is a readability invariant (spec): only
+    // .glass-panel is tunable, never .glass-overlay/border/blur.
+    const t0 = deriveGlassTokens(undefined, undefined, 0);
+    const t100 = deriveGlassTokens(undefined, undefined, 100);
+    for (const scheme of ["light", "dark"] as const) {
+      expect(t100[scheme].overlay).toBe(t0[scheme].overlay);
+      expect(t100[scheme].border).toBe(t0[scheme].border);
+      expect(t100[scheme].blurPanel).toBe(t0[scheme].blurPanel);
+      expect(t100[scheme].blurOverlay).toBe(t0[scheme].blurOverlay);
+    }
+  });
+});
+
 describe("glassVarsCss", () => {
   it("Verify it emits all 9 --glass-* declarations", () => {
     const css = glassVarsCss(deriveGlassTokens().light);

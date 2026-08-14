@@ -95,13 +95,20 @@ export interface Tenant {
   brand_accent_color: string | null;
   brand_light_color: string | null;
   brand_icon_url: string | null;
+  /**
+   * Glassmorphism panel-transparency slider (0-100, higher = more
+   * transparent). Null means "no override" — the UI derives glass tokens
+   * with the default of 50 (see `lib/glass-tokens.ts`).
+   */
+  brand_glass_transparency: number | null;
 }
 
-/** The three cosmetic branding fields, read/written via `/branding`. */
+/** The cosmetic branding fields, read/written via `/branding`. */
 export interface TenantBranding {
   brand_accent_color: string | null;
   brand_light_color: string | null;
   brand_icon_url: string | null;
+  brand_glass_transparency: number | null;
 }
 
 /** One row in the per-tenant instruments catalog (Phase 3). */

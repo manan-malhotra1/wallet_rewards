@@ -1,11 +1,11 @@
 """Per-tenant branding columns persist and round-trip, plus the admin API.
 
-The three branding fields (`brand_accent_color`, `brand_light_color`,
-`brand_icon_url`) drive the admin UI's per-tenant theme. They must persist a set
-value and default to NULL when never assigned, so the UI can distinguish a
-branded tenant from one that should fall back to the app default. The
-GET/PUT `/api/v1/tenants/{id}/branding` endpoints (platform-admin only, direct
-cosmetic edit) let operators read and change them.
+The branding fields (`brand_accent_color`, `brand_light_color`,
+`brand_icon_url`, `brand_glass_transparency`) drive the admin UI's per-tenant
+theme. They must persist a set value and default to NULL when never assigned,
+so the UI can distinguish a branded tenant from one that should fall back to
+the app default. The GET/PUT `/api/v1/tenants/{id}/branding` endpoints
+(platform-admin only, direct cosmetic edit) let operators read and change them.
 """
 
 from __future__ import annotations
@@ -80,7 +80,12 @@ async def test_get_branding_happy_path(
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert set(body) == {"brand_accent_color", "brand_light_color", "brand_icon_url"}
+    assert set(body) == {
+        "brand_accent_color",
+        "brand_light_color",
+        "brand_icon_url",
+        "brand_glass_transparency",
+    }
 
 
 @pytest.mark.asyncio
@@ -233,3 +238,91 @@ async def test_put_branding_rejects_non_http_icon_url(
         json={"brand_icon_url": "javascript:alert(1)"},
     )
     assert resp.status_code == 422
+
+
+# -----------------------------------------------------------------------------
+# brand_glass_transparency — 0-100 slider driving the glassmorphism panel alpha
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_put_branding_sets_and_reads_glass_transparency(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+    db_session: AsyncSession,
+) -> None:
+    """Verify a platform admin can set the glass transparency slider and it sticks"""
+    resp = await async_client.put(
+        f"/api/v1/tenants/{test_tenant.id}/branding",
+        headers=admin_auth_header,
+        json={"brand_glass_transparency": 30},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["brand_glass_transparency"] == 30
+
+    get_resp = await async_client.get(
+        f"/api/v1/tenants/{test_tenant.id}/branding",
+        headers=admin_auth_header,
+    )
+    assert get_resp.status_code == 200, get_resp.text
+    assert get_resp.json()["brand_glass_transparency"] == 30
+
+    db_session.expunge_all()
+    fetched = (
+        await db_session.execute(select(Tenant).where(Tenant.id == test_tenant.id))
+    ).scalar_one()
+    assert fetched.brand_glass_transparency == 30
+
+
+@pytest.mark.asyncio
+async def test_put_branding_rejects_glass_transparency_above_100(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a transparency value above the 0-100 range is rejected as invalid"""
+    resp = await async_client.put(
+        f"/api/v1/tenants/{test_tenant.id}/branding",
+        headers=admin_auth_header,
+        json={"brand_glass_transparency": 101},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_put_branding_rejects_glass_transparency_below_zero(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a negative transparency value is rejected as invalid"""
+    resp = await async_client.put(
+        f"/api/v1/tenants/{test_tenant.id}/branding",
+        headers=admin_auth_header,
+        json={"brand_glass_transparency": -1},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_put_branding_null_clears_glass_transparency(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify sending null for the transparency field clears it back to the default"""
+    set_resp = await async_client.put(
+        f"/api/v1/tenants/{test_tenant.id}/branding",
+        headers=admin_auth_header,
+        json={"brand_glass_transparency": 30},
+    )
+    assert set_resp.status_code == 200, set_resp.text
+
+    clear_resp = await async_client.put(
+        f"/api/v1/tenants/{test_tenant.id}/branding",
+        headers=admin_auth_header,
+        json={"brand_glass_transparency": None},
+    )
+    assert clear_resp.status_code == 200, clear_resp.text
+    assert clear_resp.json()["brand_glass_transparency"] is None

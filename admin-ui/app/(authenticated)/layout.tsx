@@ -103,6 +103,7 @@ export default async function AuthenticatedLayout({
       <TenantThemeStyle
         accent={activeTenant?.brand_accent_color ?? null}
         light={activeTenant?.brand_light_color ?? null}
+        glassTransparency={activeTenant?.brand_glass_transparency ?? null}
       />
       <AppShell
         tenants={tenants.map((t) => ({

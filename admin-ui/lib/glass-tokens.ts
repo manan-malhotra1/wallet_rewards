@@ -29,6 +29,43 @@ const PANEL_SHADOW = "inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 6px 22px rgba(0
 /** Elevation shadow for `.glass-overlay` — identical across schemes (spec §3). */
 const OVERLAY_SHADOW = "inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 16px 48px rgba(0, 0, 0, 0.45)";
 
+/**
+ * Clamp `value` into `[min, max]`.
+ *
+ * @param value - the raw number to bound
+ * @param min - inclusive lower bound
+ * @param max - inclusive upper bound
+ * @returns `value`, clamped to `[min, max]`
+ */
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Map the 0-100 transparency slider to a panel-tint alpha via a clamped
+ * linear ramp, rounded to 3 decimals for `rgba()` serialisation.
+ *
+ * Higher `t` (more transparent) means a lower alpha, so `slope` is
+ * subtracted: `alpha = clamp(base - slope * t, min, max)`. Out-of-range `t`
+ * (negative, or above 100) still produces a sane value because the result is
+ * clamped, not just the input — e.g. `t = 200` behaves exactly like `t =
+ * 100` once the ramp bottoms out at `min`.
+ *
+ * @param base - alpha at `t = 0` (before clamping)
+ * @param slope - alpha lost per unit of `t`
+ * @param t - the 0-100 transparency slider value (unclamped input allowed)
+ * @param min - the floor alpha (spec: most-transparent end)
+ * @param max - the ceiling alpha (spec: least-transparent / opaque end)
+ * @returns the panel alpha, clamped to `[min, max]` and rounded to 3 decimals
+ */
+function panelAlpha(base: number, slope: number, t: number, min: number, max: number): number {
+  const clamped = clamp(base - slope * t, min, max);
+  return Math.round(clamped * 1000) / 1000;
+}
+
+/** Default transparency (0-100) reproducing today's static globals.css tokens. */
+const DEFAULT_TRANSPARENCY = 50;
+
 /** The glass design tokens for one colour scheme (see the glassmorphism spec). */
 export interface GlassTokens {
   /** Comma-joined radial gradients — the atmosphere `background-image`. */
@@ -98,24 +135,43 @@ export interface DerivedGlass {
 }
 
 /**
- * Derive the glassmorphism token set from a tenant's two brand colours
- * (spec: docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md §2).
+ * Derive the glassmorphism token set from a tenant's two brand colours and
+ * transparency preference (spec:
+ * docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md §2, plus
+ * the 2026-08-14 per-tenant transparency slider addendum).
  *
  * The atmosphere is three accent-tinted radial blobs (accent, the 0.382 ramp
  * companion, a darkened deep) over a tinted-near-black (dark) / near-white
- * (light) base. Panel/overlay tints are white-frost rgba values; the dark
- * overlay carries the darkened brand hue at high alpha so floating surfaces
- * occlude what's beneath them. Blob alphas stay within the spec bounds
- * (dark ≤ 0.55, light ≤ 0.25) and blur is capped below 20px.
+ * (light) base. Panel tints are white-frost rgba values whose alpha is driven
+ * by `transparency` (0-100, higher = more transparent = lower alpha) via
+ * {@link panelAlpha}; overlay/border/blur/shadow stay fixed regardless of
+ * `transparency` — floating-surface occlusion is a readability invariant, so
+ * only in-flow `.glass-panel` alpha is tunable. `transparency = 50` (the
+ * default) reproduces the exact panel alphas (light 0.4, dark 0.04) baked
+ * into `globals.css`'s static defaults — this is a sync-guard invariant
+ * enforced by `glass-tokens.test.ts`, so changing `DEFAULT_TRANSPARENCY` or
+ * the ramp constants without updating both requires care. Blob alphas stay
+ * within the spec bounds (dark ≤ 0.55, light ≤ 0.25) and blur is capped
+ * below 20px.
  *
  * @param accent - the deep brand hex colour (defaults to {@link DEFAULT_ACCENT})
  * @param light - the pale brand hex colour (defaults to {@link DEFAULT_LIGHT})
+ * @param transparency - 0-100 slider value; NULL/undefined callers should
+ *   pass 50 (the caller-side default, e.g. `TenantThemeStyle`) rather than
+ *   omitting the argument to keep intent explicit at call sites that read a
+ *   tenant's nullable `brand_glass_transparency` column
  * @returns `{ light, dark }` glass token sets
  */
 export function deriveGlassTokens(
   accent: string = DEFAULT_ACCENT,
   light: string = DEFAULT_LIGHT,
+  transparency: number = DEFAULT_TRANSPARENCY,
 ): DerivedGlass {
+  // Light panel: 0.8 at t=0 (near-opaque) down to a 0.08 floor at t=100.
+  const lightPanelAlpha = panelAlpha(0.8, 0.008, transparency, 0.08, 0.9);
+  // Dark panel: 0.08 at t=0 down to a 0.01 floor at t=100 (dark frost reads
+  // through less at the same nominal alpha, so the whole ramp is 10x smaller).
+  const darkPanelAlpha = panelAlpha(0.08, 0.0008, transparency, 0.01, 0.1);
   const mid = ramp(accent, light, 0.382);
   const deep = darken(accent, 0.25);
   const blobs = (accentA: number, midA: number, deepA: number) =>
@@ -132,10 +188,11 @@ export function deriveGlassTokens(
       // collapsing to brand-invariant pure black (darken(x, 0.9) ≈ #000001
       // for any accent).
       atmosphereBase: darken(accent, 0.62),
-      // 0.04 (was 0.06): tuned down per user feedback — more of the
-      // atmosphere reads through the panels. Overlays keep their high
-      // alpha; occlusion of floating surfaces is a readability invariant.
-      panel: "rgba(255, 255, 255, 0.04)",
+      // Base 0.04 (was 0.06) at t=50: tuned down per user feedback — more of
+      // the atmosphere reads through the panels. Now tunable per-tenant via
+      // `transparency` (see darkPanelAlpha above); overlays keep their high
+      // fixed alpha — occlusion of floating surfaces is a readability invariant.
+      panel: `rgba(255, 255, 255, ${darkPanelAlpha})`,
       overlay: hexToRgba(darken(accent, 0.55), 0.78),
       border: "rgba(255, 255, 255, 0.12)",
       blurPanel: PANEL_BLUR,
@@ -146,9 +203,11 @@ export function deriveGlassTokens(
     light: {
       atmosphereImage: blobs(0.22, 0.14, 0.1),
       atmosphereBase: ramp(accent, light, 0.96),
-      // 0.4 (was 0.55): tuned down per user feedback — light mode read as
-      // nearly solid white. Same overlay-occlusion caveat as dark above.
-      panel: "rgba(255, 255, 255, 0.4)",
+      // Base 0.4 (was 0.55) at t=50: tuned down per user feedback — light
+      // mode read as nearly solid white. Now tunable per-tenant via
+      // `transparency` (see lightPanelAlpha above). Same overlay-occlusion
+      // caveat as dark above.
+      panel: `rgba(255, 255, 255, ${lightPanelAlpha})`,
       overlay: "rgba(255, 255, 255, 0.8)",
       border: "rgba(255, 255, 255, 0.75)",
       blurPanel: PANEL_BLUR,

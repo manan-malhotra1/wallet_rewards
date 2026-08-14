@@ -43,6 +43,8 @@ class TenantOut(BaseModel):
     brand_accent_color: str | None = None
     brand_light_color: str | None = None
     brand_icon_url: str | None = None
+    # Glass transparency slider (0-100); None = default 50 (see glass-tokens.ts).
+    brand_glass_transparency: int | None = Field(default=None, ge=0, le=100)
 
 
 class TenantCreate(BaseModel):
@@ -133,6 +135,8 @@ class TenantBrandingOut(BaseModel):
     brand_accent_color: str | None = None
     brand_light_color: str | None = None
     brand_icon_url: str | None = None
+    # Glass transparency slider (0-100); None = default 50 (see glass-tokens.ts).
+    brand_glass_transparency: int | None = Field(default=None, ge=0, le=100)
 
 
 class TenantBrandingUpdate(BaseModel):
@@ -149,6 +153,9 @@ class TenantBrandingUpdate(BaseModel):
     brand_accent_color: Annotated[str | None, Field(default=None, max_length=9)] = None
     brand_light_color: Annotated[str | None, Field(default=None, max_length=9)] = None
     brand_icon_url: Annotated[str | None, Field(default=None, max_length=2048)] = None
+    # Glass transparency slider (0-100); None = default 50 (see glass-tokens.ts).
+    # An explicit null clears the tenant's override, matching the other fields.
+    brand_glass_transparency: int | None = Field(default=None, ge=0, le=100)
 
     @field_validator("brand_accent_color", "brand_light_color")
     @classmethod

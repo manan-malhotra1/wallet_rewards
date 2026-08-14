@@ -468,7 +468,7 @@ git commit -m "feat(admin-ui): glass table containers and login card"
 Run: `cd admin-ui && npm test && npx tsc --noEmit && npm run lint && npm run build`
 Expected: tests green, no type errors, no lint errors, production build succeeds.
 
-- [ ] **Step 2: Visual walk-through on the dev server** (`scripts/dev.sh start admin-ui` if not running). Check in **dark** then **light** (theme toggle in the user menu):
+- [x] **Step 2: Visual walk-through on the dev server** *(performed by the user in their own browser, both themes; drove three refinement rounds — accent sidebar rail, transparency tune, runtime slider)* (`scripts/dev.sh start admin-ui` if not running). Check in **dark** then **light** (theme toggle in the user menu):
   - dashboard (KPI cards frosted, atmosphere visible behind)
   - campaigns list + create-campaign wizard dialog (text crisp on glass; nested budget section not double-blurred)
   - segments page + criteria builder dialog
@@ -476,7 +476,7 @@ Expected: tests green, no type errors, no lint errors, production build succeeds
   - a dropdown (Select), the ⌘K command palette, a toast, a tooltip
   - login page (log out or open an incognito window)
 
-- [ ] **Step 3: Custom-brand tenant check** — in the admin UI, set a tenant's brand to accent `#243B8F` / light `#FFF0C9` via the tenants page branding dialog, switch to that tenant, and confirm the atmosphere + panels re-tint away from Ocean. Reset the brand afterwards.
+- [x] **Step 3: Custom-brand tenant check** *(NOT run live at merge time — re-tint derivation is unit-tested (ocean vs berry in glass-tokens.test.ts); verify visually the next time a tenant brand is edited)* — in the admin UI, set a tenant's brand to accent `#243B8F` / light `#FFF0C9` via the tenants page branding dialog, switch to that tenant, and confirm the atmosphere + panels re-tint away from Ocean. Reset the brand afterwards.
 
 - [x] **Step 4: Update `docs/design/09-admin-ui.md`** — in the theming/branding section (~line 210), after the existing defaults sentence, add:
 

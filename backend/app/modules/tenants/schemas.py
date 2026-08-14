@@ -124,7 +124,7 @@ class TenantUpdateRequest(BaseModel):
 
 
 class TenantBrandingOut(BaseModel):
-    """The three branding fields the admin UI themes itself from.
+    """The four branding fields the admin UI themes itself from.
 
     All nullable — a null value means the tenant has no override for that
     field and the UI should fall back to the app default.

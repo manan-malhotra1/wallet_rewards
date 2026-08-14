@@ -15,7 +15,13 @@ import path from "node:path";
 
 import { describe, it, expect } from "vitest";
 
-import { deriveGlassTokens, glassVarsCss, GLASS_VAR_NAMES, type GlassTokens } from "./glass-tokens";
+import {
+  DEFAULT_TRANSPARENCY,
+  deriveGlassTokens,
+  glassVarsCss,
+  GLASS_VAR_NAMES,
+  type GlassTokens,
+} from "./glass-tokens";
 
 /** Matches an uppercase `#RRGGBB` string. */
 const HEX = /^#[0-9A-F]{6}$/;
@@ -84,11 +90,13 @@ describe("deriveGlassTokens", () => {
 });
 
 describe("deriveGlassTokens transparency slider", () => {
-  it("Verify the default transparency (50) matches the explicit t=50 call", () => {
-    // The caller-side default (TenantThemeStyle etc. coerce null -> 50) must
-    // be indistinguishable from omitting the argument entirely.
+  it("Verify the default transparency matches the explicit DEFAULT_TRANSPARENCY call", () => {
+    // The caller-side default (TenantThemeStyle etc. coerce null ->
+    // DEFAULT_TRANSPARENCY) must be indistinguishable from omitting the
+    // argument entirely.
+    expect(DEFAULT_TRANSPARENCY).toBe(50);
     const implicit = deriveGlassTokens();
-    const explicit = deriveGlassTokens(undefined, undefined, 50);
+    const explicit = deriveGlassTokens(undefined, undefined, DEFAULT_TRANSPARENCY);
     expect(explicit).toEqual(implicit);
   });
 
@@ -99,26 +107,43 @@ describe("deriveGlassTokens transparency slider", () => {
     expect(parseRgba(high.dark.panel).a).toBeLessThan(parseRgba(low.dark.panel).a);
   });
 
-  it("Verify t=0 and t=100 hit the documented panel alpha bounds", () => {
+  it("Verify t=0, t=50 and t=100 hit the documented panel alpha bounds", () => {
+    // The ramp spans the FULL 0-100 range: t=0 is the base (not a lower
+    // ceiling like the old 0.8/0.08 bounds), t=50 is the unchanged
+    // sync-guard anchor, and t=100 lands exactly on the floor.
     const t0 = deriveGlassTokens(undefined, undefined, 0);
     const t50 = deriveGlassTokens(undefined, undefined, 50);
     const t100 = deriveGlassTokens(undefined, undefined, 100);
-    expect(parseRgba(t0.light.panel).a).toBeCloseTo(0.8, 3);
+    expect(parseRgba(t0.light.panel).a).toBeCloseTo(0.72, 3);
     expect(parseRgba(t50.light.panel).a).toBeCloseTo(0.4, 3);
     expect(parseRgba(t100.light.panel).a).toBeCloseTo(0.08, 3);
-    expect(parseRgba(t0.dark.panel).a).toBeCloseTo(0.08, 3);
+    expect(parseRgba(t0.dark.panel).a).toBeCloseTo(0.07, 3);
     expect(parseRgba(t50.dark.panel).a).toBeCloseTo(0.04, 3);
     expect(parseRgba(t100.dark.panel).a).toBeCloseTo(0.01, 3);
   });
 
-  it("Verify an out-of-range transparency clamps to the same floor as t=100", () => {
-    // t=200 pushes the raw linear value well past the floor; the clamp on
-    // the OUTPUT (not the input) means it still lands exactly on the t=100
-    // alpha rather than continuing to fall or erroring.
+  it("Verify the ramp has no dead zone near the transparent end", () => {
+    // t=95 must still differ from t=100 — the old 0.9/0.1-ceiling ramp had
+    // room to spare above t=0 too, but the bug this guards against is a
+    // ramp that bottoms out at its floor before t actually reaches 100.
+    const t95 = deriveGlassTokens(undefined, undefined, 95);
+    const t100 = deriveGlassTokens(undefined, undefined, 100);
+    expect(t95.light.panel).not.toBe(t100.light.panel);
+    expect(t95.dark.panel).not.toBe(t100.dark.panel);
+  });
+
+  it("Verify an out-of-range transparency clamps to the same value as the nearest in-range end", () => {
+    // The slider input itself is clamped to [0, 100] first, so t=-10
+    // behaves exactly like t=0 and t=200 behaves exactly like t=100.
+    const below = deriveGlassTokens(undefined, undefined, -10);
+    const floor0 = deriveGlassTokens(undefined, undefined, 0);
+    expect(below.light.panel).toBe(floor0.light.panel);
+    expect(below.dark.panel).toBe(floor0.dark.panel);
+
     const overshoot = deriveGlassTokens(undefined, undefined, 200);
-    const floor = deriveGlassTokens(undefined, undefined, 100);
-    expect(overshoot.light.panel).toBe(floor.light.panel);
-    expect(overshoot.dark.panel).toBe(floor.dark.panel);
+    const floor100 = deriveGlassTokens(undefined, undefined, 100);
+    expect(overshoot.light.panel).toBe(floor100.light.panel);
+    expect(overshoot.dark.panel).toBe(floor100.dark.panel);
   });
 
   it("Verify only the panel tint changes with transparency — overlay/border/blur stay fixed", () => {

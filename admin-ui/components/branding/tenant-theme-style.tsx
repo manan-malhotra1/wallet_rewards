@@ -15,17 +15,21 @@
  *
  * `glassTransparency` (0-100, from the tenant's nullable
  * `brand_glass_transparency` column) tunes the `.glass-panel` alpha; a null
- * value is coerced to 50, `deriveGlassTokens`'s default, which reproduces
- * today's static look.
+ * value is coerced to {@link DEFAULT_TRANSPARENCY}, `deriveGlassTokens`'s
+ * default, which reproduces today's static look.
  *
  * When either colour is missing it renders `null`, so the defaults baked into
- * `globals.css` apply unchanged. The semantic `--destructive` pair is never
- * part of {@link deriveTokens}, so status colours stay constant across tenants.
+ * `globals.css` apply unchanged — this same guard means a tenant that has set
+ * ONLY `brand_glass_transparency` via the API (no accent/light) gets no
+ * override rendered at all; an accepted limitation, since the branding
+ * dialog always writes colours alongside the slider. The semantic
+ * `--destructive` pair is never part of {@link deriveTokens}, so status
+ * colours stay constant across tenants.
  */
 import * as React from "react";
 
 import { deriveTokens, type TokenMap } from "@/lib/brand-palette";
-import { deriveGlassTokens, glassVarsCss } from "@/lib/glass-tokens";
+import { DEFAULT_TRANSPARENCY, deriveGlassTokens, glassVarsCss } from "@/lib/glass-tokens";
 
 interface TenantThemeStyleProps {
   /** The tenant's deep brand accent hex, or null when unset. */
@@ -34,7 +38,7 @@ interface TenantThemeStyleProps {
   light: string | null;
   /**
    * The tenant's glass-panel transparency slider (0-100), or null/undefined
-   * to fall back to the default of 50 (today's static look).
+   * to fall back to {@link DEFAULT_TRANSPARENCY} (today's static look).
    */
   glassTransparency?: number | null;
 }
@@ -55,7 +59,7 @@ export function TenantThemeStyle({
   if (!accent || !light) return null;
 
   const { light: lightTokens, dark: darkTokens } = deriveTokens(accent, light);
-  const glass = deriveGlassTokens(accent, light, glassTransparency ?? 50);
+  const glass = deriveGlassTokens(accent, light, glassTransparency ?? DEFAULT_TRANSPARENCY);
   const css =
     `:root{${toCssVars(lightTokens)}${glassVarsCss(glass.light)}}` +
     `.dark{${toCssVars(darkTokens)}${glassVarsCss(glass.dark)}}`;

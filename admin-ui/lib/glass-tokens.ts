@@ -42,29 +42,30 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * Map the 0-100 transparency slider to a panel-tint alpha via a clamped
- * linear ramp, rounded to 3 decimals for `rgba()` serialisation.
+ * Map the 0-100 transparency slider to a panel-tint alpha via a linear ramp
+ * over the full range, rounded to 3 decimals for `rgba()` serialisation.
  *
- * Higher `t` (more transparent) means a lower alpha, so `slope` is
- * subtracted: `alpha = clamp(base - slope * t, min, max)`. Out-of-range `t`
- * (negative, or above 100) still produces a sane value because the result is
- * clamped, not just the input — e.g. `t = 200` behaves exactly like `t =
- * 100` once the ramp bottoms out at `min`.
+ * The slider input `t` is clamped to `[0, 100]` first (so `t < 0` behaves
+ * like `t = 0` and `t > 100` behaves like `t = 100`), then the ramp runs the
+ * whole 0-100 span down to `min` — the ramp is defined so `t = 100` lands
+ * exactly on `min`, which makes an upper clamp unreachable for any t in
+ * range; only the floor (`min`) needs clamping, guarding pure floating-point
+ * drift at the very end of the ramp.
  *
- * @param base - alpha at `t = 0` (before clamping)
- * @param slope - alpha lost per unit of `t`
- * @param t - the 0-100 transparency slider value (unclamped input allowed)
- * @param min - the floor alpha (spec: most-transparent end)
- * @param max - the ceiling alpha (spec: least-transparent / opaque end)
- * @returns the panel alpha, clamped to `[min, max]` and rounded to 3 decimals
+ * @param base - alpha at `t = 0`
+ * @param slope - alpha lost per unit of `t`; chosen so `base - slope * 100 === min`
+ * @param t - the 0-100 transparency slider value (out-of-range input allowed)
+ * @param min - the floor alpha, reached at `t = 100`
+ * @returns the panel alpha, floored at `min` and rounded to 3 decimals
  */
-function panelAlpha(base: number, slope: number, t: number, min: number, max: number): number {
-  const clamped = clamp(base - slope * t, min, max);
-  return Math.round(clamped * 1000) / 1000;
+function panelAlpha(base: number, slope: number, t: number, min: number): number {
+  const clampedT = clamp(t, 0, 100);
+  const raw = Math.max(min, base - slope * clampedT);
+  return Math.round(raw * 1000) / 1000;
 }
 
 /** Default transparency (0-100) reproducing today's static globals.css tokens. */
-const DEFAULT_TRANSPARENCY = 50;
+export const DEFAULT_TRANSPARENCY = 50;
 
 /** The glass design tokens for one colour scheme (see the glassmorphism spec). */
 export interface GlassTokens {
@@ -137,8 +138,10 @@ export interface DerivedGlass {
 /**
  * Derive the glassmorphism token set from a tenant's two brand colours and
  * transparency preference (spec:
- * docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md §2, plus
- * the 2026-08-14 per-tenant transparency slider addendum).
+ * docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md §2 —
+ * the transparency slider makes per-tenant-adjustable what that section's
+ * inline note already flagged as a tuned value: "Panel tint: … tuned down
+ * 2026-08-14 per user feedback for a more transparent glass").
  *
  * The atmosphere is three accent-tinted radial blobs (accent, the 0.382 ramp
  * companion, a darkened deep) over a tinted-near-black (dark) / near-white
@@ -146,20 +149,22 @@ export interface DerivedGlass {
  * by `transparency` (0-100, higher = more transparent = lower alpha) via
  * {@link panelAlpha}; overlay/border/blur/shadow stay fixed regardless of
  * `transparency` — floating-surface occlusion is a readability invariant, so
- * only in-flow `.glass-panel` alpha is tunable. `transparency = 50` (the
- * default) reproduces the exact panel alphas (light 0.4, dark 0.04) baked
- * into `globals.css`'s static defaults — this is a sync-guard invariant
- * enforced by `glass-tokens.test.ts`, so changing `DEFAULT_TRANSPARENCY` or
- * the ramp constants without updating both requires care. Blob alphas stay
- * within the spec bounds (dark ≤ 0.55, light ≤ 0.25) and blur is capped
- * below 20px.
+ * only in-flow `.glass-panel` alpha is tunable. The ramp spans the FULL 0-100
+ * range down to its floor at exactly `t = 100` (no dead zone at the
+ * transparent end), while `transparency = `{@link DEFAULT_TRANSPARENCY}` (50)
+ * reproduces the exact panel alphas (light 0.4, dark 0.04) baked into
+ * `globals.css`'s static defaults — this is a sync-guard invariant enforced
+ * by `glass-tokens.test.ts`, so changing `DEFAULT_TRANSPARENCY` or the ramp
+ * constants without updating both requires care. Blob alphas stay within the
+ * spec bounds (dark ≤ 0.55, light ≤ 0.25) and blur is capped below 20px.
  *
  * @param accent - the deep brand hex colour (defaults to {@link DEFAULT_ACCENT})
  * @param light - the pale brand hex colour (defaults to {@link DEFAULT_LIGHT})
  * @param transparency - 0-100 slider value; NULL/undefined callers should
- *   pass 50 (the caller-side default, e.g. `TenantThemeStyle`) rather than
- *   omitting the argument to keep intent explicit at call sites that read a
- *   tenant's nullable `brand_glass_transparency` column
+ *   pass {@link DEFAULT_TRANSPARENCY} (the caller-side default, e.g.
+ *   `TenantThemeStyle`) rather than omitting the argument to keep intent
+ *   explicit at call sites that read a tenant's nullable
+ *   `brand_glass_transparency` column
  * @returns `{ light, dark }` glass token sets
  */
 export function deriveGlassTokens(
@@ -167,11 +172,13 @@ export function deriveGlassTokens(
   light: string = DEFAULT_LIGHT,
   transparency: number = DEFAULT_TRANSPARENCY,
 ): DerivedGlass {
-  // Light panel: 0.8 at t=0 (near-opaque) down to a 0.08 floor at t=100.
-  const lightPanelAlpha = panelAlpha(0.8, 0.008, transparency, 0.08, 0.9);
-  // Dark panel: 0.08 at t=0 down to a 0.01 floor at t=100 (dark frost reads
-  // through less at the same nominal alpha, so the whole ramp is 10x smaller).
-  const darkPanelAlpha = panelAlpha(0.08, 0.0008, transparency, 0.01, 0.1);
+  // Light panel: 0.72 at t=0 down to a 0.08 floor landing exactly at t=100
+  // (slope = (0.4 - 0.08) / 50 so the t=50 anchor of 0.4 is exact too).
+  const lightPanelAlpha = panelAlpha(0.72, 0.0064, transparency, 0.08);
+  // Dark panel: 0.07 at t=0 down to a 0.01 floor landing exactly at t=100
+  // (dark frost reads through less at the same nominal alpha, so the whole
+  // ramp is 10x smaller; slope = (0.04 - 0.01) / 50 keeps t=50 at 0.04).
+  const darkPanelAlpha = panelAlpha(0.07, 0.0006, transparency, 0.01);
   const mid = ramp(accent, light, 0.382);
   const deep = darken(accent, 0.25);
   const blobs = (accentA: number, midA: number, deepA: number) =>

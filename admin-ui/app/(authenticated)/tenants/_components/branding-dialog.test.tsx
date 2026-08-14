@@ -4,8 +4,12 @@
  * Covers the admin-facing guarantees: the form seeds from the tenant's current
  * palette, the live preview tracks the accent as it changes, an invalid hex
  * blocks the save, a valid save hands the entered values to the branding
- * action, and a server error surfaces in the dialog. The server action is
- * mocked — the dialog is unit-tested for what it submits, not the backend.
+ * action, and a server error surfaces in the dialog. Also covers the
+ * transparency slider's null/default semantics: DEFAULT_TRANSPARENCY (50) IS
+ * "no override", so the slider sitting at (or returned to) 50 must submit
+ * `null`, never the literal number, and "Reset to default" must reset the
+ * slider alongside the two colours. The server action is mocked — the dialog
+ * is unit-tested for what it submits, not the backend.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -33,6 +37,13 @@ const tenant: Tenant = {
   brand_light_color: "#EEDDCC",
   brand_icon_url: null,
   brand_glass_transparency: null,
+};
+
+/** A tenant that already has a non-default transparency override persisted. */
+const tenantWithTransparency: Tenant = {
+  ...tenant,
+  id: "tenant-2",
+  brand_glass_transparency: 80,
 };
 
 /** The accent hex text field (its own accessible name from the label). */
@@ -104,7 +115,9 @@ describe("Tenant branding dialog", () => {
     expect(updateTenantBrandingAction).not.toHaveBeenCalled();
   });
 
-  it("Verify a valid save calls the branding action with the entered values", async () => {
+  it("Verify a valid save calls the branding action with the entered values, keeping a null transparency null", async () => {
+    // tenant has no persisted transparency override; leaving the slider
+    // untouched (at its default 50) must submit null, not the literal 50.
     const user = userEvent.setup();
     render(
       <BrandingDialog tenant={tenant} trigger={<button>Customize theme</button>} />,
@@ -131,11 +144,11 @@ describe("Tenant branding dialog", () => {
       brand_accent_color: "#123456",
       brand_light_color: "#EEDDCC",
       brand_icon_url: "https://cdn.example.com/logo.png",
-      brand_glass_transparency: 50,
+      brand_glass_transparency: null,
     });
   });
 
-  it("Verify the transparency slider is present and its value is included in the submitted payload", async () => {
+  it("Verify the transparency slider is present, seeded at the default, and a non-default value persists", async () => {
     const user = userEvent.setup();
     render(
       <BrandingDialog tenant={tenant} trigger={<button>Customize theme</button>} />,
@@ -155,6 +168,57 @@ describe("Tenant branding dialog", () => {
     );
     const [, payload] = updateTenantBrandingAction.mock.calls[0];
     expect(payload).toMatchObject({ brand_glass_transparency: 80 });
+  });
+
+  it("Verify moving the slider back to the default clears a persisted override to null", async () => {
+    const user = userEvent.setup();
+    render(
+      <BrandingDialog
+        tenant={tenantWithTransparency}
+        trigger={<button>Customize theme</button>}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Customize theme" }));
+
+    const slider = screen.getByLabelText("Glass transparency") as HTMLInputElement;
+    expect(slider.value).toBe("80"); // seeded from the tenant's persisted override
+
+    fireEvent.change(slider, { target: { value: "50" } });
+
+    await user.click(screen.getByRole("button", { name: "Save branding" }));
+
+    await waitFor(() =>
+      expect(updateTenantBrandingAction).toHaveBeenCalledTimes(1),
+    );
+    const [, payload] = updateTenantBrandingAction.mock.calls[0];
+    expect(payload).toMatchObject({ brand_glass_transparency: null });
+  });
+
+  it("Verify Reset to default also resets the transparency slider, clearing the override on save", async () => {
+    const user = userEvent.setup();
+    render(
+      <BrandingDialog
+        tenant={tenantWithTransparency}
+        trigger={<button>Customize theme</button>}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Customize theme" }));
+
+    const slider = screen.getByLabelText("Glass transparency") as HTMLInputElement;
+    expect(slider.value).toBe("80");
+
+    await user.click(screen.getByRole("button", { name: "Reset to default" }));
+
+    expect(slider.value).toBe("50");
+    expect(accentHexInput().value).toBe("#0C5888"); // DEFAULT_ACCENT
+
+    await user.click(screen.getByRole("button", { name: "Save branding" }));
+
+    await waitFor(() =>
+      expect(updateTenantBrandingAction).toHaveBeenCalledTimes(1),
+    );
+    const [, payload] = updateTenantBrandingAction.mock.calls[0];
+    expect(payload).toMatchObject({ brand_glass_transparency: null });
   });
 
   it("Verify a server error surfaces in the dialog", async () => {

@@ -5,13 +5,19 @@
  *
  * Lets an admin set a tenant's two brand colours (deep `accent` + pale `light`),
  * an optional icon URL, and the glass-panel transparency slider (0-100,
- * higher = more transparent; null persists as the default of 50), with a LIVE
- * palette preview: the seven-stop `brandScale` rendered as swatches, plus a
- * tiny mock UI themed with the actual `deriveTokens(accent, light).dark` map
- * (dark is the app's default theme) so the admin sees the real result before
- * saving. The mock's own surface is additionally tinted with
- * `deriveGlassTokens(...).dark.panel` at the chosen transparency, so dragging
- * the slider visibly changes the preview.
+ * higher = more transparent), with a LIVE palette preview: the seven-stop
+ * `brandScale` rendered as swatches, plus a tiny mock UI themed with the
+ * actual `deriveTokens(accent, light).dark` map (dark is the app's default
+ * theme) so the admin sees the real result before saving. The mock's own
+ * surface is additionally tinted with `deriveGlassTokens(...).dark.panel` at
+ * the chosen transparency, so dragging the slider visibly changes the preview.
+ *
+ * `DEFAULT_TRANSPARENCY` (50) IS "no override": the slider sits there for a
+ * tenant with no persisted value, and saving at exactly 50 sends `null`
+ * rather than the literal number, so the tenant keeps tracking whatever
+ * `deriveGlassTokens` treats as its default if that default is ever retuned
+ * (see `handleSave`). "Reset to default" restores the slider to
+ * `DEFAULT_TRANSPARENCY` alongside the two colours.
  *
  * The preview reuses the exact token-override approach of
  * `components/branding/tenant-theme-style.tsx`: the derived shadcn tokens are
@@ -32,7 +38,7 @@ import {
   DEFAULT_LIGHT,
   type TokenMap,
 } from "@/lib/brand-palette";
-import { deriveGlassTokens } from "@/lib/glass-tokens";
+import { DEFAULT_TRANSPARENCY, deriveGlassTokens } from "@/lib/glass-tokens";
 import type { Tenant } from "@/lib/api-types";
 
 import { Button } from "@/components/ui/button";
@@ -147,7 +153,7 @@ export function BrandingDialog({
   );
   const [iconUrl, setIconUrl] = React.useState(tenant.brand_icon_url ?? "");
   const [glassTransparency, setGlassTransparency] = React.useState(
-    tenant.brand_glass_transparency ?? 50,
+    tenant.brand_glass_transparency ?? DEFAULT_TRANSPARENCY,
   );
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -160,7 +166,7 @@ export function BrandingDialog({
       setAccent(tenant.brand_accent_color ?? DEFAULT_ACCENT);
       setLight(tenant.brand_light_color ?? DEFAULT_LIGHT);
       setIconUrl(tenant.brand_icon_url ?? "");
-      setGlassTransparency(tenant.brand_glass_transparency ?? 50);
+      setGlassTransparency(tenant.brand_glass_transparency ?? DEFAULT_TRANSPARENCY);
       setError(null);
     }
   }, [open, tenant]);
@@ -182,6 +188,7 @@ export function BrandingDialog({
   function handleReset() {
     setAccent(DEFAULT_ACCENT);
     setLight(DEFAULT_LIGHT);
+    setGlassTransparency(DEFAULT_TRANSPARENCY);
     setError(null);
   }
 
@@ -200,7 +207,13 @@ export function BrandingDialog({
       brand_accent_color: accent,
       brand_light_color: light,
       brand_icon_url: iconTrimmed === "" ? null : iconTrimmed,
-      brand_glass_transparency: glassTransparency,
+      // DEFAULT_TRANSPARENCY (50) IS "no override" — sending it as a literal
+      // 50 would persist an override that happens to match today's default,
+      // permanently pinning this tenant even if the default is retuned
+      // later. Only a value the admin actually moved away from 50 is a real
+      // override worth persisting.
+      brand_glass_transparency:
+        glassTransparency === DEFAULT_TRANSPARENCY ? null : glassTransparency,
     });
     setSubmitting(false);
     if (result.ok) {
@@ -218,8 +231,9 @@ export function BrandingDialog({
         <DialogHeader>
           <DialogTitle>Customize theme</DialogTitle>
           <DialogDescription>
-            Set {tenant.name}&apos;s two brand colours and icon. The palette is
-            derived live — what you see below is the saved result.
+            Set {tenant.name}&apos;s two brand colours, icon, and glass
+            transparency. The palette is derived live — what you see below is
+            the saved result.
           </DialogDescription>
         </DialogHeader>
 

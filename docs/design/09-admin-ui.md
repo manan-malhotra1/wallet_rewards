@@ -233,6 +233,8 @@ inline override): engines without `backdrop-filter` and
 Two sync-guard tests pin the static Ocean defaults in `globals.css` to the
 derivations. Spec:
 `docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md`.
+Per-tenant `brand_glass_transparency` (0-100, NULL = default 50) tunes the
+`.glass-panel` alpha via the slider in `BrandingDialog`.
 
 ---
 

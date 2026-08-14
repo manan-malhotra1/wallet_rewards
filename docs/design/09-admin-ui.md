@@ -221,6 +221,19 @@ constant across tenants. The token map is emitted server-side by
 inline `<style>` overriding the shadcn CSS vars for `:root` + `.dark` (no FOUC). `BrandingDialog` previews the
 same `deriveTokens(...).dark` map against a mock UI before the operator commits.
 
+**Glassmorphism (2026-08-13):** the UI renders as frosted translucent surfaces
+over a tenant-branded atmosphere. `deriveGlassTokens()` in
+[`lib/glass-tokens.ts`](../../admin-ui/lib/glass-tokens.ts) derives the
+gradient/tint/blur/shadow set per tenant; `TenantThemeStyle` emits them as
+`--glass-*` vars, and three `@layer components` utilities in `globals.css`
+(`glass-panel`, `glass-overlay`, `glass-inset`) apply them via the shared
+primitives. Fallbacks are variable swaps under `:root:root` (beats the tenant
+inline override): engines without `backdrop-filter` and
+`prefers-reduced-transparency` users both get the previous solid surfaces.
+Two sync-guard tests pin the static Ocean defaults in `globals.css` to the
+derivations. Spec:
+`docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md`.
+
 ---
 
 ## 7. Testing

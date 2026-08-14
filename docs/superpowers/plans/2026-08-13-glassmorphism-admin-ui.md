@@ -22,7 +22,7 @@
 - Modify: `admin-ui/lib/brand-palette.ts` (append after `deriveTokens`, ~line 440)
 - Test: `admin-ui/lib/brand-palette.test.ts` (append)
 
-- [ ] **Step 1: Write the failing tests** — append to `admin-ui/lib/brand-palette.test.ts` (add `deriveGlassTokens`, `hexToRgba` to the existing import from `./brand-palette`):
+- [x] **Step 1: Write the failing tests** — append to `admin-ui/lib/brand-palette.test.ts` (add `deriveGlassTokens`, `hexToRgba` to the existing import from `./brand-palette`):
 
 ```ts
 /** Pull every `rgba(..., A)` alpha out of a gradient-image string. */
@@ -74,12 +74,12 @@ describe("deriveGlassTokens", () => {
 
 Also add `darken` to the test file's import list if not already imported.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd admin-ui && npx vitest run lib/brand-palette.test.ts`
 Expected: FAIL — `deriveGlassTokens` / `hexToRgba` are not exported.
 
-- [ ] **Step 3: Implement** — append to `admin-ui/lib/brand-palette.ts`:
+- [x] **Step 3: Implement** — append to `admin-ui/lib/brand-palette.ts`:
 
 ```ts
 /**
@@ -170,12 +170,12 @@ export function deriveGlassTokens(
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd admin-ui && npx vitest run lib/brand-palette.test.ts`
 Expected: PASS (all existing + new tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add admin-ui/lib/brand-palette.ts admin-ui/lib/brand-palette.test.ts
@@ -191,7 +191,7 @@ git commit -m "feat(admin-ui): derive per-tenant glassmorphism tokens in the pal
 - Modify: `admin-ui/app/globals.css` (after the `.dark` block, and the `body` rule at ~line 172)
 - Modify: `admin-ui/components/app-shell/app-shell.tsx:32`
 
-- [ ] **Step 1: Print the Ocean default glass values** (they get pasted as static defaults, same convention as the existing palette defaults in `globals.css`):
+- [x] **Step 1: Print the Ocean default glass values** (they get pasted as static defaults, same convention as the existing palette defaults in `globals.css`):
 
 Run from `admin-ui/`:
 ```bash
@@ -199,7 +199,7 @@ npx tsx -e "import {deriveGlassTokens} from './lib/brand-palette'; console.log(J
 ```
 Expected: a JSON object with `light` and `dark` `GlassTokens`. Keep the output for Step 3.
 
-- [ ] **Step 2: Emit tenant glass vars in `tenant-theme-style.tsx`** — extend the existing component (it already emits `:root{…}.dark{…}`):
+- [x] **Step 2: Emit tenant glass vars in `tenant-theme-style.tsx`** — extend the existing component (it already emits `:root{…}.dark{…}`):
 
 ```tsx
 import {
@@ -237,7 +237,7 @@ And change the derivation + `css` construction in the component body to:
     `.dark{${toCssVars(darkTokens)}${toGlassVars(glass.dark)}}`;
 ```
 
-- [ ] **Step 3: Add Ocean defaults + atmosphere + glass utilities to `globals.css`.**
+- [x] **Step 3: Add Ocean defaults + atmosphere + glass utilities to `globals.css`.**
 
 (a) Append the printed Step-1 values inside the existing `:root` block (light values) and `.dark` block (dark values), after the `--sidebar-ring` line in each, as:
 
@@ -338,7 +338,7 @@ body {
 >   explicitly, since `blur(0px)` is visually a no-op but still opens a
 >   stacking/backdrop context.
 
-- [ ] **Step 4: Let the atmosphere show through the shell** — `admin-ui/components/app-shell/app-shell.tsx:32`, change:
+- [x] **Step 4: Let the atmosphere show through the shell** — `admin-ui/components/app-shell/app-shell.tsx:32`, change:
 
 ```
 "flex h-screen w-screen overflow-hidden bg-background text-foreground"
@@ -348,12 +348,12 @@ to
 "flex h-screen w-screen overflow-hidden bg-transparent text-foreground"
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `cd admin-ui && npx tsc --noEmit && npx vitest run lib/ && npm run lint`
 Expected: all clean. Then load `http://localhost:3000` on the dev server: the page background shows the Ocean gradient blobs; surfaces still look solid (classes not applied yet) — that's expected at this task boundary.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add admin-ui/components/branding/tenant-theme-style.tsx admin-ui/app/globals.css admin-ui/components/app-shell/app-shell.tsx
@@ -366,7 +366,7 @@ git commit -m "feat(admin-ui): glass CSS vars, atmosphere background, glass util
 
 **Files (exact class-string edits; each line shows old → new for the FIRST string argument of `cn(...)` at that location):**
 
-- [ ] **Step 1: Primitives.** Make these replacements (keep everything else in each string unchanged; listed fragments are removed/added exactly):
+- [x] **Step 1: Primitives.** Make these replacements (keep everything else in each string unchanged; listed fragments are removed/added exactly):
 
 1. `admin-ui/components/ui/card.tsx:14` — remove `bg-card`, `border`, `shadow-sm`; prepend `glass-panel`:
    `"glass-panel text-card-foreground flex flex-col gap-6 rounded-xl py-6"`
@@ -385,7 +385,7 @@ git commit -m "feat(admin-ui): glass CSS vars, atmosphere background, glass util
 9. `admin-ui/components/ui/toast.tsx:36` — replace `group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg` with `glass-overlay group-[.toaster]:text-foreground`:
    `"group toast glass-overlay group-[.toaster]:text-foreground"`
 
-- [ ] **Step 2: App shell.**
+- [x] **Step 2: App shell.**
 
 10. `admin-ui/components/app-shell/sidebar.tsx:232` — remove `border-r border-sidebar-border bg-sidebar`; prepend `glass-panel rounded-none border-0 border-r`:
     `"glass-panel rounded-none border-0 border-r flex h-full w-[240px] shrink-0 flex-col"`
@@ -400,14 +400,14 @@ git commit -m "feat(admin-ui): glass CSS vars, atmosphere background, glass util
 
 The command palette needs no edit — it renders through `DialogContent` (already glass via edit 3).
 
-- [ ] **Step 3: Run the full UI test suite** (asserts roles/labels, not colours — must stay green):
+- [x] **Step 3: Run the full UI test suite** (asserts roles/labels, not colours — must stay green):
 
 Run: `cd admin-ui && npm test`
 Expected: all files pass (345+ tests). If any test fails on a class assertion, fix the TEST only if it asserted a removed cosmetic class; behaviour assertions must not change.
 
-- [ ] **Step 4: Visual smoke on the dev server** — dashboard renders frosted cards/sidebar over the atmosphere; open one dialog and one dropdown (both frosted, text fully legible).
+- [x] **Step 4: Visual smoke on the dev server** — dashboard renders frosted cards/sidebar over the atmosphere; open one dialog and one dropdown (both frosted, text fully legible).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add admin-ui/components/ui/card.tsx admin-ui/components/ui/kpi-card.tsx admin-ui/components/ui/dialog.tsx admin-ui/components/ui/drawer.tsx admin-ui/components/ui/select.tsx admin-ui/components/ui/tooltip.tsx admin-ui/components/ui/toast.tsx admin-ui/components/app-shell/sidebar.tsx admin-ui/components/app-shell/topbar.tsx admin-ui/components/ui/page-header.tsx admin-ui/components/app-shell/tenant-switcher.tsx admin-ui/components/app-shell/user-menu.tsx
@@ -424,7 +424,7 @@ Route pages wrap tables in a repeated recipe (`overflow-hidden rounded-lg border
 - Modify: every file listed by the grep in Step 1
 - Modify: `admin-ui/app/login/page.tsx:27`
 
-- [ ] **Step 1: Find the wrappers**
+- [x] **Step 1: Find the wrappers**
 
 Run from `admin-ui/`:
 ```bash
@@ -432,22 +432,22 @@ grep -rn "rounded-lg border.*bg-\[--color-surface-1\]\|rounded-lg border bg-card
 ```
 Expected: a list of route-level wrapper `<div>`s (campaigns, segments, users, approvals, etc.).
 
-- [ ] **Step 2: Convert each hit.** In each matched class string: remove `border` and the `bg-[--color-surface-1]` / `bg-card` fragment, prepend `glass-panel`. Example (campaigns):
+- [x] **Step 2: Convert each hit.** In each matched class string: remove `border` and the `bg-[--color-surface-1]` / `bg-card` fragment, prepend `glass-panel`. Example (campaigns):
 
 Before: `"overflow-hidden rounded-lg border border-[--color-border] bg-[--color-surface-1]"`
 After: `"glass-panel overflow-hidden rounded-lg"`
 
 Do NOT touch: inputs, buttons, badges, status pills, `bg-muted` row tints, or anything inside `mobile-simulator/`.
 
-- [ ] **Step 3: Login card** — `admin-ui/app/login/page.tsx:27`, remove `border bg-card shadow-xl`, prepend `glass-panel`:
+- [x] **Step 3: Login card** — `admin-ui/app/login/page.tsx:27`, remove `border bg-card shadow-xl`, prepend `glass-panel`:
    `"glass-panel w-full max-w-md rounded-2xl p-8"`
 
-- [ ] **Step 4: Gates**
+- [x] **Step 4: Gates**
 
 Run: `cd admin-ui && npm test && npx tsc --noEmit && npm run lint`
 Expected: all clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -u admin-ui/app
@@ -463,7 +463,7 @@ git commit -m "feat(admin-ui): glass table containers and login card"
 **Files:**
 - Modify: `docs/design/09-admin-ui.md` (branding/theming section)
 
-- [ ] **Step 1: Full gates**
+- [x] **Step 1: Full gates**
 
 Run: `cd admin-ui && npm test && npx tsc --noEmit && npm run lint && npm run build`
 Expected: tests green, no type errors, no lint errors, production build succeeds.
@@ -478,7 +478,7 @@ Expected: tests green, no type errors, no lint errors, production build succeeds
 
 - [ ] **Step 3: Custom-brand tenant check** — in the admin UI, set a tenant's brand to accent `#243B8F` / light `#FFF0C9` via the tenants page branding dialog, switch to that tenant, and confirm the atmosphere + panels re-tint away from Ocean. Reset the brand afterwards.
 
-- [ ] **Step 4: Update `docs/design/09-admin-ui.md`** — in the theming/branding section (~line 210), after the existing defaults sentence, add:
+- [x] **Step 4: Update `docs/design/09-admin-ui.md`** — in the theming/branding section (~line 210), after the existing defaults sentence, add:
 
 ```markdown
 **Glassmorphism (2026-08-13):** the UI renders as frosted translucent surfaces
@@ -491,7 +491,7 @@ the previous solid surfaces. Spec:
 `docs/superpowers/specs/2026-08-13-glassmorphism-admin-ui-design.md`.
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/design/09-admin-ui.md

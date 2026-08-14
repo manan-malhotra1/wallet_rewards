@@ -2,8 +2,10 @@
  * Login page — in-app credentials form (email + password). The Keycloak
  * password grant runs server-side inside the credentials provider's
  * `authorize()` callback in `auth.ts`; this page just renders the brand
- * chrome (frosted logo card over the body's tenant-branded atmosphere) and
- * embeds <LoginForm/>.
+ * chrome (frosted logo card over the body's default Ocean atmosphere) and
+ * embeds <LoginForm/>. This route renders outside the `(authenticated)`
+ * layout, so `TenantThemeStyle` never mounts here — unlike the rest of the
+ * admin UI, the login page is never tenant-branded.
  */
 import { SasaiLogo } from "@/components/branding/sasai-logo";
 

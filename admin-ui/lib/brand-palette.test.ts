@@ -5,8 +5,10 @@
  * (the default Sasai "Ocean" accent + white light), prove that every
  * shadcn token derives to a valid renderable colour in both themes, prove
  * that extrapolated stops beyond the two anchors stay inside the sRGB gamut,
- * and cover the `hexToRgba` primitive that the glass token system in
- * `./glass-tokens.ts` (tested separately in `glass-tokens.test.ts`) builds on.
+ * cover the `hexToRgba` primitive that the glass token system in
+ * `./glass-tokens.ts` (tested separately in `glass-tokens.test.ts`) builds
+ * on, and — the sync guard — pin the static shadcn token defaults baked into
+ * `app/globals.css` to `deriveTokens(DEFAULT_ACCENT, DEFAULT_LIGHT)`.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -111,7 +113,13 @@ describe("hexToRgba", () => {
 /** Collapse whitespace and case so CSS-file formatting (line breaks, the
  * deliberate lowercase hex in globals.css) can't cause a false-positive
  * diff against the JS-derived values. Mirrors the helper in
- * `glass-tokens.test.ts`'s sync guard. */
+ * `glass-tokens.test.ts`'s sync guard.
+ *
+ * This is intentionally duplicated rather than imported from
+ * `glass-tokens.test.ts` — Vitest re-registers every `describe`/`it` in a
+ * file it imports, so a test-to-test import would double-run that file's
+ * suite. If a third globals.css sync guard ever needs these, extract both
+ * helpers to a plain non-test module (e.g. `lib/css-block.ts`) instead. */
 function normalizeCss(s: string): string {
   return s.replace(/\s+/g, " ").trim().toLowerCase();
 }

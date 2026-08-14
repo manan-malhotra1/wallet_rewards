@@ -34,8 +34,9 @@ hexes it derives, for **dark** and **light** schemes:
   (accent + a hue-shifted companion from the existing OKLab ramp) over a
   near-black (`~#0a0f16`) / near-white (`~#eef3f7`) base. Blob alphas
   bounded: dark ≤ 0.55, light ≤ 0.25.
-- **Panel tint**: `rgba` — dark: white at ~5–7% alpha; light: white at
-  ~50–60% alpha.
+- **Panel tint**: `rgba` — dark: white at ~4% alpha; light: white at
+  ~40% alpha (tuned down 2026-08-14 per user feedback for a more
+  transparent glass).
 - **Overlay tint**: same hue, higher alpha (dark ~78%, light ~80%) so
   floating surfaces occlude what's beneath them.
 - **Border alpha**: hairline `rgba(255,255,255, …)` — dark ~0.12,

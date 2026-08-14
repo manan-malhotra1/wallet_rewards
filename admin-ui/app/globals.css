@@ -136,7 +136,7 @@
     radial-gradient(ellipse 50% 45% at 85% 90%, rgba(111, 150, 182, 0.14), transparent 60%),
     radial-gradient(ellipse 45% 40% at 70% 20%, rgba(5, 57, 91, 0.1), transparent 55%);
   --glass-atmosphere-base: #f5f8fa;
-  --glass-panel: rgba(255, 255, 255, 0.55);
+  --glass-panel: rgba(255, 255, 255, 0.4);
   --glass-overlay: rgba(255, 255, 255, 0.8);
   --glass-border: rgba(255, 255, 255, 0.75);
   --glass-blur-panel: 14px;
@@ -190,7 +190,7 @@
     radial-gradient(ellipse 50% 45% at 85% 90%, rgba(111, 150, 182, 0.28), transparent 60%),
     radial-gradient(ellipse 45% 40% at 70% 20%, rgba(5, 57, 91, 0.4), transparent 55%);
   --glass-atmosphere-base: #01101f;
-  --glass-panel: rgba(255, 255, 255, 0.06);
+  --glass-panel: rgba(255, 255, 255, 0.04);
   --glass-overlay: rgba(1, 24, 41, 0.78);
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-blur-panel: 14px;

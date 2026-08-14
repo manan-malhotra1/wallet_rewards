@@ -132,7 +132,10 @@ export function deriveGlassTokens(
       // collapsing to brand-invariant pure black (darken(x, 0.9) ≈ #000001
       // for any accent).
       atmosphereBase: darken(accent, 0.62),
-      panel: "rgba(255, 255, 255, 0.06)",
+      // 0.04 (was 0.06): tuned down per user feedback — more of the
+      // atmosphere reads through the panels. Overlays keep their high
+      // alpha; occlusion of floating surfaces is a readability invariant.
+      panel: "rgba(255, 255, 255, 0.04)",
       overlay: hexToRgba(darken(accent, 0.55), 0.78),
       border: "rgba(255, 255, 255, 0.12)",
       blurPanel: PANEL_BLUR,
@@ -143,7 +146,9 @@ export function deriveGlassTokens(
     light: {
       atmosphereImage: blobs(0.22, 0.14, 0.1),
       atmosphereBase: ramp(accent, light, 0.96),
-      panel: "rgba(255, 255, 255, 0.55)",
+      // 0.4 (was 0.55): tuned down per user feedback — light mode read as
+      // nearly solid white. Same overlay-occlusion caveat as dark above.
+      panel: "rgba(255, 255, 255, 0.4)",
       overlay: "rgba(255, 255, 255, 0.8)",
       border: "rgba(255, 255, 255, 0.75)",
       blurPanel: PANEL_BLUR,

@@ -118,13 +118,13 @@
   --chart-3: #6f96b6;
   --chart-4: #a5bdd2;
   --chart-5: #b7791f;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #004076;
-  --sidebar-primary: #0c5888;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #dbe5ed;
-  --sidebar-accent-foreground: #0c5888;
-  --sidebar-border: #cfdce7;
+  --sidebar: #0c5888;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #0c5888;
+  --sidebar-accent: #396f9a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #004076;
   --sidebar-ring: #4e7ea4;
 
   /* Glassmorphism (spec 2026-08-13) — Ocean defaults; kept in sync with

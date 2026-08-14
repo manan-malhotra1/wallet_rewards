@@ -231,8 +231,15 @@ export function Sidebar({
   return (
     // `border-0 border-r`: Tailwind's utilities layer outranks @layer
     // components, so `border-0` zeroes out `.glass-panel`'s all-side glass
-    // border and `border-r` re-adds just the rail's outer edge.
-    <aside className="glass-panel rounded-none border-0 border-r flex h-full w-[240px] shrink-0 flex-col">
+    // border and `border-r` re-adds just the rail's outer edge. `bg-sidebar/90`
+    // is likewise a utility, so it beats the glass tint, giving a translucent
+    // tenant-accent rail over the blur (product decision: rail stays
+    // brand-accent in both schemes). In fallback modes (no backdrop-filter /
+    // reduced transparency) the utility still applies over the solid
+    // collapse, so the rail stays branded there too. Note: in dark mode
+    // `bg-sidebar` is the deep navy `#01101f` at 90% — visually close to the
+    // previous dark frost, intended.
+    <aside className="glass-panel bg-sidebar/90 rounded-none border-0 border-r flex h-full w-[240px] shrink-0 flex-col">
       <div className="flex h-16 items-center justify-between border-b px-4">
         <Link href="/dashboard" aria-label="Sasai Wallet Admin home" className="flex items-center">
           {brandIconUrl ? (

@@ -172,3 +172,25 @@ and shows the live preview count before saving.
 **Acceptance criteria:**
 - Flow test with mocked action
 - AI failure degrades to the manual builder without losing entered state
+
+---
+
+## Epic B3 — Admin UI Polish (post-glassmorphism) · **Backlog**
+
+Follow-ups surfaced by the glassmorphism final review (2026-08-14). None
+block the feature.
+
+### Story B3.1 — Light-mode muted-foreground contrast · Backlog
+
+**Description:** `--muted-foreground` in the light theme measures ~3.6:1 on
+glass panels (and was already ~4.3:1 on solid white before glassmorphism) —
+below WCAG AA for normal text. Darken the light-theme `muted-foreground`
+derivation in `lib/brand-palette.ts` (and the globals.css default, guarded by
+the palette sync test) until it clears 4.5:1 against the worst-case
+atmosphere stop.
+
+**Acceptance criteria:**
+- Light `--muted-foreground` ≥ 4.5:1 on `.glass-panel` and `.glass-overlay`
+  worst-case backgrounds (document the measurement)
+- Dark theme unchanged (already 5.6:1+)
+- Palette sync guard updated values; all UI tests green

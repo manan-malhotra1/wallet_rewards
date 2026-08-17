@@ -33,7 +33,7 @@
 | `backend/tests/shared/test_services_registry.py` (new) | Proves the registry matches the codes the modules actually use — stops it rotting. |
 | `backend/alembic/versions/20260818_0056_base_derived_services.py` (new) | `services.kind`, `services.base_service_code`, `transactions.base_transaction_type`, constraints, backfill, dead-config guard. |
 | `backend/app/shared/models/services.py` (modify) | The two new columns + CHECK constraints for `create_all` parity. |
-| `backend/app/shared/models/transactions.py` (modify) | `base_transaction_type` column. |
+| `backend/app/shared/models/ledger.py` (modify) | `base_transaction_type` column — the `Transaction` model lives here, NOT in a `transactions.py`. |
 | `backend/app/modules/services/schemas.py` (modify) | `kind`/`base_service_code` on `ServiceOut`; `base_service_code` required on create. |
 | `backend/app/modules/services/service.py` (modify) | Derived-only create validation, base immutability, base delete refusal, `resolve_service_code`. |
 | `backend/app/modules/ledger/service.py` (modify) | Accept + persist `base_transaction_type`. |
@@ -160,12 +160,18 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: Migration + model columns
+### Task 2: Migration + model columns + ledger write (Tasks 2 & 3 combined)
+
+> **Sequencing constraint discovered during execution:** `transactions.base_transaction_type`
+> is NOT NULL, and `post_transaction` is what satisfies it. Splitting the column
+> from the write leaves every fixture that seeds the operator float failing
+> (`prefund_float` → `post_transaction`), which is most of the suite. So the
+> ledger change below is part of THIS task, not a separate one.
 
 **Files:**
 - Create: `backend/alembic/versions/20260818_0056_base_derived_services.py`
 - Modify: `backend/app/shared/models/services.py`
-- Modify: `backend/app/shared/models/transactions.py`
+- Modify: `backend/app/shared/models/ledger.py` (the `Transaction` model lives here)
 - Test: `backend/tests/services/test_base_derived_model.py` (new)
 
 Current migration head is `0055`. This migration is `0056`, `down_revision = "0055"`.
@@ -219,7 +225,7 @@ def upgrade() -> None:
     codes = ", ".join(f"'{c}'" for c in sorted(BASE_SERVICE_CODES))
     unknown = bind.execute(
         sa.text(
-            f"SELECT tenant_id, code FROM services "  # noqa: S608 - codes are a static allow-list
+            f"SELECT tenant_id, code FROM services "
             f"WHERE deleted_at IS NULL AND code NOT IN ({codes})"
         )
     ).fetchall()
@@ -314,7 +320,7 @@ and add the columns to the class body (next to `status`):
 
 Ensure `CheckConstraint` and `String` are imported in that file (they already are — verify).
 
-- [ ] **Step 3: Add the transactions column.** In `backend/app/shared/models/transactions.py`, next to `transaction_type`:
+- [ ] **Step 3: Add the transactions column.** In `backend/app/shared/models/ledger.py` (where the `Transaction` model lives — there is no `transactions.py`), next to `transaction_type`:
 
 ```python
     # The BASE flow this transaction belongs to. Equals `transaction_type` for
@@ -452,7 +458,7 @@ Run: `cd backend && source .venv/bin/activate && python ../scripts/check_migrati
 Expected: "No new upgrade operations detected."; lint and mypy clean.
 
 ```bash
-git add backend/alembic/versions/20260818_0056_base_derived_services.py backend/app/shared/models/services.py backend/app/shared/models/transactions.py backend/tests/services/test_base_derived_model.py
+git add backend/alembic/versions/20260818_0056_base_derived_services.py backend/app/shared/models/services.py backend/app/shared/models/ledger.py backend/app/modules/ledger/service.py backend/tests/services/test_base_derived_model.py backend/tests/ledger/test_base_transaction_type.py
 git commit -m "feat(services): base/derived kind columns + base_transaction_type
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -460,7 +466,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: `base_transaction_type` written by the ledger
+### Task 3 (FOLDED INTO TASK 2 — see the sequencing note there): `base_transaction_type` written by the ledger
 
 **Files:**
 - Modify: `backend/app/modules/ledger/service.py`

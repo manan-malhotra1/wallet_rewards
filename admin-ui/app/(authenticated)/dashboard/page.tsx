@@ -52,7 +52,10 @@ export default async function DashboardPage({
   const initial = await loadDashboardData(range, granularity);
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    // Horizontal padding only: the sticky filter bar inside DashboardClient
+    // bleeds to the edges with a negative margin, so top padding here would
+    // leave a transparent strip above it as the page scrolls under.
+    <div className="h-full overflow-y-auto px-6 pb-14">
       {/*
         key on the tenant id forces a full remount when the active tenant
         changes. Without it, router.refresh() re-renders this server component

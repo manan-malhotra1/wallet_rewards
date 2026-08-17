@@ -71,6 +71,24 @@
   --color-brand: var(--primary);
   --color-brand-foreground: var(--primary-foreground);
   --color-danger: var(--destructive);
+  /* Analytics surface tokens (dashboard redesign) — see the `--grid`/`--pos`
+     block in :root below for what each one is for. Mapped here so charts and
+     tiles can use `stroke-grid`, `text-pos`, `bg-primary-tint` etc. instead of
+     arbitrary `[var(--…)]` values. No opacity modifiers on these: several
+     resolve to color-mix() and `bg-grid/50` would not compose. */
+  --color-hairline: var(--hairline-top);
+  --color-grid: var(--grid);
+  --color-zero-line: var(--zero-line);
+  --color-border-dash: var(--border-dash);
+  --color-chip: var(--chip-bg);
+  --color-surface-inset: var(--surface-inset);
+  --color-primary-line: var(--primary-line);
+  --color-primary-tint: var(--primary-tint);
+  --color-dot-halo: var(--dot-halo);
+  --color-segment-pill: var(--segment-pill);
+  --color-pos: var(--pos);
+  --color-warn: var(--warn);
+  --color-neg: var(--neg);
   --color-surface-0: var(--background);
   --color-surface-1: var(--card);
   --color-surface-2: var(--muted);
@@ -127,6 +145,27 @@
   --sidebar-border: #004076;
   --sidebar-ring: #4e7ea4;
 
+  /* Analytics surfaces (dashboard redesign).
+     Everything except the three status colours is a color-mix() of an existing
+     palette token, so a tenant's branding flows through these automatically —
+     TenantThemeStyle overrides --primary/--foreground/--glass-atmosphere-base
+     and these follow without needing to be emitted per tenant. Status colours
+     are semantic (like --destructive) and stay constant across tenants. */
+  --hairline-top: rgba(255, 255, 255, 0.85);
+  --grid: color-mix(in oklab, var(--foreground) 9%, transparent);
+  --zero-line: color-mix(in oklab, var(--foreground) 34%, transparent);
+  --border-dash: color-mix(in oklab, var(--foreground) 22%, transparent);
+  --chip-bg: color-mix(in oklab, var(--foreground) 4%, transparent);
+  --surface-inset: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --primary-line: color-mix(in oklab, var(--primary) 42%, transparent);
+  --primary-tint: color-mix(in oklab, var(--primary) 12%, transparent);
+  --dot-halo: color-mix(in oklab, var(--primary) 22%, transparent);
+  --segment-pill: rgba(255, 255, 255, 0.95);
+  --glass-header: color-mix(in oklab, var(--glass-atmosphere-base) 76%, transparent);
+  --pos: #0f7a54;
+  --warn: #8a5c07;
+  --neg: #b03a21;
+
   /* Glassmorphism (spec 2026-08-13) — Ocean defaults; kept in sync with
      deriveGlassTokens(DEFAULT_ACCENT, DEFAULT_LIGHT) in lib/glass-tokens.ts
      (glass-tokens.test.ts asserts these values verbatim), and overridden
@@ -181,6 +220,24 @@
   --sidebar-border: #022137;
   --sidebar-ring: #6f96b6;
 
+  /* Analytics surfaces (dashboard redesign) — dark scheme. Same derivation as
+     the :root block; only the hairline (a top-edge light catch, which has to be
+     white in both schemes) and the status trio are restated per scheme. */
+  --hairline-top: rgba(255, 255, 255, 0.1);
+  --grid: color-mix(in oklab, var(--foreground) 7%, transparent);
+  --zero-line: color-mix(in oklab, var(--foreground) 26%, transparent);
+  --border-dash: color-mix(in oklab, var(--foreground) 16%, transparent);
+  --chip-bg: color-mix(in oklab, var(--foreground) 4%, transparent);
+  --surface-inset: color-mix(in oklab, var(--foreground) 4%, transparent);
+  --primary-line: color-mix(in oklab, var(--primary) 48%, transparent);
+  --primary-tint: color-mix(in oklab, var(--primary) 14%, transparent);
+  --dot-halo: color-mix(in oklab, var(--primary) 28%, transparent);
+  --segment-pill: rgba(255, 255, 255, 0.1);
+  --glass-header: color-mix(in oklab, var(--glass-atmosphere-base) 72%, transparent);
+  --pos: #3fbf8f;
+  --warn: #e0a33e;
+  --neg: #e5674e;
+
   /* Glassmorphism (spec 2026-08-13) — Ocean defaults; kept in sync with
      deriveGlassTokens(DEFAULT_ACCENT, DEFAULT_LIGHT) in lib/glass-tokens.ts
      (glass-tokens.test.ts asserts these values verbatim), and overridden
@@ -228,6 +285,24 @@ body {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Skeleton sweep for the dashboard loading state. The reduced-motion block at
+   the top of this file collapses the animation duration, leaving a static
+   placeholder rather than a strobing one. */
+@keyframes skeleton-sweep {
+  0% {
+    background-position: -420px 0;
+  }
+  100% {
+    background-position: 620px 0;
+  }
+}
+
+.skeleton-sweep {
+  background-image: linear-gradient(90deg, var(--grid) 0%, var(--chip-bg) 50%, var(--grid) 100%);
+  background-size: 600px 100%;
+  animation: skeleton-sweep 1.4s linear infinite;
 }
 
 /* ---------------------------------------------------------------------------
@@ -313,6 +388,9 @@ body {
     /* Fallback keeps modest pre-glass elevation (spec §4: fallback = today's UI). */
     --glass-shadow-panel: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --glass-shadow-overlay: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    /* Without a blur behind it a translucent sticky header would let the page
+       scroll through it — go fully opaque here. */
+    --glass-header: var(--background);
   }
 }
 
@@ -332,6 +410,9 @@ body {
     /* Fallback keeps modest pre-glass elevation (spec §4: fallback = today's UI). */
     --glass-shadow-panel: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --glass-shadow-overlay: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    /* Without a blur behind it a translucent sticky header would let the page
+       scroll through it — go fully opaque here. */
+    --glass-header: var(--background);
   }
   /* blur(0px) still creates a stacking/backdrop context; none removes it. */
   .glass-panel,

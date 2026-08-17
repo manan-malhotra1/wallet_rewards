@@ -1,15 +1,18 @@
 "use client";
 
 /**
- * Global range + granularity control for the dashboard. Segmented buttons;
- * changing either fires up to the dashboard client which refetches via the
- * server action and syncs URL params.
+ * Global range + granularity control for the dashboard.
+ *
+ * Both segments share one inset track with a hairline divider between them, so
+ * they read as a single "what window am I looking at" control rather than two
+ * unrelated widgets. Changing either fires up to the dashboard client, which
+ * refetches via the server action and syncs the URL params.
  */
-import { cn } from "@/lib/utils";
 import type { AnalyticsGranularity, AnalyticsRange } from "@/lib/api-types";
+import { SegmentedControl } from "./segmented-control";
 
-const RANGES: AnalyticsRange[] = ["24h", "7d", "30d", "quarter"];
-const GRANULARITIES: AnalyticsGranularity[] = ["day", "week", "month"];
+const RANGES: readonly AnalyticsRange[] = ["24h", "7d", "30d", "quarter"];
+const GRANULARITIES: readonly AnalyticsGranularity[] = ["day", "week", "month"];
 
 interface Props {
   range: AnalyticsRange;
@@ -25,40 +28,20 @@ export function TimeRangeSwitcher({
   onGranularityChange,
 }: Props) {
   return (
-    <div className="flex items-center gap-3">
-      <Segmented options={RANGES} value={range} onChange={onRangeChange} />
-      <div className="h-4 w-px bg-border" />
-      <Segmented options={GRANULARITIES} value={granularity} onChange={onGranularityChange} />
-    </div>
-  );
-}
-
-function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: readonly T[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-md border bg-card p-0.5">
-      {options.map((opt) => (
-        <button
-          key={opt}
-          type="button"
-          onClick={() => onChange(opt)}
-          className={cn(
-            "rounded px-2.5 py-1 text-xs font-medium capitalize transition-colors",
-            opt === value
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {opt}
-        </button>
-      ))}
+    <div className="flex items-center gap-0 rounded-xl border bg-surface-inset p-[3px] shadow-[inset_0_1px_0_var(--hairline-top)]">
+      <SegmentedControl
+        options={RANGES}
+        value={range}
+        onChange={onRangeChange}
+        label="Time range"
+      />
+      <span aria-hidden="true" className="mx-1.5 my-1 w-px self-stretch bg-border" />
+      <SegmentedControl
+        options={GRANULARITIES}
+        value={granularity}
+        onChange={onGranularityChange}
+        label="Granularity"
+      />
     </div>
   );
 }

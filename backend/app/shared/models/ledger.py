@@ -110,6 +110,12 @@ class Transaction(Base):
     # it in a second pass; `post_transaction` always sets it on new rows.
     reference: Mapped[str | None] = mapped_column(String(40), nullable=True)
     transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # The BASE flow this transaction belongs to. Equals `transaction_type` for
+    # transactions on a base service; for a derived service it names the base.
+    # Denormalised so clients can group by flow without knowing every derived
+    # code, and so history stays correct if a derived service is later deleted
+    # (spec §12.1).
+    base_transaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=TXN_STATUS_PENDING
     )

@@ -44,6 +44,16 @@ class Service(Base):
             "status IN ('active', 'disabled')",
             name="ck_services_status",
         ),
+        CheckConstraint("kind IN ('base', 'derived')", name="ck_services_kind"),
+        CheckConstraint(
+            "(kind = 'base' AND base_service_code IS NULL) "
+            "OR (kind = 'derived' AND base_service_code IS NOT NULL)",
+            name="ck_services_kind_base_pairing",
+        ),
+        CheckConstraint(
+            "base_service_code IS NULL OR base_service_code <> code",
+            name="ck_services_base_not_self",
+        ),
         Index("ix_services_tenant", "tenant_id"),
         # Partial-UNIQUE on (tenant_id, code) — only the live (non-deleted)
         # rows count, so a tenant can soft-delete a service and re-create
@@ -68,6 +78,15 @@ class Service(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=SERVICE_STATUS_ACTIVE
     )
+    # 'base' = a flow the platform implements (see app/shared/services_registry);
+    # 'derived' = operator-created, delegates to a base. Explicit rather than
+    # inferred from base_service_code being NULL, because this is the most
+    # important fact about a row (spec §3).
+    kind: Mapped[str] = mapped_column(String(10), nullable=False, server_default="base")
+    # The base's `code`. NOT NULL for kind='derived', NULL for kind='base' —
+    # enforced by ck_services_kind_base_pairing. Intentionally not an FK: the
+    # base is identified by code, is per-tenant, and is soft-deletable.
+    base_service_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # --- Access policy: WHO may initiate, via WHICH channel ---------------
     # This pair is the single source of truth for both the mobile app's
     # "can I show this service?" display decision and the API's server-side

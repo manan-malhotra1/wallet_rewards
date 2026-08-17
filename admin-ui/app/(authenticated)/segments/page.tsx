@@ -15,7 +15,14 @@ import { Layers, Plus } from "lucide-react";
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { listSegmentGroups, listSegmentMetrics, listSegments, listServices } from "@/lib/api-endpoints";
+import {
+  getSegmentMemberCounts,
+  listSegmentGroups,
+  listSegmentMetrics,
+  listSegments,
+  listServices,
+} from "@/lib/api-endpoints";
+import type { MemberCounts } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -69,10 +76,11 @@ export default async function SegmentsPage() {
   // three still go through one `Promise.allSettled` (not `Promise.all`) so
   // a metrics/services rejection can't take the groups fetch down with it,
   // and vice versa.
-  const [groupsResult, metricsResult, servicesResult] = await Promise.allSettled([
+  const [groupsResult, metricsResult, servicesResult, memberCountsResult] = await Promise.allSettled([
     listSegmentGroups(activeTenantId),
     listSegmentMetrics(),
     listServices(activeTenantId, "active"),
+    getSegmentMemberCounts(activeTenantId),
   ]);
   const groups = groupsResult.status === "fulfilled" ? groupsResult.value : [];
   const groupsError =
@@ -81,6 +89,11 @@ export default async function SegmentsPage() {
       : null;
   const metrics = metricsResult.status === "fulfilled" ? metricsResult.value : [];
   const services = servicesResult.status === "fulfilled" ? servicesResult.value : [];
+  // Member counts are purely decorative (a "· N users" annotation + a
+  // Members column) — a failed fetch degrades to `null` and every consumer
+  // below renders as if counts simply aren't known yet, never a page error.
+  const memberCounts: MemberCounts | null =
+    memberCountsResult.status === "fulfilled" ? memberCountsResult.value : null;
 
   // System groups (seeded defaults, e.g. the default tier lens) surface
   // first — an admin scanning the page expects the platform-provisioned
@@ -168,11 +181,13 @@ export default async function SegmentsPage() {
               metrics={metrics}
               services={services}
               canDelete={canDeleteGroups}
+              memberCounts={memberCounts}
             />
           ))}
         {!error && orphanedSegments.length > 0 && (
           <GroupSection
             key="unknown-group"
+            memberCounts={memberCounts}
             group={{
               id: "__unknown__",
               tenant_id: activeTenantId,

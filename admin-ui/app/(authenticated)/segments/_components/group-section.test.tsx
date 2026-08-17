@@ -8,7 +8,7 @@ import * as React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GroupSection } from "@/app/(authenticated)/segments/_components/group-section";
-import type { Segment, SegmentGroup, SegmentMetricInfo, Service } from "@/lib/api-types";
+import type { MemberCounts, Segment, SegmentGroup, SegmentMetricInfo, Service } from "@/lib/api-types";
 import { formatTimestamp } from "@/lib/utils";
 
 const deleteSegmentGroupAction = vi.fn();
@@ -256,5 +256,52 @@ describe("Group-sectioned segments — one group's table", () => {
     // get the pencil, since only a GROUP MOVE (not the whole row) is
     // blocked for a system segment.
     expect(screen.getAllByRole("button", { name: "Edit segment" })).toHaveLength(3);
+  });
+
+  describe("member counts (Story B1.4+)", () => {
+    const MEMBER_COUNTS: MemberCounts = {
+      segments: [
+        { segment_id: "seg-bronze", total: 12, manual: 5, criteria: 7 },
+        // seg-gold deliberately absent -> renders as 0.
+      ],
+      groups: [{ group_id: "group-1", distinct_users: 15 }],
+    };
+
+    it("Verify the group header shows a '· N users' annotation when counts are provided", () => {
+      renderSection({ segments: [BRONZE, GOLD], memberCounts: MEMBER_COUNTS });
+
+      expect(screen.getByText(/15 users/)).toBeInTheDocument();
+    });
+
+    it("Verify a segment's Members cell shows its total and a manual/criteria subtext", () => {
+      renderSection({ segments: [BRONZE], memberCounts: MEMBER_COUNTS });
+
+      expect(screen.getByText("12")).toBeInTheDocument();
+      expect(screen.getByText("5 manual · 7 criteria")).toBeInTheDocument();
+    });
+
+    it("Verify a segment missing from the counts response renders 0, not a blank cell", () => {
+      renderSection({ segments: [GOLD], memberCounts: MEMBER_COUNTS });
+
+      expect(screen.getByText("0")).toBeInTheDocument();
+      expect(screen.getByText("0 manual · 0 criteria")).toBeInTheDocument();
+    });
+
+    it("Verify no Members column or '· N users' annotation renders when counts are unavailable", () => {
+      renderSection({ segments: [BRONZE, GOLD], memberCounts: null });
+
+      expect(screen.queryByText(/users$/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "Members" })).not.toBeInTheDocument();
+    });
+
+    it("Verify the page (this component) still renders when memberCounts is simply omitted", () => {
+      // No `memberCounts` prop at all — the default is `null` — proving a
+      // caller that hasn't wired counts in yet (or whose fetch degraded to
+      // null) never crashes the section.
+      renderSection({ segments: [BRONZE] });
+
+      expect(screen.getByText("Bronze")).toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "Members" })).not.toBeInTheDocument();
+    });
   });
 });

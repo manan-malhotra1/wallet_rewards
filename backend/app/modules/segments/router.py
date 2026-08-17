@@ -5,6 +5,7 @@ Two routers:
       - POST   /segments                     create a segment (static or dynamic)
       - GET    /segments                     list segments in tenant
       - GET    /segments/metrics             criteria DSL metric vocabulary (Task 7)
+      - GET    /segments/member-counts       per-segment + per-group member counts (B1.4+)
       - POST   /segments/preview             dry-run criteria match count (Task 7)
       - POST   /segments/recompute           enqueue a tenant's dynamic recompute (Task 7)
       - PATCH  /segments/{id}                update a segment (Task 7)
@@ -32,9 +33,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import AdminPrincipal
 from app.database import get_async_session
 from app.dependencies import require_admin_role
-from app.modules.segments.group_service import create_group, delete_group, list_groups
+from app.modules.segments.group_service import (
+    create_group,
+    delete_group,
+    list_groups,
+    member_counts,
+)
 from app.modules.segments.schemas import (
     AddUserToSegmentRequest,
+    MemberCountsOut,
     MetricInfo,
     SegmentCreateRequest,
     SegmentGroupCreateRequest,
@@ -104,6 +111,17 @@ async def get_segment_metrics(
     """List the criteria DSL's metric vocabulary, sorted by name."""
     _ = admin
     return list_metrics()
+
+
+@router.get("/member-counts", response_model=MemberCountsOut)
+async def get_segment_member_counts(
+    tenant_id: UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> MemberCountsOut:
+    """Per-segment (manual/criteria split) + per-group (distinct users) member counts."""
+    _ = admin
+    return await member_counts(session, tenant_id)
 
 
 @router.post("/preview", response_model=SegmentPreviewResponse)

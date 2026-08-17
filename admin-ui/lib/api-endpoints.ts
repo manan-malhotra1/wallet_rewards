@@ -39,6 +39,7 @@ import type {
   Instrument,
   LimitConfig,
   ManualReviewItem,
+  MemberCounts,
   MetricsTimeseries,
   MoneyOperation,
   MoneyOperationStatus,
@@ -1081,6 +1082,14 @@ export const deleteSegmentGroup = (group_id: string, tenant_id: string) =>
 /** The criteria DSL's metric vocabulary, sorted by name — drives the criteria builder. */
 export const listSegmentMetrics = () =>
   apiGet<SegmentMetricInfo[]>("/api/v1/segments/metrics");
+
+/**
+ * Per-segment (manual/criteria split) and per-group (distinct users) member
+ * counts for the tenant. A segment or group with zero members is simply
+ * absent from its array — the Segments page treats a missing id as 0.
+ */
+export const getSegmentMemberCounts = (tenant_id: string) =>
+  apiGet<MemberCounts>("/api/v1/segments/member-counts", { query: { tenant_id } });
 
 /** Dry-run: count users a not-yet-saved criteria document would currently match. */
 export const previewSegmentCriteria = (

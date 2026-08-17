@@ -174,3 +174,44 @@ class SegmentGroupOut(BaseModel):
     is_system: bool
     created_at: datetime
     updated_at: datetime
+
+
+class SegmentMemberCount(BaseModel):
+    """Membership count for one segment, split by `UserSegment.source`.
+
+    Backs `GET /segments/member-counts`. `total` is `manual + criteria`.
+    A segment with zero members is OMITTED from the response array entirely
+    (rather than included with all-zero counts) — the admin UI treats any
+    segment missing from this list as having 0 members.
+    """
+
+    segment_id: UUID
+    total: int
+    manual: int
+    criteria: int
+
+
+class GroupMemberCount(BaseModel):
+    """Distinct-user count for one segment group.
+
+    Backs `GET /segments/member-counts`. Counts DISTINCT `user_id` across
+    every segment in the group — a user assigned to two segments within the
+    same group (e.g. during a manual data-fix, ahead of the evaluator's
+    exclusive-tier enforcement) is counted once, not twice. A group with zero
+    members is OMITTED from the response array entirely, same convention as
+    `SegmentMemberCount`.
+    """
+
+    group_id: UUID
+    distinct_users: int
+
+
+class MemberCountsOut(BaseModel):
+    """Response for `GET /segments/member-counts`.
+
+    Both arrays may omit entries with zero members — see the per-item
+    docstrings above.
+    """
+
+    segments: list[SegmentMemberCount]
+    groups: list[GroupMemberCount]

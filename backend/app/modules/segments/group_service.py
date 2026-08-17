@@ -24,9 +24,15 @@ from app.modules.segments._common import (
     assert_tenant_exists,
     load_group_or_404,
 )
-from app.modules.segments.schemas import SegmentGroupCreateRequest
+from app.modules.segments.schemas import (
+    GroupMemberCount,
+    MemberCountsOut,
+    SegmentGroupCreateRequest,
+    SegmentMemberCount,
+)
 from app.shared.exceptions import AppHTTPException
-from app.shared.models import Segment, SegmentGroup
+from app.shared.models import Segment, SegmentGroup, UserSegment
+from app.shared.models.segments import USER_SEGMENT_SOURCE_CRITERIA, USER_SEGMENT_SOURCE_MANUAL
 
 
 async def create_group(
@@ -170,3 +176,75 @@ async def delete_group(
         )
 
     await session.commit()
+
+
+# -----------------------------------------------------------------------------
+# Member counts (Story B1.4+) — per-segment + per-group aggregates for the
+# admin Segments page. Lives here (not service.py, already at this repo's
+# ~400-line file-size guideline) rather than metrics.py, which is the
+# criteria-DSL metric registry (a different concern — computed feature values
+# per user for evaluation, not a membership-count read model).
+# -----------------------------------------------------------------------------
+
+
+async def member_counts(session: AsyncSession, tenant_id: UUID) -> MemberCountsOut:
+    """Return per-segment and per-group membership counts for a tenant.
+
+    Two grouped aggregate queries, no N+1: one joins `user_segments` ->
+    `segments` and groups by `segment_id` for the total/manual/criteria
+    split; the other groups by `segments.group_id` and counts DISTINCT
+    `user_id` so a user assigned to two segments in the same group is
+    counted once (see `GroupMemberCount`'s docstring). Neither query
+    validates that `tenant_id` exists — mirrors `list_segments_for_tenant`
+    and `list_groups`, which likewise just return an empty result for an
+    unknown tenant rather than 404ing, since this is a read-only aggregate
+    over an already tenant-scoped join, not a mutation.
+
+    Args:
+        session: Async DB session.
+        tenant_id: Tenant to scope both aggregates to, via `Segment.tenant_id`.
+
+    Returns:
+        `MemberCountsOut` with both arrays omitting zero-member
+        segments/groups (see each schema's docstring).
+    """
+    per_segment_stmt = (
+        select(
+            UserSegment.segment_id,
+            func.count().label("total"),
+            func.count()
+            .filter(UserSegment.source == USER_SEGMENT_SOURCE_MANUAL)
+            .label("manual"),
+            func.count()
+            .filter(UserSegment.source == USER_SEGMENT_SOURCE_CRITERIA)
+            .label("criteria"),
+        )
+        .join(Segment, Segment.id == UserSegment.segment_id)
+        .where(Segment.tenant_id == tenant_id)
+        .group_by(UserSegment.segment_id)
+    )
+    per_group_stmt = (
+        select(
+            Segment.group_id,
+            func.count(func.distinct(UserSegment.user_id)).label("distinct_users"),
+        )
+        .join(Segment, Segment.id == UserSegment.segment_id)
+        .where(Segment.tenant_id == tenant_id)
+        .group_by(Segment.group_id)
+    )
+
+    segment_rows = (await session.execute(per_segment_stmt)).all()
+    group_rows = (await session.execute(per_group_stmt)).all()
+
+    return MemberCountsOut(
+        segments=[
+            SegmentMemberCount(
+                segment_id=row.segment_id, total=row.total, manual=row.manual, criteria=row.criteria
+            )
+            for row in segment_rows
+        ],
+        groups=[
+            GroupMemberCount(group_id=row.group_id, distinct_users=row.distinct_users)
+            for row in group_rows
+        ],
+    )

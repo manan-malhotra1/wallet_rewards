@@ -9,6 +9,11 @@
  * (admin-assigned) segments — dynamic ones have their membership computed
  * by the batch evaluator, never hand-picked — so it's rendered per-row and
  * gated on `segment.criteria == null`.
+ *
+ * `memberCounts` (Story B1.4+) is optional and degrades gracefully: `null`
+ * (the fetch failed, or the caller hasn't loaded it) hides the group
+ * header's "N users" annotation and the per-segment Members column
+ * entirely, rather than rendering a column of misleading zeroes.
  */
 "use client";
 
@@ -39,7 +44,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import type { Segment, SegmentGroup, SegmentMetricInfo, Service } from "@/lib/api-types";
+import type {
+  MemberCounts,
+  Segment,
+  SegmentGroup,
+  SegmentMetricInfo,
+  Service,
+} from "@/lib/api-types";
 import { summarizeCriteria } from "@/lib/segment-criteria";
 import { formatTimestamp } from "@/lib/utils";
 
@@ -76,6 +87,7 @@ export function GroupSection({
   metrics,
   services,
   canDelete = true,
+  memberCounts = null,
 }: {
   group: SegmentGroup;
   segments: Segment[];
@@ -88,6 +100,9 @@ export function GroupSection({
   metrics: SegmentMetricInfo[];
   services: Service[];
   canDelete?: boolean;
+  // `null` = counts unavailable (fetch failed, or not loaded) — every
+  // count-derived affordance below is hidden rather than shown as zero.
+  memberCounts?: MemberCounts | null;
 }) {
   const [open, setOpen] = React.useState(true);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
@@ -105,6 +120,15 @@ export function GroupSection({
 
   const sorted = [...segments].sort(byPriorityDesc);
   const showDelete = canDelete && !group.is_system;
+  // A group/segment absent from its array means 0 members (see
+  // `MemberCounts`'s docstring) — but only once counts are known at all;
+  // `memberCounts === null` means "unknown", not "zero", so this stays
+  // `null` in that case rather than falling back to a misleading 0.
+  const groupUserCount = memberCounts
+    ? (memberCounts.groups.find((g) => g.group_id === group.id)?.distinct_users ?? 0)
+    : null;
+  // One extra "Members" column when counts are available.
+  const columnCount = memberCounts ? 7 : 6;
 
   const onDeleteGroup = async () => {
     setDeleting(true);
@@ -162,6 +186,9 @@ export function GroupSection({
           {group.is_system && <Badge variant="secondary">System</Badge>}
           <span className="text-xs text-muted-foreground">
             {sorted.length} segment{sorted.length === 1 ? "" : "s"}
+            {groupUserCount !== null && (
+              <> · {groupUserCount} user{groupUserCount === 1 ? "" : "s"}</>
+            )}
           </span>
           {group.description && (
             <span className="hidden truncate text-xs text-muted-foreground sm:block">
@@ -195,6 +222,7 @@ export function GroupSection({
                   <TableHeaderCell>Type</TableHeaderCell>
                   <TableHeaderCell>Criteria</TableHeaderCell>
                   <TableHeaderCell>Priority</TableHeaderCell>
+                  {memberCounts && <TableHeaderCell>Members</TableHeaderCell>}
                   <TableHeaderCell>Last evaluated</TableHeaderCell>
                   <TableHeaderCell className="w-[90px]">
                     <span className="sr-only">Actions</span>
@@ -205,6 +233,14 @@ export function GroupSection({
                 {sorted.map((s) => {
                   const isDynamic = s.criteria != null;
                   const text = criteriaText(s);
+                  // Absent from `memberCounts.segments` -> 0 members (see
+                  // `SegmentMemberCount`'s docstring), not "unknown" — the
+                  // whole column is already hidden above when counts as a
+                  // whole are unavailable.
+                  const counts = memberCounts?.segments.find((c) => c.segment_id === s.id);
+                  const total = counts?.total ?? 0;
+                  const manual = counts?.manual ?? 0;
+                  const criteriaCount = counts?.criteria ?? 0;
                   return (
                     <React.Fragment key={s.id}>
                       <TableRow>
@@ -226,6 +262,19 @@ export function GroupSection({
                           {text}
                         </TableCell>
                         <TableCell className="font-mono tabular-nums">{s.priority}</TableCell>
+                        {memberCounts && (
+                          <TableCell
+                            className="tabular-nums"
+                            title={`${manual} manual · ${criteriaCount} criteria`}
+                          >
+                            <div className="flex flex-col">
+                              <span>{total}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {manual} manual · {criteriaCount} criteria
+                              </span>
+                            </div>
+                          </TableCell>
+                        )}
                         <TableCell className="text-xs text-muted-foreground">
                           {lastEvaluatedText(s)}
                         </TableCell>
@@ -258,7 +307,7 @@ export function GroupSection({
                       </TableRow>
                       {userIdPrompt?.segmentId === s.id && (
                         <TableRow>
-                          <TableCell colSpan={6} className="bg-muted/30">
+                          <TableCell colSpan={columnCount} className="bg-muted/30">
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-muted-foreground">User ID:</span>
                               <Input

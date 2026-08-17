@@ -422,6 +422,35 @@ export interface Segment {
   last_evaluated_at: string | null;
 }
 
+/**
+ * One segment's membership count, split by `UserSegment.source`
+ * (`GET /segments/member-counts`). `total = manual + criteria`. A segment
+ * with zero members is OMITTED from the response array entirely — treat any
+ * segment id missing from this list as having 0 members.
+ */
+export interface SegmentMemberCount {
+  segment_id: string;
+  total: number;
+  manual: number;
+  criteria: number;
+}
+
+/**
+ * One segment group's distinct-user count (`GET /segments/member-counts`).
+ * Counts a user once even if they belong to more than one segment within
+ * the same group. Omitted from the response array when zero.
+ */
+export interface GroupMemberCount {
+  group_id: string;
+  distinct_users: number;
+}
+
+/** Response shape for `GET /segments/member-counts`. */
+export interface MemberCounts {
+  segments: SegmentMemberCount[];
+  groups: GroupMemberCount[];
+}
+
 /** A reward-amplifying multiplier (Epic 10 / WAL-78). */
 export interface BonusMultiplier {
   id: string;

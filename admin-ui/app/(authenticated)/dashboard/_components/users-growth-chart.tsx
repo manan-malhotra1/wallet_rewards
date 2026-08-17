@@ -1,56 +1,84 @@
 "use client";
 
 /**
- * New registrations per bucket (bar) with a dotted previous-period line.
+ * New registrations across the range — a single gradient-filled area.
+ *
+ * Deliberately quieter than the hero chart (three gridlines, five ticks, no
+ * hover tooltip): it sits in a half-width panel where a full instrument would
+ * crowd out the figures beside it.
  */
+import * as React from "react";
+
 import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+  areaPath,
+  gridLines,
+  niceMax,
+  smoothPath,
+  xTicks,
+  type PlotRect,
+} from "@/lib/chart-geometry";
+import { abbreviateNumber, formatBucketLabel } from "@/lib/analytics-format";
+import { registrationLabels, registrationValues } from "@/lib/dashboard-series";
+import type { AnalyticsGranularity, AnalyticsRange, UsersTimeseries } from "@/lib/api-types";
+import { AxisLabels, GridLines, VB_WIDTH } from "./plot-frame";
 
-import { CHART_SERIES } from "@/lib/chart-colors";
-import type { UsersTimeseries } from "@/lib/api-types";
+const SVG_HEIGHT = 210;
+const RECT: PlotRect = { x: 46, y: 8, width: VB_WIDTH - 54, height: 162 };
+const AXIS_BASELINE = RECT.y + RECT.height + 20;
 
-export function UsersGrowthChart({ data }: { data: UsersTimeseries }) {
-  const len = Math.max(data.current.length, data.previous.length);
-  const rows = Array.from({ length: len }, (_, i) => ({
-    bucket: data.current[i]?.bucket ?? data.previous[i]?.bucket ?? `${i}`,
-    current: data.current[i]?.count ?? 0,
-    previous: data.previous[i]?.count ?? 0,
-  }));
-  if (rows.length === 0) {
-    return (
-      <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">
-        No new registrations in this range.
-      </div>
-    );
-  }
+interface Props {
+  data: UsersTimeseries;
+  granularity: AnalyticsGranularity;
+  range: AnalyticsRange;
+}
+
+export function UsersGrowthChart({ data, granularity, range }: Props) {
+  const values = registrationValues(data);
+  const labels = registrationLabels(data);
+  const max = niceMax(Math.max(0, ...values) * 1.1);
+
+  const grid = React.useMemo(() => gridLines(max, RECT, 3), [max]);
+  const ticks = React.useMemo(
+    () => xTicks(labels.map((b) => formatBucketLabel(b, granularity, range)), RECT, 5),
+    [labels, granularity, range],
+  );
+
+  if (values.length === 0) return null;
+  const line = smoothPath(values, RECT, max);
+
   return (
-    <div className="h-[240px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-          <XAxis dataKey="bucket" tickFormatter={(v) => String(v).slice(5, 10)} fontSize={11} />
-          <YAxis fontSize={11} width={40} />
-          <Tooltip />
-          <Bar dataKey="current" name="New users" fill={CHART_SERIES[0]} radius={[3, 3, 0, 0]} isAnimationActive={false} />
-          <Line
-            type="monotone"
-            dataKey="previous"
-            name="Previous period"
-            stroke={CHART_SERIES[1]}
-            strokeDasharray="4 4"
-            dot={false}
-            isAnimationActive={false}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
+    <div className="relative mt-3.5 rounded-[14px] bg-surface-inset px-3 pt-3.5 pb-1.5 shadow-[inset_0_1px_0_var(--hairline-top)]">
+      <svg
+        viewBox={`0 0 ${VB_WIDTH} ${SVG_HEIGHT}`}
+        preserveAspectRatio="none"
+        className="block h-[210px] w-full"
+        role="img"
+        aria-label="New registrations over time"
+      >
+        <defs>
+          <linearGradient id="registrations-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--chart-3)" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="var(--chart-3)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <GridLines lines={grid} rect={RECT} />
+        <path d={areaPath(line, RECT)} fill="url(#registrations-fill)" />
+        <path
+          d={line}
+          fill="none"
+          stroke="var(--chart-3)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <AxisLabels
+        lines={grid}
+        ticks={ticks}
+        formatValue={abbreviateNumber}
+        baselineY={AXIS_BASELINE}
+      />
     </div>
   );
 }

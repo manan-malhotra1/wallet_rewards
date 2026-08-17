@@ -1,15 +1,19 @@
 "use client";
 
 /**
- * A money KPI tile that lists one line per selected currency — values are
- * never summed across currencies. Clicking selects this metric for the shared
- * trend chart. Reuses percentDelta/formatDelta for each currency's chip.
+ * A money KPI tile: one hairline-separated row per selected currency.
+ *
+ * Values are never summed across currencies — the rows are the KPI, not a
+ * breakdown of one. Each row carries its own compact delta against that
+ * currency's previous period, and the currency symbol sits adjacent to the
+ * figure so a bare number can never be misread as the wrong money.
  */
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
-
-import { cn } from "@/lib/utils";
-import { formatDelta, percentDelta } from "@/lib/analytics-format";
+import { CHART_SERIES } from "@/lib/chart-colors";
+import { formatCount } from "@/lib/analytics-format";
 import type { CurrencyInfo, CurrencyScalar } from "@/lib/api-types";
+import { cn } from "@/lib/utils";
+import { DeltaChip } from "./indicators";
+import { TileShell } from "./metric-tile-shell";
 
 interface Props {
   id: string;
@@ -17,53 +21,71 @@ interface Props {
   data: CurrencyScalar[];
   selectedCurrencies: string[];
   currencyMeta: Record<string, CurrencyInfo>;
+  /** Series for the tile sparkline (the first selected currency). */
+  spark?: number[];
+  sparkColor?: string;
   selected: boolean;
   onSelect: (id: string) => void;
 }
 
-export function MoneyStatTile({ id, label, data, selectedCurrencies, currencyMeta, selected, onSelect }: Props) {
+export function MoneyStatTile({
+  id,
+  label,
+  data,
+  selectedCurrencies,
+  currencyMeta,
+  spark = [],
+  sparkColor = CHART_SERIES[1],
+  selected,
+  onSelect,
+}: Props) {
+  // Drive row order off the selection, not the payload, so toggling a currency
+  // reorders predictably instead of following the API's ordering.
   const rows = selectedCurrencies
     .map((code) => data.find((d) => d.currency === code))
     .filter((d): d is CurrencyScalar => Boolean(d));
 
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(id)}
-      aria-pressed={selected}
-      className={cn(
-        "glass-panel flex flex-col items-start gap-1.5 rounded-lg p-4 text-left transition-colors",
-        selected ? "border-primary ring-1 ring-primary" : "hover:border-primary/40",
-      )}
+    <TileShell
+      id={id}
+      label={label}
+      selected={selected}
+      onSelect={onSelect}
+      spark={spark}
+      sparkColor={sparkColor}
     >
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {rows.length === 0 ? (
-        <span className="text-2xl font-bold tabular-nums text-foreground">—</span>
+        <div className="mt-2.5 flex items-end gap-3">
+          <span className="text-[30px] leading-none font-semibold tracking-[-0.02em] text-foreground tabular-nums">
+            —
+          </span>
+        </div>
       ) : (
-        rows.map((r) => {
-          const { label: deltaLabel, direction } = formatDelta(percentDelta(r.current, r.previous));
-          const Icon = direction === "up" ? ArrowUpRight : direction === "down" ? ArrowDownRight : Minus;
-          const tone =
-            direction === "up"
-              ? "text-emerald-600 dark:text-emerald-400"
-              : direction === "down"
-                ? "text-red-600 dark:text-red-400"
-                : "text-muted-foreground";
-          const meta = currencyMeta[r.currency];
-          return (
-            <div key={r.currency} className="flex w-full items-baseline justify-between gap-2">
-              <span className="text-lg font-bold tabular-nums text-foreground">
-                <span className="mr-1 text-xs font-medium text-muted-foreground">{meta?.symbol ?? r.currency}</span>
-                {Number(r.current).toLocaleString()}
-              </span>
-              <span className={cn("inline-flex items-center gap-0.5 text-xs font-semibold", tone)}>
-                <Icon className="h-3 w-3" aria-hidden="true" />
-                {deltaLabel}
-              </span>
+        <div className="mt-2">
+          {rows.map((row, i) => (
+            <div
+              key={row.currency}
+              className={cn(
+                "flex items-center justify-between gap-2.5",
+                i === 0 ? "pt-1.5 pb-2.5" : "border-t py-2.5",
+              )}
+            >
+              <div className="flex min-w-0 items-baseline gap-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {currencyMeta[row.currency]?.symbol ?? row.currency}
+                </span>
+                <span className="text-[21px] leading-tight font-semibold tracking-[-0.02em] text-foreground tabular-nums">
+                  {formatCount(Number(row.current))}
+                </span>
+                <span className="text-[10px] tracking-[0.06em] text-muted-foreground">
+                  {row.currency}
+                </span>
+              </div>
+              <DeltaChip current={row.current} previous={row.previous} compact />
             </div>
-          );
-        })
+          ))}
+        </div>
       )}
-    </button>
+    </TileShell>
   );
 }

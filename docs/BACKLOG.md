@@ -56,7 +56,7 @@ delete affordance by role; there is no backend endpoint yet.
 - `is_system` segments refused
 - Tenant isolation; audit row `segment.deleted`
 
-### Story B1.4 — Member counts in the segments list · Backlog
+### Story B1.4 — Member counts in the segments list · Done (2026-08-17, 8d4c566)
 
 **Description:** Show per-segment membership counts on the segments page,
 with a manual/criteria split.

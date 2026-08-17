@@ -1,52 +1,68 @@
 "use client";
 
 /**
- * A clickable KPI stat tile: big value + a delta chip vs the previous period.
- * Selecting it tells the dashboard which metric to plot in the shared trend
- * chart. Colour is always paired with an arrow/icon (never colour alone).
+ * A currency-agnostic KPI tile: one big count, a delta pill vs the previous
+ * period, and a sparkline of the same metric across the selected range.
+ *
+ * Selecting it tells the dashboard which metric the shared trend chart plots.
+ * Direction is always carried by an arrow as well as colour (see DeltaChip).
  */
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
-
-import { cn } from "@/lib/utils";
-import { formatDelta, percentDelta } from "@/lib/analytics-format";
+import { CHART_SERIES } from "@/lib/chart-colors";
+import { DeltaChip } from "./indicators";
+import { TileShell } from "./metric-tile-shell";
 
 interface Props {
   id: string;
   label: string;
+  /** Pre-formatted display figure (grouped, never raw). */
   value: string;
   current: string;
   previous: string;
+  /** Unit suffix beside the figure, e.g. "txns" / "users". */
+  unit?: string;
+  /** Series for the tile sparkline, oldest bucket first. */
+  spark?: number[];
+  /** Sparkline colour; defaults to the primary series token. */
+  sparkColor?: string;
   selected: boolean;
+  /** False for informational tiles that never drive the trend chart. */
+  selectable?: boolean;
   onSelect: (id: string) => void;
 }
 
-export function StatTile({ id, label, value, current, previous, selected, onSelect }: Props) {
-  const { label: deltaLabel, direction } = formatDelta(percentDelta(current, previous));
-  const Icon = direction === "up" ? ArrowUpRight : direction === "down" ? ArrowDownRight : Minus;
-  const tone =
-    direction === "up"
-      ? "text-emerald-600 dark:text-emerald-400"
-      : direction === "down"
-        ? "text-red-600 dark:text-red-400"
-        : "text-muted-foreground";
-
+export function StatTile({
+  id,
+  label,
+  value,
+  current,
+  previous,
+  unit,
+  spark = [],
+  sparkColor = CHART_SERIES[0],
+  selected,
+  selectable = true,
+  onSelect,
+}: Props) {
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(id)}
-      aria-pressed={selected}
-      className={cn(
-        "glass-panel flex flex-col items-start gap-1 rounded-lg p-4 text-left transition-colors",
-        selected ? "border-primary ring-1 ring-primary" : "hover:border-primary/40",
-      )}
+    <TileShell
+      id={id}
+      label={label}
+      selected={selected}
+      selectable={selectable}
+      onSelect={onSelect}
+      spark={spark}
+      sparkColor={sparkColor}
     >
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <span className="text-2xl font-bold tabular-nums text-foreground">{value}</span>
-      <span className={cn("inline-flex items-center gap-1 text-xs font-semibold", tone)}>
-        <Icon className="h-3 w-3" aria-hidden="true" />
-        {deltaLabel}
-        <span className="font-normal text-muted-foreground">vs prev</span>
-      </span>
-    </button>
+      <div className="mt-2.5 flex items-end justify-between gap-3">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[30px] leading-none font-semibold tracking-[-0.02em] text-foreground tabular-nums">
+            {value}
+          </span>
+          {unit ? <span className="text-xs text-muted-foreground">{unit}</span> : null}
+        </div>
+        <DeltaChip current={current} previous={previous} showBaseline />
+      </div>
+      <div className="h-3.5" />
+    </TileShell>
   );
 }

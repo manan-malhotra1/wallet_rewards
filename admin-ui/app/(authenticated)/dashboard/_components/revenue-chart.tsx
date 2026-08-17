@@ -1,22 +1,19 @@
 "use client";
 
 /**
- * Revenue (operator fee) by service type, split by currency — one bar per
- * selected currency, never summed across currencies.
+ * Operator fee by service, one self-contained block per currency.
+ *
+ * Each currency gets its own subtotal and its own bar scale. Putting them side
+ * by side rather than in a shared-axis grouped chart is what stops the eye from
+ * comparing a USD bar against a ZAR bar — a comparison the numbers don't
+ * support, and the reason revenue is never summed across currencies.
  */
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
+import { formatCount } from "@/lib/analytics-format";
 import { seriesColor } from "@/lib/chart-colors";
+import { revenueByCurrency } from "@/lib/dashboard-series";
+import { serviceLabel } from "@/lib/service-label";
 import type { CurrencyInfo, RevenueServiceSlice } from "@/lib/api-types";
+import { CodeChip, ShareBar } from "./indicators";
 
 interface Props {
   data: RevenueServiceSlice[];
@@ -25,36 +22,44 @@ interface Props {
 }
 
 export function RevenueChart({ data, selectedCurrencies, currencyMeta }: Props) {
-  const currencies = selectedCurrencies.filter((c) => data.some((d) => d.currency === c));
-  const byService = new Map<string, Record<string, number | string>>();
-  for (const d of data) {
-    if (!selectedCurrencies.includes(d.currency)) continue;
-    const row = byService.get(d.service_type) ?? { service_type: d.service_type };
-    row[d.currency] = Number(d.total);
-    byService.set(d.service_type, row);
-  }
-  const rows = [...byService.values()];
-  if (rows.length === 0) {
-    return (
-      <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">
-        No revenue in this range.
-      </div>
-    );
-  }
+  const groups = revenueByCurrency(data, selectedCurrencies);
+  if (groups.length === 0) return null;
+
   return (
-    <div className="h-[240px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-          <XAxis dataKey="service_type" fontSize={11} />
-          <YAxis fontSize={11} width={56} />
-          <Tooltip />
-          <Legend />
-          {currencies.map((c, i) => (
-            <Bar key={c} dataKey={c} name={currencyMeta[c]?.code ?? c} fill={seriesColor(i)} radius={[3, 3, 0, 0]} isAnimationActive={false} />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="mt-3.5 grid gap-3.5 lg:grid-cols-[repeat(auto-fit,minmax(300px,1fr))]">
+      {groups.map((group) => {
+        const symbol = currencyMeta[group.currency]?.symbol ?? "";
+        const max = Math.max(...group.rows.map((row) => row.total));
+        return (
+          <div
+            key={group.currency}
+            className="rounded-[14px] bg-surface-inset p-4 shadow-[inset_0_1px_0_var(--hairline-top)]"
+          >
+            <div className="mb-3.5 flex items-center gap-2">
+              <CodeChip code={group.currency} />
+              <span className="text-xs text-muted-foreground">total</span>
+              <span className="text-sm font-semibold text-foreground tabular-nums">
+                {symbol} {formatCount(group.total)}
+              </span>
+            </div>
+            <div className="flex flex-col gap-2.5">
+              {group.rows.map((row, i) => (
+                <div key={row.serviceType} className="flex flex-col gap-1.5">
+                  <div className="flex items-baseline gap-2.5">
+                    <span className="mr-auto text-[11.5px] text-foreground">
+                      {serviceLabel(row.serviceType)}
+                    </span>
+                    <span className="text-xs font-semibold text-foreground tabular-nums">
+                      {symbol} {formatCount(row.total)}
+                    </span>
+                  </div>
+                  <ShareBar value={row.total} max={max} color={seriesColor(i)} />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

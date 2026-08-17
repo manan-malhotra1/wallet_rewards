@@ -44,7 +44,7 @@ plus an inline edit affordance on the group section header in the UI.
   cosmetics)
 - UI test with mocked server action
 
-### Story B1.3 — Segment delete endpoint · Backlog
+### Story B1.3 — Segment delete endpoint · Done (2026-08-17, d832d36 — also added rename via PATCH)
 
 **Description:** `DELETE /api/v1/segments/{id}`. The UI already gates a
 delete affordance by role; there is no backend endpoint yet.

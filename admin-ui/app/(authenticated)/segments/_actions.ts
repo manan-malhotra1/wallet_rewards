@@ -10,6 +10,7 @@ import {
   addUserToSegment,
   createSegment,
   createSegmentGroup,
+  deleteSegment,
   deleteSegmentGroup,
   previewSegmentCriteria,
   recomputeSegments,
@@ -88,6 +89,24 @@ export async function updateSegmentAction(
 ): Promise<SegmentActionResult> {
   try {
     await updateSegment(segmentId, tenantId, payload);
+    revalidatePath("/segments");
+    return { ok: true };
+  } catch (err) {
+    return toActionError(err);
+  }
+}
+
+/**
+ * Delete a segment. Backend 409s if it's system-protected or still bound to
+ * a rule or bonus multiplier. Consumed by the per-row delete button on
+ * `<GroupSection>`.
+ */
+export async function deleteSegmentAction(
+  segmentId: string,
+  tenantId: string,
+): Promise<SegmentActionResult> {
+  try {
+    await deleteSegment(segmentId, tenantId);
     revalidatePath("/segments");
     return { ok: true };
   } catch (err) {

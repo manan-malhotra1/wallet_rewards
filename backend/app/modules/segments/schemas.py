@@ -49,6 +49,14 @@ class SegmentUpdateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Renaming a segment is allowed even for an `is_system` segment — the
+    # flag protects deletion and group moves, not the cosmetic name (same
+    # policy `group_id` moves would use if system groups were ever
+    # renameable). Uniqueness is enforced per (tenant, group) via
+    # `uq_segments_name_per_group`, so a rename that collides with a sibling
+    # segment in the same group 409s the same way `POST /segments` does on
+    # a duplicate create.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=500)
     # Moves the segment to a different group. `None` (the default, or
     # omitted) means "don't move" — a segment always belongs to some group,

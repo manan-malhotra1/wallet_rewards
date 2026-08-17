@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,7 +46,7 @@ from app.modules.segments.schemas import (
     SegmentUpdateRequest,
 )
 from app.shared.exceptions import AppHTTPException, UserNotFound
-from app.shared.models import Segment, User, UserSegment
+from app.shared.models import BonusMultiplier, Rule, Segment, User, UserSegment
 
 # -----------------------------------------------------------------------------
 # CRUD
@@ -190,7 +190,7 @@ async def update_segment(
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> Segment:
-    """Update a segment's description, group, priority, and/or criteria.
+    """Update a segment's name, description, group, priority, and/or criteria.
 
     Only fields explicitly present in the request are touched — distinguished
     via `request.model_fields_set`, so an omitted field is left alone even
@@ -211,7 +211,9 @@ async def update_segment(
     target group) is checked against `is_system` and against
     `load_group_or_404`. This lets a client PATCH `group_id` unconditionally
     (e.g. re-submitting a whole form) without tripping the system-segment
-    guard on a value that wouldn't have changed anything anyway.
+    guard on a value that wouldn't have changed anything anyway. A `name`
+    rename, by contrast, is allowed even for an `is_system` segment — the
+    flag only protects deletion and group moves.
 
     Args:
         session: Async DB session (committed here).
@@ -231,7 +233,10 @@ async def update_segment(
             `segment_group_not_found` when a `group_id` MOVE target doesn't
             resolve inside the tenant; 409 `segment_protected` when a
             `group_id` MOVE is attempted on an `is_system` segment — system
-            tiers stay in the lens they were seeded into.
+            tiers stay in the lens they were seeded into; 409
+            `segment_already_exists` when a `name` rename collides with the
+            unique (tenant, group, name) constraint — same error the create
+            path raises on a duplicate name within the same group.
 
     Side effects:
         Updates the `segments` row. If criteria actually changed (set,
@@ -271,6 +276,9 @@ async def update_segment(
         target_group = await load_group_or_404(session, request.group_id, tenant_id)
         changes["group_id"] = target_group.id
 
+    if "name" in fields_set and request.name is not None:
+        changes["name"] = request.name
+
     if "description" in fields_set:
         changes["description"] = request.description
 
@@ -293,6 +301,24 @@ async def update_segment(
             after["last_evaluated_at"] = None
         segment.last_evaluated_at = None
 
+    if "name" in after:
+        # A rename is the only field here that can violate a DB constraint
+        # (uq_segments_name_per_group) — flush it alone, before writing the
+        # audit row, so a collision rolls back cleanly without an audit entry
+        # describing a change that never actually landed.
+        try:
+            await session.flush()
+        except IntegrityError as exc:
+            await session.rollback()
+            sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+            if sqlstate != UNIQUE_VIOLATION_SQLSTATE:
+                raise
+            raise AppHTTPException(
+                409,
+                "segment_already_exists",
+                "A segment with this name already exists within this group.",
+            ) from exc
+
     if admin is not None and after:
         record_audit_for_admin(
             session,
@@ -309,6 +335,112 @@ async def update_segment(
     await session.commit()
     await session.refresh(segment)
     return segment
+
+
+async def delete_segment(
+    session: AsyncSession,
+    segment_id: UUID,
+    tenant_id: UUID,
+    *,
+    admin: AdminPrincipal | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Delete a segment, guarded against system segments and live bindings.
+
+    A segment can only be removed once nothing else in the rules/rewards
+    engine still points at it — a dangling `Rule.segment_id` or
+    `BonusMultiplier.segment_id` would otherwise silently stop targeting
+    anyone the next time either is evaluated, which is a much harder bug to
+    notice than a 409 telling the admin to unbind it first (mirrors
+    `delete_group`'s "still has segments" guard one level up).
+
+    Args:
+        session: Async DB session (committed here).
+        segment_id: The segment to delete.
+        tenant_id: Scope — a segment belonging to another tenant is reported
+            as 404, never 403 (no existence leak).
+        admin: Acting admin — audited when present.
+        ip_address: Caller IP for the audit record.
+
+    Raises:
+        AppHTTPException: 404 `segment_not_found` when the segment doesn't
+            exist in this tenant (including cross-tenant); 409
+            `segment_protected` for an `is_system` segment; 409
+            `segment_in_use` while any rule or bonus multiplier still
+            references it.
+
+    Side effects:
+        Bulk-deletes the segment's `user_segments` memberships, then the
+        `segments` row itself, and writes a `segment.deleted` audit row
+        capturing name/group/is_system/member_count as `before_state`.
+    """
+    segment = (
+        await session.execute(
+            select(Segment).where(Segment.id == segment_id, Segment.tenant_id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if segment is None:
+        raise AppHTTPException(404, "segment_not_found", "Segment not found.")
+
+    if segment.is_system:
+        raise AppHTTPException(
+            409,
+            "segment_protected",
+            "System segments cannot be deleted.",
+        )
+
+    rule_count = (
+        await session.execute(
+            select(func.count()).select_from(Rule).where(Rule.segment_id == segment_id)
+        )
+    ).scalar_one()
+    multiplier_count = (
+        await session.execute(
+            select(func.count())
+            .select_from(BonusMultiplier)
+            .where(BonusMultiplier.segment_id == segment_id)
+        )
+    ).scalar_one()
+    if rule_count > 0 or multiplier_count > 0:
+        raise AppHTTPException(
+            409,
+            "segment_in_use",
+            f"Segment is bound to {rule_count} rule(s) and {multiplier_count} multiplier(s).",
+        )
+
+    member_count = (
+        await session.execute(
+            select(func.count())
+            .select_from(UserSegment)
+            .where(UserSegment.segment_id == segment_id)
+        )
+    ).scalar_one()
+    before_state = {
+        "name": segment.name,
+        "group_id": str(segment.group_id),
+        "is_system": segment.is_system,
+        "member_count": member_count,
+    }
+
+    # Memberships have no independent lifecycle once their segment is gone —
+    # bulk-delete them first so the row delete below never trips an FK
+    # constraint on `user_segments.segment_id`.
+    await session.execute(delete(UserSegment).where(UserSegment.segment_id == segment_id))
+    await session.delete(segment)
+
+    if admin is not None:
+        record_audit_for_admin(
+            session,
+            admin,
+            tenant_id=tenant_id,
+            action="segment.deleted",
+            entity_type="segment",
+            entity_id=str(segment_id),
+            before_state=before_state,
+            ip_address=ip_address,
+        )
+
+    await session.commit()
 
 
 async def list_segments_for_tenant(session: AsyncSession, tenant_id: UUID) -> list[Segment]:

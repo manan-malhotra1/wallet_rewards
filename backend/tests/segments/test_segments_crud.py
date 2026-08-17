@@ -205,6 +205,117 @@ async def test_add_user_cross_tenant_returns_404(
 
 
 @pytest.mark.asyncio
+async def test_rename_segment_happy_path(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    test_segment_group: str,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify PATCH with a `name` field renames the segment."""
+    create = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "old-name",
+        },
+    )
+    seg_id = create.json()["id"]
+
+    resp = await async_client.patch(
+        f"/api/v1/segments/{seg_id}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+        json={"name": "new-name"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "new-name"
+
+
+@pytest.mark.asyncio
+async def test_rename_segment_duplicate_in_group_409(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    test_segment_group: str,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify renaming a segment to a name already used in the SAME group 409s."""
+    await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "taken",
+        },
+    )
+    create = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "renamable",
+        },
+    )
+    seg_id = create.json()["id"]
+
+    resp = await async_client.patch(
+        f"/api/v1/segments/{seg_id}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+        json={"name": "taken"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "segment_already_exists"
+
+
+@pytest.mark.asyncio
+async def test_rename_segment_same_name_ok_in_different_group(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    test_segment_group: str,
+    make_segment_group: Callable[..., Awaitable[str]],
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify renaming to a name already used in a DIFFERENT group is fine.
+
+    Proves the rename path shares the create path's (tenant, group) scoping
+    on `uq_segments_name_per_group`, not a tenant-wide check.
+    """
+    other_group_id = await make_segment_group(test_tenant.id)
+    await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": other_group_id,
+            "name": "shared-name",
+        },
+    )
+    create = await async_client.post(
+        "/api/v1/segments",
+        headers=admin_auth_header,
+        json={
+            "tenant_id": str(test_tenant.id),
+            "group_id": test_segment_group,
+            "name": "renamable-2",
+        },
+    )
+    seg_id = create.json()["id"]
+
+    resp = await async_client.patch(
+        f"/api/v1/segments/{seg_id}",
+        headers=admin_auth_header,
+        params={"tenant_id": str(test_tenant.id)},
+        json={"name": "shared-name"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "shared-name"
+
+
+@pytest.mark.asyncio
 async def test_add_unknown_user_returns_404(
     async_client: AsyncClient,
     test_tenant: Tenant,

@@ -14,6 +14,11 @@
  * (the fetch failed, or the caller hasn't loaded it) hides the group
  * header's "N users" annotation and the per-segment Members column
  * entirely, rather than rendering a column of misleading zeroes.
+ *
+ * Story B1.3 adds a per-row segment delete, confirm-guarded the same way as
+ * the group delete above it: gated on `canDelete` AND the segment NOT being
+ * `is_system` (the backend 409s a system-segment delete outright, so the
+ * affordance is hidden rather than left to fail server-side).
  */
 "use client";
 
@@ -22,6 +27,7 @@ import * as React from "react";
 
 import {
   addUserToSegmentAction,
+  deleteSegmentAction,
   deleteSegmentGroupAction,
 } from "@/app/(authenticated)/segments/_actions";
 import { Badge } from "@/components/ui/badge";
@@ -107,6 +113,8 @@ export function GroupSection({
   const [open, setOpen] = React.useState(true);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [confirmDeleteSegment, setConfirmDeleteSegment] = React.useState<Segment | null>(null);
+  const [deletingSegment, setDeletingSegment] = React.useState(false);
   const [pending, setPending] = React.useState<string | null>(null);
   // No `tenantId` field here — `onAddUser` below always submits the
   // segment's own `tenant_id` (looked up fresh from `s.tenant_id` at call
@@ -137,6 +145,24 @@ export function GroupSection({
     setConfirmDelete(false);
     if (res.ok) {
       toast({ title: "Group deleted", description: group.name });
+    } else {
+      toast({
+        title: "Couldn't delete",
+        description: `${res.errorCode}: ${res.message}`,
+        variant: "danger",
+      });
+    }
+  };
+
+  const onDeleteSegment = async () => {
+    if (!confirmDeleteSegment) return;
+    const target = confirmDeleteSegment;
+    setDeletingSegment(true);
+    const res = await deleteSegmentAction(target.id, tenantId);
+    setDeletingSegment(false);
+    setConfirmDeleteSegment(null);
+    if (res.ok) {
+      toast({ title: "Segment deleted", description: target.name });
     } else {
       toast({
         title: "Couldn't delete",
@@ -302,6 +328,20 @@ export function GroupSection({
                                 <UserPlus className="h-3.5 w-3.5 text-primary" />
                               </Button>
                             )}
+                            {/* Hidden for is_system segments — the backend
+                                409s a system-segment delete outright, so the
+                                affordance never appears rather than being
+                                left to fail server-side. */}
+                            {canDelete && !s.is_system && (
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Delete segment"
+                                onClick={() => setConfirmDeleteSegment(s)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -370,6 +410,39 @@ export function GroupSection({
             </Button>
             <Button variant="destructive" onClick={onDeleteGroup} disabled={deleting}>
               {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={confirmDeleteSegment !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmDeleteSegment(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Delete segment?
+            </DialogTitle>
+            <DialogDescription>
+              <strong>{confirmDeleteSegment?.name}</strong> and its memberships will be
+              permanently removed. This only succeeds while no rule or bonus multiplier
+              still binds to it — unbind those first if it fails.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteSegment(null)}
+              disabled={deletingSegment}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={onDeleteSegment} disabled={deletingSegment}>
+              {deletingSegment ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

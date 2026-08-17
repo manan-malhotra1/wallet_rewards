@@ -8,7 +8,8 @@ Two routers:
       - GET    /segments/member-counts       per-segment + per-group member counts (B1.4+)
       - POST   /segments/preview             dry-run criteria match count (Task 7)
       - POST   /segments/recompute           enqueue a tenant's dynamic recompute (Task 7)
-      - PATCH  /segments/{id}                update a segment (Task 7)
+      - PATCH  /segments/{id}                update a segment (Task 7; rename via `name`)
+      - DELETE /segments/{id}                delete a segment (guarded; B1.3)
       - POST   /segments/{id}/users          add a user to the segment
   - `groups_router` (/api/v1/segment-groups) — Task 6
       - POST   /segment-groups              create a segment group
@@ -18,8 +19,8 @@ Two routers:
 Route ORDER matters: FastAPI matches path operations in declaration order, so
 every LITERAL path (`/metrics`, `/preview`, `/recompute`) is declared before
 any path-parameter route on this router (`PATCH /{segment_id}`,
-`POST /{segment_id}/users`) — otherwise a literal segment could be swallowed
-by a path-parameter route sharing its HTTP method.
+`DELETE /{segment_id}`, `POST /{segment_id}/users`) — otherwise a literal
+segment could be swallowed by a path-parameter route sharing its HTTP method.
 """
 
 from __future__ import annotations
@@ -55,6 +56,7 @@ from app.modules.segments.schemas import (
 from app.modules.segments.service import (
     add_user_to_segment,
     create_segment,
+    delete_segment,
     enqueue_recompute,
     list_metrics,
     list_segments_for_tenant,
@@ -174,6 +176,24 @@ async def patch_segment(
         ip_address=_client_ip(fastapi_request),
     )
     return SegmentOut.model_validate(segment)
+
+
+@router.delete("/{segment_id}", status_code=204)
+async def remove_segment(
+    segment_id: UUID,
+    tenant_id: UUID,
+    fastapi_request: Request,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """Delete a segment. 404 cross-tenant/unknown; 409 protected or bound to a rule/multiplier."""
+    await delete_segment(
+        session,
+        segment_id,
+        tenant_id,
+        admin=admin,
+        ip_address=_client_ip(fastapi_request),
+    )
 
 
 @router.post("/{segment_id}/users", status_code=201)

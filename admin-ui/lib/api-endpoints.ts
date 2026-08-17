@@ -1035,6 +1035,9 @@ export const addUserToSegment = (
  * combination).
  */
 export interface UpdateSegmentPayload {
+  // Renaming is allowed even for an `is_system` segment — only group moves
+  // are blocked for those. Omitting the key leaves the name untouched.
+  name?: string;
   // `null` clears the description; omitting the key leaves it untouched.
   description?: string | null;
   group_id?: string;
@@ -1054,6 +1057,16 @@ export const updateSegment = (
   payload: UpdateSegmentPayload,
 ) =>
   apiPatch<Segment>(`/api/v1/segments/${segment_id}`, payload, {
+    query: { tenant_id },
+  });
+
+/**
+ * Delete a segment. Backend 409s if it's `is_system`-protected or still
+ * bound to a rule or bonus multiplier (see `segment_in_use`'s message for
+ * which kind and how many).
+ */
+export const deleteSegment = (segment_id: string, tenant_id: string) =>
+  apiDelete<void>(`/api/v1/segments/${segment_id}`, {
     query: { tenant_id },
   });
 

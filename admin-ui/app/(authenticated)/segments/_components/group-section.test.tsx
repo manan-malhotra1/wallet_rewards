@@ -12,11 +12,13 @@ import type { MemberCounts, Segment, SegmentGroup, SegmentMetricInfo, Service } 
 import { formatTimestamp } from "@/lib/utils";
 
 const deleteSegmentGroupAction = vi.fn();
+const deleteSegmentAction = vi.fn();
 const addUserToSegmentAction = vi.fn();
 const previewCriteriaAction = vi.fn();
 const updateSegmentAction = vi.fn();
 vi.mock("@/app/(authenticated)/segments/_actions", () => ({
   deleteSegmentGroupAction: (...args: unknown[]) => deleteSegmentGroupAction(...args),
+  deleteSegmentAction: (...args: unknown[]) => deleteSegmentAction(...args),
   addUserToSegmentAction: (...args: unknown[]) => addUserToSegmentAction(...args),
   // <EditSegmentDialog> (mounted per-row by <GroupSection> below) pulls
   // these two in as well — stubbed here too so opening it in a test never
@@ -88,6 +90,7 @@ const DYNAMIC_EVALUATED = makeSegment({
 beforeEach(() => {
   vi.clearAllMocks();
   deleteSegmentGroupAction.mockResolvedValue({ ok: true });
+  deleteSegmentAction.mockResolvedValue({ ok: true });
   addUserToSegmentAction.mockResolvedValue({ ok: true });
 });
 
@@ -256,6 +259,73 @@ describe("Group-sectioned segments — one group's table", () => {
     // get the pencil, since only a GROUP MOVE (not the whole row) is
     // blocked for a system segment.
     expect(screen.getAllByRole("button", { name: "Edit segment" })).toHaveLength(3);
+  });
+
+  describe("segment delete (Story B1.3)", () => {
+    it("Verify a per-row Delete segment button renders for a non-system segment when canDelete", () => {
+      renderSection({ segments: [TIE_ALPHA] });
+
+      expect(screen.getByRole("button", { name: "Delete segment" })).toBeInTheDocument();
+    });
+
+    it("Verify the Delete segment button is hidden for an is_system segment", () => {
+      renderSection({ segments: [BRONZE] });
+
+      expect(screen.queryByRole("button", { name: "Delete segment" })).not.toBeInTheDocument();
+    });
+
+    it("Verify the Delete segment button is hidden when canDelete is false", () => {
+      renderSection({ segments: [TIE_ALPHA], canDelete: false });
+
+      expect(screen.queryByRole("button", { name: "Delete segment" })).not.toBeInTheDocument();
+    });
+
+    it("Verify confirming a segment delete calls the action with (segment.id, tenantId)", async () => {
+      const user = userEvent.setup();
+      renderSection({ segments: [TIE_ALPHA] });
+
+      await user.click(screen.getByRole("button", { name: "Delete segment" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+      await waitFor(() => expect(deleteSegmentAction).toHaveBeenCalledTimes(1));
+      expect(deleteSegmentAction).toHaveBeenCalledWith("seg-alpha", "tenant-1");
+    });
+
+    it("Verify a failed segment delete surfaces the backend message in a danger toast", async () => {
+      deleteSegmentAction.mockResolvedValue({
+        ok: false,
+        errorCode: "segment_in_use",
+        message: "Segment is bound to 1 rule(s) and 0 multiplier(s).",
+      });
+      const user = userEvent.setup();
+      renderSection({ segments: [TIE_ALPHA] });
+
+      await user.click(screen.getByRole("button", { name: "Delete segment" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Couldn't delete",
+            description: "segment_in_use: Segment is bound to 1 rule(s) and 0 multiplier(s).",
+            variant: "danger",
+          }),
+        ),
+      );
+    });
+
+    it("Verify canceling the confirm dialog never calls the delete action", async () => {
+      const user = userEvent.setup();
+      renderSection({ segments: [TIE_ALPHA] });
+
+      await user.click(screen.getByRole("button", { name: "Delete segment" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(deleteSegmentAction).not.toHaveBeenCalled();
+    });
   });
 
   describe("member counts (Story B1.4+)", () => {

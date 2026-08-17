@@ -5,7 +5,10 @@
  * Prefills from the `segment` prop and submits ONLY the fields that changed
  * (compared against that same prop) — the backend's `update_segment` audits
  * exactly the changed fields, so a payload padded with unchanged values
- * would blur that audit trail with false "changes". A segment that started
+ * would blur that audit trail with false "changes". The Name field follows
+ * this same diff-only rule and is editable even for an `is_system` segment
+ * — the backend only protects a system segment's group, not its name. A
+ * segment that started
  * dynamic (`criteria != null`) shows its criteria prefilled in
  * `<CriteriaBuilder>` plus a "Convert to static" checkbox that sends
  * `clear_criteria: true` instead of a `criteria` payload; a segment that
@@ -52,6 +55,7 @@ import { emptyCriteria, validateCriteria } from "@/lib/segment-criteria";
 import { CriteriaBuilder } from "./criteria-builder";
 
 interface FormState {
+  name: string;
   description: string;
   groupId: string;
   priority: string;
@@ -66,6 +70,7 @@ interface FormState {
 
 function initialState(segment: Segment): FormState {
   return {
+    name: segment.name,
     description: segment.description ?? "",
     groupId: segment.group_id,
     priority: String(segment.priority),
@@ -139,6 +144,11 @@ export function EditSegmentDialog({
 
   const onSubmit = async () => {
     setError(null);
+    const trimmedName = form.name.trim();
+    if (trimmedName === "") {
+      setError("Name is required.");
+      return;
+    }
     if (form.priority.trim() === "") {
       setError("Priority is required.");
       return;
@@ -157,6 +167,10 @@ export function EditSegmentDialog({
     // the payload, so the backend's per-field audit row reflects a real
     // edit rather than every field the form happened to carry.
     const payload: UpdateSegmentPayload = {};
+
+    if (trimmedName !== segment.name) {
+      payload.name = trimmedName;
+    }
 
     const trimmedDescription = form.description.trim();
     const currentDescription = segment.description ?? "";
@@ -212,6 +226,17 @@ export function EditSegmentDialog({
         </DialogHeader>
 
         <div className="space-y-3">
+          <div>
+            <Label htmlFor="edit-seg-name">Name</Label>
+            <Input
+              id="edit-seg-name"
+              value={form.name}
+              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+              className="mt-1"
+              maxLength={100}
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="edit-seg-desc">Description (optional)</Label>

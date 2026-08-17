@@ -132,6 +132,33 @@ describe("Editing a segment — criteria, priority, move, clear", () => {
     expect(updateSegmentAction).toHaveBeenCalledWith("seg-1", "tenant-1", { priority: 7 });
   });
 
+  it("Verify a name-only edit sends only the name field, even for an is_system segment", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog(user, SYSTEM_SEGMENT);
+
+    const nameInput = within(dialog).getByLabelText("Name");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Platinum");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(updateSegmentAction).toHaveBeenCalledTimes(1));
+    expect(updateSegmentAction).toHaveBeenCalledWith("seg-system", "tenant-1", {
+      name: "Platinum",
+    });
+  });
+
+  it("Verify clearing the name blocks submit with a local validation error", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog(user, STATIC_SEGMENT);
+
+    const nameInput = within(dialog).getByLabelText("Name");
+    await user.clear(nameInput);
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await within(dialog).findByText("Name is required.")).toBeInTheDocument();
+    expect(updateSegmentAction).not.toHaveBeenCalled();
+  });
+
   it("Verify converting a dynamic segment to static sends clear_criteria without a criteria payload", async () => {
     const user = userEvent.setup();
     const dialog = await openDialog(user, DYNAMIC_SEGMENT);

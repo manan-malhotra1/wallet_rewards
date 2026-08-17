@@ -279,11 +279,14 @@ async def ensure_permissive_p2p_limit(
     tokens: AdminTokenProvider,
     tenant_id: str,
 ) -> None:
-    """Replace any restrictive (p2p, financial_wallet, ZAR) limit row with a
-    very high one so a load test doesn't trip on the production-grade
-    daily count cap (default 10/day in seed).
+    """Verify the (p2p, financial_wallet, ZAR) limit rows won't strangle the load.
 
-    Done once per setup pass — idempotent re-runs are no-ops.
+    Historical note: this used to DELETE + re-POST a permissive row, but limit
+    mutations moved behind the maker-checker config-requests flow — the direct
+    admin API is read-only now (POST/DELETE return 405). Since a load test must
+    not silently bypass maker-checker, this step only inspects the live config
+    and warns when a rolling cap or amount bound could reject load traffic; the
+    operator raises limits through the admin UI's config-requests flow if so.
     """
     list_resp = await client.get(
         f"{api_url}/api/v1/limits/configs",
@@ -294,48 +297,45 @@ async def ensure_permissive_p2p_limit(
     if list_resp.status_code != 200:
         _fail("limits/configs list", list_resp)
 
-    restrictive = [
+    rows = [
         c
         for c in list_resp.json()
         if c["transaction_type"] == "p2p"
         and c["account_type"] == "financial_wallet"
         and c["currency"] == "ZAR"
     ]
-    # If a high-cap row already exists, skip both delete + create.
-    if any(
-        c.get("daily_count_cap") and c["daily_count_cap"] >= 10_000_000
-        for c in restrictive
-    ):
-        return
-
-    for c in restrictive:
-        del_resp = await client.delete(
-            f"{api_url}/api/v1/limits/configs/{c['id']}",
-            headers=await tokens.header(),
-            params={"tenant_id": tenant_id},
-            timeout=30,
+    if not rows:
+        # Fail-closed platform: no limit config means every p2p is rejected.
+        sys.exit(
+            "No p2p limit config exists for this tenant — the platform fails "
+            "closed, so every transfer would 422. Seed one (make seed) or add "
+            "it via the admin UI config-requests flow, then re-run."
         )
-        if del_resp.status_code not in (204, 404):
-            _fail("limits/configs delete", del_resp)
 
-    create_resp = await client.post(
-        f"{api_url}/api/v1/limits/configs",
-        headers=await tokens.header(),
-        json={
-            "tenant_id": tenant_id,
-            "transaction_type": "p2p",
-            "account_type": "financial_wallet",
-            "currency": "ZAR",
-            # Permissive caps — effectively unbounded for the load test.
-            "daily_count_cap": 100_000_000,
-            "daily_value_cap": "1000000000000",
-            "min_amount": "0.01",
-            "max_amount": "1000000000",
-        },
-        timeout=30,
-    )
-    if create_resp.status_code != 201:
-        _fail("limits/configs create", create_resp)
+    # Rolling caps small enough to trip during a load run are worth flagging;
+    # the thresholds are deliberately loose — this is a smoke warning, not a gate.
+    for c in rows:
+        cramped = [
+            f"{field}={c[field]}"
+            for field in (
+                "daily_count_cap",
+                "daily_value_cap",
+                "weekly_count_cap",
+                "monthly_count_cap",
+            )
+            if c.get(field) is not None and float(c[field]) < 100_000
+        ]
+        if cramped:
+            print(
+                f"  ! p2p limit row has rolling caps that may trip under load: "
+                f"{', '.join(cramped)} — raise via config-requests if the "
+                f"error report shows limit rejections."
+            )
+        if c.get("min_amount") is not None:
+            print(
+                f"  + p2p per-txn bounds: min={c['min_amount']} "
+                f"max={c.get('max_amount')} — keep --min-amount/--max-amount inside them."
+            )
 
 
 async def ensure_load_test_role(

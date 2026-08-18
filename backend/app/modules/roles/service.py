@@ -2,7 +2,8 @@
 
 `has_permission(user_id, transaction_type)` is the canonical step 1 of the
 payment orchestration sequence (Pay-PRD-0260). It returns True iff the user
-holds at least one ACTIVE role granting that transaction_type.
+holds at least one ACTIVE role granting that transaction_type, where a DERIVED
+service also counts its base service's grants (story B4.6).
 
 Per Pay-PRD-0440: "A user with no assigned role may not initiate transactions."
 """
@@ -34,6 +35,7 @@ from app.shared.models import (
     ROLE_STATUS_ACTIVE,
     Role,
     RolePermission,
+    Service,
     Tenant,
     User,
     UserRole,
@@ -407,6 +409,54 @@ async def list_user_roles(session: AsyncSession, user_id: UUID, tenant_id: UUID)
 # -----------------------------------------------------------------------------
 
 
+async def _permitted_flags(
+    session: AsyncSession, user_id: UUID, transaction_type: str
+) -> set[bool]:
+    """Return the `permitted` values on the user's ACTIVE roles for one code.
+
+    Empty set means no role mentions the code at all — which is different from
+    a role mentioning it with `permitted=false`, and the two lead to different
+    answers once inheritance is in play (see `has_permission`).
+    """
+    stmt = (
+        select(RolePermission.permitted)
+        .join(Role, Role.id == RolePermission.role_id)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .where(
+            UserRole.user_id == user_id,
+            Role.status == ROLE_STATUS_ACTIVE,
+            RolePermission.transaction_type == transaction_type,
+        )
+    )
+    result = await session.execute(stmt)
+    return set(result.scalars().all())
+
+
+async def _base_code_of_derived(
+    session: AsyncSession, user_id: UUID, transaction_type: str
+) -> str | None:
+    """Return the base code if this code is a derived service in the user's tenant.
+
+    Tenant-scoped through the user rather than by a passed-in tenant_id, so a
+    derived service in one tenant can never lend its base's grants to a user in
+    another. Returns None for a base service, an unknown code, or a
+    soft-deleted row — each of which means "no inheritance to apply".
+    """
+    stmt = (
+        select(Service.base_service_code)
+        .join(User, User.tenant_id == Service.tenant_id)
+        .where(
+            User.id == user_id,
+            Service.code == transaction_type,
+            Service.kind == "derived",
+            Service.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def has_permission(session: AsyncSession, user_id: UUID, transaction_type: str) -> bool:
     """True iff the user holds an ACTIVE role granting transaction_type.
 
@@ -415,21 +465,40 @@ async def has_permission(session: AsyncSession, user_id: UUID, transaction_type:
     Pay-PRD-0460: this is step 1 of the orchestration sequence.
 
     Multiple roles: any active role granting the permission is enough.
+
+    DERIVED SERVICES INHERIT their base's grants (story B4.6). A derived service
+    is a renamed, re-priced alias of one base flow, so a role that may perform
+    the base flow may perform the variant; without inheritance an operator could
+    create a variant in the admin UI but never make it usable, because there is
+    no admin screen for role permissions. Resolution order:
+
+      1. an explicit `permitted=true` row for this code wins outright;
+      2. otherwise an explicit `permitted=false` row for this code DENIES, and
+         blocks inheritance — this is the only way to withhold a variant from a
+         role that holds its base, so it must beat the inherited grant;
+      3. otherwise, for a derived service, the base's grants decide;
+      4. otherwise denied.
+
+    Note what inheritance does NOT do: it never grants a base flow because a
+    variant was granted (inheritance is one-way, child from parent), and it
+    never widens WHO may use a service — `services.allowed_user_types` /
+    `allowed_channels` are enforced separately and are narrowing-only.
+
+    The common case (a base code with a grant) still costs exactly one query;
+    the extra lookups only happen when the first query finds no grant.
     """
-    stmt = (
-        select(RolePermission)
-        .join(Role, Role.id == RolePermission.role_id)
-        .join(UserRole, UserRole.role_id == Role.id)
-        .where(
-            UserRole.user_id == user_id,
-            Role.status == ROLE_STATUS_ACTIVE,
-            RolePermission.transaction_type == transaction_type,
-            RolePermission.permitted.is_(True),
-        )
-        .limit(1)
-    )
-    result = await session.execute(stmt)
-    return result.scalar_one_or_none() is not None
+    flags = await _permitted_flags(session, user_id, transaction_type)
+    if True in flags:
+        return True
+    if flags:
+        # Only explicit denials — an operator said "not this one", so do not let
+        # the base's grant resurrect it.
+        return False
+
+    base_code = await _base_code_of_derived(session, user_id, transaction_type)
+    if base_code is None:
+        return False
+    return True in await _permitted_flags(session, user_id, base_code)
 
 
 async def require_permission(session: AsyncSession, user_id: UUID, transaction_type: str) -> None:

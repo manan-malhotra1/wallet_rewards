@@ -259,7 +259,8 @@ export function CreateServiceDialog({
           </div>
           <p className="text-[11px] text-[--color-text-3]">
             A new service can&apos;t transact until it has its own pricing and
-            limit configuration, and a role that permits it.
+            limit configuration. It inherits its base service&apos;s role
+            permissions, so no new role grant is needed.
           </p>
           {error && <ErrorBanner title="Couldn't create" description={error} />}
         </div>

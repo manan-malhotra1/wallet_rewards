@@ -1,11 +1,12 @@
 /**
  * <ReadinessNotice> — flags a service that cannot transact yet, and why.
  *
- * A service row on its own moves no money: it also needs a pricing config, a
- * limit config, and a role granting its code. Without this notice an operator
- * meets each gap as a failed transaction (422 `pricing_config_missing`, or a
- * `NotAuthorised`) long after creating the service, with nothing on screen
- * connecting the error to the missing config.
+ * A service row on its own moves no money: it also needs a pricing config and
+ * a limit config, plus — for the five role-enforced flows only — a role
+ * granting it. Without this notice an operator meets each gap as a failed
+ * transaction (422 `pricing_config_missing`, or a `NotAuthorised`) long after
+ * creating the service, with nothing on screen connecting the error to the
+ * missing config.
  */
 import Link from "next/link";
 import * as React from "react";

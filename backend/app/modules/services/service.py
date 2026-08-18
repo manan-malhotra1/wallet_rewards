@@ -35,7 +35,11 @@ from app.shared.models import (
     RolePermission,
     Service,
 )
-from app.shared.services_registry import BASE_SERVICE_CODES, DERIVABLE_BASE_CODES
+from app.shared.services_registry import (
+    BASE_SERVICE_CODES,
+    DERIVABLE_BASE_CODES,
+    ROLE_ENFORCED_BASE_CODES,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -372,21 +376,34 @@ async def list_services_with_readiness(
         the same order as `list_services`.
     """
     services = await list_services(session, tenant_id, status=status)
-    readiness = await compute_service_readiness(session, tenant_id, [s.code for s in services])
+    readiness = await compute_service_readiness(session, tenant_id, services)
     return [(s, readiness[s.code]) for s in services]
 
 
 async def compute_service_readiness(
-    session: AsyncSession, tenant_id: uuid.UUID, codes: list[str]
+    session: AsyncSession, tenant_id: uuid.UUID, services: list[Service]
 ) -> dict[str, dict[str, bool]]:
-    """Report which of the three transacting prerequisites each code satisfies.
+    """Report which transacting prerequisites each service satisfies.
 
-    A service row on its own moves no money. Before a transaction under its
-    code can succeed it also needs a pricing config and a limit config (both
-    fail closed per invariant #12), AND a role that grants the code — role
-    permissions match `transaction_type` exactly, so a derived service inherits
-    nothing from its base's grant. Operators otherwise discover each gap one at
-    a time, as a 422 or a NotAuthorised on the first real transaction.
+    A service row on its own moves no money. A transaction under its code also
+    needs a pricing config and a limit config (both fail closed per invariant
+    #12) and, for the flows that enforce it, a role granting the code.
+    Operators otherwise meet each gap one at a time as a 422 or a
+    `NotAuthorised` on the first real transaction.
+
+    Two rules keep the `role` flag honest, and both were bugs when this
+    reported a bare grant lookup:
+
+    - Only the five flows in `ROLE_ENFORCED_BASE_CODES` call
+      `require_permission`. `fund` / `withdraw` are admin-initiated,
+      `merchant_cashin` authenticates by API key, and `change_pin` is not
+      role-gated — reporting a missing grant for those is a false alarm, so
+      they report True (nothing to satisfy).
+    - A derived service INHERITS its base's grants (story B4.6), so a variant
+      whose base is granted is ready even with no row of its own. An explicit
+      `permitted=false` on the variant still blocks, mirroring
+      `roles.has_permission` exactly — if these two disagreed, the screen would
+      contradict what the money path does.
 
     IMPORTANT — this is a "configured at all" check, deliberately weaker than
     "will resolve for a given caller". Pricing and limit rows are scoped by
@@ -397,18 +414,25 @@ async def compute_service_readiness(
     obviously broken" — the UI must not promise more than that.
 
     Args:
-        codes: Service codes to report on (typically the tenant's whole
-            catalog).
+        services: The rows to report on (typically the tenant's whole catalog).
+            Passed as rows, not codes, because the role rule needs each
+            service's `kind` and `base_service_code`.
 
     Returns:
         `{code: {"pricing": bool, "limits": bool, "role": bool}}`, one entry
-        per requested code.
+        per service.
 
     Side effects:
         None — three grouped read-only queries, no per-service round trip.
     """
-    if not codes:
+    if not services:
         return {}
+
+    codes = [s.code for s in services]
+    # A variant's base may be absent from `services` (soft-deleted, or excluded
+    # by a status filter) yet still carry the grant that the variant inherits,
+    # so look base codes up explicitly rather than relying on the page's rows.
+    lookup_codes = set(codes) | {s.base_service_code for s in services if s.base_service_code}
 
     async def _codes_present(stmt) -> set[str]:  # type: ignore[no-untyped-def]
         result = await session.execute(stmt)
@@ -430,28 +454,41 @@ async def compute_service_readiness(
         )
         .distinct()
     )
-    # Mirrors `roles.has_permission`: only an ACTIVE role with permitted=true
-    # actually lets anyone transact, so an inactive role's grant must not read
-    # as ready.
-    granted = await _codes_present(
-        select(RolePermission.transaction_type)
+    # Mirrors `roles.has_permission`: only an ACTIVE role's row counts, so an
+    # inactive role's grant must not read as ready. Both flags are needed
+    # because an explicit denial is not the same as no row at all.
+    permission_rows = await session.execute(
+        select(RolePermission.transaction_type, RolePermission.permitted)
         .join(Role, Role.id == RolePermission.role_id)
         .where(
             Role.tenant_id == tenant_id,
             Role.status == ROLE_STATUS_ACTIVE,
-            RolePermission.permitted.is_(True),
-            RolePermission.transaction_type.in_(codes),
+            RolePermission.transaction_type.in_(lookup_codes),
         )
-        .distinct()
     )
+    granted: set[str] = set()
+    denied: set[str] = set()
+    for code, permitted in permission_rows.all():
+        (granted if permitted else denied).add(code)
+
+    def _role_ready(service: Service) -> bool:
+        """Whether the role prerequisite is satisfied, or does not apply."""
+        base_code = service.base_service_code or service.code
+        if base_code not in ROLE_ENFORCED_BASE_CODES:
+            return True
+        if service.code in granted:
+            return True
+        if service.code in denied:
+            return False
+        return base_code in granted
 
     return {
-        code: {
-            "pricing": code in priced,
-            "limits": code in limited,
-            "role": code in granted,
+        service.code: {
+            "pricing": service.code in priced,
+            "limits": service.code in limited,
+            "role": _role_ready(service),
         }
-        for code in codes
+        for service in services
     }
 
 

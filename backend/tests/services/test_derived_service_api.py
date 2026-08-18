@@ -319,6 +319,121 @@ async def test_list_reports_which_prerequisites_a_service_is_missing(
     }
 
 
+async def test_readiness_does_not_demand_a_role_for_flows_that_ignore_roles(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify only role-enforced flows report the role prerequisite.
+
+    `fund` / `withdraw` are admin-initiated, `merchant_cashin` authenticates a
+    partner by API key, and `change_pin` is not role-gated — none of them call
+    `require_permission`, so telling an operator they "need a role grant" sends
+    them to fix something that would change nothing.
+    """
+    for code in ("fund", "withdraw", "merchant_cashin", "change_pin", "p2p"):
+        await _seed_base(db_session, test_tenant, code)
+
+    resp = await async_client.get(
+        f"/api/v1/services?tenant_id={test_tenant.id}", headers=admin_auth_header
+    )
+    assert resp.status_code == 200, resp.text
+    role_ready = {row["code"]: row["readiness"]["role"] for row in resp.json()}
+
+    assert role_ready["fund"] is True
+    assert role_ready["withdraw"] is True
+    assert role_ready["merchant_cashin"] is True
+    assert role_ready["change_pin"] is True
+    # p2p DOES enforce roles, and nothing granted it here.
+    assert role_ready["p2p"] is False
+
+
+async def test_readiness_counts_a_derived_service_as_ready_via_its_base(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify the badge agrees with `has_permission` about inheritance.
+
+    A derived service inherits its base's role grants (B4.6). If readiness
+    ignored that it would report "needs role grant" for a variant the money
+    path happily permits — the screen contradicting the code.
+    """
+    from app.shared.models import Role, RolePermission
+
+    await _seed_base(db_session, test_tenant, "p2p")
+    db_session.add(
+        Service(
+            tenant_id=test_tenant.id,
+            code="p2p_diaspora",
+            display_name="Diaspora Transfer",
+            kind="derived",
+            base_service_code="p2p",
+            status="active",
+        )
+    )
+    role = Role(tenant_id=test_tenant.id, name="standard_user")
+    db_session.add(role)
+    await db_session.flush()
+    # Granted on the BASE only — the variant has no row of its own.
+    db_session.add(RolePermission(role_id=role.id, transaction_type="p2p", permitted=True))
+    await db_session.commit()
+
+    resp = await async_client.get(
+        f"/api/v1/services?tenant_id={test_tenant.id}", headers=admin_auth_header
+    )
+    assert resp.status_code == 200, resp.text
+    role_ready = {row["code"]: row["readiness"]["role"] for row in resp.json()}
+
+    assert role_ready["p2p"] is True
+    assert role_ready["p2p_diaspora"] is True
+
+
+async def test_readiness_respects_an_explicit_denial_on_a_variant(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify an explicit denial on the variant beats the inherited grant.
+
+    This is the only way to withhold a variant from a role that holds its base,
+    so it must show as NOT ready even though the base is granted.
+    """
+    from app.shared.models import Role, RolePermission
+
+    await _seed_base(db_session, test_tenant, "p2p")
+    db_session.add(
+        Service(
+            tenant_id=test_tenant.id,
+            code="p2p_diaspora",
+            display_name="Diaspora Transfer",
+            kind="derived",
+            base_service_code="p2p",
+            status="active",
+        )
+    )
+    role = Role(tenant_id=test_tenant.id, name="standard_user")
+    db_session.add(role)
+    await db_session.flush()
+    db_session.add(RolePermission(role_id=role.id, transaction_type="p2p", permitted=True))
+    db_session.add(
+        RolePermission(role_id=role.id, transaction_type="p2p_diaspora", permitted=False)
+    )
+    await db_session.commit()
+
+    resp = await async_client.get(
+        f"/api/v1/services?tenant_id={test_tenant.id}", headers=admin_auth_header
+    )
+    assert resp.status_code == 200, resp.text
+    role_ready = {row["code"]: row["readiness"]["role"] for row in resp.json()}
+
+    assert role_ready["p2p"] is True
+    assert role_ready["p2p_diaspora"] is False
+
+
 async def test_readiness_ignores_a_grant_from_an_inactive_role(
     async_client: AsyncClient,
     db_session: AsyncSession,

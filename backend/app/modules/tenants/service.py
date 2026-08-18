@@ -42,6 +42,7 @@ from app.shared.models import (
     Service,
     Tenant,
 )
+from app.shared.models.tenants import BUSINESS_TYPE_BOTH, BUSINESS_TYPE_REWARDS
 from app.shared.services_registry import ROLE_ENFORCED_BASE_CODES
 
 log = structlog.get_logger(__name__)
@@ -287,12 +288,23 @@ async def _system_account_exists(
     return result.scalar_one_or_none() is not None
 
 
+def _mode_includes_rewards(tenant: Tenant) -> bool:
+    """Whether this tenant's deployment mode includes a points programme.
+
+    The single question behind every points-surface gate in provisioning
+    (B6.1): PTS instrument and points issuance account exist only where the
+    answer is yes.
+    """
+    return tenant.business_type in (BUSINESS_TYPE_REWARDS, BUSINESS_TYPE_BOTH)
+
+
 async def _provision_system_wallets(session: AsyncSession, tenant: Tenant) -> None:
     """Create the tenant's system-owned ledger accounts (story B5.1).
 
     Fiat accounts are denominated in the tenant's OWN base_currency — never a
     hard-coded ZAR (the same bug class this function already fixed for
-    instruments); the points issuance pool is always PTS.
+    instruments); the points issuance pool is PTS, and is skipped entirely for
+    a wallet-only tenant (B6.1) — no points programme, no issuance master.
 
     Idempotent, and safe against the lazy get-or-create paths racing it: both
     sides funnel into `uq_accounts_system_scoped`, and this runs inside the
@@ -303,6 +315,10 @@ async def _provision_system_wallets(session: AsyncSession, tenant: Tenant) -> No
         Inserts Account rows. Does NOT commit — the caller does.
     """
     for account_type, in_base_currency in _SYSTEM_WALLETS:
+        if account_type == ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE and not _mode_includes_rewards(
+            tenant
+        ):
+            continue
         currency = tenant.base_currency.strip().upper() if in_base_currency else "PTS"
         if not await _system_account_exists(session, tenant.id, account_type, currency):
             session.add(
@@ -348,8 +364,9 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
         `base_currency` (e.g. "USD"), with a currency-appropriate symbol and
         display name. This is the bug this function fixes: the code must never
         be hard-coded to ZAR — a USD tenant gets a "USD" instrument, not "ZAR".
-      - The "PTS" points instrument (always, regardless of base_currency), since
-        the rules engine credits reward points to every tenant.
+      - The "PTS" points instrument — only for modes with a points programme
+        ('rewards' / 'both', B6.1). A wallet-only tenant must not see points
+        in its currency dropdowns at all.
       - The baseline services (`_BASELINE_SERVICES`).
       - The default end-user roles (`DEFAULT_ROLE_BY_USER_TYPE`) and their
         grants. Without these a fresh tenant's customers cannot transact at
@@ -386,7 +403,11 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
                 account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
             )
         )
-    if not await _instrument_exists(session, tenant.id, "PTS"):
+    # PTS only exists where a points programme exists (B6.1). For a
+    # wallet-only tenant this instrument was what put "points" into every
+    # currency dropdown, letting an operator build PTS-denominated config that
+    # could never execute — dead config of the kind invariant #12 forbids.
+    if _mode_includes_rewards(tenant) and not await _instrument_exists(session, tenant.id, "PTS"):
         session.add(
             Instrument(
                 tenant_id=tenant.id,

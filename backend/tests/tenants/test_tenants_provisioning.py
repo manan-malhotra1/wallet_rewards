@@ -97,7 +97,11 @@ async def test_new_tenant_wallet_instrument_uses_own_currency_not_zar(
 
 @pytest.mark.asyncio
 async def test_new_tenant_gets_points_instrument(db_session: AsyncSession) -> None:
-    """Verify every new tenant can earn reward points via a PTS instrument"""
+    """Verify a rewards-mode tenant can earn points via a PTS instrument.
+
+    Only rewards-capable modes get PTS (B6.1) — the wallet-only case is pinned
+    separately below.
+    """
     tenant = await create_tenant(
         db_session,
         TenantCreate(
@@ -475,3 +479,53 @@ async def test_updating_a_tenant_tops_up_missing_provisioning(
     accounts = await _system_accounts(db_session, tenant.id)
     assert accounts["system_cash_inflow"] == "USD"
     assert accounts["system_points_issuance"] == "PTS"
+
+
+# -----------------------------------------------------------------------------
+# Points surface is gated by deployment mode (story B6.1, provisioning half)
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_wallet_only_tenant_gets_no_points_surface(
+    db_session: AsyncSession,
+) -> None:
+    """Verify a wallet-only tenant is provisioned with NO points anything.
+
+    The PTS instrument is what put "points" into every currency dropdown for a
+    tenant that has no points programme, letting an operator build
+    PTS-denominated config that could never execute. No instrument, no points
+    issuance account.
+    """
+    tenant = await create_tenant(
+        db_session,
+        TenantCreate(
+            name=f"wallet-only-{uuid4().hex[:8]}",
+            business_type="wallet",
+            base_currency="USD",
+        ),
+    )
+
+    assert "PTS" not in await _instrument_codes(db_session, tenant.id)
+    accounts = await _system_accounts(db_session, tenant.id)
+    assert "system_points_issuance" not in accounts
+    # The fiat system set is unaffected by the mode gate.
+    assert accounts["system_cash_inflow"] == "USD"
+
+
+@pytest.mark.asyncio
+async def test_both_mode_tenant_gets_the_points_surface(
+    db_session: AsyncSession,
+) -> None:
+    """Verify 'both' mode gets PTS instrument AND the points issuance account."""
+    tenant = await create_tenant(
+        db_session,
+        TenantCreate(
+            name=f"both-mode-{uuid4().hex[:8]}",
+            business_type="both",
+            base_currency="USD",
+        ),
+    )
+
+    assert "PTS" in await _instrument_codes(db_session, tenant.id)
+    assert (await _system_accounts(db_session, tenant.id))["system_points_issuance"] == "PTS"

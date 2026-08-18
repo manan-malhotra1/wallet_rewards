@@ -52,9 +52,16 @@ const TXN_TYPE_LABELS: Record<string, string> = {
  * Map a raw transaction/event type to its display label (e.g. `fund`
  * → "Fund"). Falls back to a title-cased version of the raw code.
  */
-export function transactionTypeLabel(type: string): string {
+export function transactionTypeLabel(type: string, base?: string): string {
   const known = TXN_TYPE_LABELS[type];
   if (known) return known;
+  // An operator-created derived service has no entry here, so fall back to its
+  // BASE flow's label rather than showing a raw snake_case code. `type` is an
+  // open set — new derived codes appear without any client change.
+  if (base && base !== type) {
+    const byBase = TXN_TYPE_LABELS[base];
+    if (byBase) return byBase;
+  }
   return type
     .replaceAll("_", " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());

@@ -150,6 +150,7 @@ export function ServicesTable({
         <TableHead>
           <TableRow>
             <TableHeaderCell>Display name</TableHeaderCell>
+            <TableHeaderCell>Type</TableHeaderCell>
             <TableHeaderCell>Code</TableHeaderCell>
             <TableHeaderCell>Description</TableHeaderCell>
             <TableHeaderCell>Who can initiate</TableHeaderCell>
@@ -170,23 +171,28 @@ export function ServicesTable({
                     autoFocus
                   />
                 ) : (
-                  <div
+                  // Indent marks a derived row as belonging to the base above
+                  // it; nowrap keeps every name on one line so the column
+                  // stays aligned regardless of name length.
+                  <span
                     className={cn(
-                      "flex items-center gap-2",
+                      "font-medium whitespace-nowrap",
                       svc.kind === "derived" && "pl-4",
                     )}
                   >
-                    <span className="font-medium">{svc.display_name}</span>
-                    {svc.kind === "derived" ? (
-                      <Badge variant="info" className="text-[10px]">
-                        Derived
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-[10px]">
-                        Platform
-                      </Badge>
-                    )}
-                  </div>
+                    {svc.display_name}
+                  </span>
+                )}
+              </TableCell>
+              <TableCell>
+                {svc.kind === "derived" ? (
+                  <Badge variant="info" className="text-[10px]">
+                    Derived
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-[10px]">
+                    Platform
+                  </Badge>
                 )}
               </TableCell>
               <TableCell className="font-mono text-[12px] text-[--color-text-3]">

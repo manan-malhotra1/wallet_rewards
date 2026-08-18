@@ -211,3 +211,43 @@ async def test_create_rejects_a_policy_wider_than_the_base(
     )
     assert resp.status_code == 422, resp.text
     assert resp.json()["error_code"] == "policy_wider_than_base"
+
+
+async def test_list_marks_which_bases_are_derivable(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify GET exposes `derivable` so the admin UI needn't copy the registry.
+
+    Three rows, three answers: a derivable base (`p2p`) is true; the
+    non-derivable base `change_pin` is false even though it IS a base; and a
+    derived row is false because you cannot derive from a derivation. Without
+    this field the UI would have to hardcode DERIVABLE_BASE_CODES in
+    TypeScript, and adding a non-derivable base later would silently leave it
+    offered in the base dropdown until someone edited the copy.
+    """
+    await _seed_base(db_session, test_tenant, "p2p")
+    await _seed_base(db_session, test_tenant, "change_pin")
+    db_session.add(
+        Service(
+            tenant_id=test_tenant.id,
+            code="p2p_diaspora",
+            display_name="Diaspora Transfer",
+            kind="derived",
+            base_service_code="p2p",
+            status="active",
+        )
+    )
+    await db_session.commit()
+
+    resp = await async_client.get(
+        f"/api/v1/services?tenant_id={test_tenant.id}", headers=admin_auth_header
+    )
+    assert resp.status_code == 200, resp.text
+    derivable = {row["code"]: row["derivable"] for row in resp.json()}
+
+    assert derivable["p2p"] is True
+    assert derivable["change_pin"] is False
+    assert derivable["p2p_diaspora"] is False

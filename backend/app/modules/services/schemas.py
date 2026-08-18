@@ -19,9 +19,10 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, computed_field
 
 from app.shared.models import USER_TYPES
+from app.shared.services_registry import DERIVABLE_BASE_CODES
 
 ServiceStatus = Literal["active", "disabled"]
 
@@ -84,6 +85,22 @@ class ServiceOut(BaseModel):
     allowed_channels: list[str] | None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def derivable(self) -> bool:
+        """True iff a new derived service may be pointed at THIS row.
+
+        Served from the registry rather than left to the client to work out,
+        because the rule has two parts that a client would have to duplicate:
+        the row must be a base service, AND its code must be in
+        `DERIVABLE_BASE_CODES` (which excludes `change_pin` — see the registry).
+        A TypeScript copy of that set is exactly the drift the registry exists
+        to prevent: adding a non-derivable base would leave the admin UI
+        offering it in the base dropdown until someone remembered to edit the
+        duplicate, and the only symptom would be a 422 at create time.
+        """
+        return self.kind == "base" and self.code in DERIVABLE_BASE_CODES
 
 
 class ServiceCreateRequest(BaseModel):

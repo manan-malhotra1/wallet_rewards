@@ -134,6 +134,22 @@ export interface Service {
   description: string | null;
   status: "active" | "disabled";
   /**
+   * `base` services ship with the platform and are provisioned per tenant —
+   * they are the nine real money flows the backend knows how to execute.
+   * `derived` services are operator-created aliases of one base: their own
+   * name, pricing, limits and access policy, but the base's execution path.
+   */
+  kind: "base" | "derived";
+  /** The base this derives from; `null` on a base service itself. */
+  base_service_code: string | null;
+  /**
+   * Whether a NEW derived service may point at this row. Server-computed from
+   * the backend's service registry — do not re-derive it here. It is not
+   * simply `kind === "base"`: some bases are deliberately non-derivable
+   * (`change_pin`), and that list lives in one place on purpose.
+   */
+  derivable: boolean;
+  /**
    * Access policy — who may initiate this service. `null` = unrestricted (all
    * user types); `[]` = restrict to none (operator-only); a list = allow-list.
    */

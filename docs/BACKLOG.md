@@ -247,7 +247,7 @@ the transactions in place — the ledger is append-only.
 > `transaction_type` exactly, so a derived code inherits nothing from its
 > base's grant. Story B4.2 must surface all four, not just pricing and limits.
 
-### Story B4.2 — Admin UI: create a derived service · Backlog
+### Story B4.2 — Admin UI: create a derived service · Partial (2026-08-18, 45b519e)
 
 **Description:** The Services tab can't create derived services yet, so the
 backend capability is unreachable.
@@ -264,6 +264,34 @@ backend capability is unreachable.
   a `NotAuthorised`; see the B4.1 note)
 - Campaign wizard warns when a base has derived services a rule doesn't cover
   (rewards target the resolved code — see the spec's §8 footgun)
+
+**Done in 45b519e:** the derived-only dialog (required base dropdown fed by
+`ServiceOut.derivable`, policy chips constrained to the base, empty-policy dead
+end blocked in the form) and the grouped table with Derived/Platform badges and
+no delete on base rows. This also FIXED a break: Phase 1 made the endpoint
+derived-only, so until now every create from the UI 422'd.
+
+**Still open — both need a backend readiness signal that doesn't exist yet:**
+the "Not yet usable" indicator and the campaign-coverage warning. Whether a
+service can transact is currently only answerable by querying
+`pricing_configs`, `limit_configs` and `role_permissions` per service, so this
+wants a small readiness field or endpoint before the UI can show it. Tracked as
+B4.5.
+
+### Story B4.5 — Service readiness signal (backend + UI badge) · Backlog
+
+**Description:** A newly created derived service silently cannot transact until
+it has its own pricing config, limit config, and a role grant. Today the
+operator discovers this as a 422 (`pricing_config_missing`) or a 403-shaped
+`NotAuthorised` on the first real transaction — long after creating it.
+
+**Acceptance criteria:**
+- Backend reports, per service, whether each of the three prerequisites is
+  satisfied (one grouped query — no N+1 across the catalog)
+- Services table shows "Not yet usable" with which piece is missing, linking to
+  Pricing / Limits / Roles
+- Campaign wizard warns when a base has derived services a rule doesn't cover
+- A derived service that IS fully configured shows no warning
 
 ### Story B4.3 — Step-up PIN inheritance for derived services · Backlog
 

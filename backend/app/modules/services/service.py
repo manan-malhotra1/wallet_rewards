@@ -120,6 +120,145 @@ async def _assert_valid_derived_payload(
         )
 
 
+def _intersect_allow_lists(
+    derived: list[str] | None, base: list[str] | None
+) -> list[str] | None:
+    """Return the enforceable allow-list for one policy dimension.
+
+    Companion to `_is_narrower_or_equal` (which only answers "is this valid
+    to save"): this computes the actual effective set to enforce AT
+    RESOLUTION TIME. NULL/empty on either side means "unrestricted on this
+    dimension" (spec §6.2) and contributes no restriction; when both sides
+    restrict, the effective set is their intersection — belt-and-braces so a
+    base narrowed AFTER a derived service was saved still tightens it.
+
+    Args:
+        derived: The derived service's allow-list for one dimension.
+        base: The base service's CURRENT allow-list for the same dimension.
+
+    Returns:
+        None/empty when unrestricted on this dimension; otherwise the
+        intersected allow-list.
+    """
+    if not base:
+        return derived
+    if not derived:
+        return base
+    return [value for value in derived if value in base]
+
+
+async def resolve_service_code(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    base_code: str,
+    requested_code: str | None,
+    user_type: str | None = None,
+    channel: str | None = None,
+) -> str:
+    """Resolve the service code a money flow should transact under.
+
+    Every money endpoint calls this exactly once, before any ledger work, so
+    all flows behave identically (spec §7). The returned code drives
+    permission, pricing, limits and the recorded `transaction_type`; the
+    caller passes `base_code` as `base_transaction_type` regardless.
+
+    When `user_type` and/or `channel` are supplied and the resolved code is a
+    derived service, also enforces the resolution-time narrowing rule (spec
+    §6.2): the effective policy is the INTERSECTION of the base's CURRENT
+    allow-lists and the derived row's own, not just the derived row's own
+    snapshot from save time. This is belt-and-braces on top of the
+    save-time-only check in `_assert_valid_derived_payload` — if a base is
+    later narrowed, every derived service tightens with it automatically
+    instead of silently outliving the restriction. Reuses the same
+    `ServiceNotAllowedForUserType` / `ServiceNotAllowedOnChannel` errors
+    `assert_service_allowed` raises, so callers handle one pair of exception
+    types regardless of which check caught the denial.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope.
+        base_code: The endpoint's own platform code, e.g. 'p2p'.
+        requested_code: The client-supplied `service_code`, or None.
+        user_type: The acting user's type, for the WHO intersection check.
+            None skips the WHO dimension (matches `assert_service_allowed`).
+        channel: The initiating channel, for the HOW intersection check.
+            None skips the HOW dimension.
+
+    Returns:
+        `base_code` when nothing was requested, or an explicit request for
+        the base itself; otherwise the resolved derived code.
+
+    Raises:
+        ServiceNotFound: 404 — no live row for `(tenant_id, requested_code)`.
+        AppHTTPException: 409 `service_disabled`; 422 `service_code_mismatch`
+            when the code is unrelated to `base_code`.
+        ServiceNotAllowedForUserType: 403 — resolution-time WHO intersection.
+        ServiceNotAllowedOnChannel: 403 — resolution-time HOW intersection.
+    """
+    if requested_code is None or requested_code == base_code:
+        return base_code
+
+    row = (
+        await session.execute(
+            select(Service).where(
+                Service.tenant_id == tenant_id,
+                Service.code == requested_code,
+                Service.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise ServiceNotFound()
+    if row.status != SERVICE_STATUS_ACTIVE:
+        raise AppHTTPException(
+            409, "service_disabled", f"Service '{requested_code}' is disabled."
+        )
+    # A derived service may only be invoked through its own base's endpoint —
+    # otherwise a cash-out derivative could be driven by the P2P flow.
+    if row.kind != "derived" or row.base_service_code != base_code:
+        raise AppHTTPException(
+            422,
+            "service_code_mismatch",
+            f"Service '{requested_code}' cannot be used for '{base_code}'.",
+        )
+
+    if user_type is not None or channel is not None:
+        base_row = (
+            await session.execute(
+                select(Service).where(
+                    Service.tenant_id == tenant_id,
+                    Service.code == base_code,
+                    Service.kind == "base",
+                    Service.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        # No live base row is a pre-existing dead-config state the registry
+        # guard should have already prevented; nothing to intersect against.
+        if base_row is not None:
+            effective_user_types = _intersect_allow_lists(
+                row.allowed_user_types, base_row.allowed_user_types
+            )
+            effective_channels = _intersect_allow_lists(
+                row.allowed_channels, base_row.allowed_channels
+            )
+            if (
+                user_type is not None
+                and effective_user_types
+                and user_type not in effective_user_types
+            ):
+                raise ServiceNotAllowedForUserType()
+            if (
+                channel is not None
+                and effective_channels
+                and channel not in effective_channels
+            ):
+                raise ServiceNotAllowedOnChannel()
+
+    return requested_code
+
+
 async def assert_service_allowed(
     session: AsyncSession,
     *,

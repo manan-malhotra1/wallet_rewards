@@ -46,6 +46,9 @@ class P2PRequest(BaseModel):
     currency: str = Field(min_length=3, max_length=3)
     description: str | None = Field(default=None, max_length=255)
     pin: str | None = Field(default=None, min_length=4, max_length=12)
+    # Optional derived service to transact under (spec §6/§7). Omitted ->
+    # plain 'p2p', identical to pre-existing behaviour byte for byte.
+    service_code: str | None = Field(default=None, max_length=50)
 
 
 class P2PResponse(BaseModel):

@@ -23,6 +23,7 @@ async function openDialog() {
   const user = userEvent.setup();
   render(
     <CreateInstrumentDialog
+      pointsAvailable
       tenantId="tenant-1"
       trigger={<button type="button">New instrument</button>}
     />,

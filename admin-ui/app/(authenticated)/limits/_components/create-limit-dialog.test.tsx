@@ -68,6 +68,7 @@ async function openDialog() {
   const user = userEvent.setup();
   render(
     <CreateLimitDialog
+      pointsAvailable
       tenantId="tenant-1"
       services={services}
       instruments={instruments}

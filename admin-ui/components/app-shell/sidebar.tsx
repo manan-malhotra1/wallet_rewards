@@ -32,6 +32,7 @@ import { usePathname } from "next/navigation";
 import * as React from "react";
 
 import { SasaiLogo } from "@/components/branding/sasai-logo";
+import { REWARDS_ONLY_NAV } from "@/lib/tenant-mode";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -209,10 +210,19 @@ export function Sidebar({
   pendingCount,
   approvalsPendingCount,
   brandIconUrl,
+  showRewards = true,
 }: {
   pendingCount?: number;
   approvalsPendingCount?: number;
   brandIconUrl?: string | null;
+  /**
+   * Whether the active tenant's mode includes a points programme (B6.1).
+   * When false the rewards-only sections are dropped entirely — a wallet-only
+   * tenant must not see a rewards console it did not buy. Defaults to true so
+   * an unresolved tenant fails open to the full nav rather than hiding
+   * sections on a loading hiccup.
+   */
+  showRewards?: boolean;
 }) {
   const operations = OPERATIONS.map((item) =>
     item.href === "/reconciliation" && pendingCount
@@ -220,8 +230,11 @@ export function Sidebar({
       : item,
   );
   // Surface the total count of PENDING requests awaiting review across the
-  // approval queues this admin can see (config + money + user).
-  const config: NavEntry[] = CONFIG.map((entry) => {
+  // approval queues this admin can see (config + money + user). Rewards-only
+  // sections are dropped first for a tenant with no points programme (B6.1).
+  const config: NavEntry[] = CONFIG.filter(
+    (entry) => showRewards || isParent(entry) || !REWARDS_ONLY_NAV.has(entry.href),
+  ).map((entry) => {
     if (isParent(entry)) return entry;
     if (entry.href === "/approvals" && approvalsPendingCount) {
       return { ...entry, badge: approvalsPendingCount };

@@ -39,9 +39,17 @@ type AccountType = "financial_wallet" | "points_account";
 
 export function CreateInstrumentDialog({
   tenantId,
+  pointsAvailable,
   trigger,
 }: {
   tenantId: string;
+  /**
+   * Whether the tenant's mode includes a points programme (B6.1). When false
+   * the points account type is not offered at all — the backend would 422 it
+   * with `points_not_available` anyway; this keeps the dead option out of
+   * reach instead of letting the operator build a doomed proposal.
+   */
+  pointsAvailable: boolean;
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);

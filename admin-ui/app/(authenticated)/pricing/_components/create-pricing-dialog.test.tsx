@@ -68,6 +68,7 @@ async function openDialog() {
   const user = userEvent.setup();
   render(
     <CreatePricingDialog
+      pointsAvailable
       tenantId="tenant-1"
       services={services}
       instruments={instruments}
@@ -145,5 +146,28 @@ describe("Propose a pricing schedule", () => {
     ).toBeInTheDocument();
     // The dialog stays open so the admin can adjust and retry.
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("Verify a wallet-only tenant is never offered the Points account type", async () => {
+    // B6.1: the backend would 422 a points-scoped proposal for this tenant
+    // (points_not_available), so the option must not be offered at all.
+    const user = userEvent.setup();
+    render(
+      <CreatePricingDialog
+        pointsAvailable={false}
+        tenantId="tenant-1"
+        services={services}
+        instruments={instruments}
+        trigger={<button type="button">New schedule</button>}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "New schedule" }));
+    await screen.findByRole("dialog");
+
+    const accountType = screen.getByLabelText("Account type");
+    await user.click(accountType);
+
+    expect(screen.getByRole("option", { name: "Wallet" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Points" })).not.toBeInTheDocument();
   });
 });

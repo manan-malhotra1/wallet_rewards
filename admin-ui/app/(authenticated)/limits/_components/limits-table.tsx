@@ -44,12 +44,15 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
 function EditLimitButton({
   cfg,
   tenantId,
+  pointsAvailable,
   services,
   instruments,
   changeProposed,
 }: {
   cfg: LimitConfig;
   tenantId: string;
+  /** Threaded to the dialog: points options need a points programme (B6.1). */
+  pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
   /** Open request on this scope → disable Edit; the maker resolves it first. */
@@ -83,6 +86,7 @@ function EditLimitButton({
         </Button>
       </Tooltip>
       <CreateLimitDialog
+        pointsAvailable={pointsAvailable}
         tenantId={tenantId}
         services={services}
         instruments={instruments}
@@ -97,6 +101,7 @@ function EditLimitButton({
 export function LimitsTable({
   configs,
   tenantId,
+  pointsAvailable,
   services,
   instruments,
   canPropose,
@@ -105,6 +110,8 @@ export function LimitsTable({
 }: {
   configs: LimitConfig[];
   tenantId: string;
+  /** Threaded to the edit dialog: points options need a points programme (B6.1). */
+  pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
   /** platform-admin gate — hides the Edit affordance for other admins. */
@@ -221,6 +228,7 @@ export function LimitsTable({
                     <EditLimitButton
                       cfg={cfg}
                       tenantId={tenantId}
+                      pointsAvailable={pointsAvailable}
                       services={services}
                       instruments={instruments}
                       changeProposed={changeProposed}

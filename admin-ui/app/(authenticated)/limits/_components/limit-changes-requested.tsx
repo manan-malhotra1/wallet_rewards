@@ -19,12 +19,15 @@ import { CreateWalletLimitDialog } from "./create-wallet-limit-dialog";
 export function LimitChangesRequested({
   requests,
   tenantId,
+  pointsAvailable,
   currentAdminId,
   services,
   instruments,
 }: {
   requests: ConfigChangeRequest[];
   tenantId: string;
+  /** Threaded to the dialog: points options need a points programme (B6.1). */
+  pointsAvailable: boolean;
   currentAdminId: string;
   services: Service[];
   instruments: Instrument[];
@@ -61,6 +64,7 @@ export function LimitChangesRequested({
         if (canEdit && req.config_type === "limit") {
           editAction = (
             <CreateLimitDialog
+        pointsAvailable={pointsAvailable}
               tenantId={tenantId}
               services={services}
               instruments={instruments}

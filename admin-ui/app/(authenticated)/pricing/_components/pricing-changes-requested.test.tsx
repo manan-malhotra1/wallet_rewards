@@ -75,6 +75,7 @@ function renderSection(request: ConfigChangeRequest, currentAdminId: string) {
   render(
     <TooltipProvider>
       <PricingChangesRequested
+      pointsAvailable
         requests={[request]}
         tenantId="tenant-1"
         currentAdminId={currentAdminId}

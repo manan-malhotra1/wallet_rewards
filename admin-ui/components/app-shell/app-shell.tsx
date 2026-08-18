@@ -16,6 +16,8 @@ export interface AppShellProps {
   brandIconUrl?: string | null;
   pendingReconciliationCount?: number;
   approvalsPendingCount?: number;
+  /** Active tenant's mode includes a points programme (B6.1 nav gate). */
+  showRewards?: boolean;
   children: React.ReactNode;
 }
 
@@ -26,6 +28,7 @@ export function AppShell({
   brandIconUrl,
   pendingReconciliationCount,
   approvalsPendingCount,
+  showRewards,
   children,
 }: AppShellProps) {
   return (
@@ -35,6 +38,7 @@ export function AppShell({
         pendingCount={pendingReconciliationCount}
         approvalsPendingCount={approvalsPendingCount}
         brandIconUrl={brandIconUrl}
+        showRewards={showRewards}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar tenants={tenants} activeTenantId={activeTenantId} user={user} />

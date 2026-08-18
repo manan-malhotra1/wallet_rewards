@@ -150,6 +150,12 @@ async def cash_out(
         subscriber: The subscriber principal (for step-up + audit); None for
             internal calls.
         ip_address: Caller IP for the audit trail.
+        request.service_code: Optional derived service to transact under
+            (spec §7). Omitted -> plain 'cashout', identical to pre-existing
+            behaviour. When supplied, resolved ONCE up front and used for
+            every downstream permission / pricing / limits / ledger step;
+            `base_transaction_type` on the recorded transaction is always
+            'cashout' regardless.
 
     Returns:
         (Transaction, agent_user_id, earned_points). `earned_points` is the
@@ -158,7 +164,7 @@ async def cash_out(
 
     Raises:
         TenantNotFound / UserNotFound / AccountNotFound (404).
-        NotAuthorised (403): the subscriber's role lacks `cashout`.
+        NotAuthorised (403): the subscriber's role lacks the resolved service.
         RecipientNotAgent (422): the recipient is not an agent / super-agent.
         SelfTransferNotAllowed (422): subscriber tried to cash out to self.
         ServiceNotConfigured (422): pricing OR limit config for `cashout` is
@@ -166,8 +172,25 @@ async def cash_out(
         InsufficientFunds (409): the subscriber's wallet can't cover the outflow.
     """
     await _assert_tenant_exists(session, tenant_id)
-    # 1. Role — the subscriber must be permitted to cash_out (Pay-PRD-0440/0450).
-    await require_permission(session, subscriber_user_id, CASH_OUT_SERVICE_CODE)
+
+    # 0. Resolve the service code ONCE, before any permission/pricing/limits
+    # gate, so every downstream step transacts under the SAME code (spec §7).
+    # Omitted `service_code` resolves to CASH_OUT_SERVICE_CODE unchanged.
+    from app.modules.services.service import assert_service_allowed, resolve_service_code
+    from app.shared.utils.user_types import resolve_user_type
+
+    subscriber_user_type = await resolve_user_type(session, tenant_id, subscriber_user_id)
+    service_code = await resolve_service_code(
+        session,
+        tenant_id=tenant_id,
+        base_code=CASH_OUT_SERVICE_CODE,
+        requested_code=request.service_code,
+        user_type=subscriber_user_type,
+        channel="mobile",
+    )
+
+    # 1. Role — the subscriber must be permitted to the resolved service (Pay-PRD-0440/0450).
+    await require_permission(session, subscriber_user_id, service_code)
 
     # Idempotency fast-path — return the existing transaction before any work.
     existing = (
@@ -196,17 +219,15 @@ async def cash_out(
     await assert_user_can_transact(session, tenant_id=tenant_id, user_id=subscriber_user_id)
 
     # 1b. Per-service access policy (services.allowed_user_types / _channels).
-    # Enforce that the acting subscriber's user_type + channel may initiate
-    # cashout, mirroring the mobile display gate. After the idempotency fast-path
-    # (replays still return the original txn) and before any ledger work.
-    from app.modules.services.service import assert_service_allowed
-    from app.shared.utils.user_types import resolve_user_type
-
+    # Enforce that the acting subscriber's user_type + channel may initiate the
+    # resolved service, mirroring the mobile display gate. After the
+    # idempotency fast-path (replays still return the original txn) and before
+    # any ledger work.
     await assert_service_allowed(
         session,
         tenant_id=tenant_id,
-        transaction_type=CASH_OUT_SERVICE_CODE,
-        user_type=await resolve_user_type(session, tenant_id, subscriber_user_id),
+        transaction_type=service_code,
+        user_type=subscriber_user_type,
         channel="mobile",
     )
 
@@ -230,7 +251,7 @@ async def cash_out(
     await require_pricing_and_limits(
         session,
         tenant_id=tenant_id,
-        service=CASH_OUT_SERVICE_CODE,
+        service=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         user_id=subscriber_user_id,
@@ -250,7 +271,7 @@ async def cash_out(
         session,
         tenant_id=tenant_id,
         user_id=subscriber_user_id,
-        transaction_type=CASH_OUT_SERVICE_CODE,
+        transaction_type=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=request.amount,
@@ -282,7 +303,7 @@ async def cash_out(
         session,
         tenant_id=tenant_id,
         user_id=subscriber_user_id,
-        transaction_type=CASH_OUT_SERVICE_CODE,
+        transaction_type=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=request.amount,
@@ -291,7 +312,7 @@ async def cash_out(
         session,
         tenant_id=tenant_id,
         agent_user_id=agent_user_id,
-        transaction_type=CASH_OUT_SERVICE_CODE,
+        transaction_type=service_code,
         currency=currency,
         amount=request.amount,
     )
@@ -355,7 +376,10 @@ async def cash_out(
         PostTransactionRequest(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
-            transaction_type=CASH_OUT_SERVICE_CODE,
+            transaction_type=service_code,
+            # The BASE flow — always 'cashout' regardless of which derived
+            # service (if any) was resolved above (spec §12.1).
+            base_transaction_type=CASH_OUT_SERVICE_CODE,
             currency=currency,
             entries=assembled.entries,
             initiated_by=subscriber_user_id,
@@ -368,9 +392,12 @@ async def cash_out(
             # not rewards. In `both` mode this makes post_transaction write a
             # reward_outbox row for the subscriber atomically with the ledger
             # commit; other modes are a no-op.
+            # transaction_type is the RESOLVED code (spec §8): a rule targeting
+            # 'cashout' must not fire for a derived service — precise targeting
+            # means a derived service needs its own rule.
             reward_trigger=RewardTrigger(
                 user_id=subscriber_user_id,
-                transaction_type=CASH_OUT_SERVICE_CODE,
+                transaction_type=service_code,
                 amount=request.amount,
                 currency=currency,
             ),

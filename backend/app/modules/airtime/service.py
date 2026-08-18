@@ -201,6 +201,13 @@ async def initiate_recharge(
     Idempotency: a replay with the same `(tenant, idempotency_key)` returns the
     existing recharge without a second ledger write.
 
+    `request.service_code` is an optional derived service to transact under
+    (spec §7). Omitted -> plain 'airtime_recharge', identical to pre-existing
+    behaviour. When supplied, resolved ONCE up front and used for every
+    downstream permission / pricing / limits / ledger step;
+    `base_transaction_type` on the recorded transaction is always
+    'airtime_recharge' regardless.
+
     Returns:
         (recharge, merchant) — the merchant is passed on so `attempt_provision`
         can reach its provider config without re-querying.
@@ -210,7 +217,24 @@ async def initiate_recharge(
         InsufficientFunds (409): available balance < amount + fee.
     """
     await _assert_tenant_exists(session, tenant_id)
-    await require_permission(session, user_id, AIRTIME_SERVICE_CODE)
+
+    # 0. Resolve the service code ONCE, before role/permission or any other
+    # gate, so every downstream step transacts under the SAME code (spec §7).
+    # Omitted `service_code` resolves to AIRTIME_SERVICE_CODE unchanged.
+    from app.modules.services.service import assert_service_allowed, resolve_service_code
+    from app.shared.utils.user_types import resolve_user_type
+
+    buyer_user_type = await resolve_user_type(session, tenant_id, user_id)
+    service_code = await resolve_service_code(
+        session,
+        tenant_id=tenant_id,
+        base_code=AIRTIME_SERVICE_CODE,
+        requested_code=request.service_code,
+        user_type=buyer_user_type,
+        channel="mobile",
+    )
+
+    await require_permission(session, user_id, service_code)
 
     merchant = await _find_active_airtime_merchant(session, tenant_id)
 
@@ -235,17 +259,15 @@ async def initiate_recharge(
     await assert_user_can_transact(session, tenant_id=tenant_id, user_id=user_id)
 
     # Per-service access policy (services.allowed_user_types / _channels).
-    # Enforce that the acting buyer's user_type + channel may initiate an airtime
-    # recharge, mirroring the mobile display gate. After the idempotency fast-path
-    # (replays still return the original recharge) and before any ledger work.
-    from app.modules.services.service import assert_service_allowed
-    from app.shared.utils.user_types import resolve_user_type
-
+    # Enforce that the acting buyer's user_type + channel may initiate the
+    # resolved service, mirroring the mobile display gate. After the
+    # idempotency fast-path (replays still return the original recharge) and
+    # before any ledger work.
     await assert_service_allowed(
         session,
         tenant_id=tenant_id,
-        transaction_type=AIRTIME_SERVICE_CODE,
-        user_type=await resolve_user_type(session, tenant_id, user_id),
+        transaction_type=service_code,
+        user_type=buyer_user_type,
         channel="mobile",
     )
 
@@ -259,7 +281,7 @@ async def initiate_recharge(
     await require_pricing_and_limits(
         session,
         tenant_id=tenant_id,
-        service=AIRTIME_SERVICE_CODE,
+        service=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         user_id=user_id,
@@ -275,7 +297,7 @@ async def initiate_recharge(
         session,
         tenant_id=tenant_id,
         user_id=user_id,
-        transaction_type=AIRTIME_SERVICE_CODE,
+        transaction_type=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=request.amount,
@@ -297,7 +319,7 @@ async def initiate_recharge(
             ip_address=ip_address,
         )
 
-    fee = await _resolve_fee(session, tenant_id, user_id, currency, request.amount)
+    fee = await _resolve_fee(session, tenant_id, user_id, currency, request.amount, service_code)
 
     # Advisory overdraft early-error (Pay-PRD-0220) — includes the fee. The
     # authoritative check is `post_transaction`'s balance guard (invariant #11),
@@ -327,7 +349,10 @@ async def initiate_recharge(
         PostTransactionRequest(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
-            transaction_type=AIRTIME_SERVICE_CODE,
+            transaction_type=service_code,
+            # The BASE flow — always 'airtime_recharge' regardless of which
+            # derived service (if any) was resolved above (spec §12.1).
+            base_transaction_type=AIRTIME_SERVICE_CODE,
             currency=currency,
             status=TXN_STATUS_PENDING,
             entries=entries,
@@ -390,6 +415,7 @@ async def _resolve_fee(
     user_id: UUID,
     currency: str,
     amount: Decimal,
+    transaction_type: str = AIRTIME_SERVICE_CODE,
 ) -> Decimal:
     """Type-aware fee for the recharge.
 
@@ -397,6 +423,10 @@ async def _resolve_fee(
     exists for this scope, so a missing band here is a real gap (invariant #12,
     no silent zero-fee): `calculate_fee` raises `PricingConfigMissing` (422)
     rather than being swallowed.
+
+    Args:
+        transaction_type: The RESOLVED service code (spec §7) — defaults to
+            AIRTIME_SERVICE_CODE for callers outside `initiate_recharge`.
 
     Raises:
         PricingConfigMissing: 422 — no pricing band resolves for this amount.
@@ -407,7 +437,7 @@ async def _resolve_fee(
         session,
         tenant_id=tenant_id,
         user_id=user_id,
-        transaction_type=AIRTIME_SERVICE_CODE,
+        transaction_type=transaction_type,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=amount,
@@ -425,9 +455,17 @@ async def _enqueue_reward_on_completion(session: AsyncSession, recharge: Airtime
     The airtime analogue of the `reward_trigger` p2p/cash_in/cash_out pass to
     `post_transaction`, but adapted to ride the SUCCESSFUL-vend commit rather than
     the PENDING reservation: only a recharge that actually vended pays a reward.
-    Gated exactly like `post_transaction`'s trigger — `both` mode AND the type in
-    `REWARDABLE_TYPES` (defence-in-depth; AIRTIME_SERVICE_CODE is always in it).
-    The reward recipient is the purchasing buyer (`recharge.user_id`).
+    Gated exactly like `post_transaction`'s trigger — `both` mode AND the BASE
+    type in `REWARDABLE_TYPES` (defence-in-depth; AIRTIME_SERVICE_CODE is always
+    in it — this eligibility gate stays base-flow-scoped). The reward recipient
+    is the purchasing buyer (`recharge.user_id`).
+
+    The row's `transaction_type` is the RESOLVED service code the recharge
+    actually posted under (spec §8) — read back from the parent `Transaction`
+    row rather than threaded through the callback/resolve entry points, since
+    those don't have `initiate_recharge`'s resolution in scope. A rule
+    targeting 'airtime_recharge' must not fire for a derived service — precise
+    targeting means a derived service needs its own rule.
 
     Adds the row to the caller's session WITHOUT committing — it is persisted by
     the same commit that flips the recharge to COMPLETED, so the reward intent
@@ -440,12 +478,17 @@ async def _enqueue_reward_on_completion(session: AsyncSession, recharge: Airtime
         return
     if not await rewards_from_wallet_enabled(session, recharge.tenant_id):
         return
+    resolved_type = (
+        await session.execute(
+            select(Transaction.transaction_type).where(Transaction.id == recharge.transaction_id)
+        )
+    ).scalar_one()
     session.add(
         RewardOutbox(
             tenant_id=recharge.tenant_id,
             user_id=recharge.user_id,
             transaction_id=recharge.transaction_id,
-            transaction_type=AIRTIME_SERVICE_CODE,
+            transaction_type=resolved_type,
             amount=recharge.amount,
             currency=recharge.currency,
         )

@@ -405,7 +405,10 @@ async def p2p_transfer(
             # mode gate inside post_transaction writes nothing (safe no-op).
             reward_trigger=RewardTrigger(
                 user_id=sender_user_id,
-                transaction_type="p2p",
+                # The RESOLVED code, so a rule must target the derived service
+                # explicitly (spec §8 precise targeting). Eligibility still
+                # gates on the base — see post_transaction's reward block.
+                transaction_type=service_code,
                 amount=amount,
                 currency=currency,
             ),
@@ -503,6 +506,8 @@ async def fund(
     amount: Decimal,
     currency: str,
     idempotency_key: str,
+    transaction_type: str = "fund",
+    base_transaction_type: str = "fund",
 ) -> Transaction:
     """Internal fund — credit a user's wallet from outside the system.
 
@@ -517,6 +522,14 @@ async def fund(
     Args:
         session: Async DB session.
         tenant_id, user_id, amount, currency, idempotency_key: as P2P.
+        transaction_type: The RESOLVED service code to record (spec §7).
+            Defaults to 'fund' — every existing caller (treasury's admin fund,
+            seeds) keeps posting under plain 'fund' untouched. The partner
+            `external_fund` flow is the only caller that resolves a derived
+            service and passes it here.
+        base_transaction_type: The BASE flow to denormalise onto the
+            transaction (spec §12.1). Always 'fund' regardless of the derived
+            code above — callers should not override this independently.
 
     Returns:
         The posted Transaction.
@@ -550,7 +563,8 @@ async def fund(
         PostTransactionRequest(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
-            transaction_type="fund",
+            transaction_type=transaction_type,
+            base_transaction_type=base_transaction_type,
             currency=currency.upper(),
             entries=[
                 LedgerEntryRequest(

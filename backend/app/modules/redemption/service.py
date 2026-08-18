@@ -236,7 +236,8 @@ async def initiate_redemption(
         session: Async DB session.
         tenant_id: From the session token via get_current_user (Phase F.4).
         user_id: From the session token via get_current_user (Phase F.4).
-        request: Validated InitiateRedemptionRequest (body — provider + amount).
+        request: Validated InitiateRedemptionRequest (body — provider + amount,
+            and an optional `service_code` — spec §7).
         idempotency_key: Client-supplied unique key (Pay-PRD-0200).
 
     Returns:
@@ -251,10 +252,26 @@ async def initiate_redemption(
     """
     await _assert_tenant_exists(session, tenant_id)
 
+    # 0. Resolve the service code ONCE, before the permission check, so every
+    # downstream step transacts under the SAME code (spec §7). Omitted
+    # `service_code` resolves to 'redemption' unchanged.
+    from app.modules.services.service import resolve_service_code
+    from app.shared.utils.user_types import resolve_user_type
+
+    redeemer_user_type = await resolve_user_type(session, tenant_id, user_id)
+    service_code = await resolve_service_code(
+        session,
+        tenant_id=tenant_id,
+        base_code="redemption",
+        requested_code=request.service_code,
+        user_type=redeemer_user_type,
+        channel="mobile",
+    )
+
     # Pay-PRD-0260, Pay-PRD-0440/0450/0460: the user must hold an active role
-    # permitting "redemption". Reject BEFORE any wallet lookup, lock, or
-    # ledger write.
-    await require_permission(session, user_id, "redemption")
+    # permitting the resolved service. Reject BEFORE any wallet lookup, lock,
+    # or ledger write.
+    await require_permission(session, user_id, service_code)
 
     # Step-up PIN check — runs after role but before any DB lock or
     # ledger touch. No-op when no policy exists or when amount is below
@@ -310,7 +327,7 @@ async def initiate_redemption(
     await require_pricing_and_limits(
         session,
         tenant_id=tenant_id,
-        service="redemption",
+        service=service_code,
         account_type=ACCOUNT_TYPE_POINTS,
         currency=user_points.currency,
         user_id=user_id,
@@ -334,7 +351,10 @@ async def initiate_redemption(
         PostTransactionRequest(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
-            transaction_type="redemption",
+            transaction_type=service_code,
+            # The BASE flow — always 'redemption' regardless of which derived
+            # service (if any) was resolved above (spec §12.1).
+            base_transaction_type="redemption",
             currency=user_points.currency,
             status=TXN_STATUS_PENDING,
             entries=[

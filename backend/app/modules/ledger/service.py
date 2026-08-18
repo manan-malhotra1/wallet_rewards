@@ -266,7 +266,14 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
         from app.shared.tenant_mode import rewards_from_wallet_enabled
 
         rt = request.reward_trigger
-        if rt.transaction_type in REWARDABLE_TYPES and await rewards_from_wallet_enabled(
+        # ELIGIBILITY is a property of the BASE flow ("is this kind of movement
+        # rewardable at all?"), while rule TARGETING uses the resolved code that
+        # `rt.transaction_type` carries — so a derived service needs its own rule
+        # (spec §8). Gating on the resolved code instead would make derived
+        # services permanently unrewardable no matter how they are configured,
+        # because REWARDABLE_TYPES only ever lists platform base codes.
+        base_type = request.base_transaction_type or request.transaction_type
+        if base_type in REWARDABLE_TYPES and await rewards_from_wallet_enabled(
             session, request.tenant_id
         ):
             session.add(

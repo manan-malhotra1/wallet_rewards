@@ -27,6 +27,11 @@ class AirtimeRechargeRequest(BaseModel):
     amount: Decimal = Field(gt=Decimal("0"))
     currency: str = Field(default="ZAR", min_length=3, max_length=10)
     pin: str | None = Field(default=None, min_length=4, max_length=12)
+    # Optional derived service to transact under. Omitted -> plain
+    # 'airtime_recharge' (identical to pre-existing behaviour). Resolved ONCE,
+    # up front, and used for every downstream permission / pricing / limits /
+    # ledger step (spec §7).
+    service_code: str | None = Field(default=None, max_length=50)
 
 
 class AirtimeRechargeOut(BaseModel):

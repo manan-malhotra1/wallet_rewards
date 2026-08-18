@@ -386,6 +386,8 @@ async def post_user_withdraw(
     amount: Decimal,
     currency: str,
     idempotency_key: str,
+    transaction_type: str = "withdraw",
+    base_transaction_type: str = "withdraw",
 ) -> Transaction:
     """Post the balanced withdraw legs: DEBIT the user wallet, CREDIT the
     operator_adjustment system account (transaction_type='withdraw').
@@ -396,6 +398,15 @@ async def post_user_withdraw(
             because `post_transaction` loads every entry's account up front (and
             then locks the wallet under its balance guard) — creating it lazily
             here would be a mid-flow `commit()` inside that guarded window.
+        transaction_type: The RESOLVED service code to record (spec §7).
+            Defaults to 'withdraw' — every existing caller (treasury's admin
+            withdraw) keeps posting under plain 'withdraw' untouched. The
+            partner `external_withdraw` flow is the only caller that resolves
+            a derived service and passes it here.
+        base_transaction_type: The BASE flow to denormalise onto the
+            transaction (spec §12.1). Always 'withdraw' regardless of the
+            derived code above — callers should not override this
+            independently.
 
     The caller owns the audit row + the surrounding commit; this only appends the
     ledger transaction, which commits internally via `post_transaction`. That
@@ -407,7 +418,8 @@ async def post_user_withdraw(
         PostTransactionRequest(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
-            transaction_type="withdraw",
+            transaction_type=transaction_type,
+            base_transaction_type=base_transaction_type,
             currency=currency,
             amount=amount,
             initiated_by=user_id,

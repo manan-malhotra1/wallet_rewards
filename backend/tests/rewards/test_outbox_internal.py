@@ -150,6 +150,9 @@ async def test_outbox_row_is_tenant_scoped(db_session, tenant_factory):
         tenant_id=tenant_a.id,
         idempotency_key=f"outbox-test-{uuid4().hex}",
         transaction_type="p2p",
+        # NOT NULL since the base/derived migration; this row bypasses
+        # post_transaction, which is what normally derives it.
+        base_transaction_type="p2p",
         amount=100,
         currency="ZAR",
     )
@@ -712,6 +715,9 @@ async def test_recon_skips_poison_rows_at_max_attempts(
         tenant_id=test_tenant.id,
         idempotency_key=f"poison-{uuid4().hex}",
         transaction_type="p2p",
+        # NOT NULL since the base/derived migration; this row bypasses
+        # post_transaction, which is what normally derives it.
+        base_transaction_type="p2p",
         amount=100,
         currency="ZAR",
     )

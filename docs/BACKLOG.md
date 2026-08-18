@@ -523,7 +523,7 @@ reader". But it only gates reward EXECUTION. Nothing gates the surface area: not
 provisioning, not the admin UI. So a tenant is shown — and can configure —
 features outside what it was sold.
 
-### Story B6.1 — A wallet-only tenant is shown the rewards product · **Backlog · CRITICAL**
+### Story B6.1 — A wallet-only tenant is shown the rewards product · Done (2026-08-19, e1f4caa + 18d8a65)
 
 **Symptom:** With `Casava Fintech` (business_type `wallet`, base currency TOKEN)
 as the active tenant, the admin UI shows Campaigns, Segments, Multipliers,
@@ -560,6 +560,14 @@ in demos and a support problem in production.
   service-charge config for a wallet-only tenant returns 422 (a hidden dropdown
   is not enforcement — the API is reachable directly)
 - Tests for a wallet tenant, a rewards tenant and a both tenant
+
+**Shipped in two halves:** provisioning (e1f4caa — no PTS instrument or points
+issuance account for wallet-only) and surface+enforcement (18d8a65 — sidebar
+drops the five rewards sections via one `tenantHasRewards` predicate; the
+pricing/limits/instruments dialogs take a `pointsAvailable` prop; and
+`assert_points_scope_allowed` 422s `points_not_available` at config PROPOSE,
+REVISE, APPLY and instrument creation). Existing dev tenants healed by
+re-provisioning; Casava's pre-gate PTS instrument soft-deleted.
 
 ### Story B6.2 — The mirror case: a rewards-only tenant shows wallet features · Backlog
 

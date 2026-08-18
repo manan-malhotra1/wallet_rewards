@@ -542,7 +542,12 @@ async def fund_user_to_target(
     it (self-approval is rejected server-side with `self_approval_forbidden`).
     """
     diff = target - current
-    if diff <= 0:
+    # Truncate FIRST, then decide. Fees and taxes leave fractional balances
+    # (a 0.525 tax makes a balance like 199_999.475), so a sub-unit shortfall
+    # truncates to "0" — which fund-user rejects with a 422 `greater_than`.
+    # A shortfall under R1 means already-funded for a coarse top-up target.
+    whole_amount = int(diff)
+    if whole_amount <= 0:
         return
     resp = await client.post(
         f"{api_url}/api/v1/treasury/fund-user",
@@ -551,7 +556,7 @@ async def fund_user_to_target(
             "tenant_id": tenant_id,
             "identifier_type": "phone",
             "identifier_value": phone,
-            "amount": str(int(diff)),
+            "amount": str(whole_amount),
             "currency": "ZAR",
             "reason": "load-test setup",
         },

@@ -39,6 +39,11 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { SERVICE_CHANNELS, USER_TYPES, type Service } from "@/lib/api-types";
+import {
+  allowedOptions,
+  derivableBases,
+  policyValue,
+} from "@/lib/service-catalog";
 
 import { ChipGroup } from "./policy-controls";
 
@@ -49,53 +54,6 @@ function toggleValue(current: string[], value: string): string[] {
   return current.includes(value)
     ? current.filter((v) => v !== value)
     : [...current, value];
-}
-
-/**
- * The bases a new derived service may point at: server-marked `derivable` and
- * currently active. `derivable` is computed by the backend from its service
- * registry — deliberately not re-derived here, because the rule excludes
- * specific bases (`change_pin`) and a TypeScript copy would drift.
- */
-export function derivableBases(services: Service[]): Service[] {
-  return services
-    .filter((s) => s.derivable && s.status === "active")
-    .sort((a, b) => a.display_name.localeCompare(b.display_name));
-}
-
-/**
- * Which values a derived service may pick on one policy dimension.
- *
- * The backend enforces narrowing-only: a derived service may never permit a
- * user type or channel its base excludes. So when the base carries an
- * allow-list, that list IS the option set; when the base is unrestricted
- * (`null`), everything is on the table.
- */
-export function allowedOptions(
-  baseValues: string[] | null,
-  all: readonly string[],
-): readonly string[] {
-  return baseValues === null ? all : baseValues;
-}
-
-/**
- * Translate a chip selection into the value the API expects for one dimension.
- *
- * The empty selection is genuinely ambiguous and the two cases are NOT
- * interchangeable:
- *  - base unrestricted → `null`, meaning "inherit the base's openness".
- *  - base restricted → there is no safe reading. `null` would be WIDER than
- *    the base, and the backend also rejects `[]` here (its narrowing check
- *    treats empty and null alike), so an empty selection cannot be submitted
- *    at all. `submissionError` blocks it in the form instead of letting the
- *    admin discover it as a 422.
- */
-export function policyValue(
-  selected: string[],
-  baseValues: string[] | null,
-): string[] | null {
-  if (selected.length > 0) return selected;
-  return baseValues === null ? null : [];
 }
 
 export function CreateServiceDialog({

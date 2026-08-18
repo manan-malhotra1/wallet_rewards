@@ -64,6 +64,24 @@ AllowedUserTypes = Annotated[list[str] | None, AfterValidator(_validate_user_typ
 AllowedChannels = Annotated[list[str] | None, AfterValidator(_validate_channels)]
 
 
+class ServiceReadiness(BaseModel):
+    """Which of the three transacting prerequisites a service satisfies.
+
+    `false` on any field is conclusive — no pricing row, no limit row, or no
+    active role grant means NO caller can transact under this code. `true`
+    means only "configured at all": pricing and limit rows are scoped by
+    account_type / currency / user_type, so a row existing does not guarantee
+    one resolves for every caller. Callers must not present `true` as "this
+    definitely works".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    pricing: bool
+    limits: bool
+    role: bool
+
+
 class ServiceOut(BaseModel):
     """Service catalog row returned by the API.
 
@@ -85,6 +103,11 @@ class ServiceOut(BaseModel):
     allowed_channels: list[str] | None
     created_at: datetime
     updated_at: datetime
+    # Populated by the list endpoint from one grouped query set; None when a
+    # caller builds a ServiceOut without asking for readiness (e.g. the
+    # create/patch/delete responses, where it would be misleading anyway
+    # because config is added afterwards).
+    readiness: ServiceReadiness | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property

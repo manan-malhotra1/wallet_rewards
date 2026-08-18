@@ -1,19 +1,15 @@
 /**
  * Tests for the Services table's base/derived presentation.
  *
- * `groupServices` is the ordering rule the screen exists to communicate —
- * which derived services run on which platform base — so it is tested
- * directly. The rendered assertions cover the one affordance that must NOT
- * appear: delete on a platform base, which the backend refuses anyway (409
+ * The ordering rule itself is unit-tested in `lib/service-catalog.test.ts`.
+ * What is left here is the one affordance that must NOT appear: delete on a
+ * platform base, which the backend refuses anyway (409
  * base_service_protected), so offering it would only produce a dead end.
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  ServicesTable,
-  groupServices,
-} from "@/app/(authenticated)/services/_components/services-table";
+import { ServicesTable } from "@/app/(authenticated)/services/_components/services-table";
 import type { Service } from "@/lib/api-types";
 
 vi.mock("@/app/(authenticated)/services/_actions", () => ({
@@ -36,6 +32,7 @@ function makeService(overrides: Partial<Service> = {}): Service {
     kind: "base",
     base_service_code: null,
     derivable: true,
+    readiness: null,
     allowed_user_types: null,
     allowed_channels: null,
     created_at: "2026-01-01T00:00:00Z",
@@ -61,28 +58,6 @@ const ATM = makeService({
   kind: "derived",
   base_service_code: "cashout",
   derivable: false,
-});
-
-describe("groupServices", () => {
-  it("Verify each base is followed by the services derived from it", () => {
-    const ordered = groupServices([DIASPORA, CASHOUT, P2P, ATM]);
-
-    expect(ordered.map((s) => s.code)).toEqual([
-      "cashout",
-      "cashout_atm",
-      "p2p",
-      "p2p_diaspora",
-    ]);
-  });
-
-  it("Verify a derived service whose base is absent is still listed", () => {
-    // The base can drop out of the list (soft-deleted, or a status filter).
-    // The derived service still exists and still transacts, so hiding it
-    // would be worse than showing it ungrouped at the end.
-    const ordered = groupServices([DIASPORA, CASHOUT]);
-
-    expect(ordered.map((s) => s.code)).toEqual(["cashout", "p2p_diaspora"]);
-  });
 });
 
 describe("Services table", () => {

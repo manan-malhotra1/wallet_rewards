@@ -42,6 +42,7 @@ const services = [
     kind: "base",
     base_service_code: null,
     derivable: true,
+    readiness: null,
     allowed_user_types: null,
     allowed_channels: null,
     created_at: "2026-01-01T00:00:00Z",

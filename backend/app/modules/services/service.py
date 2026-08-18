@@ -26,7 +26,15 @@ from app.shared.exceptions import (
     ServiceNotAllowedOnChannel,
     ServiceNotFound,
 )
-from app.shared.models import SERVICE_STATUS_ACTIVE, Service
+from app.shared.models import (
+    ROLE_STATUS_ACTIVE,
+    SERVICE_STATUS_ACTIVE,
+    LimitConfig,
+    PricingConfig,
+    Role,
+    RolePermission,
+    Service,
+)
 from app.shared.services_registry import BASE_SERVICE_CODES, DERIVABLE_BASE_CODES
 
 log = structlog.get_logger(__name__)
@@ -343,6 +351,108 @@ async def list_services(
         stmt = stmt.where(Service.status == status)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def list_services_with_readiness(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    status: str | None = None,
+) -> list[tuple[Service, dict[str, bool]]]:
+    """List the tenant's services, each paired with its readiness flags.
+
+    Wraps `list_services` + `compute_service_readiness` so the catalog endpoint
+    stays a single service call (routers hold no logic). Readiness is computed
+    for the whole page in three grouped queries, not per row.
+
+    Args:
+        status: Optional 'active' / 'disabled' filter; None returns both.
+
+    Returns:
+        `[(service, {"pricing": bool, "limits": bool, "role": bool}), ...]` in
+        the same order as `list_services`.
+    """
+    services = await list_services(session, tenant_id, status=status)
+    readiness = await compute_service_readiness(session, tenant_id, [s.code for s in services])
+    return [(s, readiness[s.code]) for s in services]
+
+
+async def compute_service_readiness(
+    session: AsyncSession, tenant_id: uuid.UUID, codes: list[str]
+) -> dict[str, dict[str, bool]]:
+    """Report which of the three transacting prerequisites each code satisfies.
+
+    A service row on its own moves no money. Before a transaction under its
+    code can succeed it also needs a pricing config and a limit config (both
+    fail closed per invariant #12), AND a role that grants the code — role
+    permissions match `transaction_type` exactly, so a derived service inherits
+    nothing from its base's grant. Operators otherwise discover each gap one at
+    a time, as a 422 or a NotAuthorised on the first real transaction.
+
+    IMPORTANT — this is a "configured at all" check, deliberately weaker than
+    "will resolve for a given caller". Pricing and limit rows are scoped by
+    account_type / currency / user_type (and pricing also by amount band), so
+    the presence of SOME row does not guarantee one resolves for every user.
+    Absence, on the other hand, is conclusive: no row means no caller can ever
+    transact. So a false here is a definite problem, while a true means "not
+    obviously broken" — the UI must not promise more than that.
+
+    Args:
+        codes: Service codes to report on (typically the tenant's whole
+            catalog).
+
+    Returns:
+        `{code: {"pricing": bool, "limits": bool, "role": bool}}`, one entry
+        per requested code.
+
+    Side effects:
+        None — three grouped read-only queries, no per-service round trip.
+    """
+    if not codes:
+        return {}
+
+    async def _codes_present(stmt) -> set[str]:  # type: ignore[no-untyped-def]
+        result = await session.execute(stmt)
+        return set(result.scalars().all())
+
+    priced = await _codes_present(
+        select(PricingConfig.transaction_type)
+        .where(
+            PricingConfig.tenant_id == tenant_id,
+            PricingConfig.transaction_type.in_(codes),
+        )
+        .distinct()
+    )
+    limited = await _codes_present(
+        select(LimitConfig.transaction_type)
+        .where(
+            LimitConfig.tenant_id == tenant_id,
+            LimitConfig.transaction_type.in_(codes),
+        )
+        .distinct()
+    )
+    # Mirrors `roles.has_permission`: only an ACTIVE role with permitted=true
+    # actually lets anyone transact, so an inactive role's grant must not read
+    # as ready.
+    granted = await _codes_present(
+        select(RolePermission.transaction_type)
+        .join(Role, Role.id == RolePermission.role_id)
+        .where(
+            Role.tenant_id == tenant_id,
+            Role.status == ROLE_STATUS_ACTIVE,
+            RolePermission.permitted.is_(True),
+            RolePermission.transaction_type.in_(codes),
+        )
+        .distinct()
+    )
+
+    return {
+        code: {
+            "pricing": code in priced,
+            "limits": code in limited,
+            "role": code in granted,
+        }
+        for code in codes
+    }
 
 
 async def get_service_by_id(

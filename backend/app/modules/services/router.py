@@ -22,11 +22,12 @@ from app.dependencies import get_current_admin
 from app.modules.services.schemas import (
     ServiceCreateRequest,
     ServiceOut,
+    ServiceReadiness,
     ServiceUpdateRequest,
 )
 from app.modules.services.service import (
     create_service,
-    list_services,
+    list_services_with_readiness,
     soft_delete_service,
     update_service,
 )
@@ -48,8 +49,15 @@ async def get_services(
     management page.
     """
     _ = admin
-    services = await list_services(session, tenant_id, status=status)
-    return [ServiceOut.model_validate(s) for s in services]
+    rows = await list_services_with_readiness(session, tenant_id, status=status)
+    # `readiness` is not a column, so it is grafted onto the validated row
+    # rather than read by from_attributes.
+    return [
+        ServiceOut.model_validate(service).model_copy(
+            update={"readiness": ServiceReadiness(**flags)}
+        )
+        for service, flags in rows
+    ]
 
 
 @router.post("", response_model=ServiceOut, status_code=201)

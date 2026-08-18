@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EditServicePolicyDialog } from "./edit-policy-dialog";
 import { PolicySummary } from "./policy-controls";
+import { ReadinessNotice } from "./readiness-notice";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -38,38 +39,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { groupServices } from "@/lib/service-catalog";
 import { cn } from "@/lib/utils";
 import type { Service } from "@/lib/api-types";
-
-/**
- * Order rows as base-then-its-derived-children, each group alphabetical.
- *
- * Derived services whose base is missing from the list (soft-deleted, or
- * filtered out by a status query) are kept at the end rather than dropped —
- * they still exist and still transact, so hiding them would be worse than
- * showing them ungrouped.
- */
-export function groupServices(services: Service[]): Service[] {
-  const byName = (a: Service, b: Service) =>
-    a.display_name.localeCompare(b.display_name);
-  const bases = services.filter((s) => s.kind === "base").sort(byName);
-  const derived = services.filter((s) => s.kind === "derived");
-  const baseCodes = new Set(bases.map((b) => b.code));
-
-  const ordered: Service[] = [];
-  for (const base of bases) {
-    ordered.push(base);
-    ordered.push(
-      ...derived.filter((d) => d.base_service_code === base.code).sort(byName),
-    );
-  }
-  ordered.push(
-    ...derived
-      .filter((d) => !d.base_service_code || !baseCodes.has(d.base_service_code))
-      .sort(byName),
-  );
-  return ordered;
-}
 
 export function ServicesTable({
   services,
@@ -194,6 +166,7 @@ export function ServicesTable({
                     Platform
                   </Badge>
                 )}
+                <ReadinessNotice readiness={svc.readiness} />
               </TableCell>
               <TableCell className="font-mono text-[12px] text-[--color-text-3]">
                 {svc.code}

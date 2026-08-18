@@ -125,6 +125,21 @@ export interface Instrument {
   updated_at: string;
 }
 
+/**
+ * Whether a service satisfies each of the three prerequisites for transacting.
+ *
+ * `false` is conclusive — with no pricing row, no limit row, or no active role
+ * grant, NO caller can transact under this code. `true` only means "configured
+ * at all": pricing and limit rows are scoped by account type / currency / user
+ * type, so one existing does not prove one resolves for every caller. Never
+ * present `true` as "this definitely works".
+ */
+export interface ServiceReadiness {
+  pricing: boolean;
+  limits: boolean;
+  role: boolean;
+}
+
 /** One row in the per-tenant services catalog (Phase 2). */
 export interface Service {
   id: string;
@@ -159,6 +174,11 @@ export interface Service {
    * unrestricted (all channels); `[]` = restrict to none; a list = allow-list.
    */
   allowed_channels: string[] | null;
+  /**
+   * Config prerequisites, present on the catalog list endpoint and `null`
+   * elsewhere (a create response has none yet, so reporting it would mislead).
+   */
+  readiness: ServiceReadiness | null;
   created_at: string;
   updated_at: string;
 }

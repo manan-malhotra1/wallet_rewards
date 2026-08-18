@@ -41,6 +41,7 @@ const services: Service[] = [
     kind: "base",
     base_service_code: null,
     derivable: true,
+    readiness: null,
     allowed_user_types: null,
     allowed_channels: null,
     created_at: "2026-07-01T00:00:00Z",

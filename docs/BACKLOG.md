@@ -210,11 +210,14 @@ flows wired (P2P, cash-in, cash-out, airtime, redemption, partner
 fund/withdraw/merchant cash-in), and the client read models. Inert:
 18 base services, 0 derived.
 
-> **Sequencing rule (spec §12.3): do NOT create a derived service in
-> production until Story B4.1 ships.** A derived `transaction_type` reaching
-> today's mobile app makes a derived P2P vanish from the "Sent" filter.
+> **Sequencing rule (spec §12.3) — SATISFIED 2026-08-18 by Story B4.1.** The
+> rule was: do not create a derived service in production until the mobile
+> client groups by base, because a derived `transaction_type` reaching the old
+> app made a derived P2P vanish from the "Sent" filter. The client now ships
+> the fix, so derived services are safe to create — subject to the shipped
+> mobile build actually being in users' hands, not just merged.
 
-### Story B4.1 — Mobile client: group by base, not by exact code · Backlog
+### Story B4.1 — Mobile client: group by base, not by exact code · Done (2026-08-18, 18182f7 + eb73cd7)
 
 **Description:** Three hardcoded `transaction_type === 'p2p'` comparisons
 assume the code set is closed, which base/derived invalidates. Switch them to
@@ -229,6 +232,21 @@ the new `base_transaction_type`.
   falling back to today's behaviour (cosmetic)
 - Home tiles need no change — `/me/services` is already data-driven
 
+**Proven end to end (2026-08-18)** against a real `p2p_diaspora` derived service
+in the dev DB: a R25 transfer recorded `p2p_diaspora | p2p | COMPLETED` with a
+balanced 4-entry ledger, and the `/me` feed row evaluated
+`sent_NEW=True, sent_OLD=False` — i.e. the bug reproduced and the fix held on
+live data. `mobile-simulator` labels it "Diaspora Transfer". The service was
+soft-deleted afterwards, leaving the catalog inert (18 base / 0 derived) and
+the transactions in place — the ledger is append-only.
+
+> **Config prerequisite found during that proof:** a derived service needs
+> FOUR rows before it can transact — the `services` row, a `pricing_configs`
+> row, a `limit_configs` row, AND a `role_permissions` grant. The first
+> transfer attempt failed `NotAuthorised` because `has_permission()` matches
+> `transaction_type` exactly, so a derived code inherits nothing from its
+> base's grant. Story B4.2 must surface all four, not just pricing and limits.
+
 ### Story B4.2 — Admin UI: create a derived service · Backlog
 
 **Description:** The Services tab can't create derived services yet, so the
@@ -240,8 +258,10 @@ backend capability is unreachable.
   the platform
 - Table groups derived rows under their base with a `Derived` badge; base rows
   show `Platform` and no delete affordance
-- A derived service with no pricing/limit config shows "Not yet usable" with
-  links to add each (turning the fail-closed 422 into guidance)
+- A derived service with no pricing config, no limit config, **or no role
+  permission grant** shows "Not yet usable" with links to add each — all three
+  are hard prerequisites (the first two fail closed with a 422, the third with
+  a `NotAuthorised`; see the B4.1 note)
 - Campaign wizard warns when a base has derived services a rule doesn't cover
   (rewards target the resolved code — see the spec's §8 footgun)
 

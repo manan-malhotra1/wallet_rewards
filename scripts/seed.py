@@ -55,15 +55,10 @@ from app.modules.treasury.service import (  # noqa: E402
 )
 from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
-    ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-    ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
-    ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
-    ACCOUNT_TYPE_TAX_COMMISSION,
-    ACCOUNT_TYPE_TAX_SERVICE,
     MERCHANT_CATEGORY_AIRTIME,
     MERCHANT_MODE_SIMULATOR,
     REFERRAL_TRIGGER_SIGNUP,
@@ -1498,46 +1493,24 @@ async def seed() -> None:
                 threshold_amount=Decimal("500") if _is_points else Decimal("200"),
             )
 
-        # System-owned accounts for the tenant. We pre-create every system
-        # wallet that platform activity would otherwise materialise lazily, so
-        # a freshly-seeded tenant shows the full set on the System Wallets page
-        # instead of a partial list that grows as transactions happen.
-        #
-        # provider_redemption_wallet is NOT created here — `register_provider()`
-        # later in this script auto-creates it as part of registering the
-        # sample provider (Pay-PRD-0730). Pre-0009 those two paths silently
-        # created two wallets; the uq_accounts_system_scoped index now enforces
-        # one. The airtime_merchant_holding account is merchant-owned and is
-        # created by _get_or_create_airtime_merchant (Epic 17), not here.
-        #
-        # All financial system wallets use the tenant's base currency (ZAR);
-        # the points pool uses PTS.
-        system_wallets = [
-            (ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE, "PTS", "System Points Issuance (master)"),
-            (ACCOUNT_TYPE_SYSTEM_CASH_INFLOW, "ZAR", "Cash float"),
-            (ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED, "ZAR", "Fees collected"),
-            (ACCOUNT_TYPE_OPERATOR_ADJUSTMENT, "ZAR", "Bank mirror account"),
-            (ACCOUNT_TYPE_COMMISSION, "ZAR", "Commission funded wallet"),
-            (ACCOUNT_TYPE_TAX_SERVICE, "ZAR", "Tax collected on service charges"),
-            (ACCOUNT_TYPE_TAX_COMMISSION, "ZAR", "Tax collected on commissions"),
-        ]
-        for account_type, currency, label in system_wallets:
-            # The seeded bank mirror is the back-compat "Primary" mirror; every
-            # other system wallet is unnamed.
-            name = (
-                BANK_MIRROR_PRIMARY_NAME
-                if account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT
-                else None
-            )
-            await _get_or_create_account(
-                session,
-                tenant,
-                user=None,
-                account_type=account_type,
-                currency=currency,
-                label=label,
-                name=name,
-            )
+        # System-owned accounts come from `provision_tenant_defaults` (called
+        # above) — the same path production uses (story B5.1), denominated in
+        # the tenant's OWN base_currency rather than the hard-coded ZAR this
+        # script used to write. Only the bank mirror is created here: a mirror
+        # represents a real bank account, so production operators create it
+        # explicitly with real details, and this seeded "Primary" mirror is the
+        # dev stand-in for that step. provider_redemption_wallet is auto-created
+        # by `register_provider()` later (Pay-PRD-0730), and
+        # airtime_merchant_holding is merchant-owned (Epic 17), not here.
+        await _get_or_create_account(
+            session,
+            tenant,
+            user=None,
+            account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+            currency=tenant.base_currency,
+            label="Bank mirror account",
+            name=BANK_MIRROR_PRIMARY_NAME,
+        )
 
         # Pre-fund the operator cash float from the bank BEFORE any user fund.
         # The float (`system_cash_inflow`) now carries a no-overdraft floor at the

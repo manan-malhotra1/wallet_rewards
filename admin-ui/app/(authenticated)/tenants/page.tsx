@@ -68,7 +68,7 @@ export default async function TenantsPage() {
           <EmptyState
             icon={Settings2}
             title="No tenants yet"
-            description="Run the backend seed script to create the first tenant."
+            description="Create the first tenant with the New tenant button above."
           />
         ) : (
           tenants.map((tenant) => (

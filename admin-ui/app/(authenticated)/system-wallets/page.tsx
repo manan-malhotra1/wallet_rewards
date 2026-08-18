@@ -114,7 +114,7 @@ export default async function SystemWalletsPage() {
           <EmptyState
             icon={Banknote}
             title="No system accounts yet"
-            description="A tenant gets its system_points_issuance + system_cash_inflow on first seed. Run make seed to populate."
+            description="System accounts are created when the tenant is provisioned. If this tenant predates that, re-save it on the Tenants page to provision them."
           />
         ) : (
           <SystemWalletsView wallets={wallets} tenantId={activeTenantId} />

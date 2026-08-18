@@ -27,8 +27,15 @@ from app.modules.tenants.schemas import (
 )
 from app.shared.exceptions import TenantNameAlreadyExists, TenantNotFound
 from app.shared.models import (
+    ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
+    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
+    ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+    ACCOUNT_TYPE_TAX_COMMISSION,
+    ACCOUNT_TYPE_TAX_SERVICE,
+    Account,
     Instrument,
     Role,
     RolePermission,
@@ -238,6 +245,75 @@ async def _provision_default_roles(session: AsyncSession, tenant_id: uuid.UUID) 
                 session.add(RolePermission(role_id=role.id, transaction_type=code, permitted=True))
 
 
+# The system-owned ledger accounts every tenant needs, keyed by account type.
+# True = denominated in the tenant's base_currency; False = the PTS points pool.
+# Pre-created at provisioning (B5.1) instead of left to the lazy get-or-create
+# paths inside money flows, because laziness deadlocks the operator: invariant
+# #11 says the cash float must be pre-funded BEFORE it can fund users, but
+# `treasury.adjust_system_wallet` needs the float's account id and the float
+# only used to exist after a fund() had already been attempted. The lazy
+# creators remain in place as the concurrency-safe fallback (and for extra
+# currencies beyond base_currency).
+#
+# `operator_adjustment` (bank mirrors) is deliberately NOT here: a mirror
+# represents a real bank account, so an operator creating it explicitly with
+# its real details is correct — there is no sensible default row.
+_SYSTEM_WALLETS: list[tuple[str, bool]] = [
+    (ACCOUNT_TYPE_SYSTEM_CASH_INFLOW, True),
+    (ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED, True),
+    (ACCOUNT_TYPE_COMMISSION, True),
+    (ACCOUNT_TYPE_TAX_SERVICE, True),
+    (ACCOUNT_TYPE_TAX_COMMISSION, True),
+    (ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE, False),
+]
+
+
+async def _system_account_exists(
+    session: AsyncSession, tenant_id: uuid.UUID, account_type: str, currency: str
+) -> bool:
+    """Return True if this tenant already has this system account.
+
+    Matches the scope of `uq_accounts_system_scoped`: one row per
+    (tenant, type, currency) with no owning user.
+    """
+    result = await session.execute(
+        select(Account.id).where(
+            Account.tenant_id == tenant_id,
+            Account.account_type == account_type,
+            Account.currency == currency,
+            Account.user_id.is_(None),
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _provision_system_wallets(session: AsyncSession, tenant: Tenant) -> None:
+    """Create the tenant's system-owned ledger accounts (story B5.1).
+
+    Fiat accounts are denominated in the tenant's OWN base_currency — never a
+    hard-coded ZAR (the same bug class this function already fixed for
+    instruments); the points issuance pool is always PTS.
+
+    Idempotent, and safe against the lazy get-or-create paths racing it: both
+    sides funnel into `uq_accounts_system_scoped`, and this runs inside the
+    caller's transaction, so a loser of that race surfaces as the caller's
+    IntegrityError-and-re-read, exactly as the lazy paths already handle.
+
+    Side effects:
+        Inserts Account rows. Does NOT commit — the caller does.
+    """
+    for account_type, in_base_currency in _SYSTEM_WALLETS:
+        currency = tenant.base_currency.strip().upper() if in_base_currency else "PTS"
+        if not await _system_account_exists(session, tenant.id, account_type, currency):
+            session.add(
+                Account(
+                    tenant_id=tenant.id,
+                    account_type=account_type,
+                    currency=currency,
+                )
+            )
+
+
 async def _instrument_exists(session: AsyncSession, tenant_id: uuid.UUID, code: str) -> bool:
     """Return True if a live instrument with this code already exists for the tenant."""
     result = await session.execute(
@@ -278,6 +354,11 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
       - The default end-user roles (`DEFAULT_ROLE_BY_USER_TYPE`) and their
         grants. Without these a fresh tenant's customers cannot transact at
         all, because `has_permission` denies by default (Pay-PRD-0440).
+      - The system-owned ledger accounts (`_SYSTEM_WALLETS`), fiat ones in the
+        tenant's OWN base_currency. Without the cash float the operator is
+        deadlocked: it must be pre-funded before it can fund users (invariant
+        #11), but `adjust_system_wallet` cannot target an account that does
+        not exist yet (story B5.1).
 
     Idempotent: a code that already exists (live) is skipped, so re-running is a
     no-op. Mirrors the previous seed behaviour so existing tenants are unaffected.
@@ -335,6 +416,7 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
         )
 
     await _provision_default_roles(session, tenant.id)
+    await _provision_system_wallets(session, tenant)
 
     await session.commit()
     log.info(
@@ -492,6 +574,14 @@ async def update_tenant(
         raise
 
     await session.refresh(tenant)
+
+    # Re-run provisioning on every save. It is idempotent, so for an
+    # up-to-date tenant this is a no-op — but for a tenant created before a
+    # provisioning gap was fixed (missing default roles, B4.8; missing system
+    # wallets, B5.1) this is the operator-reachable remedy: re-save the tenant
+    # on the Tenants page and the missing pieces are topped up. The System
+    # wallets empty state points operators here.
+    await provision_tenant_defaults(session, tenant)
 
     log.info(
         "tenant_updated",

@@ -1176,6 +1176,7 @@ async def _build_recent_txns_payload(
                 "id": t.id,
                 "reference": t.reference,
                 "transaction_type": t.transaction_type,
+                "base_transaction_type": t.base_transaction_type,
                 "status": t.status,
                 "amount": str(t.amount),
                 "fee_amount": fee_out,

@@ -56,6 +56,10 @@ async def _seed_movement(
         tenant_id=tenant_id,
         idempotency_key=f"mv-{uuid4().hex}",
         transaction_type="p2p",
+        # NOT NULL since migration 0056 (base/derived services) — this helper
+        # constructs the row directly rather than through post_transaction, so
+        # it must supply the column itself. This is the endpoint's own base.
+        base_transaction_type="p2p",
         status=TXN_STATUS_COMPLETED,
         amount=principal_d,
         currency="ZAR",

@@ -16,9 +16,7 @@ async def test_base_service_persists_without_a_base_code(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
     """Verify a base service is stored with kind='base' and no base code"""
-    db_session.add(
-        Service(tenant_id=test_tenant.id, code="p2p", display_name="P2P", kind="base")
-    )
+    db_session.add(Service(tenant_id=test_tenant.id, code="p2p", display_name="P2P", kind="base"))
     await db_session.flush()
 
 
@@ -79,9 +77,7 @@ async def test_service_cannot_be_its_own_base(
 
 
 @pytest.mark.asyncio
-async def test_unknown_kind_is_rejected(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_unknown_kind_is_rejected(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """Verify a kind outside base/derived violates the enum CHECK"""
     with pytest.raises(IntegrityError):
         async with db_session.begin_nested():

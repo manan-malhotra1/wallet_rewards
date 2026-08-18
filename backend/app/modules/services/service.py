@@ -106,8 +106,7 @@ async def _assert_valid_derived_payload(
         raise AppHTTPException(
             422,
             "invalid_base_service",
-            f"Base service '{payload.base_service_code}' is not provisioned for "
-            "this tenant.",
+            f"Base service '{payload.base_service_code}' is not provisioned for this tenant.",
         )
     if not _is_narrower_or_equal(
         payload.allowed_user_types, base.allowed_user_types
@@ -120,9 +119,7 @@ async def _assert_valid_derived_payload(
         )
 
 
-def _intersect_allow_lists(
-    derived: list[str] | None, base: list[str] | None
-) -> list[str] | None:
+def _intersect_allow_lists(derived: list[str] | None, base: list[str] | None) -> list[str] | None:
     """Return the enforceable allow-list for one policy dimension.
 
     Companion to `_is_narrower_or_equal` (which only answers "is this valid
@@ -211,9 +208,7 @@ async def resolve_service_code(
     if row is None:
         raise ServiceNotFound()
     if row.status != SERVICE_STATUS_ACTIVE:
-        raise AppHTTPException(
-            409, "service_disabled", f"Service '{requested_code}' is disabled."
-        )
+        raise AppHTTPException(409, "service_disabled", f"Service '{requested_code}' is disabled.")
     # A derived service may only be invoked through its own base's endpoint —
     # otherwise a cash-out derivative could be driven by the P2P flow.
     if row.kind != "derived" or row.base_service_code != base_code:
@@ -249,11 +244,7 @@ async def resolve_service_code(
                 and user_type not in effective_user_types
             ):
                 raise ServiceNotAllowedForUserType()
-            if (
-                channel is not None
-                and effective_channels
-                and channel not in effective_channels
-            ):
+            if channel is not None and effective_channels and channel not in effective_channels:
                 raise ServiceNotAllowedOnChannel()
 
     return requested_code

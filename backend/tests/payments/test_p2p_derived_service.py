@@ -319,9 +319,7 @@ async def test_exhausting_derived_daily_cap_does_not_block_plain_p2p(
     """
     await _seed_p2p_pricing_and_limit(db_session, test_tenant.id)
     await _seed_derived_p2p_service(db_session, test_tenant)
-    await _seed_pricing_and_limit(
-        db_session, test_tenant.id, "p2p_diaspora", daily_count_cap=1
-    )
+    await _seed_pricing_and_limit(db_session, test_tenant.id, "p2p_diaspora", daily_count_cap=1)
     alice, _ = await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 5401")
     await _make_user_with_wallet(db_session, test_tenant, phone="+27 82 555 5402")
     await _grant_permission(db_session, alice, "p2p_diaspora")

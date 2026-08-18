@@ -212,9 +212,7 @@ async def member_counts(session: AsyncSession, tenant_id: UUID) -> MemberCountsO
         select(
             UserSegment.segment_id,
             func.count().label("total"),
-            func.count()
-            .filter(UserSegment.source == USER_SEGMENT_SOURCE_MANUAL)
-            .label("manual"),
+            func.count().filter(UserSegment.source == USER_SEGMENT_SOURCE_MANUAL).label("manual"),
             func.count()
             .filter(UserSegment.source == USER_SEGMENT_SOURCE_CRITERIA)
             .label("criteria"),

@@ -139,9 +139,7 @@ async def test_derived_code_whose_base_does_not_match_is_rejected(
 
 
 @pytest.mark.asyncio
-async def test_unknown_code_is_not_found(
-    db_session: AsyncSession, test_tenant: Tenant
-) -> None:
+async def test_unknown_code_is_not_found(db_session: AsyncSession, test_tenant: Tenant) -> None:
     """Verify a code with no live row anywhere in the tenant 404s"""
     with pytest.raises(ServiceNotFound):
         await resolve_service_code(
@@ -203,9 +201,7 @@ async def test_resolution_time_intersection_blocks_a_channel_the_base_now_exclud
     with — while resolving for `web` succeeds.
     """
     await _seed_base(db_session, test_tenant, "p2p", allowed_channels=["web", "mobile"])
-    await _seed_derived(
-        db_session, test_tenant, "p2p_diaspora", "p2p", allowed_channels=["web"]
-    )
+    await _seed_derived(db_session, test_tenant, "p2p_diaspora", "p2p", allowed_channels=["web"])
 
     with pytest.raises(ServiceNotAllowedOnChannel):
         await resolve_service_code(
@@ -237,9 +233,7 @@ async def test_resolution_time_intersection_tightens_when_base_is_narrowed_later
     allow-list, but the base has since been narrowed to [web] only. The
     INTERSECTION — not the derived row's stale snapshot — must govern.
     """
-    base = await _seed_base(
-        db_session, test_tenant, "p2p", allowed_channels=["web", "mobile"]
-    )
+    base = await _seed_base(db_session, test_tenant, "p2p", allowed_channels=["web", "mobile"])
     await _seed_derived(
         db_session,
         test_tenant,

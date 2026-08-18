@@ -61,9 +61,7 @@ def upgrade() -> None:
         sa.Column("kind", sa.String(10), nullable=False, server_default="base"),
     )
     op.add_column("services", sa.Column("base_service_code", sa.String(50), nullable=True))
-    op.create_check_constraint(
-        "ck_services_kind", "services", "kind IN ('base', 'derived')"
-    )
+    op.create_check_constraint("ck_services_kind", "services", "kind IN ('base', 'derived')")
     # The pairing is what makes NULL meaningless rather than meaningful.
     op.create_check_constraint(
         "ck_services_kind_base_pairing",
@@ -78,9 +76,7 @@ def upgrade() -> None:
     )
 
     # Every existing transaction is its own base (no derived services yet).
-    op.add_column(
-        "transactions", sa.Column("base_transaction_type", sa.String(50), nullable=True)
-    )
+    op.add_column("transactions", sa.Column("base_transaction_type", sa.String(50), nullable=True))
     op.execute(sa.text("UPDATE transactions SET base_transaction_type = transaction_type"))
     op.alter_column(
         "transactions",
@@ -97,9 +93,7 @@ def downgrade() -> None:
     resolve to no implementation, so leaving them live would recreate exactly
     the dead-config state the upgrade guard rejects.
     """
-    op.execute(
-        sa.text("UPDATE services SET deleted_at = now() WHERE kind = 'derived'")
-    )
+    op.execute(sa.text("UPDATE services SET deleted_at = now() WHERE kind = 'derived'"))
     op.drop_column("transactions", "base_transaction_type")
     op.drop_constraint("ck_services_base_not_self", "services", type_="check")
     op.drop_constraint("ck_services_kind_base_pairing", "services", type_="check")

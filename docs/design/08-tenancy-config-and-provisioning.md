@@ -74,6 +74,28 @@ ZAR/PTS are seeded by provisioning.
 Defines each `transaction_type` (service) and its two access lists. Endpoints under
 `/api/v1/services` (admin): `GET` list, `POST` (201), `PATCH /{id}`, `DELETE /{id}` (soft-delete).
 
+**Base vs derived services (2026-08-18).** Every catalog row declares a `kind`:
+
+- **`base`** — a flow the platform actually implements; its code is in
+  `app/shared/services_registry.py::BASE_SERVICE_CODES`. Provisioned per tenant by
+  `provision_tenant_defaults`, **never creatable through the admin API** (a base row with no
+  implementation is dead config). A tenant may still enable/disable it and set its access policy.
+- **`derived`** — operator-created. `POST /api/v1/services` creates *only* these, and
+  `base_service_code` is required: the row executes its base's flow unchanged while carrying its
+  own pricing, limits, channels and permitted initiators. One level only; base rows are
+  undeletable (`409 base_service_protected`) and `base_service_code` is immutable.
+
+At request time `resolve_service_code(...)` turns an optional `service_code` into the code that
+drives permission, pricing, limits and the recorded `transaction_type`; omitting it reproduces
+pre-existing behaviour exactly. `transactions.base_transaction_type` is denormalised so clients
+group by flow without knowing every derived code. Pricing and limits are **never inherited** — a
+derived service fails closed (422) until both are configured. Access policy is **narrowing-only**,
+enforced at save time and re-intersected at resolution, so narrowing a base tightens its derived
+services automatically. Reward rules target the **resolved** code (a rule on the base does not fire
+for a derived service), while reward *eligibility* and step-up PIN both key off the **base**.
+
+Spec: `docs/superpowers/specs/2026-08-17-service-variants-design.md`.
+
 The access policy is enforced on **every money path** by `assert_service_allowed(session, service,
 user, channel)` (doc 03, step 3):
 

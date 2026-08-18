@@ -194,3 +194,75 @@ atmosphere stop.
   worst-case backgrounds (document the measurement)
 - Dark theme unchanged (already 5.6:1+)
 - Palette sync guard updated values; all UI tests green
+
+---
+
+## Epic B4 — Base & Derived Services · **Phase 1 done, Phases 2–3 open**
+
+Spec: `docs/superpowers/specs/2026-08-17-service-variants-design.md` (rev. 3).
+Plan: `docs/superpowers/plans/2026-08-18-base-derived-services-phase1.md`.
+
+**Phase 1 (backend) — Done 2026-08-18** on `feature/base-derived-services`:
+registry, migration 0056 (`services.kind`, `services.base_service_code`,
+`transactions.base_transaction_type`), derived-only catalog API,
+`resolve_service_code` with narrowing-only policy intersection, all money
+flows wired (P2P, cash-in, cash-out, airtime, redemption, partner
+fund/withdraw/merchant cash-in), and the client read models. Inert:
+18 base services, 0 derived.
+
+> **Sequencing rule (spec §12.3): do NOT create a derived service in
+> production until Story B4.1 ships.** A derived `transaction_type` reaching
+> today's mobile app makes a derived P2P vanish from the "Sent" filter.
+
+### Story B4.1 — Mobile client: group by base, not by exact code · Backlog
+
+**Description:** Three hardcoded `transaction_type === 'p2p'` comparisons
+assume the code set is closed, which base/derived invalidates. Switch them to
+the new `base_transaction_type`.
+
+**Acceptance criteria:**
+- `mobile/app/transactions.tsx` "Sent" filter keys off `base_transaction_type`
+  (today a derived P2P disappears from it — the actual bug)
+- `activityCategory()` in `mobile/lib/api/wallet.ts` keys off the base, so a
+  derived P2P keeps its sent/received tint
+- `transactionTitle()` prefers the service `display_name` from `/me/services`,
+  falling back to today's behaviour (cosmetic)
+- Home tiles need no change — `/me/services` is already data-driven
+
+### Story B4.2 — Admin UI: create a derived service · Backlog
+
+**Description:** The Services tab can't create derived services yet, so the
+backend capability is unreachable.
+
+**Acceptance criteria:**
+- "New service" dialog is derived-only, with a required base dropdown fed by
+  the tenant's live derivable base rows; states that base services ship with
+  the platform
+- Table groups derived rows under their base with a `Derived` badge; base rows
+  show `Platform` and no delete affordance
+- A derived service with no pricing/limit config shows "Not yet usable" with
+  links to add each (turning the fail-closed 422 into guidance)
+- Campaign wizard warns when a base has derived services a rule doesn't cover
+  (rewards target the resolved code — see the spec's §8 footgun)
+
+### Story B4.3 — Step-up PIN inheritance for derived services · Backlog
+
+**Description:** Deliberately deferred from Phase 1. `STEP_UP_TRANSACTION_TYPES`
+is a fixed tuple, so a derived service is not step-up eligible. Spec §8 makes
+this the one place inheritance is correct — silently *losing* a security
+control is the dangerous direction — so derive the tuple from the registry plus
+each derived service's base.
+
+**Acceptance criteria:**
+- A derived service of a step-up-eligible base enforces step-up
+- Test proving a derived high-value transfer still demands the PIN
+
+### Story B4.4 — Partner API contract for derived codes · Backlog
+
+**Description:** Partner consumers reading `transaction_type` from webhooks or
+reports may share the closed-set assumption. Longest lead time — it involves
+other people's release cycles.
+
+**Acceptance criteria:**
+- Documented decision: version bump vs documented additive change
+- Partner-facing docs describe `base_transaction_type`

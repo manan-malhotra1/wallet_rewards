@@ -465,3 +465,79 @@ dev-only convenience.
 - Anything a tenant genuinely needs moves into provisioning
 - Ideally a test that fails when seed.py grows a new tenant-scoped entity that
   provisioning does not create
+
+---
+
+## Epic B6 — `business_type` is not enforced outside reward paths · **Backlog**
+
+`tenants.business_type` ('wallet' | 'rewards' | 'both') is documented as the
+deployment-mode gate, and `app/shared/tenant_mode.py` calls itself its "single
+reader". But it only gates reward EXECUTION. Nothing gates the surface area: not
+provisioning, not the admin UI. So a tenant is shown — and can configure —
+features outside what it was sold.
+
+### Story B6.1 — A wallet-only tenant is shown the rewards product · **Backlog · CRITICAL**
+
+**Symptom:** With `Casava Fintech` (business_type `wallet`, base currency TOKEN)
+as the active tenant, the admin UI shows Campaigns, Segments, Multipliers,
+Budgets and Redemption in the sidebar, and `PTS` appears as a selectable
+currency in configuration dropdowns (service charges, limits, pricing). None of
+it is in scope for a wallet-only tenant.
+
+**Root cause, two independent halves:**
+1. `provision_tenant_defaults` creates the `PTS` points instrument
+   unconditionally — `backend/app/modules/tenants/service.py:308`, whose own
+   comment says "always, regardless of base_currency", justified by "the rules
+   engine credits reward points to every tenant". That premise is false for a
+   wallet-only tenant. The PTS instrument is what puts points into currency
+   dropdowns.
+2. The admin UI does no mode gating at all. `admin-ui/components/app-shell/
+   sidebar.tsx` contains no reference to `business_type`, so every nav item
+   renders for every tenant.
+
+**Why critical:** an operator can build configuration that can never execute —
+e.g. a PTS-denominated service charge or limit for a tenant with no points
+programme — and each such row is dead config of exactly the kind invariant #12
+exists to prevent. It also misrepresents the product: a wallet-only customer
+sees a rewards console they have not bought, which is a live credibility problem
+in demos and a support problem in production.
+
+**Acceptance criteria:**
+- Sidebar renders rewards-only sections (Campaigns, Segments, Multipliers,
+  Budgets, Redemption) only when the active tenant's mode includes rewards
+- `PTS` is not offered in any currency/instrument dropdown for a wallet-only
+  tenant
+- Provisioning creates the PTS instrument only for modes that include rewards
+  ('rewards', 'both'), and the points issuance system account likewise
+- Backend rejects, not just hides: creating a PTS-denominated pricing/limit/
+  service-charge config for a wallet-only tenant returns 422 (a hidden dropdown
+  is not enforcement — the API is reachable directly)
+- Tests for a wallet tenant, a rewards tenant and a both tenant
+
+### Story B6.2 — The mirror case: a rewards-only tenant shows wallet features · Backlog
+
+**Description:** Same root cause, opposite direction. A `rewards` tenant should
+presumably not be offered System wallets, Fund/Withdraw, cash-in/cash-out
+services or fiat service charges. Needs a product decision on exactly which
+surfaces belong to each mode before implementing — B6.1 is the urgent half
+because it is the one observed.
+
+**Acceptance criteria:**
+- A documented matrix: every admin UI section and every base service, mapped to
+  the modes that should see it
+- Gating applied from that single matrix, not per-screen guesswork
+
+### Story B6.3 — Changing `business_type` after creation has undefined behaviour · Backlog
+
+**Description:** The Tenants screen lets an operator edit Business type on an
+existing tenant. Nothing defines what happens to data already created under the
+old mode — points accounts, campaigns, rules, PTS pricing rows — when a tenant
+moves 'both' → 'wallet', or what gets provisioned when it moves the other way.
+Today the change is a bare column update.
+
+**Acceptance criteria:**
+- Decide and document: is a mode change permitted, and is it additive only?
+- Widening (e.g. 'wallet' → 'both') provisions what the new mode needs
+- Narrowing either 422s while rewards data exists, or is explicit about what
+  becomes inert (and the UI says so before the operator confirms)
+- Audit row captures before/after mode

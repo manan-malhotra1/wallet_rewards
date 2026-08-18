@@ -451,7 +451,7 @@ code was once hard-coded to ZAR.
 **Not in scope:** the bank mirror (`operator_adjustment`). That carries real bank
 details, so an operator creating it explicitly is correct.
 
-### Story B5.2 — Audit provisioning for any remaining gaps · Backlog
+### Story B5.2 — Audit provisioning for any remaining gaps · Done (2026-08-18)
 
 **Description:** Two instances of this bug class have been found by accident
 (B4.8 roles, B5.1 system wallets). Rather than wait for a third, diff what
@@ -464,7 +464,54 @@ dev-only convenience.
   creates it, with a one-line justification for each dev-only item
 - Anything a tenant genuinely needs moves into provisioning
 - Ideally a test that fails when seed.py grows a new tenant-scoped entity that
-  provisioning does not create
+  provisioning does not create — NOT done, remains open below
+
+**Audit result (2026-08-18).** Every tenant-scoped entity seed.py creates,
+against provisioning:
+
+| Entity | seed.py | provisioning | Verdict |
+|---|---|---|---|
+| Instruments (base currency + PTS) | yes | yes (PTS mode-gated, e1f4caa) | covered |
+| Baseline services | yes | yes | covered |
+| Default roles + grants | was hand-rolled | yes (B4.8, df1194f) | fixed |
+| System wallets (fiat + points) | was hand-rolled, hardcoded ZAR | yes (B5.1, decc63d) | fixed |
+| Bank mirror (`operator_adjustment`) | yes ("Primary") | no — deliberate | dev-only stand-in; a mirror carries real bank details, operator creates it |
+| Step-up policies | yes, one per guarded type | **no** | **GAP → B5.3** |
+| Pricing + limit configs | yes | no — deliberate | correct by design: invariant #12 forbids implicit defaults; the readiness badge (B4.5) surfaces the gap |
+| Redemption provider (+ its wallet) | yes (sample) | no | dev-only demo data |
+| Event source + Kafka topics | yes | no | dev-only; external integrations are explicitly registered (Pay-PRD-0495) |
+| Users, wallets, opening balances, campaigns | yes | no | dev-only demo data |
+
+Other angles checked and found FINE: no remaining "seed"/dev-tooling copy in
+production admin-ui screens (the three found were fixed in decc63d); lazily
+created accounts other than the float are credit-side targets with no
+pre-funding need (no further deadlocks); `provider_redemption_wallet` is
+auto-created by `register_provider` and `airtime_merchant_holding` is
+merchant-owned (both correct); roles was the only backend module with a full
+CRUD API and no admin UI page (tracked in B4.6).
+
+### Story B5.3 — Fresh tenants demand a PIN on every guarded transaction · Backlog
+
+**Description:** Found by the B5.2 audit. `enforce_step_up` is fail-closed by
+design — a MISSING policy requires a PIN at ANY amount (step_up/service.py:65)
+— and provisioning creates no step-up policies; only seed.py does. So every
+guarded flow on a fresh tenant demands a PIN for a R1 transfer until an
+operator configures thresholds. Not broken (the Step-up PIN page exists), but a
+degraded default nobody chose, and invisible until customers complain.
+
+**Acceptance criteria:**
+- Decide the default: provision an explicit high-threshold policy per guarded
+  type (mirroring seed.py, which iterates STEP_UP_TRANSACTION_TYPES so new
+  types are covered automatically), or keep PIN-always and say so in the UI
+- Whichever is chosen, the Step-up PIN page shows the effective behaviour for
+  an unconfigured type instead of implying "no policy = no PIN"
+
+### Story B5.4 — Guard against seed/provisioning drift · Backlog
+
+**Description:** The open remainder of B5.2. Three gaps (roles, system wallets,
+step-up) all came from seed.py compensating for provisioning. A test should
+fail when seed.py grows a new tenant-scoped entity that provisioning does not
+create, so the next gap is caught at commit time, not in production.
 
 ---
 

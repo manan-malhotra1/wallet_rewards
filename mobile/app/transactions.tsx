@@ -36,10 +36,14 @@ type Filter = 'all' | 'sent' | 'received' | 'bills';
 /** Returns true when the transaction matches the active filter. */
 function matchesFilter(t: WalletTransaction, filter: Filter): boolean {
   if (filter === 'all') return true;
-  if (filter === 'sent') return t.direction === 'out' && t.transaction_type === 'p2p';
+  // Compare the BASE flow, not the exact code: a derived P2P (e.g.
+  // "p2p_diaspora") is still a P2P send, and equality-checking
+  // `transaction_type` would drop it from this filter entirely — the user's
+  // own transfer would sit in the full list but be unfindable under "Sent".
+  if (filter === 'sent') return t.direction === 'out' && t.base_transaction_type === 'p2p';
   if (filter === 'received') return t.direction === 'in';
   // "Bills" is a placeholder for now — once bill-pay ships it'll match
-  // `transaction_type === 'bill_payment'` (or similar). Empty for v0.
+  // `base_transaction_type === 'bill_payment'` (or similar). Empty for v0.
   if (filter === 'bills') return false;
   return true;
 }

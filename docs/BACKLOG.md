@@ -389,3 +389,79 @@ other people's release cycles.
 **Acceptance criteria:**
 - Documented decision: version bump vs documented additive change
 - Partner-facing docs describe `base_transaction_type`
+
+---
+
+## Epic B5 — Tenant provisioning completeness · **Backlog**
+
+A new tenant must be fully operable from the admin UI alone. `make seed` is a
+DEV script and must never be a production prerequisite. Every gap here has the
+same shape: `provision_tenant_defaults` seeds part of what a tenant needs, and
+`scripts/seed.py` quietly compensates for the rest — so dev works, a real
+tenant does not, and nobody notices. Story B4.8 (default roles) was the first
+instance found; these are the rest.
+
+### Story B5.1 — System wallets are not provisioned for a new tenant · **Backlog · CRITICAL**
+
+**Symptom:** A newly created tenant's System wallets page is empty. Observed on
+`EcoCash Rewards` (base currency USD): "No system accounts yet — A tenant gets
+its system_points_issuance + system_cash_inflow on first seed. Run make seed to
+populate." Telling a production operator to run a dev seed script is not an
+acceptable instruction, and the screen offers no way to create the accounts.
+
+**Root cause:** `provision_tenant_defaults` creates instruments, services and
+(since B4.8) default roles — but no system accounts. The system accounts are
+instead created LAZILY by the money flows that need them
+(`_get_or_create_cash_inflow` in `payments/service.py`, and the equivalents in
+`rewards/service.py`), so they do not exist until a transaction has already been
+attempted.
+
+**Why this is critical, not cosmetic — there is a provisioning deadlock:**
+1. Invariant #11 gives `system_cash_inflow` a no-overdraft floor, so it MUST be
+   pre-funded from the bank before it can fund any user.
+2. Pre-funding goes through `treasury.adjust_system_wallet`, which takes the
+   target account id and raises `AccountNotFound` for an unknown target.
+3. The float does not exist until `fund()` lazily creates it.
+
+So the only route on a fresh tenant is: attempt a fund that FAILS with
+`insufficient_float` (which leaves the account behind, because the get-or-create
+commits separately), then create a bank mirror, then top up. That is not
+discoverable, and nothing in the UI hints at it.
+
+**Currency correctness matters here too:** the accounts must be created in the
+tenant's OWN `base_currency` (USD for EcoCash Rewards, not ZAR) plus `PTS` for
+points issuance — the same bug class already fixed for instruments, where the
+code was once hard-coded to ZAR.
+
+**Acceptance criteria:**
+- `provision_tenant_defaults` creates `system_cash_inflow` in the tenant's
+  `base_currency` and `system_points_issuance` in `PTS`
+- Idempotent, and safe against the existing lazy get-or-create paths racing it
+  (the `uq_accounts_system_scoped` constraint is the arbiter)
+- A tenant created through `POST /api/v1/tenants` shows both accounts on the
+  System wallets page immediately, with zero balances
+- The empty-state copy no longer mentions `make seed`; if accounts are somehow
+  absent it explains the operator action instead
+- `scripts/seed.py` stops creating these itself and relies on provisioning, so
+  dev cannot diverge again
+- Test: provisioning a USD tenant yields a USD float, NOT ZAR
+- Test: a fresh tenant can be pre-funded via `adjust_system_wallet` with no
+  prior transaction attempt (the deadlock is gone)
+
+**Not in scope:** the bank mirror (`operator_adjustment`). That carries real bank
+details, so an operator creating it explicitly is correct.
+
+### Story B5.2 — Audit provisioning for any remaining gaps · Backlog
+
+**Description:** Two instances of this bug class have been found by accident
+(B4.8 roles, B5.1 system wallets). Rather than wait for a third, diff what
+`scripts/seed.py` creates against what `provision_tenant_defaults` creates, and
+treat every difference as either a provisioning gap or an explicitly documented
+dev-only convenience.
+
+**Acceptance criteria:**
+- A written table: every entity seed.py creates, and whether provisioning
+  creates it, with a one-line justification for each dev-only item
+- Anything a tenant genuinely needs moves into provisioning
+- Ideally a test that fails when seed.py grows a new tenant-scoped entity that
+  provisioning does not create

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +41,8 @@ from app.shared.models import (
     User,
     UserRole,
 )
+
+log = structlog.get_logger(__name__)
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -407,6 +410,51 @@ async def list_user_roles(session: AsyncSession, user_id: UUID, tenant_id: UUID)
 # -----------------------------------------------------------------------------
 # THE permission check — step 1 of payment orchestration (Pay-PRD-0260)
 # -----------------------------------------------------------------------------
+
+
+async def assign_default_role(session: AsyncSession, user: User) -> None:
+    """Give a newly created user the default role for their user_type.
+
+    Nothing else in the platform ever created a `user_roles` row, so before this
+    a user created through any path held NO role — and `has_permission` denies by
+    default (Pay-PRD-0440), meaning they could not send money, cash out, redeem
+    or buy airtime. Ever. Only the dev seed script hand-assigned a role, which is
+    exactly why the gap went unnoticed.
+
+    Deny-by-default is preserved where it means something: this grants only the
+    role the tenant was provisioned with for that user_type, and every other
+    guardrail (service access policy, limits, pricing, balance caps, the admin
+    access lock) still applies untouched. Merchant user types get no role and
+    need none — their only flow authenticates by API key.
+
+    Silently does nothing when the tenant has no such role (a tenant provisioned
+    before this shipped): a missing default must not break user creation, and
+    the readiness signal on the Services page already surfaces the gap.
+
+    Side effects:
+        Inserts one `user_roles` row. Does NOT commit — the caller does.
+    """
+    from app.modules.tenants.service import DEFAULT_ROLE_BY_USER_TYPE
+
+    role_name = DEFAULT_ROLE_BY_USER_TYPE.get(user.user_type)
+    if role_name is None:
+        return
+
+    role = (
+        await session.execute(
+            select(Role).where(Role.tenant_id == user.tenant_id, Role.name == role_name)
+        )
+    ).scalar_one_or_none()
+    if role is None:
+        log.warning(
+            "default_role_missing_for_tenant",
+            tenant_id=str(user.tenant_id),
+            user_type=user.user_type,
+            role_name=role_name,
+        )
+        return
+
+    session.add(UserRole(user_id=user.id, role_id=role.id))
 
 
 async def _permitted_flags(

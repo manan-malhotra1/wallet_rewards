@@ -302,7 +302,7 @@ ACTIVE role, mirroring `roles.has_permission`. Deliberately reported as
 account_type / currency / user_type, so `false` is conclusive but `true` only
 means "not obviously broken".
 
-### Story B4.6 — Role permissions have no admin UI · Backlog
+### Story B4.6 — Role permissions have no admin UI · Partial (2026-08-18, dd1571b)
 
 **Description:** Found while building B4.5. `role_permissions` is one of the
 three prerequisites for a service to transact, and there is no admin screen for
@@ -317,6 +317,46 @@ without direct API or DB access**, which undercuts B4.2's whole point.
 - If explicit: a roles/permissions screen, and B4.5's notice links to it
 - If inherited: `has_permission` resolves through `base_service_code`, with a
   test proving a derived service is permitted wherever its base is
+
+**DECIDED: inheritance** (2026-08-18, dd1571b). A derived service falls back to
+its base's grants. An explicit `permitted=false` on the variant still denies and
+blocks inheritance — the only way to withhold a variant from a role holding its
+base. Inheritance is one-way and tenant-scoped through the user. Readiness was
+taught the same rule, plus `ROLE_ENFORCED_BASE_CODES`: only five flows call
+`require_permission`, so the badge no longer demands a grant for `fund`,
+`withdraw`, `merchant_cashin` or `change_pin`.
+
+**Still open:** the roles UI itself (a permissions matrix, role CRUD, and
+assignment from the user detail card). Its priority dropped once inheritance
+landed and B4.8 fixed provisioning — it is now a convenience for building
+customer tiers, not a prerequisite for anything. Design notes live in this
+session's brainstorm; no spec written yet.
+
+### Story B4.8 — Tenants and users ship with no role at all · Done (2026-08-18)
+
+**Description:** Found while brainstorming B4.6, and much worse than a missing
+screen. `provision_tenant_defaults` created instruments and services but NO
+roles, and nothing outside the admin assign-role endpoint ever created a
+`user_roles` row. Since `has_permission` denies by default (Pay-PRD-0440), every
+customer in a fresh tenant was unable to send money, cash out, redeem or buy
+airtime — permanently. It stayed hidden because `scripts/seed.py` hand-created a
+`standard_user` role and assigned it, so dev worked while a real tenant would
+not. Measured on the dev DB: 3,025 of 3,545 users held no role.
+
+**Acceptance criteria:**
+- `provision_tenant_defaults` creates default roles with grants DERIVED from
+  `SERVICE_POLICY` (never a second hardcoded list), and is idempotent including
+  topping up a grant added later
+- Two roles, not one: `cash_in` belongs to an agent role. In a consumer role it
+  is safe only because the service gate blocks consumers, so widening that
+  policy would silently hand every consumer an agent capability
+- `create_user` assigns the default role for the user's `user_type`; merchant
+  types get none and need none (API-key flow)
+- A tenant with no default roles still allows user creation (logs, never 500s)
+- `scripts/seed.py` uses the same provisioning path, so dev cannot drift again
+- `scripts/backfill_default_roles.py` for existing users — a script, not a
+  migration, because granting money permissions should not be a side effect of
+  `alembic upgrade`
 
 ### Story B4.7 — Campaign warning for uncovered derived services · Backlog
 

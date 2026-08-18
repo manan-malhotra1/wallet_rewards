@@ -30,9 +30,12 @@ from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
     Instrument,
+    Role,
+    RolePermission,
     Service,
     Tenant,
 )
+from app.shared.services_registry import ROLE_ENFORCED_BASE_CODES
 
 log = structlog.get_logger(__name__)
 
@@ -140,6 +143,101 @@ SERVICE_POLICY: dict[str, tuple[list[str], list[str]]] = {
 }
 
 
+# The default end-user roles every tenant is provisioned with, mapped to the
+# user_type each one serves. Two roles rather than one because `cash_in` is an
+# AGENT capability: putting it in the consumer role works today only because
+# `SERVICE_POLICY` happens to block consumers at the service gate, so widening
+# that policy would silently hand every consumer an agent capability. Splitting
+# them means the role says what it means on its own.
+#
+# Merchant user types get no default role, and need none: their only flow
+# (`merchant_cashin`) authenticates a partner by API key and never consults
+# role permissions.
+DEFAULT_ROLE_BY_USER_TYPE: dict[str, str] = {
+    "consumer": "standard_user",
+    "agent": "agent",
+    "super_agent": "agent",
+}
+
+_DEFAULT_ROLE_DESCRIPTIONS: dict[str, str] = {
+    "standard_user": "Default customer role — the consumer self-service flows.",
+    "agent": "Default agent role — cash-in on behalf of customers.",
+}
+
+
+def default_role_grants(role_name: str) -> list[str]:
+    """Return the transaction types a default role should grant.
+
+    DERIVED from `SERVICE_POLICY` rather than listed again, so the grants can
+    never drift from the access policy they mirror: a role gets a code when the
+    code is role-enforced AND its policy admits one of the user types the role
+    serves. Codes outside `ROLE_ENFORCED_BASE_CODES` are skipped because no
+    flow consults a role for them, and granting them would be noise that
+    implies a control that does not exist.
+
+    Args:
+        role_name: One of the values in `DEFAULT_ROLE_BY_USER_TYPE`.
+
+    Returns:
+        Sorted transaction types to grant, for a stable provisioning order.
+    """
+    served = {
+        user_type for user_type, name in DEFAULT_ROLE_BY_USER_TYPE.items() if name == role_name
+    }
+    grants = []
+    for code in ROLE_ENFORCED_BASE_CODES:
+        allowed_user_types = SERVICE_POLICY.get(code, (None, None))[0]
+        # NULL policy = unrestricted, so every role serves it; an explicit list
+        # is an allow-list; `[]` admits nobody and is therefore never granted.
+        if allowed_user_types is None or served & set(allowed_user_types):
+            grants.append(code)
+    return sorted(grants)
+
+
+async def _provision_default_roles(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Create the default end-user roles and their grants for a tenant.
+
+    Without this a fresh tenant has NO roles, and since `has_permission` denies
+    by default (Pay-PRD-0440) no customer could send money, cash out, redeem or
+    buy airtime — ever. Only the dev seed script created a role, which is why
+    the gap stayed hidden.
+
+    Idempotent in both directions: an existing role is reused rather than
+    duplicated, and any missing grant is added, so re-running after a new
+    role-enforced service ships tops up the existing roles.
+
+    Side effects:
+        Inserts Role / RolePermission rows. Does NOT commit — the caller does.
+    """
+    for role_name in sorted(set(DEFAULT_ROLE_BY_USER_TYPE.values())):
+        role = (
+            await session.execute(
+                select(Role).where(Role.tenant_id == tenant_id, Role.name == role_name)
+            )
+        ).scalar_one_or_none()
+        if role is None:
+            role = Role(
+                tenant_id=tenant_id,
+                name=role_name,
+                description=_DEFAULT_ROLE_DESCRIPTIONS.get(role_name),
+            )
+            session.add(role)
+            await session.flush()
+
+        existing = set(
+            (
+                await session.execute(
+                    select(RolePermission.transaction_type).where(RolePermission.role_id == role.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for code in default_role_grants(role_name):
+            if code not in existing:
+                session.add(RolePermission(role_id=role.id, transaction_type=code, permitted=True))
+
+
 async def _instrument_exists(session: AsyncSession, tenant_id: uuid.UUID, code: str) -> bool:
     """Return True if a live instrument with this code already exists for the tenant."""
     result = await session.execute(
@@ -177,6 +275,9 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
       - The "PTS" points instrument (always, regardless of base_currency), since
         the rules engine credits reward points to every tenant.
       - The baseline services (`_BASELINE_SERVICES`).
+      - The default end-user roles (`DEFAULT_ROLE_BY_USER_TYPE`) and their
+        grants. Without these a fresh tenant's customers cannot transact at
+        all, because `has_permission` denies by default (Pay-PRD-0440).
 
     Idempotent: a code that already exists (live) is skipped, so re-running is a
     no-op. Mirrors the previous seed behaviour so existing tenants are unaffected.
@@ -232,6 +333,8 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
                 allowed_channels=allowed_channels,
             )
         )
+
+    await _provision_default_roles(session, tenant.id)
 
     await session.commit()
     log.info(

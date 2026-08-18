@@ -20,13 +20,23 @@ async def _seed_service(
     code: str,
     display_name: str | None = None,
     status: str = "active",
+    kind: str = "base",
+    base_service_code: str | None = None,
 ) -> Service:
-    """Insert a service row directly so individual tests don't depend on POST."""
+    """Insert a service row directly so individual tests don't depend on POST.
+
+    Defaults to `kind="base"` — this bypasses `ServiceCreateRequest`, so most
+    callers (list / patch tests) don't need a base_service_code. Tests that
+    need a deletable row must pass `kind="derived"` + `base_service_code`,
+    since base rows are undeletable (spec §6).
+    """
     svc = Service(
         tenant_id=tenant_id,
         code=code,
         display_name=display_name or code.upper(),
         status=status,
+        kind=kind,
+        base_service_code=base_service_code,
     )
     session.add(svc)
     await session.commit()
@@ -106,10 +116,12 @@ async def test_list_services_tenant_isolated(
 @pytest.mark.asyncio
 async def test_create_service_happy_path(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify an admin can add a new service to the catalog"""
+    """Verify an admin can add a new derived service to the catalog"""
+    await _seed_service(db_session, str(test_tenant.id), "cashout")
     resp = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
@@ -118,12 +130,15 @@ async def test_create_service_happy_path(
             "code": "bill_pay",
             "display_name": "Bill Pay",
             "description": "Pay a registered biller.",
+            "base_service_code": "cashout",
         },
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["code"] == "bill_pay"
     assert body["status"] == "active"
+    assert body["kind"] == "derived"
+    assert body["base_service_code"] == "cashout"
 
 
 @pytest.mark.asyncio
@@ -134,14 +149,22 @@ async def test_create_service_duplicate_code_409(
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify a service code cannot be reused within the same tenant"""
-    await _seed_service(db_session, str(test_tenant.id), "p2p")
+    await _seed_service(db_session, str(test_tenant.id), "cashout")
+    await _seed_service(
+        db_session,
+        str(test_tenant.id),
+        "cashout_atm",
+        kind="derived",
+        base_service_code="cashout",
+    )
     resp = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "code": "p2p",
+            "code": "cashout_atm",
             "display_name": "Duplicate",
+            "base_service_code": "cashout",
         },
     )
     assert resp.status_code == 409
@@ -231,6 +254,7 @@ async def test_create_service_with_access_policy_persists(
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify an admin can restrict a new service to given user types and channels"""
+    await _seed_service(db_session, str(test_tenant.id), "cashout")
     resp = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
@@ -238,6 +262,7 @@ async def test_create_service_with_access_policy_persists(
             "tenant_id": str(test_tenant.id),
             "code": "agent_cashout",
             "display_name": "Agent Cash-out",
+            "base_service_code": "cashout",
             "allowed_user_types": ["agent"],
             "allowed_channels": ["mobile"],
         },
@@ -262,6 +287,7 @@ async def test_create_service_without_policy_is_unrestricted(
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify creating a service without a policy leaves it unrestricted (null)"""
+    await _seed_service(db_session, str(test_tenant.id), "cashout")
     resp = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
@@ -269,6 +295,7 @@ async def test_create_service_without_policy_is_unrestricted(
             "tenant_id": str(test_tenant.id),
             "code": "open_service",
             "display_name": "Open Service",
+            "base_service_code": "cashout",
         },
     )
     assert resp.status_code == 201, resp.text
@@ -460,7 +487,14 @@ async def test_delete_service_removes_from_list(
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify a deleted service no longer appears in the catalog"""
-    svc = await _seed_service(db_session, str(test_tenant.id), "p2p")
+    await _seed_service(db_session, str(test_tenant.id), "cashout")
+    svc = await _seed_service(
+        db_session,
+        str(test_tenant.id),
+        "cashout_atm",
+        kind="derived",
+        base_service_code="cashout",
+    )
     delete_resp = await async_client.delete(
         f"/api/v1/services/{svc.id}",
         params={"tenant_id": str(test_tenant.id)},
@@ -474,7 +508,28 @@ async def test_delete_service_removes_from_list(
         headers=admin_auth_header,
     )
     assert list_resp.status_code == 200
-    assert list_resp.json() == []
+    # The base row is undeletable and stays; only the deleted derived row
+    # must be gone from the catalog.
+    codes = {s["code"] for s in list_resp.json()}
+    assert codes == {"cashout"}
+
+
+@pytest.mark.asyncio
+async def test_delete_base_service_is_refused(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a base service cannot be deleted — it ships with the platform"""
+    svc = await _seed_service(db_session, str(test_tenant.id), "cashout")
+    resp = await async_client.delete(
+        f"/api/v1/services/{svc.id}",
+        params={"tenant_id": str(test_tenant.id)},
+        headers=admin_auth_header,
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error_code"] == "base_service_protected"
 
 
 @pytest.mark.asyncio
@@ -484,8 +539,15 @@ async def test_delete_then_recreate_same_code_succeeds(
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify a deleted service code can be added again"""
-    svc = await _seed_service(db_session, str(test_tenant.id), "p2p")
+    """Verify a deleted derived service's code can be added again"""
+    await _seed_service(db_session, str(test_tenant.id), "cashout")
+    svc = await _seed_service(
+        db_session,
+        str(test_tenant.id),
+        "cashout_atm",
+        kind="derived",
+        base_service_code="cashout",
+    )
     await async_client.delete(
         f"/api/v1/services/{svc.id}",
         params={"tenant_id": str(test_tenant.id)},
@@ -496,8 +558,9 @@ async def test_delete_then_recreate_same_code_succeeds(
         headers=admin_auth_header,
         json={
             "tenant_id": str(test_tenant.id),
-            "code": "p2p",
+            "code": "cashout_atm",
             "display_name": "Reborn",
+            "base_service_code": "cashout",
         },
     )
     assert create_resp.status_code == 201, create_resp.text

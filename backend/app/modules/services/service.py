@@ -20,14 +20,104 @@ from app.modules.services.schemas import (
     ServiceUpdateRequest,
 )
 from app.shared.exceptions import (
+    AppHTTPException,
     ServiceCodeAlreadyExists,
     ServiceNotAllowedForUserType,
     ServiceNotAllowedOnChannel,
     ServiceNotFound,
 )
 from app.shared.models import SERVICE_STATUS_ACTIVE, Service
+from app.shared.services_registry import BASE_SERVICE_CODES, DERIVABLE_BASE_CODES
 
 log = structlog.get_logger(__name__)
+
+
+def _is_narrower_or_equal(derived: list[str] | None, base: list[str] | None) -> bool:
+    """Return whether a derived allow-list never grants what the base excludes.
+
+    Implements the "narrowing-only" rule of spec §6.2: NULL/empty on the base
+    means "unrestricted on this dimension" and contributes no restriction, so
+    any derived value is fine. NULL/empty on the derived side means "no
+    restriction requested", which is only valid when the base is itself
+    unrestricted — otherwise the derived service would be wider than its base.
+
+    Args:
+        derived: The candidate service's allow-list for one dimension.
+        base: The base service's allow-list for the same dimension.
+
+    Returns:
+        True if `derived` is a subset of `base` (or `base` is unrestricted).
+    """
+    if not base:
+        return True
+    if not derived:
+        return False
+    return set(derived) <= set(base)
+
+
+async def _assert_valid_derived_payload(
+    session: AsyncSession, payload: ServiceCreateRequest
+) -> None:
+    """Reject a derived-service create that could never work.
+
+    Four failure modes, each of which would otherwise produce config that
+    silently never executes or resolves permissions incorrectly (spec §6,
+    §6.2):
+      - the new code shadows a platform code, which would make the derived
+        row ambiguous with the base flow itself;
+      - the named base isn't derivable (non-financial, or not implemented);
+      - the base isn't provisioned live in this tenant;
+      - the derived access policy allows a user type or channel its base
+        excludes (checked at save time; resolution also enforces the
+        intersection as belt-and-braces — see `resolve_service_code`).
+
+    Args:
+        session: Async DB session (read-only here).
+        payload: The validated create request.
+
+    Raises:
+        AppHTTPException: 422 `service_code_reserved`, `invalid_base_service`,
+            or `policy_wider_than_base`.
+    """
+    if payload.code in BASE_SERVICE_CODES:
+        raise AppHTTPException(
+            422,
+            "service_code_reserved",
+            f"'{payload.code}' is a platform service code and cannot be reused.",
+        )
+    if payload.base_service_code not in DERIVABLE_BASE_CODES:
+        raise AppHTTPException(
+            422,
+            "invalid_base_service",
+            f"'{payload.base_service_code}' is not a derivable platform service. "
+            f"Derivable: {', '.join(sorted(DERIVABLE_BASE_CODES))}.",
+        )
+    base = (
+        await session.execute(
+            select(Service).where(
+                Service.tenant_id == payload.tenant_id,
+                Service.code == payload.base_service_code,
+                Service.kind == "base",
+                Service.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if base is None:
+        raise AppHTTPException(
+            422,
+            "invalid_base_service",
+            f"Base service '{payload.base_service_code}' is not provisioned for "
+            "this tenant.",
+        )
+    if not _is_narrower_or_equal(
+        payload.allowed_user_types, base.allowed_user_types
+    ) or not _is_narrower_or_equal(payload.allowed_channels, base.allowed_channels):
+        raise AppHTTPException(
+            422,
+            "policy_wider_than_base",
+            "This service's access policy cannot allow a user type or channel "
+            "that its base service excludes.",
+        )
 
 
 async def assert_service_allowed(
@@ -152,7 +242,13 @@ async def create_service(
     admin: AdminPrincipal,
     ip_address: str | None = None,
 ) -> Service:
-    """Insert a new catalog row.
+    """Insert a new derived-service catalog row.
+
+    Only derived services can be created here (spec §6) — base services ship
+    with the platform and are provisioned per tenant elsewhere. `kind` is
+    always 'derived'; `_assert_valid_derived_payload` has already confirmed
+    the base is derivable, live in this tenant, and that the new code doesn't
+    shadow a platform code or widen the base's access policy.
 
     Args:
         session: Async DB session.
@@ -161,17 +257,22 @@ async def create_service(
         ip_address: Caller IP (audit context).
 
     Raises:
+        AppHTTPException: 422 `service_code_reserved`, `invalid_base_service`,
+            or `policy_wider_than_base` (from `_assert_valid_derived_payload`).
         ServiceCodeAlreadyExists: another live row with the same code exists.
 
     Side effects:
         Writes a `service.created` audit_log row, committed atomically with the
         insert (NFR-0250).
     """
+    await _assert_valid_derived_payload(session, payload)
     service = Service(
         tenant_id=payload.tenant_id,
         code=payload.code,
         display_name=payload.display_name,
         description=payload.description,
+        kind="derived",
+        base_service_code=payload.base_service_code,
         # NULL/omitted stays unrestricted; an empty list persists as-is.
         allowed_user_types=payload.allowed_user_types,
         allowed_channels=payload.allowed_channels,
@@ -195,6 +296,8 @@ async def create_service(
             "code": service.code,
             "display_name": service.display_name,
             "status": service.status,
+            "kind": service.kind,
+            "base_service_code": service.base_service_code,
             "allowed_user_types": service.allowed_user_types,
             "allowed_channels": service.allowed_channels,
         },
@@ -292,11 +395,23 @@ async def soft_delete_service(
     (callers should treat that as a 404 rather than a 409, mirroring the
     way `get_service_by_id` handles soft-deleted rows).
 
+    Raises:
+        AppHTTPException: 409 `base_service_protected` — base services ship
+            with the platform and are undeletable (spec §6). Editing a base's
+            status/display_name/policy stays allowed; only deletion is
+            blocked, so `update_service` does NOT carry this guard.
+
     Side effects:
         Writes a `service.deleted` audit_log row (before-state snapshot),
         committed atomically with the soft-delete (NFR-0250).
     """
     service = await get_service_by_id(session, tenant_id, service_id)
+    if service.kind == "base":
+        raise AppHTTPException(
+            409,
+            "base_service_protected",
+            "Base services ship with the platform and cannot be deleted.",
+        )
     before = {
         "code": service.code,
         "display_name": service.display_name,

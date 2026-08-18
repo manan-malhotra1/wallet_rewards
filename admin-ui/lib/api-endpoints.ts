@@ -296,7 +296,14 @@ export interface UserTransaction {
   currency: string;
   created_at: string;
   direction: "in" | "out";
+  /**
+   * The other party's display name — a merchant's business name, else the
+   * person's full name. Null when the other side is a system/provider account
+   * (funds, reward issuance, redemption), never a service name.
+   */
   counterparty_name: string | null;
+  /** The same party's phone number. Admin-only — absent from the mobile feed. */
+  counterparty_phone: string | null;
 }
 
 export const listUserTransactions = (

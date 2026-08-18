@@ -12,6 +12,8 @@ const TRANSACTION_TYPE_LABEL: Record<string, string> = {
   redemption: "Redemption",
   airtime_recharge: "Airtime",
   cash_in: "Cash In",
+  merchant_cashin: "Merchant Cash-In",
+  cashout: "Cash Out",
   reward_issuance: "Reward",
   reversal: "Reversal",
   treasury_adjust: "Treasury adjust",

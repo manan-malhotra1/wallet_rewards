@@ -34,6 +34,7 @@ import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
 import { AccessLevelPill } from "./access-level-pill";
+import { CounterpartyCell } from "./counterparty-cell";
 import { AccessLockControl } from "./access-lock-control";
 import { AddIdentifierDialog } from "./add-identifier-dialog";
 import { EditUserDrawer, type OpenUpdateRequest } from "./edit-user-drawer";
@@ -43,20 +44,6 @@ import { UnlockButton } from "./unlock-button";
 import { UserTypeBadge } from "./user-type-badge";
 import { VerifyIdentifierButton } from "./verify-identifier-button";
 import { WalletBalances } from "./wallet-balances";
-
-const SYSTEM_COUNTERPARTY_LABEL: Record<string, string> = {
-  withdraw: "Operator float",
-  airtime_recharge: "Airtime merchant",
-  redemption: "Redemption provider",
-  reward_issuance: "Rewards engine",
-  fund: "System cash inflow",
-  treasury_adjust: "Operator adjustment",
-};
-
-function counterpartyDisplay(txn: UserTransaction): string {
-  if (txn.counterparty_name) return txn.counterparty_name;
-  return SYSTEM_COUNTERPARTY_LABEL[txn.transaction_type] ?? "—";
-}
 
 const IDENTIFIER_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   phone: Phone,
@@ -492,7 +479,7 @@ export function UserDetailCard({
                         </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
-                        {counterpartyDisplay(t)}
+                        <CounterpartyCell txn={t} />
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right font-mono tabular-nums">
                         {isIn ? "+" : "−"}

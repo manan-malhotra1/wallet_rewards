@@ -292,6 +292,81 @@ async def test_me_wallet_fee_shown_to_sender_not_recipient(
 
 
 @pytest.mark.asyncio
+async def test_me_wallet_never_exposes_the_counterparty_phone(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    alice_auth_header: dict[str, str],
+) -> None:
+    """Verify a customer never sees another customer's phone number
+
+    The counterparty phone is an ADMIN-only field. The mobile feed and the
+    admin table share one payload builder, so this guards the leak.
+    """
+    from app.modules.payments.service import fund, p2p_transfer
+
+    db_session.add(
+        Account(
+            tenant_id=test_tenant.id,
+            user_id=test_user.id,
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+        )
+    )
+    recipient = User(tenant_id=test_tenant.id)
+    db_session.add(recipient)
+    await db_session.flush()
+    recipient_phone = "+27 82 555 8888"
+    db_session.add(
+        UserIdentifier(
+            user_id=recipient.id,
+            tenant_id=test_tenant.id,
+            identifier_type="phone",
+            identifier_value=recipient_phone,
+            verified=True,
+        )
+    )
+    db_session.add(
+        Account(
+            tenant_id=test_tenant.id,
+            user_id=recipient.id,
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+        )
+    )
+    await db_session.commit()
+
+    await _seed_p2p_fee_config(db_session, test_tenant.id)
+    await fund(
+        db_session,
+        tenant_id=test_tenant.id,
+        user_id=test_user.id,
+        amount=Decimal("100"),
+        currency="ZAR",
+        idempotency_key="seed-no-phone-leak-fund",
+    )
+    await db_session.commit()
+    await p2p_transfer(
+        db_session,
+        tenant_id=test_tenant.id,
+        sender_user_id=test_user.id,
+        recipient_identifier_type="phone",
+        recipient_identifier_value=recipient_phone,
+        amount=Decimal("20"),
+        currency="ZAR",
+        idempotency_key="no-phone-leak-p2p-1",
+    )
+    await db_session.commit()
+
+    resp = await async_client.get("/api/v1/identity/me/wallet", headers=alice_auth_header)
+    assert resp.status_code == 200, resp.text
+    p2p = next(r for r in resp.json()["recent_transactions"] if r["transaction_type"] == "p2p")
+    assert "counterparty_phone" not in p2p
+    assert recipient_phone not in resp.text
+
+
+@pytest.mark.asyncio
 async def test_me_wallet_no_token_is_401(async_client: AsyncClient) -> None:
     """Verify viewing the wallet requires signing in"""
     response = await async_client.get("/api/v1/identity/me/wallet")

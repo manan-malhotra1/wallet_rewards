@@ -78,6 +78,7 @@ from app.shared.models import (
     USER_STATUS_SUSPENDED,
     USER_STATUS_TXN_LOCKED,
     AuthAttempt,
+    MerchantProfile,
     OtpRequest,
     Referral,
     ReferralCode,
@@ -1041,6 +1042,87 @@ async def get_my_wallet(session: AsyncSession, *, user_id: UUID, tenant_id: UUID
     }
 
 
+async def _resolve_counterparty_names(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_ids: set[UUID],
+) -> dict[UUID, str]:
+    """Batch-resolve transaction counterparties to display names.
+
+    Layers a merchant's TRADING name over the generic person-name resolution:
+    a merchant is a user (Decision D1) so it also carries a `user_profiles`
+    row, but an operator reading a cash-in needs "Acme Airtime", not the
+    natural-person name behind the business. Falls back to
+    `resolve_user_names` (profile full name → primary identifier) for agents
+    and ordinary consumers.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope — a counterparty in another tenant never
+            resolves (NFR-0220).
+        user_ids: Counterparty user ids.
+
+    Returns:
+        A `{user_id: display_name}` map; ids that resolve to no name at all
+        are absent, so the caller renders a category label instead.
+    """
+    if not user_ids:
+        return {}
+
+    names = await resolve_user_names(session, tenant_id=tenant_id, user_ids=user_ids)
+
+    business_rows = await session.execute(
+        select(MerchantProfile.user_id, MerchantProfile.business_name).where(
+            MerchantProfile.tenant_id == tenant_id,
+            MerchantProfile.user_id.in_(user_ids),
+        )
+    )
+    for user_id, business_name in business_rows.all():
+        if business_name:
+            names[user_id] = business_name
+
+    return names
+
+
+async def _resolve_counterparty_phones(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_ids: set[UUID],
+) -> dict[UUID, str]:
+    """Batch-resolve counterparty user ids to their phone identifier.
+
+    ADMIN-ONLY data — see `_build_recent_txns_payload`'s
+    `include_counterparty_phone` flag. Unverified numbers are included: an
+    operator tracing a transfer needs the number on file, verified or not.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope (NFR-0220).
+        user_ids: Counterparty user ids.
+
+    Returns:
+        A `{user_id: phone}` map; users without a phone identifier are absent.
+    """
+    if not user_ids:
+        return {}
+
+    rows = await session.execute(
+        select(UserIdentifier.user_id, UserIdentifier.identifier_value).where(
+            UserIdentifier.tenant_id == tenant_id,
+            UserIdentifier.user_id.in_(user_ids),
+            UserIdentifier.identifier_type == "phone",
+        )
+    )
+    phones: dict[UUID, str] = {}
+    for user_id, identifier_value in rows.all():
+        # First phone wins — a user may carry several; they are equivalent for
+        # display and the admin can see the full list on the user's own page.
+        phones.setdefault(user_id, identifier_value)
+    return phones
+
+
 async def _build_recent_txns_payload(
     session: AsyncSession,
     *,
@@ -1048,17 +1130,25 @@ async def _build_recent_txns_payload(
     user_id: UUID,
     account_ids: list[UUID],
     limit: int = 20,
+    include_counterparty_phone: bool = False,
 ) -> list[dict[str, Any]]:
     """Build the recent-transactions list for /me/wallet.
 
     Loads up to 20 recent transactions touching the caller's accounts,
     then for each one derives:
       - `direction`: CREDIT on the user's account → "in"; DEBIT → "out".
-      - `counterparty_name`: for `transaction_type='p2p'`, the OTHER
-        side's user profile first_name. For funds / reward issuance /
-        redemption the other side is a system or provider account with
-        no owning user, so the value is None and the mobile UI falls
-        back to a category label.
+      - `counterparty_name`: the OTHER side's display name whenever that
+        side is a user-owned account (p2p, merchant_cashin, cash_in,
+        cashout) — a merchant's business name, else the person's full name
+        (see `_resolve_counterparty_names`). For funds / reward issuance /
+        redemption the other side is a system or provider account with no
+        owning user, so the value is None and the UI falls back to a
+        category label. NEVER a service name — the service is its own
+        column.
+      - `counterparty_phone`: the same party's phone number, included ONLY
+        when `include_counterparty_phone` is set. ADMIN-ONLY: the mobile
+        feed shares this builder, and one customer must never be handed
+        another customer's number.
       - PER-PARTY fee / tax / commission: a transaction's charges are borne /
         earned by specific parties, not the whole transaction, so each is shown
         ONLY to the party it affected (see the per-txn loop). Two counterparties
@@ -1074,11 +1164,14 @@ async def _build_recent_txns_payload(
         user_id: The user whose PERSPECTIVE this feed is built for — decides
             who paid the fee/tax and who earned the commission on each row.
         account_ids: All accounts owned by the caller (financial + points).
+        include_counterparty_phone: Admin surfaces only. Adds
+            `counterparty_phone` to each row; leave False for user-facing
+            callers so no customer sees another customer's number.
 
     Returns:
         List of dicts shaped to match `WalletTransactionOut`.
     """
-    from app.shared.models import Account, LedgerEntry, Transaction, UserProfile
+    from app.shared.models import Account, LedgerEntry, Transaction
 
     if not account_ids:
         return []
@@ -1110,9 +1203,9 @@ async def _build_recent_txns_payload(
     for e in entries_q.scalars().all():
         entries_by_txn.setdefault(e.transaction_id, []).append(e)
 
-    # Resolve counterparty first_name only when the other-side account
-    # belongs to a user (i.e., P2P — both legs are user accounts). For
-    # system / provider counterparts the account has user_id IS NULL.
+    # Map each other-side account to its OWNING user. System / provider
+    # counterparts have user_id IS NULL and so never appear here — which is
+    # what keeps a system leg from ever resolving to a name.
     other_account_ids: set[UUID] = set()
     own_account_set = set(account_ids)
     for entries in entries_by_txn.values():
@@ -1120,18 +1213,26 @@ async def _build_recent_txns_payload(
             if e.account_id not in own_account_set:
                 other_account_ids.add(e.account_id)
 
-    first_name_by_account: dict[UUID, str | None] = {}
+    user_id_by_account: dict[UUID, UUID] = {}
     if other_account_ids:
         cp_rows = await session.execute(
-            select(Account.id, UserProfile.first_name)
-            .outerjoin(UserProfile, UserProfile.user_id == Account.user_id)
-            .where(
+            select(Account.id, Account.user_id).where(
                 Account.id.in_(other_account_ids),
+                Account.tenant_id == tenant_id,
                 Account.user_id.is_not(None),
             )
         )
-        for acct_id, first_name in cp_rows.all():
-            first_name_by_account[acct_id] = first_name
+        user_id_by_account = {acct_id: owner_id for acct_id, owner_id in cp_rows.all()}
+
+    counterparty_user_ids = set(user_id_by_account.values())
+    name_by_user = await _resolve_counterparty_names(
+        session, tenant_id=tenant_id, user_ids=counterparty_user_ids
+    )
+    phone_by_user: dict[UUID, str] = {}
+    if include_counterparty_phone:
+        phone_by_user = await _resolve_counterparty_phones(
+            session, tenant_id=tenant_id, user_ids=counterparty_user_ids
+        )
 
     payload: list[dict[str, Any]] = []
     for t in txns:
@@ -1144,14 +1245,22 @@ async def _build_recent_txns_payload(
         if user_entry is not None:
             direction = "in" if user_entry.entry_type == "CREDIT" else "out"
 
+        # No transaction_type gate here: `user_id_by_account` only holds
+        # accounts with an owning user, so a system / provider leg can never
+        # produce a name. Any user-to-user type (p2p, merchant_cashin,
+        # cash_in, cashout) therefore names its counterparty automatically.
         counterparty_name: str | None = None
-        if t.transaction_type == "p2p":
-            other_entries = [e for e in entries if e.account_id not in own_account_set]
-            for e in other_entries:
-                name = first_name_by_account.get(e.account_id)
-                if name:
-                    counterparty_name = name
-                    break
+        counterparty_phone: str | None = None
+        for e in entries:
+            if e.account_id in own_account_set:
+                continue
+            owner_id = user_id_by_account.get(e.account_id)
+            if owner_id is None:
+                continue
+            counterparty_name = name_by_user.get(owner_id)
+            counterparty_phone = phone_by_user.get(owner_id)
+            if counterparty_name or counterparty_phone:
+                break
 
         # Perspective rule: fee + tax are paid by the INITIATOR (the p2p sender,
         # the airtime buyer, the customer in cash_in / cashout); commission is
@@ -1187,6 +1296,8 @@ async def _build_recent_txns_payload(
                 "counterparty_name": counterparty_name,
             }
         )
+        if include_counterparty_phone:
+            payload[-1]["counterparty_phone"] = counterparty_phone
     return payload
 
 
@@ -1211,7 +1322,8 @@ async def list_user_transactions(
             at a single account rarely need more on one screen.
 
     Returns:
-        List of dicts shaped to match `UserTransactionOut`.
+        List of dicts shaped to match `AdminUserTransactionOut` — including
+        `counterparty_phone`, which the user-facing feed omits.
 
     Raises:
         UserNotFound: user_id is unknown or belongs to a different tenant.
@@ -1229,7 +1341,14 @@ async def list_user_transactions(
     )
     account_ids = list(accounts_q.scalars().all())
     return await _build_recent_txns_payload(
-        session, tenant_id=tenant_id, user_id=user_id, account_ids=account_ids, limit=limit
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        account_ids=account_ids,
+        limit=limit,
+        # Admin surface: operators tracing a transfer need the counterparty's
+        # number. The user-facing /me/wallet feed leaves this off.
+        include_counterparty_phone=True,
     )
 
 

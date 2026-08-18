@@ -338,10 +338,12 @@ class WalletTransactionOut(BaseModel):
 
     `direction` is derived from the ledger entry on one of the caller's
     own accounts: CREDIT → "in" (money/points arrived), DEBIT → "out".
-    `counterparty_name` is populated for P2P transfers — the other
-    user's profile first_name — and null otherwise (funds, reward
-    issuance, redemptions where the other side is a system/provider
-    account with no owning user).
+    `counterparty_name` is the other party's display name whenever that
+    side is a user-owned account (p2p, merchant_cashin, cash_in, cashout):
+    a merchant's business name, else the person's full name. Null when the
+    other side is a system/provider account with no owning user (funds,
+    reward issuance, redemptions) — the client then shows a category label.
+    It is never a service name; `transaction_type` already carries that.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -364,6 +366,19 @@ class WalletTransactionOut(BaseModel):
     created_at: datetime
     direction: Literal["in", "out"]
     counterparty_name: str | None = None
+
+
+class AdminUserTransactionOut(WalletTransactionOut):
+    """One transaction row on the ADMIN user-detail page.
+
+    Same shape as the user-facing feed plus `counterparty_phone`, which an
+    operator needs to trace a transfer. Kept as a separate model rather than
+    an optional field on `WalletTransactionOut` so the user-facing endpoint
+    CANNOT serialise the phone even if the payload builder supplies it — one
+    customer must never be handed another customer's number.
+    """
+
+    counterparty_phone: str | None = None
 
 
 class WalletOut(BaseModel):

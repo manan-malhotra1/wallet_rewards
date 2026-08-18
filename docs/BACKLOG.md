@@ -278,7 +278,7 @@ service can transact is currently only answerable by querying
 wants a small readiness field or endpoint before the UI can show it. Tracked as
 B4.5.
 
-### Story B4.5 — Service readiness signal (backend + UI badge) · Backlog
+### Story B4.5 — Service readiness signal (backend + UI badge) · Done (2026-08-18, 9ffe281)
 
 **Description:** A newly created derived service silently cannot transact until
 it has its own pricing config, limit config, and a role grant. Today the
@@ -291,7 +291,42 @@ operator discovers this as a 422 (`pricing_config_missing`) or a 403-shaped
 - Services table shows "Not yet usable" with which piece is missing, linking to
   Pricing / Limits / Roles
 - Campaign wizard warns when a base has derived services a rule doesn't cover
+  — **NOT done, moved to B4.7**; the readiness work covered the config gaps,
+  reward coverage is a separate question
 - A derived service that IS fully configured shows no warning
+
+**Shipped:** `ServiceOut.readiness` (three grouped queries per page) plus a
+"Not yet usable · Needs …" notice in the Type column. The role check requires an
+ACTIVE role, mirroring `roles.has_permission`. Deliberately reported as
+"configured at all" rather than "will work": pricing/limit rows are scoped by
+account_type / currency / user_type, so `false` is conclusive but `true` only
+means "not obviously broken".
+
+### Story B4.6 — Role permissions have no admin UI · Backlog
+
+**Description:** Found while building B4.5. `role_permissions` is one of the
+three prerequisites for a service to transact, and there is no admin screen for
+it anywhere — no roles page, no API client in `lib/api-endpoints.ts`. So an
+operator can create a derived service in the UI but **cannot make it usable
+without direct API or DB access**, which undercuts B4.2's whole point.
+
+**Acceptance criteria:**
+- Decide the smaller question first: should a derived service inherit its base's
+  role grants (`has_permission` matches `transaction_type` exactly today), or
+  must each grant be explicit?
+- If explicit: a roles/permissions screen, and B4.5's notice links to it
+- If inherited: `has_permission` resolves through `base_service_code`, with a
+  test proving a derived service is permitted wherever its base is
+
+### Story B4.7 — Campaign warning for uncovered derived services · Backlog
+
+**Description:** Rewards target the RESOLVED service code (spec §8), so a rule
+written against `p2p` silently does not fire for `p2p_diaspora`. Launching a
+variant therefore stops its rewards until a rule is added for it.
+
+**Acceptance criteria:**
+- Campaign wizard warns when a base has derived services the rule doesn't cover
+- The warning names the uncovered codes
 
 ### Story B4.3 — Step-up PIN inheritance for derived services · Backlog
 

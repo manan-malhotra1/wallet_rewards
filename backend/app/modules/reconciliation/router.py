@@ -133,10 +133,12 @@ async def get_audit(
     entity_type: str | None = None,
     entity_id: str | None = None,
     limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     admin: AdminPrincipal = Depends(_require_finance_or_admin),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[AuditEntry]:
-    """Read the audit_log, tenant-scoped, newest first."""
+    """Read the audit_log, tenant-scoped, newest first, windowed by
+    limit/offset (B7.3 — the log grows for 7 years)."""
     _ = admin
     return await query_audit_log(
         session,
@@ -144,4 +146,5 @@ async def get_audit(
         entity_type=entity_type,
         entity_id=entity_id,
         limit=limit,
+        offset=offset,
     )

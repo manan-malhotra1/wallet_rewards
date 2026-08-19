@@ -403,6 +403,7 @@ async def query_audit_log(
     entity_type: str | None = None,
     entity_id: str | None = None,
     limit: int = 100,
+    offset: int = 0,
 ) -> list[AuditEntry]:
     """Read-side query over the audit_log table — tenant scoped.
 
@@ -411,6 +412,7 @@ async def query_audit_log(
         tenant_id: Tenant scope (required — never query without).
         entity_type: Optional filter (e.g. 'redemption').
         entity_id: Optional filter for a specific entity.
+        offset: Rows to skip before the window starts (B7.3 pagination).
         limit: Hard cap on rows returned. Default 100.
 
     Returns:
@@ -423,7 +425,9 @@ async def query_audit_log(
         stmt = stmt.where(AuditLog.entity_type == entity_type)
     if entity_id:
         stmt = stmt.where(AuditLog.entity_id == entity_id)
-    stmt = stmt.order_by(desc(AuditLog.created_at)).limit(limit)
+    # id tie-break so a fixed window never duplicates/drops same-instant rows
+    # (audit_log grows for 7 years — offset paging must be stable, B7.3).
+    stmt = stmt.order_by(desc(AuditLog.created_at), desc(AuditLog.id)).offset(offset).limit(limit)
 
     rows = list((await session.execute(stmt)).scalars().all())
     return await _enrich_audit_entries(session, tenant_id=tenant_id, rows=rows)

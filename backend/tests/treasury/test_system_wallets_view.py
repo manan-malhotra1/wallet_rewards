@@ -176,3 +176,62 @@ async def test_transactions_unknown_account_returns_404(
         headers=admin_auth_header,
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_system_wallet_transactions_offset_windows(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify limit/offset window the drill-down newest-first (B7.3)."""
+    db_session.add(
+        Account(
+            tenant_id=test_tenant.id,
+            user_id=test_user.id,
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+        )
+    )
+    await db_session.commit()
+    for i in range(3):
+        await fund(
+            db_session,
+            tenant_id=test_tenant.id,
+            user_id=test_user.id,
+            amount=Decimal(100 + i),
+            currency="ZAR",
+            idempotency_key=f"win-{uuid4().hex[:8]}",
+        )
+
+    wallets = await async_client.get(
+        "/api/v1/treasury/system-wallets",
+        params={"tenant_id": str(test_tenant.id)},
+        headers=admin_auth_header,
+    )
+    cash_inflow = next(r for r in wallets.json() if r["account_type"] == "system_cash_inflow")
+
+    async def window(**params: object) -> list[str]:
+        resp = await async_client.get(
+            f"/api/v1/treasury/system-wallets/{cash_inflow['id']}/transactions",
+            params={"tenant_id": str(test_tenant.id), **params},
+            headers=admin_auth_header,
+        )
+        assert resp.status_code == 200, resp.text
+        return [r["entry_amount"] for r in resp.json()]
+
+    assert [Decimal(a) for a in await window(limit=2)] == [Decimal("102"), Decimal("101")]
+    # The next window starts with the third fund; the conftest's float pre-fund
+    # entry (an older credit) fills the rest — offset skips, never re-shows.
+    third_window = [Decimal(a) for a in await window(limit=2, offset=2)]
+    assert third_window[0] == Decimal("100")
+    assert len(third_window) == 2
+
+    resp = await async_client.get(
+        f"/api/v1/treasury/system-wallets/{cash_inflow['id']}/transactions",
+        params={"tenant_id": str(test_tenant.id), "offset": -1},
+        headers=admin_auth_header,
+    )
+    assert resp.status_code == 422

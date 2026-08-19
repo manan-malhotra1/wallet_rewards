@@ -8,7 +8,7 @@ and `points-history`; tiers, badges, challenges, and nudges defer.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import UserPrincipal
@@ -47,11 +47,16 @@ async def get_summary(
     response_model=list[RedemptionHistoryItem],
 )
 async def get_redemption_history(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: UserPrincipal = Depends(get_current_user),
 ) -> list[RedemptionHistoryItem]:
-    """Tenant-scoped redemption history for the session user, newest-first."""
-    return await get_user_redemption_history(session, user.tenant_id, user.id)
+    """Tenant-scoped redemption history for the session user, newest-first,
+    windowed by limit/offset (B7.3 — history grows for 7 years)."""
+    return await get_user_redemption_history(
+        session, user.tenant_id, user.id, limit=limit, offset=offset
+    )
 
 
 @router.get(
@@ -59,17 +64,22 @@ async def get_redemption_history(
     response_model=list[PointsHistoryItem],
 )
 async def get_points_history(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: UserPrincipal = Depends(get_current_user),
 ) -> list[PointsHistoryItem]:
-    """Full per-entry points ledger view (Pay-PRD-0980).
+    """Per-entry points ledger view (Pay-PRD-0980), newest-first, windowed by
+    limit/offset (B7.3 — a points ledger grows for 7 years).
 
     Tenant-scoped via the user's points_account (always the session user).
     Returns `[]` when the user has no points_account in this tenant
     (consistent with the summary endpoint returning `points: null` in the
     same case).
     """
-    return await get_user_points_history(session, user.tenant_id, user.id)
+    return await get_user_points_history(
+        session, user.tenant_id, user.id, limit=limit, offset=offset
+    )
 
 
 @router.get("/featured", response_model=FeaturedCampaignResponse)

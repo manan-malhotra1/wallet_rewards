@@ -151,3 +151,24 @@ async def test_user_transactions_cross_tenant_returns_404(
         headers=admin_auth_header,
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_user_transactions_limit_bounds_422(
+    async_client: AsyncClient,
+    test_tenant: Tenant,
+    test_user: User,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify out-of-bounds limits are rejected with 422 instead of honoured.
+
+    Previously `limit` was an unvalidated plain default, so a caller could
+    request the user's entire 7-year transaction history in one response.
+    """
+    for limit in (0, -5, 100000):
+        resp = await async_client.get(
+            f"/api/v1/identity/users/{test_user.id}/transactions",
+            params={"tenant_id": str(test_tenant.id), "limit": limit},
+            headers=admin_auth_header,
+        )
+        assert resp.status_code == 422, limit

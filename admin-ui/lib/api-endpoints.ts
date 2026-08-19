@@ -492,6 +492,8 @@ export interface AuditQuery {
   entity_type?: string;
   entity_id?: string;
   limit?: number;
+  /** Rows to skip — the audit log grows for 7 years, so views page (B7.3). */
+  offset?: number;
 }
 
 export const queryAuditLog = (q: AuditQuery) =>
@@ -501,6 +503,7 @@ export const queryAuditLog = (q: AuditQuery) =>
       entity_type: q.entity_type,
       entity_id: q.entity_id,
       limit: q.limit,
+      offset: q.offset,
     },
   });
 

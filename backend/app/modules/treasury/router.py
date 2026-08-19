@@ -77,13 +77,14 @@ async def get_system_wallet_transactions(
     account_id: UUID,
     tenant_id: UUID,
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[SystemWalletTransactionOut]:
-    """Paginated recent transactions touching the account."""
+    """Paginated recent transactions touching the account (limit/offset window)."""
     _ = admin
     return await list_account_transactions(
-        session, tenant_id=tenant_id, account_id=account_id, limit=limit
+        session, tenant_id=tenant_id, account_id=account_id, limit=limit, offset=offset
     )
 
 

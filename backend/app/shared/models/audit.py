@@ -54,7 +54,10 @@ class AuditLog(Base):
         ),
         Index("idx_audit_entity", "entity_type", "entity_id", "created_at"),
         Index("idx_audit_actor", "actor_id", "created_at"),
-        # No idx_audit_tenant separately — entity_type+entity_id usually narrow enough.
+        # Serves the admin audit page's default view (tenant, newest-first,
+        # LIMIT/OFFSET) — without it every unfiltered page load seq-scans and
+        # top-N sorts a table that grows for 7 years (B7.3).
+        Index("ix_audit_log_tenant_created", "tenant_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()

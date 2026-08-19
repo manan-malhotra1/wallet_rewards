@@ -277,13 +277,9 @@ export function Sidebar({
         <NavGroup title="Configuration" items={config} />
         <NavGroup title="Audit" items={AUDIT} />
       </nav>
-      <div className="flex items-center justify-between border-t px-4 py-3">
-        <span className="text-[10px] font-medium text-sidebar-foreground/50">
-          v0.1
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-          <span className="h-1 w-1 rounded-full bg-emerald-500" />
-          Phase F.5
+      <div className="flex items-center justify-center border-t px-4 py-3">
+        <span className="text-sm font-medium text-sidebar-foreground/50">
+          v1.0.0
         </span>
       </div>
     </aside>

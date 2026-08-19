@@ -512,9 +512,12 @@ export function CreateCampaignDialog({
         // it (the backend 422s a currency on a points rule).
         reward_currency:
           form.reward_type === "cashback" ? form.reward_currency : undefined,
-        stop_after_n_triggers: form.stop_after_n_triggers
-          ? Number(form.stop_after_n_triggers)
-          : undefined,
+        // "0 = unlimited" per the field label — the backend expresses
+        // unlimited as an omitted field and 422s a literal 0.
+        stop_after_n_triggers:
+          Number(form.stop_after_n_triggers) > 0
+            ? Number(form.stop_after_n_triggers)
+            : undefined,
         resets_after_trigger: form.resets_after_trigger,
       },
       form.budget_enabled
@@ -807,7 +810,9 @@ export function CreateCampaignDialog({
                   />
                 </div>
               )}
-              {(form.rule_type === "milestone" || form.rule_type === "streak") && (
+              {(form.rule_type === "milestone" ||
+                form.rule_type === "streak" ||
+                form.rule_type === "composite") && (
                 <div>
                   <Label htmlFor="window">Time window</Label>
                   <div className="mt-1">
@@ -821,7 +826,6 @@ export function CreateCampaignDialog({
                       <SelectContent>
                         <SelectItem value="calendar_month">Calendar month</SelectItem>
                         <SelectItem value="rolling_7d">Rolling 7 days</SelectItem>
-                        <SelectItem value="rolling_30d">Rolling 30 days</SelectItem>
                         <SelectItem value="lifetime">Lifetime</SelectItem>
                       </SelectContent>
                     </Select>

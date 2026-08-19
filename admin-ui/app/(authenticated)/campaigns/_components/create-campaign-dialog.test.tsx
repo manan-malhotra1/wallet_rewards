@@ -170,6 +170,51 @@ describe("Managing reward campaigns — creating a campaign", () => {
     });
   });
 
+  it("Verify typing 0 into stop-after means unlimited and sends no trigger cap", async () => {
+    const user = userEvent.setup();
+    await openWizardAt(user, "Milestone");
+
+    await user.type(screen.getByLabelText("Name"), "Uncapped milestone");
+    await user.type(screen.getByLabelText("Reward value"), "100");
+    // The label promises "0 = unlimited" — the backend expresses unlimited
+    // as an omitted field (it rejects 0 with a 422).
+    await user.type(
+      screen.getByLabelText(/Stop after N triggers/),
+      "0",
+    );
+    await user.click(screen.getByRole("button", { name: "Activate campaign" }));
+
+    await waitFor(() =>
+      expect(createCampaignWithBudgetAction).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      createCampaignWithBudgetAction.mock.calls[0][0].stop_after_n_triggers,
+    ).toBeUndefined();
+  });
+
+  it("Verify the time-window picker only offers backend-supported windows", async () => {
+    const user = userEvent.setup();
+    await openWizardAt(user, "Milestone");
+
+    await user.click(screen.getByLabelText("Time window"));
+    // rolling_30d is not accepted by the rules API (422) — it must not be offered.
+    expect(
+      screen.queryByRole("option", { name: "Rolling 30 days" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Rolling 7 days" }),
+    ).toBeInTheDocument();
+  });
+
+  it("Verify a composite campaign offers the time-window picker", async () => {
+    const user = userEvent.setup();
+    await openWizardAt(user, "Composite");
+
+    // Pay-PRD-0619: composite conditions are satisfied within the rule's
+    // time window, so the picker must be available for composite too.
+    expect(screen.getByLabelText("Time window")).toBeInTheDocument();
+  });
+
   it("Verify a campaign is blocked without a name and reward value", async () => {
     const user = userEvent.setup();
     await openWizardAt(user, "Milestone");

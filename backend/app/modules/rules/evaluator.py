@@ -27,7 +27,7 @@ event_ingestion_log dedup to prevent re-evaluation of the same event.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -232,16 +232,47 @@ def _evaluate_first_time(
     return RuleFiring(rule=rule, reward_value=Decimal(rule.reward_value))
 
 
+def _milestone_window_expired(time_window: str, window_start: datetime, event_ts: datetime) -> bool:
+    """Return True when `event_ts` falls outside the counting window anchored
+    at `window_start` (Pay-PRD-0550).
+
+    calendar_month: the window is the anchor's UTC calendar month.
+    rolling_7d: an anchored 7-day window — it opens at the first qualifying
+    event and expires 7 days later. Anchoring (rather than a true sliding
+    window) keeps the count on the progress row, which works for external
+    events that have no `transactions` rows to recount from; the trade-off
+    is that an expiry restarts the count at the triggering event.
+    """
+    if time_window == "calendar_month":
+        return (window_start.year, window_start.month) != (event_ts.year, event_ts.month)
+    if time_window == "rolling_7d":
+        return event_ts - window_start > timedelta(days=7)
+    return False  # lifetime / NULL — never expires.
+
+
 def _evaluate_milestone(
     rule: Rule, progress: UserRuleProgress, event: NormalisedEvent
 ) -> RuleFiring | None:
-    """Pay-PRD-0540 + 0570: fire after `count_threshold` qualifying events.
+    """Pay-PRD-0540 + 0550 + 0570: fire after `count_threshold` qualifying
+    events inside the rule's `time_window`.
 
-    Counter increments on each qualifying event. When it reaches the
-    threshold, fire and reset (if `resets_after_trigger`).
+    Counter increments on each qualifying event; events outside the current
+    window do not contribute — an expired window restarts the count at this
+    event. When the count reaches the threshold, fire and reset (if
+    `resets_after_trigger`).
     """
     if rule.count_threshold is None:
         return None  # Malformed rule — already rejected at create time.
+
+    # Time-window gate (Pay-PRD-0550): expire the running count when this
+    # event falls outside the window opened by the first counted event.
+    if progress.window_start is not None and _milestone_window_expired(
+        rule.time_window or "lifetime", progress.window_start, event.timestamp
+    ):
+        progress.current_count = 0
+        progress.window_start = None
+    if progress.window_start is None:
+        progress.window_start = event.timestamp
 
     progress.current_count += 1
     progress.last_qualifying_event_at = event.timestamp
@@ -443,6 +474,21 @@ async def _count_qualifying_transactions(
     return int((await session.execute(stmt)).scalar_one())
 
 
+def _composite_window_lower_bound(time_window: str | None, event_ts: datetime) -> datetime | None:
+    """Return the earliest `created_at` the rule's `time_window` admits.
+
+    Composite rules count from the `transactions` table, so — unlike
+    milestones — they get TRUE sliding-window semantics (Pay-PRD-0619):
+    calendar_month admits the event's UTC calendar month; rolling_7d admits
+    the 7 days up to the event. Lifetime / NULL admits everything (None).
+    """
+    if time_window == "calendar_month":
+        return event_ts.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if time_window == "rolling_7d":
+        return event_ts - timedelta(days=7)
+    return None
+
+
 async def _evaluate_composite(
     session: AsyncSession,
     rule: Rule,
@@ -453,7 +499,9 @@ async def _evaluate_composite(
 
     Each sub-condition is "satisfied" when the user's count of qualifying
     transactions of its transaction_type (>= its min_amount when set) reaches
-    its count_threshold, counted within the current window (`window_start`).
+    its count_threshold, counted within the current window — the LATER of the
+    post-fire reset point (`window_start`) and the rule's `time_window` lower
+    bound, so old transactions age out of the count (Pay-PRD-0550 semantics).
     AND fires when EVERY condition is satisfied; OR when ANY is.
 
     Window / reset semantics: a fresh progress row counts over the user's
@@ -491,13 +539,20 @@ async def _evaluate_composite(
     if len(conditions) < 2 or rule.composite_operator not in ("AND", "OR"):
         return None
 
+    # Counting window = the later of the post-fire reset point and the
+    # time_window's lower bound relative to this event.
+    window_lower = _composite_window_lower_bound(rule.time_window, event.timestamp)
+    effective_start = progress.window_start
+    if window_lower is not None and (effective_start is None or window_lower > effective_start):
+        effective_start = window_lower
+
     satisfied_flags = [
         await _count_qualifying_transactions(
             session,
             tenant_id=event.tenant_id,
             user_id=event.user_id,
             condition=cond,
-            window_start=progress.window_start,
+            window_start=effective_start,
         )
         >= cond.count_threshold
         for cond in conditions

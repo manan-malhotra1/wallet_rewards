@@ -12,10 +12,11 @@ import { STATUS_KEYS, type StatusKey } from "./approvals-filter";
 
 /**
  * Rows fetched per page. Kept small — the load-tested queues hold thousands of
- * rows per status, and 50 keeps each page snappy (the backend still enriches
- * money/user rows per-row until B7.2 batches it). Backend `limit` cap is 500.
+ * rows per status, and the backend still enriches money/user rows per-row
+ * until B7.2 batches it, so page cost scales with this number. Backend `limit`
+ * cap is 500.
  */
-export const APPROVALS_PAGE_SIZE = 50;
+export const APPROVALS_PAGE_SIZE = 10;
 
 /**
  * The status window the page lands on with no `?status=` param. PENDING,

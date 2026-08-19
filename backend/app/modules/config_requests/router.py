@@ -93,20 +93,23 @@ async def get_requests(
     tenant_id: UUID,
     status_filter: str | None = None,
     config_type: str | None = None,
+    q: str | None = Query(None, max_length=200),
     limit: int | None = Query(None, ge=1, le=500),
     offset: int = Query(0, ge=0),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[ConfigChangeRequestOut]:
-    """List a tenant's config-change requests, optionally filtered by status/type
-    and windowed by limit/offset (B7.1 — the approvals page fetches a bounded
-    window, never the whole queue)."""
+    """List a tenant's config-change requests, optionally filtered by
+    status/type, searched by q (whole-queue free text — B7.2c), and windowed by
+    limit/offset (B7.1 — the approvals page fetches a bounded window, never the
+    whole queue)."""
     _ = admin
     requests = await list_config_requests(
         session,
         tenant_id,
         status=status_filter,
         config_type=config_type,
+        q=q,
         limit=limit,
         offset=offset,
     )
@@ -118,16 +121,18 @@ async def get_requests(
 @router.get("/counts", response_model=QueueCountsOut)
 async def get_counts(
     tenant_id: UUID,
+    q: str | None = Query(None, max_length=200),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> QueueCountsOut:
     """Per-status counts for the approvals tab bar — one grouped query, no rows.
+    `q` scopes the counts to search matches (B7.2c).
 
     This STATIC route is declared before `GET /{request_id}` so "counts" is
     never captured as a request id.
     """
     _ = admin
-    return await count_config_requests(session, tenant_id)
+    return await count_config_requests(session, tenant_id, q=q)
 
 
 @router.get("/history", response_model=list[ConfigChangeRequestOut])

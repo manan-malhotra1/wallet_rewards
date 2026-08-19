@@ -48,6 +48,15 @@ export function serverStatusParam(status: StatusKey | "ALL"): StatusKey | undefi
   return status === "ALL" ? undefined : status;
 }
 
+/**
+ * Parse the `?q=` search param. Since B7.2c the search runs SERVER-side across
+ * the whole queue (the list and /counts endpoints take `q`), so this is a
+ * server param exactly like status and page. Empty means "no search".
+ */
+export function readServerQ(raw: string | undefined): string {
+  return raw?.trim() ?? "";
+}
+
 /** Parse the 1-based `?page=` param; anything but a positive integer means 1. */
 export function readPage(raw: string | undefined): number {
   const page = Number(raw);

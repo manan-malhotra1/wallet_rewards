@@ -14,8 +14,10 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import Select, func, select
+from sqlalchemy import ColumnElement, Select, String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.shared.models import AdminProfile
 
 
 class QueueCountsOut(BaseModel):
@@ -29,11 +31,64 @@ class QueueCountsOut(BaseModel):
     by_status: dict[str, int]
 
 
+def _escape_like(q: str) -> str:
+    """Escape ILIKE metacharacters so `q` always matches literally."""
+    return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def search_needle(q: str) -> str:
+    """The escaped `%…%` ILIKE pattern for `q` (use with `escape="\\"`).
+
+    For queue-specific extra search conditions (e.g. a subject-name EXISTS)
+    that must match exactly like `queue_search_condition` does.
+    """
+    return f"%{_escape_like(q)}%"
+
+
+def queue_search_condition(
+    model: Any,
+    q: str,
+    extra_text_columns: Sequence[Any] = (),
+    extra_conditions: Sequence[Any] = (),
+) -> ColumnElement[bool]:
+    """Build the WHERE clause for a free-text queue search (B7.2c).
+
+    Case-insensitive substring match over: the request id (partial UUIDs
+    work), the maker's admin sub, the maker's recorded display name
+    (admin_profiles), the stored payload text (identifiers, amounts, names),
+    any queue-specific text columns (e.g. `operation`, `config_type`), and any
+    prebuilt queue-specific conditions (e.g. a subject-name EXISTS, built with
+    `search_needle`). Searching the WHOLE queue this way is what lets the
+    approvals page's search escape its fetched window.
+    """
+    needle = search_needle(q)
+    maker_name_matches = (
+        select(AdminProfile.id)
+        .where(
+            AdminProfile.keycloak_sub == model.maker_admin_id,
+            AdminProfile.display_name.ilike(needle, escape="\\"),
+        )
+        .exists()
+    )
+    return or_(
+        cast(model.id, String).ilike(needle, escape="\\"),
+        model.maker_admin_id.ilike(needle, escape="\\"),
+        cast(model.payload, String).ilike(needle, escape="\\"),
+        maker_name_matches,
+        *[column.ilike(needle, escape="\\") for column in extra_text_columns],
+        *extra_conditions,
+    )
+
+
 async def count_queue_by_status(
     session: AsyncSession,
     model: Any,
     tenant_id: UUID,
     statuses: Sequence[str],
+    *,
+    q: str | None = None,
+    extra_text_columns: Sequence[Any] = (),
+    extra_conditions: Sequence[Any] = (),
 ) -> QueueCountsOut:
     """Count a tenant's queue rows per status in ONE grouped query.
 
@@ -42,15 +97,21 @@ async def count_queue_by_status(
             (MoneyOperationRequest, ConfigChangeRequest, UserOperationRequest).
         statuses: The queue's full lifecycle status tuple; every entry appears
             in the result, zero-filled when absent from the DB.
+        q: Optional free-text search — counts then cover only matching rows,
+            so a searching page's pager and segments stay truthful.
+        extra_text_columns: Queue-specific text columns q also matches.
+        extra_conditions: Prebuilt queue-specific search conditions q also
+            matches (see `queue_search_condition`).
 
     Returns:
         QueueCountsOut with the tenant's total and the per-status breakdown.
     """
-    result = await session.execute(
-        select(model.status, func.count())
-        .where(model.tenant_id == tenant_id)
-        .group_by(model.status)
-    )
+    stmt = select(model.status, func.count()).where(model.tenant_id == tenant_id)
+    if q:
+        stmt = stmt.where(
+            queue_search_condition(model, q, extra_text_columns, extra_conditions)
+        )
+    result = await session.execute(stmt.group_by(model.status))
     found: dict[str, int] = {row[0]: row[1] for row in result.all()}
     by_status = {status: found.get(status, 0) for status in statuses}
     return QueueCountsOut(total=sum(found.values()), by_status=by_status)

@@ -6,10 +6,10 @@
  * unit-testable without React.
  *
  * The toolbar drives four independent facets — status, type, date range, and a
- * free-text search — over the active tab's rows. Since B7.1 the status facet
- * and the segment counts are SERVER-side (see `lib/approvals-window.ts`); this
- * module owns only the client facets (type, date, search) applied to the
- * fetched window via `applyFilters`.
+ * free-text search — over the active tab's rows. Since B7.1/B7.2c the status
+ * facet, the search, and the segment counts are SERVER-side (see
+ * `lib/approvals-window.ts`); this module owns only the client facets (type,
+ * date) applied to the fetched window via `applyFilters`.
  */
 
 /** Preset windows for the date-range facet. `"all"` disables date filtering. */
@@ -48,18 +48,16 @@ export interface ApprovalRow {
 }
 
 /**
- * The CLIENT facet selections the toolbar owns: type, date, and search. Status
- * is deliberately absent — since B7.1 it is a SERVER param (it changes what
- * window is fetched; see `lib/approvals-window.ts`), so client filtering never
- * re-filters by status.
+ * The CLIENT facet selections the toolbar owns: type and date. Status and
+ * search are deliberately absent — status is a SERVER param since B7.1 and
+ * search since B7.2c (each changes what window is fetched; see
+ * `lib/approvals-window.ts`), so client filtering never re-applies them.
  */
 export interface ApprovalFilters {
   /** Selected type codes — OR-matched; empty means "any type". */
   types: string[];
   /** Selected date-range preset. */
   dateRange: DateRangeKey;
-  /** Free-text query; empty means "no search". */
-  q: string;
 }
 
 /**
@@ -69,7 +67,6 @@ export interface ApprovalFilters {
 export const DEFAULT_FILTERS: ApprovalFilters = {
   types: [],
   dateRange: "all",
-  q: "",
 };
 
 /** Number of days in each bounded preset; `"all"` is unbounded (handled apart). */
@@ -111,21 +108,9 @@ export function withinDateRange(
 }
 
 /**
- * Case-insensitive substring match of `q` across the row's request id, maker
- * (name + raw id), and summary/entity text. An empty/whitespace query matches
- * every row.
- */
-export function matchesSearch(row: ApprovalRow, q: string): boolean {
-  const needle = q.trim().toLowerCase();
-  if (!needle) return true;
-  const haystack = `${row.id} ${row.maker} ${row.makerId} ${row.summary}`.toLowerCase();
-  return haystack.includes(needle);
-}
-
-/**
- * Apply every client facet (type, date, search) to `rows`. The rows are the
- * server-fetched window, already status-filtered server-side. Pure — never
- * mutates the input.
+ * Apply every client facet (type, date) to `rows`. The rows are the
+ * server-fetched window, already status- and search-filtered server-side.
+ * Pure — never mutates the input.
  *
  * @param rows Normalised rows for the active tab's fetched window.
  * @param filters The current facet selections.
@@ -141,7 +126,6 @@ export function applyFilters(
       return false;
     }
     if (!withinDateRange(row, filters.dateRange, now)) return false;
-    if (!matchesSearch(row, filters.q)) return false;
     return true;
   });
 }

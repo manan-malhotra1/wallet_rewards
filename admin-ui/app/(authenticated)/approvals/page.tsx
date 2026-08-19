@@ -10,13 +10,15 @@
  * to the first visible queue with PENDING items (falling back to the first
  * visible tab); if they can see none, an empty state is shown.
  *
- * Fetch strategy (Story B7.1 — this page must scale past thousands of rows):
- * every visible queue contributes only a cheap /counts call (tab-bar totals +
- * status segment counts + default-tab resolution); actual rows are fetched for
- * the ACTIVE tab only, as one status-filtered window (`?status=`, default
- * PENDING; `?page=` × APPROVALS_PAGE_SIZE). The client `<ApprovalsToolbar>`
- * keeps the search / type / date facets client-side over that window and
- * renders the per-domain queue tables + detail drawers (reused unchanged).
+ * Fetch strategy (Stories B7.1/B7.2 — this page must scale past thousands of
+ * rows): every visible queue contributes only a cheap /counts call (tab-bar
+ * totals + default-tab resolution); actual rows are fetched for the ACTIVE tab
+ * only, as one status-filtered window (`?status=`, default PENDING; `?page=` ×
+ * APPROVALS_PAGE_SIZE). The search (`?q=`) is server-side and covers the WHOLE
+ * queue — while searching, one extra q-scoped /counts call keeps the segments
+ * and pager truthful. The client `<ApprovalsToolbar>` keeps only the type /
+ * date facets client-side over that window and renders the per-domain queue
+ * tables + detail drawers (reused unchanged).
  */
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
@@ -35,6 +37,7 @@ import {
   APPROVALS_PAGE_SIZE,
   pageCount,
   readPage,
+  readServerQ,
   readServerStatus,
   serverStatusParam,
   statusCountsWithAll,
@@ -69,19 +72,19 @@ const TABS: { key: TabKey; label: string; role: string }[] = [
   { key: "users", label: "Users", role: "user-approver" },
 ];
 
-/** The counts endpoint for a queue tab. */
-function countsFor(key: TabKey, tenantId: string): Promise<QueueCounts> {
-  if (key === "configuration") return getConfigRequestCounts(tenantId);
-  if (key === "transactions") return getMoneyOperationCounts(tenantId);
-  return getUserOperationCounts(tenantId);
+/** The counts endpoint for a queue tab; `q` scopes counts to search matches. */
+function countsFor(key: TabKey, tenantId: string, q?: string): Promise<QueueCounts> {
+  if (key === "configuration") return getConfigRequestCounts(tenantId, q);
+  if (key === "transactions") return getMoneyOperationCounts(tenantId, q);
+  return getUserOperationCounts(tenantId, q);
 }
 
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; status?: string; page?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string; page?: string; q?: string }>;
 }) {
-  const { tab, status: statusParam, page: pageParam } = await searchParams;
+  const { tab, status: statusParam, page: pageParam, q: qParam } = await searchParams;
 
   const session = await auth();
   const roles = session?.user?.roles ?? [];
@@ -125,6 +128,7 @@ export default async function ApprovalsPage({
   }
 
   const serverStatus = readServerStatus(statusParam);
+  const serverQ = readServerQ(qParam);
   let page = readPage(pageParam);
   // Rows the current server status filter matches ACROSS the whole queue —
   // drives the pager ("page P of N"), not just the fetched window.
@@ -137,9 +141,15 @@ export default async function ApprovalsPage({
   let serviceNames: Record<string, string> = {};
   const counts: Partial<Record<TabKey, QueueCounts>> = {};
   let activeTab: TabKey = visibleTabs[0].key;
+  // The counts driving the active tab's segments and pager. Equal to the
+  // tab's plain counts unless a search is active, in which case they cover
+  // only the matching rows (one extra grouped query).
+  let activeCounts: QueueCounts = { total: 0, by_status: {} };
 
   try {
     // One cheap grouped-count query per visible queue — no rows fetched.
+    // Always unfiltered: tab badges and default-tab resolution describe the
+    // whole queue, whatever the search box holds.
     await Promise.all(
       visibleTabs.map(async (t) => {
         counts[t.key] = await countsFor(t.key, activeTenantId);
@@ -155,17 +165,22 @@ export default async function ApprovalsPage({
         tab,
       ) ?? visibleTabs[0].key;
 
-    const forStatus = counts[activeTab] ?? { total: 0, by_status: {} };
+    activeCounts = serverQ
+      ? await countsFor(activeTab, activeTenantId, serverQ)
+      : (counts[activeTab] ?? { total: 0, by_status: {} });
+
     queueTotal =
       serverStatus === "ALL"
-        ? forStatus.total
-        : (forStatus.by_status[serverStatus] ?? 0);
+        ? activeCounts.total
+        : (activeCounts.by_status[serverStatus] ?? 0);
     // Clamp a stale bookmark or hand-edited ?page= to the real page count, so
     // a shrunken queue never strands the user on an empty out-of-range window.
     page = Math.min(page, pageCount(queueTotal, APPROVALS_PAGE_SIZE));
 
-    // Rows for the ACTIVE tab only, as one status-filtered window.
+    // Rows for the ACTIVE tab only, as one status-filtered (and, when
+    // searching, whole-queue q-filtered) window.
     const statusFilter = serverStatusParam(serverStatus);
+    const q = serverQ || undefined;
     const offset = windowOffset(page, APPROVALS_PAGE_SIZE);
     if (activeTab === "configuration") {
       const [requests, services] = await Promise.all([
@@ -175,6 +190,7 @@ export default async function ApprovalsPage({
           undefined,
           APPROVALS_PAGE_SIZE,
           offset,
+          q,
         ),
         listServices(activeTenantId, "active"),
       ]);
@@ -188,6 +204,7 @@ export default async function ApprovalsPage({
         statusFilter,
         APPROVALS_PAGE_SIZE,
         offset,
+        q,
       );
     } else {
       userOperations = await listUserOperations(
@@ -195,6 +212,7 @@ export default async function ApprovalsPage({
         statusFilter,
         APPROVALS_PAGE_SIZE,
         offset,
+        q,
       );
     }
   } catch (err) {
@@ -207,8 +225,6 @@ export default async function ApprovalsPage({
     label: t.label,
     count: counts[t.key]?.total ?? 0,
   }));
-
-  const activeCounts = counts[activeTab] ?? { total: 0, by_status: {} };
 
   // The approve/withdraw affordance for the ACTIVE queue's table.
   const canApproveActive =
@@ -243,6 +259,7 @@ export default async function ApprovalsPage({
             moneyOperations={moneyOperations}
             userOperations={userOperations}
             serverStatus={serverStatus}
+            serverQ={serverQ}
             statusCounts={statusCountsWithAll(activeCounts)}
             queueTotal={queueTotal}
             page={page}

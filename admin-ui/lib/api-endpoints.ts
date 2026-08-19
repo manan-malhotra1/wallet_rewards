@@ -602,14 +602,18 @@ export const listConfigRequests = (
   config_type?: ConfigType,
   limit?: number,
   offset?: number,
+  q?: string,
 ) =>
   apiGet<ConfigChangeRequest[]>("/api/v1/config-requests", {
-    query: { tenant_id, status_filter, config_type, limit, offset },
+    query: { tenant_id, status_filter, config_type, limit, offset, q },
   });
 
-/** Cheap per-status counts for the config-requests queue (approvals tab bar). */
-export const getConfigRequestCounts = (tenant_id: string) =>
-  apiGet<QueueCounts>("/api/v1/config-requests/counts", { query: { tenant_id } });
+/**
+ * Cheap per-status counts for the config-requests queue (approvals tab bar).
+ * `q` scopes the counts to whole-queue search matches (B7.2c).
+ */
+export const getConfigRequestCounts = (tenant_id: string, q?: string) =>
+  apiGet<QueueCounts>("/api/v1/config-requests/counts", { query: { tenant_id, q } });
 
 /**
  * Full applied-version history for one live config row (Epic 25 — version
@@ -871,14 +875,18 @@ export const listMoneyOperations = (
   status_filter?: MoneyOperationStatus,
   limit?: number,
   offset?: number,
+  q?: string,
 ) =>
   apiGet<MoneyOperation[]>("/api/v1/money-operations", {
-    query: { tenant_id, status_filter, limit, offset },
+    query: { tenant_id, status_filter, limit, offset, q },
   });
 
-/** Cheap per-status counts for the money-operations queue (approvals tab bar). */
-export const getMoneyOperationCounts = (tenant_id: string) =>
-  apiGet<QueueCounts>("/api/v1/money-operations/counts", { query: { tenant_id } });
+/**
+ * Cheap per-status counts for the money-operations queue (approvals tab bar).
+ * `q` scopes the counts to whole-queue search matches (B7.2c).
+ */
+export const getMoneyOperationCounts = (tenant_id: string, q?: string) =>
+  apiGet<QueueCounts>("/api/v1/money-operations/counts", { query: { tenant_id, q } });
 
 /** Fetch a single money operation with its full review thread + progress. */
 export const getMoneyOperation = (id: string, tenant_id: string) =>
@@ -961,14 +969,18 @@ export const listUserOperations = (
   status_filter?: UserOperationStatus,
   limit?: number,
   offset?: number,
+  q?: string,
 ) =>
   apiGet<UserOperation[]>("/api/v1/user-operations", {
-    query: { tenant_id, status_filter, limit, offset },
+    query: { tenant_id, status_filter, limit, offset, q },
   });
 
-/** Cheap per-status counts for the user-operations queue (approvals tab bar). */
-export const getUserOperationCounts = (tenant_id: string) =>
-  apiGet<QueueCounts>("/api/v1/user-operations/counts", { query: { tenant_id } });
+/**
+ * Cheap per-status counts for the user-operations queue (approvals tab bar).
+ * `q` scopes the counts to whole-queue search matches (B7.2c).
+ */
+export const getUserOperationCounts = (tenant_id: string, q?: string) =>
+  apiGet<QueueCounts>("/api/v1/user-operations/counts", { query: { tenant_id, q } });
 
 /** Fetch a single user operation with its full review thread + progress. */
 export const getUserOperation = (id: string, tenant_id: string) =>

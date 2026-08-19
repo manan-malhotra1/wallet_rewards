@@ -1,8 +1,9 @@
 /**
  * Tests for the Approvals toolbar client-facet helpers. These are the pure
- * core behind the client-side facets (type, date, search) applied to the
+ * core behind the client-side facets (type, date) applied to the
  * server-fetched window: multi-type OR, the inclusive date-range boundary,
- * search across maker/entity/request-id, and default-tab resolution.
+ * and default-tab resolution. (Status and search are server params — see
+ * approvals-window.test.ts.)
  */
 import { describe, expect, it } from "vitest";
 
@@ -10,7 +11,6 @@ import {
   applyFilters,
   DEFAULT_FILTERS,
   dateRangeCutoff,
-  matchesSearch,
   resolveActiveTab,
   withinDateRange,
   type ApprovalFilters,
@@ -38,41 +38,6 @@ function row(overrides: Partial<ApprovalRow> = {}): ApprovalRow {
 function filters(overrides: Partial<ApprovalFilters> = {}): ApprovalFilters {
   return { ...DEFAULT_FILTERS, ...overrides };
 }
-
-describe("matchesSearch", () => {
-  const r = row({
-    id: "req-abc123",
-    maker: "Bob Jones",
-    makerId: "admin-bob",
-    summary: "Fund user → Carol",
-  });
-
-  it("Verify an empty query keeps every row", () => {
-    expect(matchesSearch(r, "")).toBe(true);
-    expect(matchesSearch(r, "   ")).toBe(true);
-  });
-
-  it("Verify a search matches the maker name case-insensitively", () => {
-    expect(matchesSearch(r, "bob jones")).toBe(true);
-    expect(matchesSearch(r, "JONES")).toBe(true);
-  });
-
-  it("Verify a search matches the raw maker id even when a name is displayed", () => {
-    expect(matchesSearch(r, "admin-bob")).toBe(true);
-  });
-
-  it("Verify a search matches the entity/summary text", () => {
-    expect(matchesSearch(r, "carol")).toBe(true);
-  });
-
-  it("Verify a search matches a partial request id", () => {
-    expect(matchesSearch(r, "abc123")).toBe(true);
-  });
-
-  it("Verify an unrelated query keeps no row", () => {
-    expect(matchesSearch(r, "zzz-nope")).toBe(false);
-  });
-});
 
 describe("date range", () => {
   it("Verify the All-time preset applies no lower bound", () => {
@@ -132,17 +97,26 @@ describe("applyFilters", () => {
     expect(out.map((r) => r.id)).toEqual(["a"]);
   });
 
-  it("Verify the facets combine (type AND search)", () => {
+  it("Verify the facets combine (type AND date)", () => {
+    const stale = new Date(NOW);
+    stale.setDate(stale.getDate() - 60);
+    const withStale = [...rows, row({ id: "d", type: "commission", createdAt: stale.toISOString() })];
     const out = applyFilters(
-      rows,
-      filters({ types: ["commission"], q: "service charge" }),
+      withStale,
+      filters({ types: ["commission"], dateRange: "30d" }),
       NOW,
     );
     expect(out.map((r) => r.id)).toEqual(["c"]);
   });
 
   it("Verify a combined filter can narrow to nothing", () => {
-    const out = applyFilters(rows, filters({ types: ["commission"], q: "fund" }), NOW);
+    const stale = new Date(NOW);
+    stale.setDate(stale.getDate() - 60);
+    const out = applyFilters(
+      [row({ id: "old", type: "commission", createdAt: stale.toISOString() })],
+      filters({ types: ["commission"], dateRange: "7d" }),
+      NOW,
+    );
     expect(out).toHaveLength(0);
   });
 });

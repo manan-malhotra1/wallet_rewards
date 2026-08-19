@@ -34,6 +34,7 @@ from app.modules.user_operations.service import (
     get_user_operation,
     list_user_operations,
     load_reviews,
+    load_reviews_for_requests,
     propose_user_operation,
     request_user_op_changes,
     resubmit_user_operation,
@@ -46,6 +47,7 @@ from app.shared.models import (
     UserOperationReview,
 )
 from app.shared.queue_counts import QueueCountsOut
+from app.shared.utils.uuids import parse_uuid
 
 router = APIRouter(prefix="/api/v1/user-operations", tags=["user-operations"])
 
@@ -84,21 +86,28 @@ async def _attach_admin_names(session: AsyncSession, outs: list[UserOperationOut
 async def _attach_target_names(session: AsyncSession, outs: list[UserOperationOut]) -> None:
     """For update_user requests, resolve the edited user's current display name.
 
-    So the UI shows who's being edited rather than a bare UUID. Best-effort: an
-    unresolvable / missing target leaves `target_name` None.
+    So the UI shows who's being edited rather than a bare UUID. Batched (B7.2):
+    one `resolve_user_names` call for every target on the page — all outs
+    belong to one tenant (both call sites are tenant-scoped endpoints).
+    Best-effort: an unresolvable / missing target leaves `target_name` None.
     """
+    target_ids = {
+        target_id
+        for out in outs
+        if out.operation == USER_OP_UPDATE
+        and (target_id := parse_uuid(out.payload.get("target_user_id")))
+    }
+    if not target_ids:
+        return
+    names = await resolve_user_names(
+        session, tenant_id=outs[0].tenant_id, user_ids=target_ids
+    )
     for out in outs:
         if out.operation != USER_OP_UPDATE:
             continue
-        raw = out.payload.get("target_user_id")
-        if not raw:
-            continue
-        try:
-            target_id = UUID(str(raw))
-        except (ValueError, TypeError):
-            continue
-        names = await resolve_user_names(session, tenant_id=out.tenant_id, user_ids=[target_id])
-        out.target_name = names.get(target_id)
+        target_id = parse_uuid(out.payload.get("target_user_id"))
+        if target_id:
+            out.target_name = names.get(target_id)
 
 
 async def _serialize(session: AsyncSession, request: UserOperationRequest) -> UserOperationOut:
@@ -134,22 +143,24 @@ async def post_propose(
 async def get_operations(
     tenant_id: UUID,
     status_filter: str | None = None,
+    q: str | None = Query(None, max_length=200),
     limit: int | None = Query(None, ge=1, le=500),
     offset: int = Query(0, ge=0),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[UserOperationOut]:
-    """List a tenant's user operations, optionally filtered by status and
-    windowed by limit/offset (B7.1 — the approvals page fetches a bounded
-    window, never the whole queue)."""
+    """List a tenant's user operations, optionally filtered by status,
+    searched by q (whole-queue free text — B7.2c), and windowed by limit/offset
+    (B7.1 — the approvals page fetches a bounded window, never the whole
+    queue)."""
     _ = admin
     requests = await list_user_operations(
-        session, tenant_id, status=status_filter, limit=limit, offset=offset
+        session, tenant_id, status=status_filter, q=q, limit=limit, offset=offset
     )
-    outs: list[UserOperationOut] = []
-    for request in requests:
-        reviews = await load_reviews(session, request.id)
-        outs.append(_build_out(request, reviews))
+    # One batched query for every review thread on the page (B7.2 — never one
+    # query per row).
+    reviews_by_request = await load_reviews_for_requests(session, [r.id for r in requests])
+    outs = [_build_out(r, reviews_by_request.get(r.id, [])) for r in requests]
     await _attach_admin_names(session, outs)
     await _attach_target_names(session, outs)
     return outs
@@ -158,16 +169,18 @@ async def get_operations(
 @router.get("/counts", response_model=QueueCountsOut)
 async def get_counts(
     tenant_id: UUID,
+    q: str | None = Query(None, max_length=200),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> QueueCountsOut:
     """Per-status counts for the approvals tab bar — one grouped query, no rows.
+    `q` scopes the counts to search matches (B7.2c).
 
     This STATIC route is declared before `GET /{request_id}` so "counts" is
     never captured as a request id.
     """
     _ = admin
-    return await count_user_operations(session, tenant_id)
+    return await count_user_operations(session, tenant_id, q=q)
 
 
 @router.get("/{request_id}", response_model=UserOperationOut)

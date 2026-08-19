@@ -639,7 +639,7 @@ sidebar Approvals badge — rendered on every page — switched from three full
 PENDING list fetches to the counts endpoints. 24 new backend tests
 (happy/bounds-422/401/403/tenant isolation × 3 queues) + lib tests.
 
-### Story B7.2 — Bound the per-row enrichment and index the window query · Backlog
+### Story B7.2 — Bound the per-row enrichment and index the window query · Done (2026-08-19)
 
 **Description:** Follow-ups the B7.1 review confirmed but deferred. (a) The
 money/user list endpoints still run `load_reviews` per row plus per-row payload
@@ -653,3 +653,22 @@ request tables. (c) Consider a server-side `q` search param so the approvals
 search can cover the whole queue, not just the fetched page — a checker
 searching a request id that is outside the window currently sees "no match",
 which reads as "does not exist".
+
+**Shipped, all three parts:**
+- (a) Batched: `load_reviews_for_requests` (one `IN` query per page instead of
+  one per row) in money/user routers, the money payload-name enrichment
+  resolves each UNIQUE identifier once + one `resolve_user_names` + one
+  accounts-`IN` query, and user-op target names resolve in one call. Pinned by
+  query-count tests asserting a 6-row page costs exactly as many statements as
+  a 2-row page.
+- (b) Migration 0057 swaps each queue's (tenant_id, status) index for
+  (tenant_id, status, created_at, id) — EXPLAIN on the 2.2k-row dev queue now
+  shows a backward index scan, no sort (0.2 ms).
+- (c) Server-side search: `q` on all three list AND /counts endpoints (id,
+  maker sub, maker display name, operation/config_type, payload text, plus the
+  subject/target user's PROFILE name — the payload stores identifiers in
+  whatever format the maker typed, so the name join normalises them in SQL the
+  way `normalize_identifier` does). The approvals search box is now a debounced
+  `?q=` navigation covering the whole queue; segments and pager show q-scoped
+  counts while searching. Proven live: typing a funded user's name found the
+  one matching pending request among 2,206 rows.

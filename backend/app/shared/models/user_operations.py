@@ -101,7 +101,17 @@ class UserOperationRequest(Base):
             "required_approvals IN (1, 2)",
             name="ck_user_operation_requests_required_approvals",
         ),
-        Index("ix_user_operation_requests_tenant_status", "tenant_id", "status"),
+        # Covers the B7.1 approvals window query (WHERE tenant_id, status
+        # ORDER BY created_at DESC, id DESC LIMIT/OFFSET) via a backward index
+        # scan — no per-page sort. The (tenant_id, status) prefix still serves
+        # the /counts grouped query and every status-filtered lookup.
+        Index(
+            "ix_user_operation_requests_tenant_status_created",
+            "tenant_id",
+            "status",
+            "created_at",
+            "id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()

@@ -6,10 +6,11 @@
  *
  * Since Story B7.1 the rows are a server-fetched WINDOW, not the full queue:
  * tab switches, status segment clicks, and the pager are real navigations
- * (each changes what the server fetches — `?tab=` / `?status=` / `?page=`),
- * while search, type, and date stay client-side over the fetched window. The
- * status segment counts come from the backend /counts endpoints (whole queue),
- * so they no longer reflect the other client facets.
+ * (each changes what the server fetches — `?tab=` / `?status=` / `?page=`).
+ * Since B7.2c the SEARCH is server-side too (`?q=`, debounced) and covers the
+ * whole queue; only type and date stay client-side over the fetched window.
+ * The status segment counts and pager totals come from the backend /counts
+ * endpoints — q-scoped while searching, whole-queue otherwise.
  */
 "use client";
 
@@ -180,9 +181,9 @@ function normalizeUser(op: UserOperation): ApprovalRow {
 // ---- Initial-state parsing from the URL ----------------------------------
 
 /**
- * Read the CLIENT facets (type, date, search) out of the current query string,
- * validated per tab. Status is a SERVER param since B7.1 (it changes what
- * window is fetched) and is parsed by the page, not here.
+ * Read the CLIENT facets (type, date) out of the current query string,
+ * validated per tab. Status (B7.1) and search (B7.2c) are SERVER params —
+ * they change what window is fetched — and are parsed by the page, not here.
  */
 function readFilters(
   params: URLSearchParams,
@@ -199,7 +200,7 @@ function readFilters(
       ? dateParam
       : DEFAULT_FILTERS.dateRange;
 
-  return { types, dateRange, q: params.get("q") ?? "" };
+  return { types, dateRange };
 }
 
 // ---- The toolbar ---------------------------------------------------------
@@ -216,6 +217,8 @@ export interface ApprovalsToolbarProps {
   userOperations: UserOperation[];
   /** The server-applied status filter the fetched window reflects. */
   serverStatus: StatusKey | "ALL";
+  /** The server-applied whole-queue search the fetched window reflects. */
+  serverQ: string;
   /** Whole-queue per-status counts (from /counts), for the status segments. */
   statusCounts: Record<StatusKey | "ALL", number>;
   /** Rows matching `serverStatus` across the WHOLE queue (drives the pager). */
@@ -227,7 +230,8 @@ export interface ApprovalsToolbarProps {
 }
 
 export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
-  const { activeTab, tabs, serverStatus, statusCounts, queueTotal, page, pageSize } = props;
+  const { activeTab, tabs, serverStatus, serverQ, statusCounts, queueTotal, page, pageSize } =
+    props;
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -243,6 +247,10 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
   const [filters, setFilters] = React.useState<ApprovalFilters>(() =>
     readFilters(new URLSearchParams(searchParams.toString()), validTypes),
   );
+
+  // The search box's live value. Server state (`serverQ`) trails it by one
+  // debounced navigation — typing stays instant, fetching is coalesced.
+  const [q, setQ] = React.useState(serverQ);
 
   // Normalise the active tab's typed rows into the generic filter shape. Only
   // the active tab carries data; the others are empty arrays.
@@ -265,14 +273,19 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
   // current client facets carried along, so a status/page navigation — which
   // re-runs the server component and remounts this toolbar — preserves them.
   const buildQuery = React.useCallback(
-    (next: ApprovalFilters, status: StatusKey | "ALL", targetPage: number) => {
+    (
+      next: ApprovalFilters,
+      qValue: string,
+      status: StatusKey | "ALL",
+      targetPage: number,
+    ) => {
       const sp = new URLSearchParams();
       sp.set("tab", activeTab);
       if (status !== DEFAULT_SERVER_STATUS) sp.set("status", status);
       if (targetPage > 1) sp.set("page", String(targetPage));
+      if (qValue.trim()) sp.set("q", qValue.trim());
       if (next.types.length > 0) sp.set("type", next.types.join(","));
       if (next.dateRange !== DEFAULT_FILTERS.dateRange) sp.set("date", next.dateRange);
-      if (next.q.trim()) sp.set("q", next.q.trim());
       return `${pathname}?${sp.toString()}`;
     },
     [activeTab, pathname],
@@ -282,19 +295,31 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
   // window. A status change resets to page 1 (fresh window).
   const navigateToWindow = React.useCallback(
     (status: StatusKey | "ALL", targetPage: number) => {
-      router.push(buildQuery(filters, status, targetPage));
+      router.push(buildQuery(filters, q, status, targetPage));
     },
-    [buildQuery, filters, router],
+    [buildQuery, filters, q, router],
   );
 
+  // Debounced server-side search (B7.2c): typing edits local state instantly;
+  // shortly after the last keystroke the page navigates (replace, not push —
+  // a keystroke stream must not pile up history entries) and the server
+  // fetches matches across the WHOLE queue. A new search resets to page 1.
+  React.useEffect(() => {
+    if (q.trim() === serverQ) return;
+    const timer = setTimeout(() => {
+      router.replace(buildQuery(filters, q, serverStatus, 1));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [q, serverQ, buildQuery, filters, router, serverStatus]);
+
   // Mirror the CLIENT facets into the address bar without re-running the
-  // server component (History API, not router navigation) — search stays
-  // snappy and no stale refetch flashes. Only non-default facets are written.
+  // server component (History API, not router navigation) — no stale refetch
+  // flashes. Only non-default facets are written.
   const syncUrl = React.useCallback(
     (next: ApprovalFilters) => {
-      window.history.replaceState(null, "", buildQuery(next, serverStatus, page));
+      window.history.replaceState(null, "", buildQuery(next, q, serverStatus, page));
     },
-    [buildQuery, page, serverStatus],
+    [buildQuery, page, q, serverStatus],
   );
 
   /** Apply a partial facet change: update state and mirror to the URL. */
@@ -309,11 +334,13 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
     [syncUrl],
   );
 
-  // Full reset — client facets AND server window. The navigation re-renders
-  // the server component but PRESERVES this client component instance, so the
-  // facet state must be reset explicitly, not just erased from the URL.
+  // Full reset — client facets, search, AND server window. The navigation
+  // re-renders the server component but PRESERVES this client component
+  // instance, so the local state must be reset explicitly, not just erased
+  // from the URL.
   const resetAll = React.useCallback(() => {
     setFilters({ ...DEFAULT_FILTERS });
+    setQ("");
     router.push(`${pathname}?tab=${activeTab}`);
   }, [activeTab, pathname, router]);
 
@@ -370,8 +397,8 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
             type="search"
             aria-label="Search approvals"
             placeholder="Search by maker, entity or request ID"
-            value={filters.q}
-            onChange={(e) => update({ q: e.target.value })}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
           />
         </div>
 
@@ -464,26 +491,32 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
         )}
       </div>
 
-      {/* The active queue's table, fed the filtered rows. Three empty states:
-          the queue itself is empty; the server status window is empty (the
-          default PENDING window shows no chip, so name the status instead of
-          blaming "filters"); or the client facets emptied a non-empty page. */}
+      {/* The active queue's table, fed the filtered rows. Empty states, most
+          specific first: client type/date facets emptied a non-empty page; a
+          whole-queue search found nothing (statusCounts are q-scoped then);
+          the server status window is empty; or the queue itself is empty. */}
       {filtered.length === 0 ? (
         <EmptyState
           icon={TabEmptyIcon}
           title={
-            statusCounts.ALL === 0
-              ? "No requests in this queue"
-              : total === 0
-                ? `No ${STATUS_LABEL[serverStatus].toLowerCase()} requests`
-                : "No matching requests"
+            total > 0
+              ? "No matching requests"
+              : serverQ
+                ? "No matching requests"
+                : statusCounts.ALL === 0
+                  ? "No requests in this queue"
+                  : `No ${STATUS_LABEL[serverStatus].toLowerCase()} requests`
           }
           description={
-            statusCounts.ALL === 0
-              ? "Proposed changes appear here for an approver to review and approve."
-              : total === 0
-                ? "Nothing in this queue has that status. Pick another status segment to see the rest."
-                : "No rows on this page match the current filters — search, type, and date apply only to the fetched page, not the whole queue. Adjust or clear them, or page through the queue."
+            total > 0
+              ? "No rows on this page match the type/date filters — they apply only to the fetched page. Adjust or clear them, or page through the queue."
+              : serverQ
+                ? statusCounts.ALL === 0
+                  ? "Nothing in this queue matches your search (it covers every page and status of this queue)."
+                  : `No ${STATUS_LABEL[serverStatus].toLowerCase()} requests match your search — try another status segment.`
+                : statusCounts.ALL === 0
+                  ? "Proposed changes appear here for an approver to review and approve."
+                  : "Nothing in this queue has that status. Pick another status segment to see the rest."
           }
         />
       ) : (

@@ -9,11 +9,20 @@ import {
   APPROVALS_PAGE_SIZE,
   pageCount,
   readPage,
+  readServerQ,
   readServerStatus,
   serverStatusParam,
   statusCountsWithAll,
   windowOffset,
 } from "./approvals-window";
+
+describe("readServerQ", () => {
+  it("trims the query and defaults to empty", () => {
+    expect(readServerQ("  alpha ")).toBe("alpha");
+    expect(readServerQ(undefined)).toBe("");
+    expect(readServerQ("   ")).toBe("");
+  });
+});
 
 describe("readServerStatus", () => {
   it("accepts each lifecycle status and ALL", () => {

@@ -112,6 +112,7 @@ async def p2p_transfer(
     idempotency_key: str,
     sender_principal: object | None = None,
     pin: str | None = None,
+    service_code: str | None = None,
     ip_address: str | None = None,
 ) -> tuple[Transaction, UUID, int]:
     """Execute a peer-to-peer transfer between two users in the same tenant.
@@ -144,6 +145,11 @@ async def p2p_transfer(
         currency: 3-letter ISO 4217 (case-insensitive).
         idempotency_key: Client-supplied unique key (Pay-PRD-0200). Replays of
             the same key return the original transaction.
+        service_code: Optional derived service to transact under (spec §7).
+            Omitted -> plain 'p2p', identical to pre-existing behaviour. When
+            supplied, resolved ONCE up front and used for every downstream
+            permission / pricing / limits / ledger step; `base_transaction_type`
+            on the recorded transaction is always 'p2p' regardless.
 
     Returns:
         (Transaction, recipient_user_id, earned_points). `earned_points`
@@ -164,24 +170,40 @@ async def p2p_transfer(
     """
     await _assert_tenant_exists(session, tenant_id)
 
+    # 0. Resolve the service code ONCE, before any permission/pricing/limits
+    # gate, so every downstream step transacts under the SAME code (spec §7).
+    # Omitted `service_code` resolves to 'p2p' unchanged — today's behaviour
+    # byte for byte. The resolver also enforces the resolution-time policy
+    # intersection (spec §6.2): if 'p2p' is later narrowed, a derived service
+    # tightens with it automatically rather than outliving the restriction.
+    from app.modules.services.service import assert_service_allowed, resolve_service_code
+    from app.shared.utils.user_types import resolve_user_type
+
+    sender_user_type = await resolve_user_type(session, tenant_id, sender_user_id)
+    service_code = await resolve_service_code(
+        session,
+        tenant_id=tenant_id,
+        base_code="p2p",
+        requested_code=service_code,
+        user_type=sender_user_type,
+        channel="mobile",
+    )
+
     # 1. Role check (Pay-PRD-0260 step 1, Pay-PRD-0440/0450/0460).
-    # Sender must hold an active role permitting "p2p". Fails BEFORE any
-    # further work — no lock acquired, no ledger touched.
-    await require_permission(session, sender_user_id, "p2p")
+    # Sender must hold an active role permitting the resolved service. Fails
+    # BEFORE any further work — no lock acquired, no ledger touched.
+    await require_permission(session, sender_user_id, service_code)
 
     # 1a'. Per-service access policy (services.allowed_user_types / _channels).
     # The mobile app hides a service the sender's user_type / channel may not
     # use; enforce the same here so the API rejects exactly what the app hides.
     # p2p has no idempotency fast-path in this service (post_transaction dedups),
     # so this runs among the other pre-ledger gates.
-    from app.modules.services.service import assert_service_allowed
-    from app.shared.utils.user_types import resolve_user_type
-
     await assert_service_allowed(
         session,
         tenant_id=tenant_id,
-        transaction_type="p2p",
-        user_type=await resolve_user_type(session, tenant_id, sender_user_id),
+        transaction_type=service_code,
+        user_type=sender_user_type,
         channel="mobile",
     )
 
@@ -205,7 +227,7 @@ async def p2p_transfer(
     await require_pricing_and_limits(
         session,
         tenant_id=tenant_id,
-        service="p2p",
+        service=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         user_id=sender_user_id,
@@ -263,7 +285,7 @@ async def p2p_transfer(
         session,
         tenant_id=tenant_id,
         user_id=sender_user_id,
-        transaction_type="p2p",
+        transaction_type=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=amount,
@@ -315,7 +337,7 @@ async def p2p_transfer(
         session,
         tenant_id=tenant_id,
         user_id=sender_user_id,
-        transaction_type="p2p",
+        transaction_type=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=amount,
@@ -367,7 +389,10 @@ async def p2p_transfer(
         PostTransactionRequest(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
-            transaction_type="p2p",
+            transaction_type=service_code,
+            # The BASE flow — always 'p2p' regardless of which derived
+            # service (if any) was resolved above (spec §12.1).
+            base_transaction_type="p2p",
             currency=currency.upper(),
             entries=entries,
             initiated_by=sender_user_id,
@@ -380,7 +405,10 @@ async def p2p_transfer(
             # mode gate inside post_transaction writes nothing (safe no-op).
             reward_trigger=RewardTrigger(
                 user_id=sender_user_id,
-                transaction_type="p2p",
+                # The RESOLVED code, so a rule must target the derived service
+                # explicitly (spec §8 precise targeting). Eligibility still
+                # gates on the base — see post_transaction's reward block.
+                transaction_type=service_code,
                 amount=amount,
                 currency=currency,
             ),
@@ -478,6 +506,8 @@ async def fund(
     amount: Decimal,
     currency: str,
     idempotency_key: str,
+    transaction_type: str = "fund",
+    base_transaction_type: str = "fund",
 ) -> Transaction:
     """Internal fund — credit a user's wallet from outside the system.
 
@@ -492,6 +522,14 @@ async def fund(
     Args:
         session: Async DB session.
         tenant_id, user_id, amount, currency, idempotency_key: as P2P.
+        transaction_type: The RESOLVED service code to record (spec §7).
+            Defaults to 'fund' — every existing caller (treasury's admin fund,
+            seeds) keeps posting under plain 'fund' untouched. The partner
+            `external_fund` flow is the only caller that resolves a derived
+            service and passes it here.
+        base_transaction_type: The BASE flow to denormalise onto the
+            transaction (spec §12.1). Always 'fund' regardless of the derived
+            code above — callers should not override this independently.
 
     Returns:
         The posted Transaction.
@@ -525,7 +563,8 @@ async def fund(
         PostTransactionRequest(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
-            transaction_type="fund",
+            transaction_type=transaction_type,
+            base_transaction_type=base_transaction_type,
             currency=currency.upper(),
             entries=[
                 LedgerEntryRequest(

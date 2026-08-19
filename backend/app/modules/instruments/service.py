@@ -31,6 +31,7 @@ from app.shared.models import (
     Instrument,
     User,
 )
+from app.shared.tenant_mode import assert_points_scope_allowed
 
 log = structlog.get_logger(__name__)
 
@@ -82,6 +83,10 @@ async def create_instrument(
 ) -> Instrument:
     """Insert a new instrument and optionally backfill user accounts.
 
+    Rejects a points instrument for a wallet-only tenant (422
+    `points_not_available`, B6.1) — it would resurrect the points surface the
+    tenant's mode excludes.
+
     Args:
         payload: Validated request. When `assign_to_existing_users` is
             true, accounts are created for every existing user *after*
@@ -98,6 +103,15 @@ async def create_instrument(
         the insert (NFR-0250). Always provisions the currency's SYSTEM accounts
         (Epic 28). May add 0..N user Account rows when backfilling.
     """
+    # B6.1: no points programme, no points instrument. Checked on both
+    # dimensions because either one alone would resurrect the points surface.
+    await assert_points_scope_allowed(
+        session,
+        payload.tenant_id,
+        account_type=payload.account_type,
+        currency=payload.code,
+    )
+
     instrument = Instrument(
         tenant_id=payload.tenant_id,
         code=payload.code,

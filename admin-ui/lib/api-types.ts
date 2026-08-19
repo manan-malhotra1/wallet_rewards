@@ -125,6 +125,21 @@ export interface Instrument {
   updated_at: string;
 }
 
+/**
+ * Whether a service satisfies each of the three prerequisites for transacting.
+ *
+ * `false` is conclusive — with no pricing row, no limit row, or no active role
+ * grant, NO caller can transact under this code. `true` only means "configured
+ * at all": pricing and limit rows are scoped by account type / currency / user
+ * type, so one existing does not prove one resolves for every caller. Never
+ * present `true` as "this definitely works".
+ */
+export interface ServiceReadiness {
+  pricing: boolean;
+  limits: boolean;
+  role: boolean;
+}
+
 /** One row in the per-tenant services catalog (Phase 2). */
 export interface Service {
   id: string;
@@ -133,6 +148,22 @@ export interface Service {
   display_name: string;
   description: string | null;
   status: "active" | "disabled";
+  /**
+   * `base` services ship with the platform and are provisioned per tenant —
+   * they are the nine real money flows the backend knows how to execute.
+   * `derived` services are operator-created aliases of one base: their own
+   * name, pricing, limits and access policy, but the base's execution path.
+   */
+  kind: "base" | "derived";
+  /** The base this derives from; `null` on a base service itself. */
+  base_service_code: string | null;
+  /**
+   * Whether a NEW derived service may point at this row. Server-computed from
+   * the backend's service registry — do not re-derive it here. It is not
+   * simply `kind === "base"`: some bases are deliberately non-derivable
+   * (`change_pin`), and that list lives in one place on purpose.
+   */
+  derivable: boolean;
   /**
    * Access policy — who may initiate this service. `null` = unrestricted (all
    * user types); `[]` = restrict to none (operator-only); a list = allow-list.
@@ -143,6 +174,11 @@ export interface Service {
    * unrestricted (all channels); `[]` = restrict to none; a list = allow-list.
    */
   allowed_channels: string[] | null;
+  /**
+   * Config prerequisites, present on the catalog list endpoint and `null`
+   * elsewhere (a create response has none yet, so reporting it would mislead).
+   */
+  readiness: ServiceReadiness | null;
   created_at: string;
   updated_at: string;
 }

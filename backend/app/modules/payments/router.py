@@ -68,6 +68,7 @@ async def post_p2p(
         idempotency_key=idempotency_key,
         sender_principal=user,
         pin=request.pin,
+        service_code=request.service_code,
         ip_address=fastapi_request.client.host if fastapi_request.client else None,
     )
 

@@ -8,7 +8,8 @@
 import { Plus, Ticket } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
-import { getActiveTenantId } from "@/lib/active-tenant";
+import { getActiveTenant } from "@/lib/active-tenant";
+import { tenantHasRewards } from "@/lib/tenant-mode";
 import { listInstruments } from "@/lib/api-endpoints";
 
 import { EmptyState } from "@/components/ui/empty-state";
@@ -21,7 +22,10 @@ import { InstrumentsTable } from "./_components/instruments-table";
 export const dynamic = "force-dynamic";
 
 export default async function InstrumentsPage() {
-  const activeTenantId = await getActiveTenantId();
+  const activeTenant = await getActiveTenant();
+  const activeTenantId = activeTenant?.id ?? null;
+  // Points options only exist for a points programme (B6.1).
+  const pointsAvailable = activeTenant ? tenantHasRewards(activeTenant.business_type) : false;
   if (!activeTenantId) {
     return (
       <div className="p-6">
@@ -50,6 +54,7 @@ export default async function InstrumentsPage() {
         subtitle="The value units (currencies and points) this tenant uses. Powers the currency dropdowns on Limits and Pricing."
         actions={
           <CreateInstrumentDialog
+              pointsAvailable={pointsAvailable}
             tenantId={activeTenantId}
             trigger={
               <button

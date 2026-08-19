@@ -37,6 +37,10 @@ const services = [
     display_name: "Send money",
     description: null,
     status: "active",
+    kind: "base",
+    base_service_code: null,
+    derivable: true,
+    readiness: null,
     allowed_user_types: null,
     allowed_channels: null,
     created_at: "2026-01-01T00:00:00Z",
@@ -64,6 +68,7 @@ async function openDialog() {
   const user = userEvent.setup();
   render(
     <CreateLimitDialog
+      pointsAvailable
       tenantId="tenant-1"
       services={services}
       instruments={instruments}

@@ -31,6 +31,10 @@ async def _make_pending_txn(session: AsyncSession, tenant: Tenant, key: str) -> 
         tenant_id=tenant.id,
         idempotency_key=key,
         transaction_type="airtime_recharge",
+        # NOT NULL since migration 0056 (base/derived services) — this helper
+        # constructs the row directly rather than through post_transaction, so
+        # it must supply the column itself. This is the endpoint's own base.
+        base_transaction_type="airtime_recharge",
         currency="ZAR",
         amount=Decimal("10"),
         status=TXN_STATUS_PENDING,

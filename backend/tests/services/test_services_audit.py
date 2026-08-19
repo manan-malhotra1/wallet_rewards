@@ -11,9 +11,17 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.models import AuditLog, Tenant
+from app.shared.models import AuditLog, Service, Tenant
 
 _ADMIN_SUB = "00000000-0000-4000-8000-000000000001"
+
+
+async def _seed_base(session: AsyncSession, tenant_id: str, code: str) -> Service:
+    """Persist an active base service so a derived create has something to point at."""
+    row = Service(tenant_id=tenant_id, code=code, display_name=code.upper(), kind="base")
+    session.add(row)
+    await session.commit()
+    return row
 
 
 async def _audit_rows(db_session: AsyncSession, *, entity_id: str, action: str) -> list[AuditLog]:
@@ -35,10 +43,16 @@ async def test_create_service_writes_audit(
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify adding a service is recorded in the audit trail"""
+    await _seed_base(db_session, str(test_tenant.id), "airtime_recharge")
     resp = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "code": "airtime", "display_name": "Airtime"},
+        json={
+            "tenant_id": str(test_tenant.id),
+            "code": "airtime",
+            "display_name": "Airtime",
+            "base_service_code": "airtime_recharge",
+        },
     )
     assert resp.status_code == 201, resp.text
     service_id = resp.json()["id"]
@@ -59,10 +73,16 @@ async def test_update_service_writes_before_after_audit(
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify editing a service is recorded in the audit trail with the old and new values"""
+    await _seed_base(db_session, str(test_tenant.id), "airtime_recharge")
     create = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "code": "topup", "display_name": "Top Up"},
+        json={
+            "tenant_id": str(test_tenant.id),
+            "code": "topup",
+            "display_name": "Top Up",
+            "base_service_code": "airtime_recharge",
+        },
     )
     service_id = create.json()["id"]
     resp = await async_client.patch(
@@ -88,10 +108,16 @@ async def test_soft_delete_service_writes_audit(
     admin_auth_header: dict[str, str],
 ) -> None:
     """Verify deleting a service is recorded in the audit trail"""
+    await _seed_base(db_session, str(test_tenant.id), "airtime_recharge")
     create = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "code": "gonesoon", "display_name": "Gone Soon"},
+        json={
+            "tenant_id": str(test_tenant.id),
+            "code": "gonesoon",
+            "display_name": "Gone Soon",
+            "base_service_code": "airtime_recharge",
+        },
     )
     service_id = create.json()["id"]
     resp = await async_client.delete(

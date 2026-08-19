@@ -72,6 +72,10 @@ class ExternalFundRequest(BaseModel):
     amount: Decimal = Field(gt=Decimal("0"), max_digits=20, decimal_places=6)
     currency: str = Field(min_length=2, max_length=10)
     reason: str | None = Field(default=None, max_length=500)
+    # Optional derived service to transact under (spec §8 — partner keys may
+    # name a derived service). Omitted -> plain 'fund', identical to
+    # pre-existing behaviour.
+    service_code: str | None = Field(default=None, max_length=50)
 
 
 class MerchantCashinRequest(BaseModel):
@@ -92,6 +96,10 @@ class MerchantCashinRequest(BaseModel):
     amount: Decimal = Field(gt=Decimal("0"), max_digits=20, decimal_places=6)
     currency: str = Field(min_length=2, max_length=10)
     reason: str | None = Field(default=None, max_length=500)
+    # Optional derived service to transact under (spec §8 — partner keys may
+    # name a derived service). Omitted -> plain 'merchant_cashin', identical
+    # to pre-existing behaviour.
+    service_code: str | None = Field(default=None, max_length=50)
 
 
 class MerchantCashinResponse(BaseModel):
@@ -123,6 +131,10 @@ class ExternalWithdrawRequest(BaseModel):
     withdraw_all: bool = False
     currency: str = Field(min_length=2, max_length=10)
     reason: str | None = Field(default=None, max_length=500)
+    # Optional derived service to transact under (spec §8 — partner keys may
+    # name a derived service). Omitted -> plain 'withdraw', identical to
+    # pre-existing behaviour.
+    service_code: str | None = Field(default=None, max_length=50)
 
     @model_validator(mode="after")
     def _amount_xor_withdraw_all(self) -> Self:

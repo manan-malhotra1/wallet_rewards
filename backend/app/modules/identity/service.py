@@ -50,6 +50,7 @@ from app.modules.identity.schemas import (
     SessionTokenResponse,
     UserProfileIn,
 )
+from app.modules.roles.service import assign_default_role
 from app.shared.exceptions import (
     AccountLocked,
     AccountSuspended,
@@ -374,6 +375,11 @@ async def create_user(
     session.add(user)
     # Flush to populate user.id before we insert identifiers that reference it.
     await session.flush()
+
+    # Give the user their tenant's default role for this user_type. Without it
+    # they hold no role at all, and `has_permission` denies by default
+    # (Pay-PRD-0440) — a wallet that can never send money.
+    await assign_default_role(session, user)
 
     for ident in request.identifiers:
         # Normalise BEFORE persistence so the canonical form is what hits
@@ -1285,6 +1291,7 @@ async def _build_recent_txns_payload(
                 "id": t.id,
                 "reference": t.reference,
                 "transaction_type": t.transaction_type,
+                "base_transaction_type": t.base_transaction_type,
                 "status": t.status,
                 "amount": str(t.amount),
                 "fee_amount": fee_out,

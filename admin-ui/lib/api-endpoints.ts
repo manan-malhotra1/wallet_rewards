@@ -139,8 +139,16 @@ export interface CreateServicePayload {
   display_name: string;
   description?: string;
   /**
+   * Required: this endpoint only creates DERIVED services. Base services ship
+   * with the platform, so there is no "create a base" path to omit this for.
+   */
+  base_service_code: string;
+  /**
    * Access policy on create. `null` (or omitted) = unrestricted; `[]` =
    * restrict to none; a list = allow-list. See the `Service` type.
+   *
+   * Narrowing-only: the backend rejects (422 `policy_wider_than_base`) any
+   * value that permits a user_type or channel the base itself excludes.
    */
   allowed_user_types?: string[] | null;
   allowed_channels?: string[] | null;

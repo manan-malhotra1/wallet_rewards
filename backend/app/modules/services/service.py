@@ -20,14 +20,246 @@ from app.modules.services.schemas import (
     ServiceUpdateRequest,
 )
 from app.shared.exceptions import (
+    AppHTTPException,
     ServiceCodeAlreadyExists,
     ServiceNotAllowedForUserType,
     ServiceNotAllowedOnChannel,
     ServiceNotFound,
 )
-from app.shared.models import SERVICE_STATUS_ACTIVE, Service
+from app.shared.models import (
+    ROLE_STATUS_ACTIVE,
+    SERVICE_STATUS_ACTIVE,
+    LimitConfig,
+    PricingConfig,
+    Role,
+    RolePermission,
+    Service,
+)
+from app.shared.services_registry import (
+    BASE_SERVICE_CODES,
+    DERIVABLE_BASE_CODES,
+    ROLE_ENFORCED_BASE_CODES,
+)
 
 log = structlog.get_logger(__name__)
+
+
+def _is_narrower_or_equal(derived: list[str] | None, base: list[str] | None) -> bool:
+    """Return whether a derived allow-list never grants what the base excludes.
+
+    Implements the "narrowing-only" rule of spec §6.2: NULL/empty on the base
+    means "unrestricted on this dimension" and contributes no restriction, so
+    any derived value is fine. NULL/empty on the derived side means "no
+    restriction requested", which is only valid when the base is itself
+    unrestricted — otherwise the derived service would be wider than its base.
+
+    Args:
+        derived: The candidate service's allow-list for one dimension.
+        base: The base service's allow-list for the same dimension.
+
+    Returns:
+        True if `derived` is a subset of `base` (or `base` is unrestricted).
+    """
+    if not base:
+        return True
+    if not derived:
+        return False
+    return set(derived) <= set(base)
+
+
+async def _assert_valid_derived_payload(
+    session: AsyncSession, payload: ServiceCreateRequest
+) -> None:
+    """Reject a derived-service create that could never work.
+
+    Four failure modes, each of which would otherwise produce config that
+    silently never executes or resolves permissions incorrectly (spec §6,
+    §6.2):
+      - the new code shadows a platform code, which would make the derived
+        row ambiguous with the base flow itself;
+      - the named base isn't derivable (non-financial, or not implemented);
+      - the base isn't provisioned live in this tenant;
+      - the derived access policy allows a user type or channel its base
+        excludes (checked at save time; resolution also enforces the
+        intersection as belt-and-braces — see `resolve_service_code`).
+
+    Args:
+        session: Async DB session (read-only here).
+        payload: The validated create request.
+
+    Raises:
+        AppHTTPException: 422 `service_code_reserved`, `invalid_base_service`,
+            or `policy_wider_than_base`.
+    """
+    if payload.code in BASE_SERVICE_CODES:
+        raise AppHTTPException(
+            422,
+            "service_code_reserved",
+            f"'{payload.code}' is a platform service code and cannot be reused.",
+        )
+    if payload.base_service_code not in DERIVABLE_BASE_CODES:
+        raise AppHTTPException(
+            422,
+            "invalid_base_service",
+            f"'{payload.base_service_code}' is not a derivable platform service. "
+            f"Derivable: {', '.join(sorted(DERIVABLE_BASE_CODES))}.",
+        )
+    base = (
+        await session.execute(
+            select(Service).where(
+                Service.tenant_id == payload.tenant_id,
+                Service.code == payload.base_service_code,
+                Service.kind == "base",
+                Service.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if base is None:
+        raise AppHTTPException(
+            422,
+            "invalid_base_service",
+            f"Base service '{payload.base_service_code}' is not provisioned for this tenant.",
+        )
+    if not _is_narrower_or_equal(
+        payload.allowed_user_types, base.allowed_user_types
+    ) or not _is_narrower_or_equal(payload.allowed_channels, base.allowed_channels):
+        raise AppHTTPException(
+            422,
+            "policy_wider_than_base",
+            "This service's access policy cannot allow a user type or channel "
+            "that its base service excludes.",
+        )
+
+
+def _intersect_allow_lists(derived: list[str] | None, base: list[str] | None) -> list[str] | None:
+    """Return the enforceable allow-list for one policy dimension.
+
+    Companion to `_is_narrower_or_equal` (which only answers "is this valid
+    to save"): this computes the actual effective set to enforce AT
+    RESOLUTION TIME. NULL/empty on either side means "unrestricted on this
+    dimension" (spec §6.2) and contributes no restriction; when both sides
+    restrict, the effective set is their intersection — belt-and-braces so a
+    base narrowed AFTER a derived service was saved still tightens it.
+
+    Args:
+        derived: The derived service's allow-list for one dimension.
+        base: The base service's CURRENT allow-list for the same dimension.
+
+    Returns:
+        None/empty when unrestricted on this dimension; otherwise the
+        intersected allow-list.
+    """
+    if not base:
+        return derived
+    if not derived:
+        return base
+    return [value for value in derived if value in base]
+
+
+async def resolve_service_code(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    base_code: str,
+    requested_code: str | None,
+    user_type: str | None = None,
+    channel: str | None = None,
+) -> str:
+    """Resolve the service code a money flow should transact under.
+
+    Every money endpoint calls this exactly once, before any ledger work, so
+    all flows behave identically (spec §7). The returned code drives
+    permission, pricing, limits and the recorded `transaction_type`; the
+    caller passes `base_code` as `base_transaction_type` regardless.
+
+    When `user_type` and/or `channel` are supplied and the resolved code is a
+    derived service, also enforces the resolution-time narrowing rule (spec
+    §6.2): the effective policy is the INTERSECTION of the base's CURRENT
+    allow-lists and the derived row's own, not just the derived row's own
+    snapshot from save time. This is belt-and-braces on top of the
+    save-time-only check in `_assert_valid_derived_payload` — if a base is
+    later narrowed, every derived service tightens with it automatically
+    instead of silently outliving the restriction. Reuses the same
+    `ServiceNotAllowedForUserType` / `ServiceNotAllowedOnChannel` errors
+    `assert_service_allowed` raises, so callers handle one pair of exception
+    types regardless of which check caught the denial.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope.
+        base_code: The endpoint's own platform code, e.g. 'p2p'.
+        requested_code: The client-supplied `service_code`, or None.
+        user_type: The acting user's type, for the WHO intersection check.
+            None skips the WHO dimension (matches `assert_service_allowed`).
+        channel: The initiating channel, for the HOW intersection check.
+            None skips the HOW dimension.
+
+    Returns:
+        `base_code` when nothing was requested, or an explicit request for
+        the base itself; otherwise the resolved derived code.
+
+    Raises:
+        ServiceNotFound: 404 — no live row for `(tenant_id, requested_code)`.
+        AppHTTPException: 409 `service_disabled`; 422 `service_code_mismatch`
+            when the code is unrelated to `base_code`.
+        ServiceNotAllowedForUserType: 403 — resolution-time WHO intersection.
+        ServiceNotAllowedOnChannel: 403 — resolution-time HOW intersection.
+    """
+    if requested_code is None or requested_code == base_code:
+        return base_code
+
+    row = (
+        await session.execute(
+            select(Service).where(
+                Service.tenant_id == tenant_id,
+                Service.code == requested_code,
+                Service.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise ServiceNotFound()
+    if row.status != SERVICE_STATUS_ACTIVE:
+        raise AppHTTPException(409, "service_disabled", f"Service '{requested_code}' is disabled.")
+    # A derived service may only be invoked through its own base's endpoint —
+    # otherwise a cash-out derivative could be driven by the P2P flow.
+    if row.kind != "derived" or row.base_service_code != base_code:
+        raise AppHTTPException(
+            422,
+            "service_code_mismatch",
+            f"Service '{requested_code}' cannot be used for '{base_code}'.",
+        )
+
+    if user_type is not None or channel is not None:
+        base_row = (
+            await session.execute(
+                select(Service).where(
+                    Service.tenant_id == tenant_id,
+                    Service.code == base_code,
+                    Service.kind == "base",
+                    Service.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        # No live base row is a pre-existing dead-config state the registry
+        # guard should have already prevented; nothing to intersect against.
+        if base_row is not None:
+            effective_user_types = _intersect_allow_lists(
+                row.allowed_user_types, base_row.allowed_user_types
+            )
+            effective_channels = _intersect_allow_lists(
+                row.allowed_channels, base_row.allowed_channels
+            )
+            if (
+                user_type is not None
+                and effective_user_types
+                and user_type not in effective_user_types
+            ):
+                raise ServiceNotAllowedForUserType()
+            if channel is not None and effective_channels and channel not in effective_channels:
+                raise ServiceNotAllowedOnChannel()
+
+    return requested_code
 
 
 async def assert_service_allowed(
@@ -125,6 +357,141 @@ async def list_services(
     return list(result.scalars().all())
 
 
+async def list_services_with_readiness(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    status: str | None = None,
+) -> list[tuple[Service, dict[str, bool]]]:
+    """List the tenant's services, each paired with its readiness flags.
+
+    Wraps `list_services` + `compute_service_readiness` so the catalog endpoint
+    stays a single service call (routers hold no logic). Readiness is computed
+    for the whole page in three grouped queries, not per row.
+
+    Args:
+        status: Optional 'active' / 'disabled' filter; None returns both.
+
+    Returns:
+        `[(service, {"pricing": bool, "limits": bool, "role": bool}), ...]` in
+        the same order as `list_services`.
+    """
+    services = await list_services(session, tenant_id, status=status)
+    readiness = await compute_service_readiness(session, tenant_id, services)
+    return [(s, readiness[s.code]) for s in services]
+
+
+async def compute_service_readiness(
+    session: AsyncSession, tenant_id: uuid.UUID, services: list[Service]
+) -> dict[str, dict[str, bool]]:
+    """Report which transacting prerequisites each service satisfies.
+
+    A service row on its own moves no money. A transaction under its code also
+    needs a pricing config and a limit config (both fail closed per invariant
+    #12) and, for the flows that enforce it, a role granting the code.
+    Operators otherwise meet each gap one at a time as a 422 or a
+    `NotAuthorised` on the first real transaction.
+
+    Two rules keep the `role` flag honest, and both were bugs when this
+    reported a bare grant lookup:
+
+    - Only the five flows in `ROLE_ENFORCED_BASE_CODES` call
+      `require_permission`. `fund` / `withdraw` are admin-initiated,
+      `merchant_cashin` authenticates by API key, and `change_pin` is not
+      role-gated — reporting a missing grant for those is a false alarm, so
+      they report True (nothing to satisfy).
+    - A derived service INHERITS its base's grants (story B4.6), so a variant
+      whose base is granted is ready even with no row of its own. An explicit
+      `permitted=false` on the variant still blocks, mirroring
+      `roles.has_permission` exactly — if these two disagreed, the screen would
+      contradict what the money path does.
+
+    IMPORTANT — this is a "configured at all" check, deliberately weaker than
+    "will resolve for a given caller". Pricing and limit rows are scoped by
+    account_type / currency / user_type (and pricing also by amount band), so
+    the presence of SOME row does not guarantee one resolves for every user.
+    Absence, on the other hand, is conclusive: no row means no caller can ever
+    transact. So a false here is a definite problem, while a true means "not
+    obviously broken" — the UI must not promise more than that.
+
+    Args:
+        services: The rows to report on (typically the tenant's whole catalog).
+            Passed as rows, not codes, because the role rule needs each
+            service's `kind` and `base_service_code`.
+
+    Returns:
+        `{code: {"pricing": bool, "limits": bool, "role": bool}}`, one entry
+        per service.
+
+    Side effects:
+        None — three grouped read-only queries, no per-service round trip.
+    """
+    if not services:
+        return {}
+
+    codes = [s.code for s in services]
+    # A variant's base may be absent from `services` (soft-deleted, or excluded
+    # by a status filter) yet still carry the grant that the variant inherits,
+    # so look base codes up explicitly rather than relying on the page's rows.
+    lookup_codes = set(codes) | {s.base_service_code for s in services if s.base_service_code}
+
+    async def _codes_present(stmt) -> set[str]:  # type: ignore[no-untyped-def]
+        result = await session.execute(stmt)
+        return set(result.scalars().all())
+
+    priced = await _codes_present(
+        select(PricingConfig.transaction_type)
+        .where(
+            PricingConfig.tenant_id == tenant_id,
+            PricingConfig.transaction_type.in_(codes),
+        )
+        .distinct()
+    )
+    limited = await _codes_present(
+        select(LimitConfig.transaction_type)
+        .where(
+            LimitConfig.tenant_id == tenant_id,
+            LimitConfig.transaction_type.in_(codes),
+        )
+        .distinct()
+    )
+    # Mirrors `roles.has_permission`: only an ACTIVE role's row counts, so an
+    # inactive role's grant must not read as ready. Both flags are needed
+    # because an explicit denial is not the same as no row at all.
+    permission_rows = await session.execute(
+        select(RolePermission.transaction_type, RolePermission.permitted)
+        .join(Role, Role.id == RolePermission.role_id)
+        .where(
+            Role.tenant_id == tenant_id,
+            Role.status == ROLE_STATUS_ACTIVE,
+            RolePermission.transaction_type.in_(lookup_codes),
+        )
+    )
+    granted: set[str] = set()
+    denied: set[str] = set()
+    for code, permitted in permission_rows.all():
+        (granted if permitted else denied).add(code)
+
+    def _role_ready(service: Service) -> bool:
+        """Whether the role prerequisite is satisfied, or does not apply."""
+        base_code = service.base_service_code or service.code
+        if base_code not in ROLE_ENFORCED_BASE_CODES:
+            return True
+        if service.code in granted:
+            return True
+        if service.code in denied:
+            return False
+        return base_code in granted
+
+    return {
+        service.code: {
+            "pricing": service.code in priced,
+            "limits": service.code in limited,
+            "role": _role_ready(service),
+        }
+        for service in services
+    }
+
+
 async def get_service_by_id(
     session: AsyncSession, tenant_id: uuid.UUID, service_id: uuid.UUID
 ) -> Service:
@@ -152,7 +519,13 @@ async def create_service(
     admin: AdminPrincipal,
     ip_address: str | None = None,
 ) -> Service:
-    """Insert a new catalog row.
+    """Insert a new derived-service catalog row.
+
+    Only derived services can be created here (spec §6) — base services ship
+    with the platform and are provisioned per tenant elsewhere. `kind` is
+    always 'derived'; `_assert_valid_derived_payload` has already confirmed
+    the base is derivable, live in this tenant, and that the new code doesn't
+    shadow a platform code or widen the base's access policy.
 
     Args:
         session: Async DB session.
@@ -161,17 +534,22 @@ async def create_service(
         ip_address: Caller IP (audit context).
 
     Raises:
+        AppHTTPException: 422 `service_code_reserved`, `invalid_base_service`,
+            or `policy_wider_than_base` (from `_assert_valid_derived_payload`).
         ServiceCodeAlreadyExists: another live row with the same code exists.
 
     Side effects:
         Writes a `service.created` audit_log row, committed atomically with the
         insert (NFR-0250).
     """
+    await _assert_valid_derived_payload(session, payload)
     service = Service(
         tenant_id=payload.tenant_id,
         code=payload.code,
         display_name=payload.display_name,
         description=payload.description,
+        kind="derived",
+        base_service_code=payload.base_service_code,
         # NULL/omitted stays unrestricted; an empty list persists as-is.
         allowed_user_types=payload.allowed_user_types,
         allowed_channels=payload.allowed_channels,
@@ -195,6 +573,8 @@ async def create_service(
             "code": service.code,
             "display_name": service.display_name,
             "status": service.status,
+            "kind": service.kind,
+            "base_service_code": service.base_service_code,
             "allowed_user_types": service.allowed_user_types,
             "allowed_channels": service.allowed_channels,
         },
@@ -292,11 +672,23 @@ async def soft_delete_service(
     (callers should treat that as a 404 rather than a 409, mirroring the
     way `get_service_by_id` handles soft-deleted rows).
 
+    Raises:
+        AppHTTPException: 409 `base_service_protected` — base services ship
+            with the platform and are undeletable (spec §6). Editing a base's
+            status/display_name/policy stays allowed; only deletion is
+            blocked, so `update_service` does NOT carry this guard.
+
     Side effects:
         Writes a `service.deleted` audit_log row (before-state snapshot),
         committed atomically with the soft-delete (NFR-0250).
     """
     service = await get_service_by_id(session, tenant_id, service_id)
+    if service.kind == "base":
+        raise AppHTTPException(
+            409,
+            "base_service_protected",
+            "Base services ship with the platform and cannot be deleted.",
+        )
     before = {
         "code": service.code,
         "display_name": service.display_name,

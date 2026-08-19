@@ -21,6 +21,17 @@ export type TransactionDirection = 'in' | 'out';
 export interface WalletTransaction {
   id: string;
   transaction_type: string;
+  /**
+   * The BASE flow this transaction belongs to. Equals `transaction_type`
+   * unless it was made on a derived service (e.g. `transaction_type:
+   * "p2p_diaspora"`, `base_transaction_type: "p2p"`).
+   *
+   * ALWAYS compare against this — never against `transaction_type` — when
+   * deciding behaviour (filters, icons, direction labels). `transaction_type`
+   * is an open set: an operator can add a derived service at any time, and
+   * code that equality-checks it silently stops matching.
+   */
+  base_transaction_type: string;
   status: string;
   /** Always positive — direction is on the `direction` field. */
   amount: string;
@@ -65,6 +76,12 @@ export async function getMyWallet(): Promise<Wallet> {
 export interface MyService {
   /** Stable service code, e.g. "p2p", "airtime_recharge", "cash_in". */
   code: string;
+  /**
+   * The base service this tile derives from, or null when it IS a base
+   * service. Lets the app choose an icon/behaviour by base without knowing
+   * every derived code an operator might create.
+   */
+  base_service_code: string | null;
   /** Human label from the backend, used as a tile fallback. */
   display_name: string;
   /** Optional longer description; null when none configured. */
@@ -88,13 +105,17 @@ export async function getMyServices(): Promise<MyService[]> {
  * there's no user counterparty we fall back to a category label.
  */
 export function transactionTitle(t: WalletTransaction): string {
-  if (t.transaction_type === 'p2p') {
+  // Base flow, not exact code — a derived P2P must still read as a transfer.
+  if (t.base_transaction_type === 'p2p') {
     const name = t.counterparty_name ?? 'Sasai user';
     return t.direction === 'in' ? `Received from ${name}` : `Sent to ${name}`;
   }
-  if (t.transaction_type === 'top_up') return 'Top up';
-  if (t.transaction_type === 'reward_issuance') return 'Reward earned';
-  if (t.transaction_type === 'redemption') return 'Redemption';
+  if (t.base_transaction_type === 'top_up') return 'Top up';
+  if (t.base_transaction_type === 'reward_issuance') return 'Reward earned';
+  if (t.base_transaction_type === 'redemption') return 'Redemption';
+  // Fall back to the EXACT code, not the base: if an operator created a derived
+  // service we have no label for, showing "cashout atm" is more honest than
+  // showing "cashout" and hiding which product the user actually used.
   return t.transaction_type.replace(/_/g, ' ');
 }
 
@@ -115,10 +136,12 @@ export function transactionRef(t: WalletTransaction): string {
 export function activityCategory(
   t: WalletTransaction,
 ): 'received' | 'sent' | 'bill' | 'reward' | 'reward-redeem' | 'generic' {
-  if (t.transaction_type === 'reward_issuance') return 'reward';
-  if (t.transaction_type === 'redemption') return 'reward-redeem';
-  if (t.transaction_type === 'top_up') return 'received';
-  if (t.transaction_type === 'p2p') {
+  // Base flow, not exact code — a derived P2P must keep its sent/received
+  // tint rather than falling through to the generic colour.
+  if (t.base_transaction_type === 'reward_issuance') return 'reward';
+  if (t.base_transaction_type === 'redemption') return 'reward-redeem';
+  if (t.base_transaction_type === 'top_up') return 'received';
+  if (t.base_transaction_type === 'p2p') {
     return t.direction === 'in' ? 'received' : 'sent';
   }
   return 'generic';

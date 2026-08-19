@@ -253,6 +253,13 @@ async def external_fund(
 ) -> FundUserResponse:
     """Credit a user's wallet on behalf of a partner (reuses `fund`).
 
+    `request.service_code` is an optional derived service to transact under
+    (spec §7, §8 — a partner key may name a derived service). Omitted -> plain
+    'fund', identical to pre-existing behaviour. When supplied, resolved ONCE
+    up front and used for every downstream permission / pricing / limits /
+    ledger step; `base_transaction_type` on the recorded transaction is always
+    'fund' regardless.
+
     Raises:
         UserNotFound (404): identifier doesn't resolve in the key's tenant.
         AccountNotFound (404): the user has no financial_wallet for the currency.
@@ -267,7 +274,10 @@ async def external_fund(
     if existing is not None:
         # Bind the key to the operation: a key reused for a different op (or a
         # conflicting body) must not silently return a mismatched txn (S4 M-03).
-        if existing.transaction_type != "fund":
+        # Compared against base_transaction_type (not transaction_type) so a
+        # replay of a DERIVED fund service still matches — its transaction_type
+        # is the derived code, but its base is always 'fund' (spec §12.1).
+        if existing.base_transaction_type != "fund":
             raise DuplicateIdempotencyKey()
         balance, _ = await derive_balance(session, wallet.id)
         return FundUserResponse(
@@ -278,16 +288,30 @@ async def external_fund(
             new_balance=balance,
         )
 
-    # Per-service access policy — CHANNEL dimension only. A partner fund has no
-    # single acting wallet-user type (the partner funds an arbitrary user), so
-    # user_type=None SKIPS the WHO check and enforces only that `fund` is allowed
-    # on the "api" channel. After the idempotency fast-path, before any ledger work.
-    from app.modules.services.service import assert_service_allowed
+    # Resolve the service code ONCE, before any permission/pricing/limits gate,
+    # so every downstream step transacts under the SAME code (spec §7, §8 — a
+    # partner key may name a derived service). A partner fund has no single
+    # acting wallet-user type (the partner funds an arbitrary user), so
+    # user_type=None skips the WHO dimension for both resolution and the
+    # channel policy check below.
+    from app.modules.services.service import assert_service_allowed, resolve_service_code
 
+    service_code = await resolve_service_code(
+        session,
+        tenant_id=tenant_id,
+        base_code="fund",
+        requested_code=request.service_code,
+        user_type=None,
+        channel="api",
+    )
+
+    # Per-service access policy — CHANNEL dimension only. user_type=None SKIPS
+    # the WHO check and enforces only that the resolved service is allowed on
+    # the "api" channel. After the idempotency fast-path, before any ledger work.
     await assert_service_allowed(
         session,
         tenant_id=tenant_id,
-        transaction_type="fund",
+        transaction_type=service_code,
         user_type=None,
         channel="api",
     )
@@ -302,7 +326,7 @@ async def external_fund(
     await require_pricing_and_limits(
         session,
         tenant_id=tenant_id,
-        service="fund",
+        service=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         user_id=user_id,
@@ -320,7 +344,7 @@ async def external_fund(
         session,
         tenant_id=tenant_id,
         user_id=user_id,
-        transaction_type="fund",
+        transaction_type=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=request.amount,
@@ -333,6 +357,10 @@ async def external_fund(
             amount=request.amount,
             currency=currency,
             idempotency_key=idempotency_key,
+            transaction_type=service_code,
+            # The BASE flow — always 'fund' regardless of which derived
+            # service (if any) was resolved above (spec §12.1).
+            base_transaction_type="fund",
         )
     except InsufficientFloat as exc:
         # Don't leak the operator's liquidity state / "top up from the bank"
@@ -377,6 +405,13 @@ async def external_withdraw(
     `withdraw_all` pulls the full available balance. Type-aware `withdraw` +
     wallet-send caps are enforced on the resolved amount.
 
+    `request.service_code` is an optional derived service to transact under
+    (spec §7, §8 — a partner key may name a derived service). Omitted -> plain
+    'withdraw', identical to pre-existing behaviour. When supplied, resolved
+    ONCE up front and used for every downstream permission / pricing / limits /
+    ledger step; `base_transaction_type` on the recorded transaction is always
+    'withdraw' regardless.
+
     Raises:
         UserNotFound / AccountNotFound (404); NothingToWithdraw (409);
         InsufficientFunds (409); AmountAboveMax etc. (422/429) when a limit trips.
@@ -389,8 +424,10 @@ async def external_withdraw(
 
     existing = await _find_by_idempotency(session, tenant_id, idempotency_key)
     if existing is not None:
-        # Bind the key to the operation (S4 M-03).
-        if existing.transaction_type != "withdraw":
+        # Bind the key to the operation (S4 M-03). Compared against
+        # base_transaction_type so a replay of a DERIVED withdraw service
+        # still matches — see external_fund for the same reasoning.
+        if existing.base_transaction_type != "withdraw":
             raise DuplicateIdempotencyKey()
         balance, _ = await derive_balance(session, wallet.id)
         return WithdrawFromUserResponse(
@@ -401,15 +438,28 @@ async def external_withdraw(
             new_balance=balance,
         )
 
-    # Per-service access policy — CHANNEL dimension only (see external_fund).
-    # user_type=None enforces just that `withdraw` is allowed on the "api"
-    # channel. After the idempotency fast-path, before any ledger work.
-    from app.modules.services.service import assert_service_allowed
+    # Resolve the service code ONCE, before any permission/pricing/limits gate
+    # (spec §7, §8). A partner withdraw has no single acting wallet-user type,
+    # so user_type=None skips the WHO dimension for both resolution and the
+    # channel policy check below.
+    from app.modules.services.service import assert_service_allowed, resolve_service_code
 
+    service_code = await resolve_service_code(
+        session,
+        tenant_id=tenant_id,
+        base_code="withdraw",
+        requested_code=request.service_code,
+        user_type=None,
+        channel="api",
+    )
+
+    # Per-service access policy — CHANNEL dimension only (see external_fund).
+    # user_type=None enforces just that the resolved service is allowed on the
+    # "api" channel. After the idempotency fast-path, before any ledger work.
     await assert_service_allowed(
         session,
         tenant_id=tenant_id,
-        transaction_type="withdraw",
+        transaction_type=service_code,
         user_type=None,
         channel="api",
     )
@@ -422,7 +472,7 @@ async def external_withdraw(
     await require_pricing_and_limits(
         session,
         tenant_id=tenant_id,
-        service="withdraw",
+        service=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         user_id=user_id,
@@ -444,7 +494,7 @@ async def external_withdraw(
         session,
         tenant_id=tenant_id,
         user_id=user_id,
-        transaction_type="withdraw",
+        transaction_type=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=final_amount,
@@ -461,6 +511,10 @@ async def external_withdraw(
         amount=final_amount,
         currency=currency,
         idempotency_key=idempotency_key,
+        transaction_type=service_code,
+        # The BASE flow — always 'withdraw' regardless of which derived
+        # service (if any) was resolved above (spec §12.1).
+        base_transaction_type="withdraw",
     )
     record_audit_for_system(
         session,
@@ -546,6 +600,13 @@ async def merchant_cashin(
     `Idempotency-Key` is the ledger transaction key, so a retry returns the
     original result without double-moving money.
 
+    `request.service_code` is an optional derived service to transact under
+    (spec §7, §8 — a partner key may name a derived service). Omitted -> plain
+    'merchant_cashin', identical to pre-existing behaviour. When supplied,
+    resolved ONCE up front and used for every downstream permission / pricing /
+    limits / ledger step; `base_transaction_type` on the recorded transaction
+    is always 'merchant_cashin' regardless.
+
     Raises:
         NotAMerchantKey (403): the key isn't bound to a merchant.
         UserNotFound (404): the consumer identifier doesn't resolve in the tenant.
@@ -579,8 +640,10 @@ async def merchant_cashin(
     existing = await _find_by_idempotency(session, tenant_id, idempotency_key)
     if existing is not None:
         # Bind the key to the operation (S4 M-03): a key reused for a different
-        # op must not silently return a mismatched txn.
-        if existing.transaction_type != MERCHANT_CASHIN_SERVICE_CODE:
+        # op must not silently return a mismatched txn. Compared against
+        # base_transaction_type so a replay of a DERIVED merchant_cashin
+        # service still matches — see external_fund for the same reasoning.
+        if existing.base_transaction_type != MERCHANT_CASHIN_SERVICE_CODE:
             raise DuplicateIdempotencyKey()
         return await _build_response(
             session,
@@ -593,18 +656,30 @@ async def merchant_cashin(
             currency=str(existing.currency),
         )
 
-    # Per-service access policy, resolved on the MERCHANT's user_type (the
-    # initiator) with the "api" channel. Both dimensions are enforced here: the
-    # key is merchant-bound, so the acting wallet-user type IS known. After the
-    # idempotency fast-path, before any ledger work.
-    from app.modules.services.service import assert_service_allowed
+    # Resolve the service code ONCE, before any permission/pricing/limits gate
+    # (spec §7, §8), on the MERCHANT's user_type (the initiator) — the key is
+    # merchant-bound, so the acting wallet-user type IS known.
+    from app.modules.services.service import assert_service_allowed, resolve_service_code
     from app.shared.utils.user_types import resolve_user_type
 
+    merchant_user_type = await resolve_user_type(session, tenant_id, merchant_user_id)
+    service_code = await resolve_service_code(
+        session,
+        tenant_id=tenant_id,
+        base_code=MERCHANT_CASHIN_SERVICE_CODE,
+        requested_code=request.service_code,
+        user_type=merchant_user_type,
+        channel="api",
+    )
+
+    # Per-service access policy, resolved on the MERCHANT's user_type (the
+    # initiator) with the "api" channel. Both dimensions are enforced here.
+    # After the idempotency fast-path, before any ledger work.
     await assert_service_allowed(
         session,
         tenant_id=tenant_id,
-        transaction_type=MERCHANT_CASHIN_SERVICE_CODE,
-        user_type=await resolve_user_type(session, tenant_id, merchant_user_id),
+        transaction_type=service_code,
+        user_type=merchant_user_type,
         channel="api",
     )
 
@@ -616,7 +691,7 @@ async def merchant_cashin(
     await require_pricing_and_limits(
         session,
         tenant_id=tenant_id,
-        service=MERCHANT_CASHIN_SERVICE_CODE,
+        service=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         user_id=merchant_user_id,
@@ -627,7 +702,7 @@ async def merchant_cashin(
         session,
         tenant_id=tenant_id,
         user_id=merchant_user_id,
-        transaction_type=MERCHANT_CASHIN_SERVICE_CODE,
+        transaction_type=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=request.amount,
@@ -647,7 +722,7 @@ async def merchant_cashin(
         session,
         tenant_id=tenant_id,
         user_id=merchant_user_id,
-        transaction_type=MERCHANT_CASHIN_SERVICE_CODE,
+        transaction_type=service_code,
         account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
         currency=currency,
         amount=request.amount,
@@ -656,7 +731,7 @@ async def merchant_cashin(
         session,
         tenant_id=tenant_id,
         agent_user_id=merchant_user_id,
-        transaction_type=MERCHANT_CASHIN_SERVICE_CODE,
+        transaction_type=service_code,
         currency=currency,
         amount=request.amount,
     )
@@ -719,7 +794,10 @@ async def merchant_cashin(
         PostTransactionRequest(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
-            transaction_type=MERCHANT_CASHIN_SERVICE_CODE,
+            transaction_type=service_code,
+            # The BASE flow — always 'merchant_cashin' regardless of which
+            # derived service (if any) was resolved above (spec §12.1).
+            base_transaction_type=MERCHANT_CASHIN_SERVICE_CODE,
             currency=currency,
             entries=assembled.entries,
             initiated_by=merchant_user_id,

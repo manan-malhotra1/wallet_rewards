@@ -16,7 +16,8 @@ import {
   listServices,
   listWalletLimitConfigs,
 } from "@/lib/api-endpoints";
-import { getActiveTenantId } from "@/lib/active-tenant";
+import { getActiveTenant } from "@/lib/active-tenant";
+import { tenantHasRewards } from "@/lib/tenant-mode";
 import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
 import { changeProposedScopeKeys } from "@/lib/config-scope";
 
@@ -42,7 +43,10 @@ export default async function LimitsPage() {
   const canPropose = session?.user?.roles?.includes("platform-admin") ?? false;
   const currentAdminId = session?.user?.id ?? "";
 
-  const activeTenantId = await getActiveTenantId();
+  const activeTenant = await getActiveTenant();
+  const activeTenantId = activeTenant?.id ?? null;
+  // Points options only exist for a points programme (B6.1).
+  const pointsAvailable = activeTenant ? tenantHasRewards(activeTenant.business_type) : false;
   if (!activeTenantId) {
     return (
       <div className="p-6">
@@ -96,6 +100,7 @@ export default async function LimitsPage() {
         actions={
           canPropose ? (
             <CreateLimitDialog
+              pointsAvailable={pointsAvailable}
               tenantId={activeTenantId}
               services={services}
               instruments={instruments}
@@ -119,6 +124,7 @@ export default async function LimitsPage() {
 
         {!error && (
           <LimitChangesRequested
+              pointsAvailable={pointsAvailable}
             requests={openRequests}
             tenantId={activeTenantId}
             currentAdminId={currentAdminId}
@@ -140,6 +146,7 @@ export default async function LimitsPage() {
             />
           ) : (
             <LimitsTable
+              pointsAvailable={pointsAvailable}
               configs={configs}
               tenantId={activeTenantId}
               services={services}

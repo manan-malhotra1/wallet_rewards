@@ -61,7 +61,7 @@ export function TransactionList({
           >
             <div>
               <div className="font-medium text-[var(--color-fg)]">
-                {transactionTypeLabel(txn.transaction_type)}
+                {transactionTypeLabel(txn.transaction_type, txn.base_transaction_type)}
               </div>
               <div className="text-[11px] text-[var(--color-fg-muted)]">
                 {relativeTime(txn.created_at)} · {txn.status}

@@ -45,6 +45,7 @@ from app.modules.accounts.service import derive_balance  # noqa: E402
 from app.modules.payments.service import fund  # noqa: E402
 from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
 from app.modules.redemption.service import register_provider  # noqa: E402
+from app.modules.roles.service import assign_default_role  # noqa: E402
 from app.modules.segments.criteria import SegmentCriteria  # noqa: E402
 from app.modules.step_up.schemas import STEP_UP_TRANSACTION_TYPES  # noqa: E402
 from app.modules.tenants.service import provision_tenant_defaults  # noqa: E402
@@ -54,15 +55,10 @@ from app.modules.treasury.service import (  # noqa: E402
 )
 from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
-    ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-    ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
-    ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
-    ACCOUNT_TYPE_TAX_COMMISSION,
-    ACCOUNT_TYPE_TAX_SERVICE,
     MERCHANT_CATEGORY_AIRTIME,
     MERCHANT_MODE_SIMULATOR,
     REFERRAL_TRIGGER_SIGNUP,
@@ -77,8 +73,6 @@ from app.shared.models import (  # noqa: E402
     PricingConfig,
     RedemptionProvider,
     ReferralCode,
-    Role,
-    RolePermission,
     Rule,
     Segment,
     SegmentGroup,
@@ -89,7 +83,6 @@ from app.shared.models import (  # noqa: E402
     User,
     UserIdentifier,
     UserProfile,
-    UserRole,
 )
 
 TENANT_NAME = "Sasai-ZA"
@@ -104,6 +97,7 @@ DEFAULT_BRAND_LIGHT_COLOR = "#FFFFFF"  # White
 
 # The merchant_cashin funding merchant (bound to the dev API key below).
 CASHIN_MERCHANT_PHONE = "+27825557001"
+
 
 class UserSeedSpec(TypedDict):
     """One seeded end-user. `user_type` omitted = the model default (consumer)."""
@@ -205,15 +199,11 @@ async def _ensure_referral_code(session: AsyncSession, user: User) -> None:
     """
     from app.modules.identity.service import _create_unique_referral_code
 
-    existing = await session.execute(
-        select(ReferralCode.id).where(ReferralCode.user_id == user.id)
-    )
+    existing = await session.execute(select(ReferralCode.id).where(ReferralCode.user_id == user.id))
     if existing.scalar_one_or_none() is not None:
         return
 
-    code = await _create_unique_referral_code(
-        session, tenant_id=user.tenant_id, user_id=user.id
-    )
+    code = await _create_unique_referral_code(session, tenant_id=user.tenant_id, user_id=user.id)
     await session.commit()
     print(f"    + Referral code {code.code} for user {user.id}")
 
@@ -372,46 +362,6 @@ async def _get_or_create_redemption_provider(
     return provider
 
 
-async def _get_or_create_standard_user_role(session: AsyncSession, tenant: Tenant) -> Role:
-    """Idempotently create a 'standard_user' role granting p2p + fund + redemption.
-
-    Without this, the seeded users can't initiate any transaction — the
-    payments orchestrator's role check (Pay-PRD-0260 step 1) rejects.
-    """
-    result = await session.execute(
-        select(Role).where(Role.tenant_id == tenant.id, Role.name == "standard_user")
-    )
-    role = result.scalar_one_or_none()
-    if role is None:
-        role = Role(
-            tenant_id=tenant.id,
-            name="standard_user",
-            description=(
-                "Default end-user role — grants p2p, fund, redemption, airtime_recharge."
-            ),
-        )
-        session.add(role)
-        await session.commit()
-        await session.refresh(role)
-        print(f"  + Created role: standard_user -> {role.id}")
-    # Permissions are idempotent via the unique (role_id, transaction_type) index.
-    # `cash_in` is granted here so seeded agents can fund customers; in
-    # production a dedicated agent role would carry it (Pricing v2 Epic 21).
-    for txn_type in ("p2p", "fund", "redemption", "airtime_recharge", "cash_in", "cashout"):
-        exists = (
-            await session.execute(
-                select(RolePermission).where(
-                    RolePermission.role_id == role.id,
-                    RolePermission.transaction_type == txn_type,
-                )
-            )
-        ).scalar_one_or_none()
-        if exists is None:
-            session.add(RolePermission(role_id=role.id, transaction_type=txn_type))
-    await session.commit()
-    return role
-
-
 async def _get_or_create_step_up_policy(
     session: AsyncSession,
     tenant: Tenant,
@@ -446,19 +396,6 @@ async def _get_or_create_step_up_policy(
         f"{threshold_amount} {currency} → PIN required"
     )
     return policy
-
-
-async def _assign_role(session: AsyncSession, user: User, role: Role) -> None:
-    """Idempotently link the user to the role."""
-    existing = (
-        await session.execute(
-            select(UserRole).where(UserRole.user_id == user.id, UserRole.role_id == role.id)
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        return
-    session.add(UserRole(user_id=user.id, role_id=role.id))
-    await session.commit()
 
 
 async def _get_or_create_event_source(
@@ -582,6 +519,7 @@ async def _get_or_create_merchant_cashin_charges(session: AsyncSession, tenant: 
     configured row (invariant #12 forbids a silent zero-fee fall-through), so
     merchant-cashin works out of the box. Idempotent.
     """
+
     # Get-or-create pricing and limit INDEPENDENTLY, each with `.limit(1).first()`
     # (not `scalar_one_or_none()`): an operator may clear one via the UI while the
     # other survives, or the DB may already hold duplicate rows — `scalar_one_or_none`
@@ -870,14 +808,13 @@ async def _get_or_create_cashin_charges(session: AsyncSession, tenant: Tenant) -
     commission config the commission would be 0, so this makes the fee /
     commission / tax breakdown visible in the mobile-simulator.
     """
+
     # Get-or-create each config INDEPENDENTLY. A single guard on the pricing row
     # is not enough: an operator may clear pricing/limits (via the UI) while the
     # commission row survives, and re-seeding would then hit the commission
     # unique index. `.limit(1).first()` also tolerates user-added bands.
     async def _has(model: type, *conds: object) -> bool:
-        row = (
-            await session.execute(select(model).where(*conds).limit(1))
-        ).scalars().first()
+        row = (await session.execute(select(model).where(*conds).limit(1))).scalars().first()
         return row is not None
 
     added: list[str] = []
@@ -943,9 +880,7 @@ async def _get_or_create_cashin_charges(session: AsyncSession, tenant: Tenant) -
 
     tax = (
         await session.execute(
-            select(TaxConfig).where(
-                TaxConfig.tenant_id == tenant.id, TaxConfig.currency == "ZAR"
-            )
+            select(TaxConfig).where(TaxConfig.tenant_id == tenant.id, TaxConfig.currency == "ZAR")
         )
     ).scalar_one_or_none()
     if tax is None:
@@ -1095,9 +1030,7 @@ async def _get_or_create_p2p_charges(session: AsyncSession, tenant: Tenant) -> N
         print("  + P2P charges: R2.50 fee, R5-R10000 limit (default)")
 
 
-async def _get_or_create_partner_movement_charges(
-    session: AsyncSession, tenant: Tenant
-) -> None:
+async def _get_or_create_partner_movement_charges(session: AsyncSession, tenant: Tenant) -> None:
     """Fail-closed config so partner-API fund/withdraw work out of the box (invariant #12).
 
     The external partner `fund` / `withdraw` endpoints (api-key + HMAC) still run
@@ -1143,14 +1076,10 @@ async def _get_or_create_partner_movement_charges(
             added.append(txn_type)
     if added:
         await session.commit()
-        print(
-            f"  + Partner {'/'.join(added)} charges: R0 fee, R1-R1,000,000 limit (default)"
-        )
+        print(f"  + Partner {'/'.join(added)} charges: R0 fee, R1-R1,000,000 limit (default)")
 
 
-async def _get_or_create_redemption_charges(
-    session: AsyncSession, tenant: Tenant
-) -> None:
+async def _get_or_create_redemption_charges(session: AsyncSession, tenant: Tenant) -> None:
     """Fail-closed config so points redemption works out of the box (invariant #12).
 
     `initiate_redemption` runs `require_pricing_and_limits` scoped to the POINTS
@@ -1347,18 +1276,26 @@ def _criteria(metric: str, **bounds: float | int) -> dict[str, object]:
 # group; each tier is (segment_name, priority, criteria). Priority is
 # highest-wins within a group.
 DEFAULT_SEGMENT_GROUPS: list[tuple[str, str, list[tuple[str, int, dict[str, object]]]]] = [
-    ("Customer Loyalty", "Transaction-count tiers (rolling 90d).", [
-        ("Gold", 3, _criteria("txn_count", window_days=90, gte=20)),
-        ("Silver", 2, _criteria("txn_count", window_days=90, gte=5)),
-        ("Bronze", 1, _criteria("txn_count", window_days=90, gte=1)),
-    ]),
-    ("Transaction Value", "Gross transaction value bands (rolling 90d, base currency).", [
-        ("High", 3, _criteria("txn_sum", window_days=90, gte=10000)),
-        ("Mid", 2, _criteria("txn_sum", window_days=90, gte=1000)),
-        # NEVER `gte=0` — that matches every user, including zero-activity
-        # ones. 0.01 is the smallest meaningful increment for a money amount.
-        ("Low", 1, _criteria("txn_sum", window_days=90, gte=0.01)),
-    ]),
+    (
+        "Customer Loyalty",
+        "Transaction-count tiers (rolling 90d).",
+        [
+            ("Gold", 3, _criteria("txn_count", window_days=90, gte=20)),
+            ("Silver", 2, _criteria("txn_count", window_days=90, gte=5)),
+            ("Bronze", 1, _criteria("txn_count", window_days=90, gte=1)),
+        ],
+    ),
+    (
+        "Transaction Value",
+        "Gross transaction value bands (rolling 90d, base currency).",
+        [
+            ("High", 3, _criteria("txn_sum", window_days=90, gte=10000)),
+            ("Mid", 2, _criteria("txn_sum", window_days=90, gte=1000)),
+            # NEVER `gte=0` — that matches every user, including zero-activity
+            # ones. 0.01 is the smallest meaningful increment for a money amount.
+            ("Low", 1, _criteria("txn_sum", window_days=90, gte=0.01)),
+        ],
+    ),
     (
         "Engagement",
         "Recency of activity. Active outranks New for users matching both.",
@@ -1392,16 +1329,12 @@ async def _get_or_create_segment_group(
         backfilled even when the group already exists.
     """
     result = await session.execute(
-        select(SegmentGroup).where(
-            SegmentGroup.tenant_id == tenant_id, SegmentGroup.name == name
-        )
+        select(SegmentGroup).where(SegmentGroup.tenant_id == tenant_id, SegmentGroup.name == name)
     )
     group = result.scalar_one_or_none()
     if group is not None:
         return group, False
-    group = SegmentGroup(
-        tenant_id=tenant_id, name=name, description=description, is_system=True
-    )
+    group = SegmentGroup(tenant_id=tenant_id, name=name, description=description, is_system=True)
     session.add(group)
     await session.commit()
     await session.refresh(group)
@@ -1542,9 +1475,6 @@ async def seed() -> None:
         # here for the seeded tenant); PTS is always added.
         await provision_tenant_defaults(session, tenant)
 
-        # Default end-user role so seeded users can actually transact.
-        standard_role = await _get_or_create_standard_user_role(session, tenant)
-
         # Step-up PIN policies — make the prompt path discoverable in dev.
         # enforce_step_up is FAIL-CLOSED: a guarded money path with NO policy
         # requires a PIN for any amount, so we seed an EXPLICIT policy for EVERY
@@ -1563,46 +1493,24 @@ async def seed() -> None:
                 threshold_amount=Decimal("500") if _is_points else Decimal("200"),
             )
 
-        # System-owned accounts for the tenant. We pre-create every system
-        # wallet that platform activity would otherwise materialise lazily, so
-        # a freshly-seeded tenant shows the full set on the System Wallets page
-        # instead of a partial list that grows as transactions happen.
-        #
-        # provider_redemption_wallet is NOT created here — `register_provider()`
-        # later in this script auto-creates it as part of registering the
-        # sample provider (Pay-PRD-0730). Pre-0009 those two paths silently
-        # created two wallets; the uq_accounts_system_scoped index now enforces
-        # one. The airtime_merchant_holding account is merchant-owned and is
-        # created by _get_or_create_airtime_merchant (Epic 17), not here.
-        #
-        # All financial system wallets use the tenant's base currency (ZAR);
-        # the points pool uses PTS.
-        system_wallets = [
-            (ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE, "PTS", "System Points Issuance (master)"),
-            (ACCOUNT_TYPE_SYSTEM_CASH_INFLOW, "ZAR", "Cash float"),
-            (ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED, "ZAR", "Fees collected"),
-            (ACCOUNT_TYPE_OPERATOR_ADJUSTMENT, "ZAR", "Bank mirror account"),
-            (ACCOUNT_TYPE_COMMISSION, "ZAR", "Commission funded wallet"),
-            (ACCOUNT_TYPE_TAX_SERVICE, "ZAR", "Tax collected on service charges"),
-            (ACCOUNT_TYPE_TAX_COMMISSION, "ZAR", "Tax collected on commissions"),
-        ]
-        for account_type, currency, label in system_wallets:
-            # The seeded bank mirror is the back-compat "Primary" mirror; every
-            # other system wallet is unnamed.
-            name = (
-                BANK_MIRROR_PRIMARY_NAME
-                if account_type == ACCOUNT_TYPE_OPERATOR_ADJUSTMENT
-                else None
-            )
-            await _get_or_create_account(
-                session,
-                tenant,
-                user=None,
-                account_type=account_type,
-                currency=currency,
-                label=label,
-                name=name,
-            )
+        # System-owned accounts come from `provision_tenant_defaults` (called
+        # above) — the same path production uses (story B5.1), denominated in
+        # the tenant's OWN base_currency rather than the hard-coded ZAR this
+        # script used to write. Only the bank mirror is created here: a mirror
+        # represents a real bank account, so production operators create it
+        # explicitly with real details, and this seeded "Primary" mirror is the
+        # dev stand-in for that step. provider_redemption_wallet is auto-created
+        # by `register_provider()` later (Pay-PRD-0730), and
+        # airtime_merchant_holding is merchant-owned (Epic 17), not here.
+        await _get_or_create_account(
+            session,
+            tenant,
+            user=None,
+            account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+            currency=tenant.base_currency,
+            label="Bank mirror account",
+            name=BANK_MIRROR_PRIMARY_NAME,
+        )
 
         # Pre-fund the operator cash float from the bank BEFORE any user fund.
         # The float (`system_cash_inflow`) now carries a no-overdraft floor at the
@@ -1620,7 +1528,8 @@ async def seed() -> None:
                 last_name=spec["last_name"],
                 user_type=spec.get("user_type"),
             )
-            await _assign_role(session, user, standard_role)
+            await assign_default_role(session, user)
+            await session.commit()
             wallet_account = await _get_or_create_account(
                 session,
                 tenant,
@@ -1726,9 +1635,7 @@ async def seed() -> None:
         # Dev external-API key so the mobile-simulator's partner-API panel
         # (fund / withdraw / create-user / merchant-cashin) can authenticate
         # against a fresh DB. Bound to the cash-in merchant above.
-        await _get_or_create_dev_api_key(
-            session, tenant, merchant_user_id=str(cashin_merchant_id)
-        )
+        await _get_or_create_dev_api_key(session, tenant, merchant_user_id=str(cashin_merchant_id))
         await _get_or_create_rule(
             session,
             tenant,

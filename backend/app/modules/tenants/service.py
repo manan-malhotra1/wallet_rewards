@@ -27,12 +27,23 @@ from app.modules.tenants.schemas import (
 )
 from app.shared.exceptions import TenantNameAlreadyExists, TenantNotFound
 from app.shared.models import (
+    ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
+    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
+    ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+    ACCOUNT_TYPE_TAX_COMMISSION,
+    ACCOUNT_TYPE_TAX_SERVICE,
+    Account,
     Instrument,
+    Role,
+    RolePermission,
     Service,
     Tenant,
 )
+from app.shared.models.tenants import BUSINESS_TYPE_BOTH, BUSINESS_TYPE_REWARDS
+from app.shared.services_registry import ROLE_ENFORCED_BASE_CODES
 
 log = structlog.get_logger(__name__)
 
@@ -140,6 +151,185 @@ SERVICE_POLICY: dict[str, tuple[list[str], list[str]]] = {
 }
 
 
+# The default end-user roles every tenant is provisioned with, mapped to the
+# user_type each one serves. Two roles rather than one because `cash_in` is an
+# AGENT capability: putting it in the consumer role works today only because
+# `SERVICE_POLICY` happens to block consumers at the service gate, so widening
+# that policy would silently hand every consumer an agent capability. Splitting
+# them means the role says what it means on its own.
+#
+# Merchant user types get no default role, and need none: their only flow
+# (`merchant_cashin`) authenticates a partner by API key and never consults
+# role permissions.
+DEFAULT_ROLE_BY_USER_TYPE: dict[str, str] = {
+    "consumer": "standard_user",
+    "agent": "agent",
+    "super_agent": "agent",
+}
+
+_DEFAULT_ROLE_DESCRIPTIONS: dict[str, str] = {
+    "standard_user": "Default customer role — the consumer self-service flows.",
+    "agent": "Default agent role — cash-in on behalf of customers.",
+}
+
+
+def default_role_grants(role_name: str) -> list[str]:
+    """Return the transaction types a default role should grant.
+
+    DERIVED from `SERVICE_POLICY` rather than listed again, so the grants can
+    never drift from the access policy they mirror: a role gets a code when the
+    code is role-enforced AND its policy admits one of the user types the role
+    serves. Codes outside `ROLE_ENFORCED_BASE_CODES` are skipped because no
+    flow consults a role for them, and granting them would be noise that
+    implies a control that does not exist.
+
+    Args:
+        role_name: One of the values in `DEFAULT_ROLE_BY_USER_TYPE`.
+
+    Returns:
+        Sorted transaction types to grant, for a stable provisioning order.
+    """
+    served = {
+        user_type for user_type, name in DEFAULT_ROLE_BY_USER_TYPE.items() if name == role_name
+    }
+    grants = []
+    for code in ROLE_ENFORCED_BASE_CODES:
+        allowed_user_types = SERVICE_POLICY.get(code, (None, None))[0]
+        # NULL policy = unrestricted, so every role serves it; an explicit list
+        # is an allow-list; `[]` admits nobody and is therefore never granted.
+        if allowed_user_types is None or served & set(allowed_user_types):
+            grants.append(code)
+    return sorted(grants)
+
+
+async def _provision_default_roles(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Create the default end-user roles and their grants for a tenant.
+
+    Without this a fresh tenant has NO roles, and since `has_permission` denies
+    by default (Pay-PRD-0440) no customer could send money, cash out, redeem or
+    buy airtime — ever. Only the dev seed script created a role, which is why
+    the gap stayed hidden.
+
+    Idempotent in both directions: an existing role is reused rather than
+    duplicated, and any missing grant is added, so re-running after a new
+    role-enforced service ships tops up the existing roles.
+
+    Side effects:
+        Inserts Role / RolePermission rows. Does NOT commit — the caller does.
+    """
+    for role_name in sorted(set(DEFAULT_ROLE_BY_USER_TYPE.values())):
+        role = (
+            await session.execute(
+                select(Role).where(Role.tenant_id == tenant_id, Role.name == role_name)
+            )
+        ).scalar_one_or_none()
+        if role is None:
+            role = Role(
+                tenant_id=tenant_id,
+                name=role_name,
+                description=_DEFAULT_ROLE_DESCRIPTIONS.get(role_name),
+            )
+            session.add(role)
+            await session.flush()
+
+        existing = set(
+            (
+                await session.execute(
+                    select(RolePermission.transaction_type).where(RolePermission.role_id == role.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for code in default_role_grants(role_name):
+            if code not in existing:
+                session.add(RolePermission(role_id=role.id, transaction_type=code, permitted=True))
+
+
+# The system-owned ledger accounts every tenant needs, keyed by account type.
+# True = denominated in the tenant's base_currency; False = the PTS points pool.
+# Pre-created at provisioning (B5.1) instead of left to the lazy get-or-create
+# paths inside money flows, because laziness deadlocks the operator: invariant
+# #11 says the cash float must be pre-funded BEFORE it can fund users, but
+# `treasury.adjust_system_wallet` needs the float's account id and the float
+# only used to exist after a fund() had already been attempted. The lazy
+# creators remain in place as the concurrency-safe fallback (and for extra
+# currencies beyond base_currency).
+#
+# `operator_adjustment` (bank mirrors) is deliberately NOT here: a mirror
+# represents a real bank account, so an operator creating it explicitly with
+# its real details is correct — there is no sensible default row.
+_SYSTEM_WALLETS: list[tuple[str, bool]] = [
+    (ACCOUNT_TYPE_SYSTEM_CASH_INFLOW, True),
+    (ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED, True),
+    (ACCOUNT_TYPE_COMMISSION, True),
+    (ACCOUNT_TYPE_TAX_SERVICE, True),
+    (ACCOUNT_TYPE_TAX_COMMISSION, True),
+    (ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE, False),
+]
+
+
+async def _system_account_exists(
+    session: AsyncSession, tenant_id: uuid.UUID, account_type: str, currency: str
+) -> bool:
+    """Return True if this tenant already has this system account.
+
+    Matches the scope of `uq_accounts_system_scoped`: one row per
+    (tenant, type, currency) with no owning user.
+    """
+    result = await session.execute(
+        select(Account.id).where(
+            Account.tenant_id == tenant_id,
+            Account.account_type == account_type,
+            Account.currency == currency,
+            Account.user_id.is_(None),
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+def _mode_includes_rewards(tenant: Tenant) -> bool:
+    """Whether this tenant's deployment mode includes a points programme.
+
+    The single question behind every points-surface gate in provisioning
+    (B6.1): PTS instrument and points issuance account exist only where the
+    answer is yes.
+    """
+    return tenant.business_type in (BUSINESS_TYPE_REWARDS, BUSINESS_TYPE_BOTH)
+
+
+async def _provision_system_wallets(session: AsyncSession, tenant: Tenant) -> None:
+    """Create the tenant's system-owned ledger accounts (story B5.1).
+
+    Fiat accounts are denominated in the tenant's OWN base_currency — never a
+    hard-coded ZAR (the same bug class this function already fixed for
+    instruments); the points issuance pool is PTS, and is skipped entirely for
+    a wallet-only tenant (B6.1) — no points programme, no issuance master.
+
+    Idempotent, and safe against the lazy get-or-create paths racing it: both
+    sides funnel into `uq_accounts_system_scoped`, and this runs inside the
+    caller's transaction, so a loser of that race surfaces as the caller's
+    IntegrityError-and-re-read, exactly as the lazy paths already handle.
+
+    Side effects:
+        Inserts Account rows. Does NOT commit — the caller does.
+    """
+    for account_type, in_base_currency in _SYSTEM_WALLETS:
+        if account_type == ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE and not _mode_includes_rewards(
+            tenant
+        ):
+            continue
+        currency = tenant.base_currency.strip().upper() if in_base_currency else "PTS"
+        if not await _system_account_exists(session, tenant.id, account_type, currency):
+            session.add(
+                Account(
+                    tenant_id=tenant.id,
+                    account_type=account_type,
+                    currency=currency,
+                )
+            )
+
+
 async def _instrument_exists(session: AsyncSession, tenant_id: uuid.UUID, code: str) -> bool:
     """Return True if a live instrument with this code already exists for the tenant."""
     result = await session.execute(
@@ -174,9 +364,18 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
         `base_currency` (e.g. "USD"), with a currency-appropriate symbol and
         display name. This is the bug this function fixes: the code must never
         be hard-coded to ZAR — a USD tenant gets a "USD" instrument, not "ZAR".
-      - The "PTS" points instrument (always, regardless of base_currency), since
-        the rules engine credits reward points to every tenant.
+      - The "PTS" points instrument — only for modes with a points programme
+        ('rewards' / 'both', B6.1). A wallet-only tenant must not see points
+        in its currency dropdowns at all.
       - The baseline services (`_BASELINE_SERVICES`).
+      - The default end-user roles (`DEFAULT_ROLE_BY_USER_TYPE`) and their
+        grants. Without these a fresh tenant's customers cannot transact at
+        all, because `has_permission` denies by default (Pay-PRD-0440).
+      - The system-owned ledger accounts (`_SYSTEM_WALLETS`), fiat ones in the
+        tenant's OWN base_currency. Without the cash float the operator is
+        deadlocked: it must be pre-funded before it can fund users (invariant
+        #11), but `adjust_system_wallet` cannot target an account that does
+        not exist yet (story B5.1).
 
     Idempotent: a code that already exists (live) is skipped, so re-running is a
     no-op. Mirrors the previous seed behaviour so existing tenants are unaffected.
@@ -204,7 +403,11 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
                 account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
             )
         )
-    if not await _instrument_exists(session, tenant.id, "PTS"):
+    # PTS only exists where a points programme exists (B6.1). For a
+    # wallet-only tenant this instrument was what put "points" into every
+    # currency dropdown, letting an operator build PTS-denominated config that
+    # could never execute — dead config of the kind invariant #12 forbids.
+    if _mode_includes_rewards(tenant) and not await _instrument_exists(session, tenant.id, "PTS"):
         session.add(
             Instrument(
                 tenant_id=tenant.id,
@@ -232,6 +435,9 @@ async def provision_tenant_defaults(session: AsyncSession, tenant: Tenant) -> No
                 allowed_channels=allowed_channels,
             )
         )
+
+    await _provision_default_roles(session, tenant.id)
+    await _provision_system_wallets(session, tenant)
 
     await session.commit()
     log.info(
@@ -389,6 +595,14 @@ async def update_tenant(
         raise
 
     await session.refresh(tenant)
+
+    # Re-run provisioning on every save. It is idempotent, so for an
+    # up-to-date tenant this is a no-op — but for a tenant created before a
+    # provisioning gap was fixed (missing default roles, B4.8; missing system
+    # wallets, B5.1) this is the operator-reachable remedy: re-save the tenant
+    # on the Tenants page and the missing pieces are topped up. The System
+    # wallets empty state points operators here.
+    await provision_tenant_defaults(session, tenant)
 
     log.info(
         "tenant_updated",

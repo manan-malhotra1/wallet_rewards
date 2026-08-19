@@ -221,6 +221,10 @@ class MyServiceOut(BaseModel):
     code: str
     display_name: str
     description: str | None = None
+    # NULL for a base service; for a derived one, the base it delegates to —
+    # so the app can pick an icon/behaviour by base without knowing every
+    # derived code (spec §12.1).
+    base_service_code: str | None = None
 
 
 class WindowUsageOut(BaseModel):
@@ -353,6 +357,9 @@ class WalletTransactionOut(BaseModel):
     # legacy window before a row was backfilled; always set on new transactions.
     reference: str | None = None
     transaction_type: str
+    # The base flow, for grouping and filtering. Equals `transaction_type`
+    # unless the transaction was made on a derived service (spec §12.1).
+    base_transaction_type: str
     status: str
     amount: str
     fee_amount: str

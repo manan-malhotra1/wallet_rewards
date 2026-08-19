@@ -65,6 +65,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--client-secret", default="dev-admin-ui-secret-local-only")
     p.add_argument("--admin-user", default="admin-test")
     p.add_argument("--admin-pass", default="admin-test-pass")
+    # Treasury funding is a maker-checker money operation: the maker (--admin-user)
+    # raises it, a DIFFERENT admin holding `treasury-approver` must approve before
+    # any money moves. bootstrap_keycloak.py seeds `admin-approver` for exactly this.
+    p.add_argument("--checker-user", default="admin-approver",
+                   help="Second admin that approves fund-user money operations.")
+    p.add_argument("--checker-pass", default="admin-test-pass")
     p.add_argument("--tenant-name", default="Sasai-ZA")
 
     p.add_argument("--users", type=int, default=5000, help="Total users to ensure.")
@@ -518,10 +524,30 @@ async def fund_user_to_target(
     phone: str,
     current: float,
     target: float,
+    checker: AdminTokenProvider | None = None,
 ) -> None:
-    """Top up the user to `target` ZAR via /treasury/fund-user. No-op if already there."""
+    """Top up the user to `target` ZAR via /treasury/fund-user. No-op if already there.
+
+    fund-user is a maker-checker money operation (Epic 18): the 201 only means the
+    request was *recorded*, with `status: PENDING` and `applied_transaction_id: null`
+    — no money has moved. A second admin holding `treasury-approver` must approve it
+    via POST /money-operations/{id}/approve before the ledger is credited.
+
+    Treating the 201 as "funded" is why an earlier version of this script left every
+    freshly-created user at a zero balance, turning the whole P2P phase into a wall of
+    `insufficient_funds`. So we drive the approval here and assert the terminal state
+    is APPLIED, failing loudly rather than silently under-provisioning.
+
+    This completes maker-checker with the seeded second dev admin; it does not bypass
+    it (self-approval is rejected server-side with `self_approval_forbidden`).
+    """
     diff = target - current
-    if diff <= 0:
+    # Truncate FIRST, then decide. Fees and taxes leave fractional balances
+    # (a 0.525 tax makes a balance like 199_999.475), so a sub-unit shortfall
+    # truncates to "0" — which fund-user rejects with a 422 `greater_than`.
+    # A shortfall under R1 means already-funded for a coarse top-up target.
+    whole_amount = int(diff)
+    if whole_amount <= 0:
         return
     resp = await client.post(
         f"{api_url}/api/v1/treasury/fund-user",
@@ -530,7 +556,7 @@ async def fund_user_to_target(
             "tenant_id": tenant_id,
             "identifier_type": "phone",
             "identifier_value": phone,
-            "amount": str(int(diff)),
+            "amount": str(whole_amount),
             "currency": "ZAR",
             "reason": "load-test setup",
         },
@@ -538,6 +564,40 @@ async def fund_user_to_target(
     )
     if resp.status_code != 201:
         _fail("treasury/fund-user", resp)
+
+    body = resp.json()
+    status = body.get("status")
+    if status == "APPLIED":
+        return  # Tenant has approvals disabled — money already moved.
+    if status != "PENDING":
+        raise SystemExit(
+            f"\n[treasury/fund-user] unexpected money-op status {status!r} for {phone} "
+            f"(expected PENDING or APPLIED). Body: {json.dumps(body)[:400]}"
+        )
+    if checker is None:
+        raise SystemExit(
+            f"\n[treasury/fund-user] {phone} funding is PENDING maker-checker approval "
+            f"but no checker token provider was supplied — users would be left unfunded."
+        )
+
+    request_id = body["id"]
+    appr = await client.post(
+        f"{api_url}/api/v1/money-operations/{request_id}/approve",
+        headers=await checker.header(),
+        params={"tenant_id": tenant_id},
+        json={"comment": "load-test setup funding"},
+        timeout=30,
+    )
+    if appr.status_code != 200:
+        _fail("money-operations/approve", appr)
+    final = appr.json().get("status")
+    if final != "APPLIED":
+        # e.g. required_approvals > 1 — the load test cannot proceed unfunded.
+        raise SystemExit(
+            f"\n[money-operations/approve] {phone} money-op ended {final!r}, not APPLIED "
+            f"(approvals {appr.json().get('approvals_count')}/"
+            f"{appr.json().get('required_approvals')}). Body: {json.dumps(appr.json())[:400]}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -550,6 +610,7 @@ async def setup_users(
     tokens: AdminTokenProvider,
     tenant_id: str,
     cache: dict[str, dict],
+    checker: AdminTokenProvider | None = None,
 ) -> list[UserSession]:
     """Run phases 3–7 — ensure users / accounts / pins / roles / sessions / funding.
 
@@ -588,7 +649,7 @@ async def setup_users(
                     # Token still valid; just needs more funding.
                     await fund_user_to_target(
                         client, args.api_url, tokens, tenant_id,
-                        phone, bal, args.fund_amount,
+                        phone, bal, args.fund_amount, checker,
                     )
                     funded_count += 1
                     return UserSession(
@@ -615,7 +676,7 @@ async def setup_users(
             bal = await current_zar_balance(client, args.api_url, token)
             await fund_user_to_target(
                 client, args.api_url, tokens, tenant_id,
-                phone, bal, args.fund_amount,
+                phone, bal, args.fund_amount, checker,
             )
             created_count += 1
             funded_count += 1
@@ -956,8 +1017,19 @@ async def main() -> None:
                 _fail("auth smoke test (identity/resolve)", smoke_resp)
             print(f"  + auth smoke test ok (resolve returned {smoke_resp.status_code})")
 
+            # Second admin for the maker-checker money-op approvals. Same client_id /
+            # secret, different user — the server rejects self-approval.
+            checker_args = argparse.Namespace(**{
+                **vars(args),
+                "admin_user": args.checker_user,
+                "admin_pass": args.checker_pass,
+            })
+            checker = AdminTokenProvider(client, checker_args)
+            await checker.get()
+            print(f"  + checker token acquired (user={args.checker_user})")
+
             print(f"== USERS + ACCOUNTS + PINS + SESSIONS + FUND ({args.users} users) ==")
-            sessions = await setup_users(client, args, tokens, tenant_id, cache)
+            sessions = await setup_users(client, args, tokens, tenant_id, cache, checker)
             save_state(args.state_file, cache)
             print(f"  + setup complete. State cached at {args.state_file}")
 

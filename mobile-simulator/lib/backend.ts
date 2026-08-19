@@ -96,6 +96,8 @@ export interface WalletTransaction {
   // Customer-facing reference `S_<datetime><seq>` (null only for un-backfilled legacy rows).
   reference: string | null;
   transaction_type: string;
+  // The BASE flow — equals `transaction_type` unless made on a derived service.
+  base_transaction_type: string;
   status: string;
   amount: string;
   // Charge breakdown (decimal strings; "0.000000" when none) — shown per row.

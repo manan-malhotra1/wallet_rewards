@@ -113,6 +113,11 @@ class PostTransactionRequest:
             existing transaction (Pay-PRD-0200).
         transaction_type: Short string tag (e.g. 'p2p', 'reward_issuance').
         currency: 3-letter ISO 4217. Must match every entry's account currency.
+        base_transaction_type: The BASE flow this transaction belongs to.
+            Omitted → defaults to `transaction_type`, which is correct for
+            every base-service flow; a derived service passes its base so
+            clients can group by flow without knowing every derived code
+            (spec §12.1).
         entries: At least 2 entries, balanced to zero.
         initiated_by: Optional user_id; NULL for system-initiated.
         amount: The transaction's headline amount (typically equal to the
@@ -150,6 +155,7 @@ class PostTransactionRequest:
     entries: list[LedgerEntryRequest]
     initiated_by: UUID | None = None
     amount: Decimal | None = None
+    base_transaction_type: str | None = None
     fee_amount: Decimal = Decimal("0")
     commission_amount: Decimal = Decimal("0")
     tax_amount: Decimal = Decimal("0")
@@ -173,7 +179,9 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
 
     Args:
         session: Async DB session (NOT pre-committed by caller).
-        request: PostTransactionRequest with balanced entries.
+        request: PostTransactionRequest with balanced entries. Its
+            `base_transaction_type`, when omitted, defaults to
+            `transaction_type` so every existing caller is unaffected.
 
     Returns:
         The persisted (or already-existing) Transaction.
@@ -223,6 +231,7 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
         idempotency_key=request.idempotency_key,
         reference=reference,
         transaction_type=request.transaction_type,
+        base_transaction_type=request.base_transaction_type or request.transaction_type,
         status=request.status,
         initiated_by=request.initiated_by,
         amount=headline_amount,
@@ -257,7 +266,14 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
         from app.shared.tenant_mode import rewards_from_wallet_enabled
 
         rt = request.reward_trigger
-        if rt.transaction_type in REWARDABLE_TYPES and await rewards_from_wallet_enabled(
+        # ELIGIBILITY is a property of the BASE flow ("is this kind of movement
+        # rewardable at all?"), while rule TARGETING uses the resolved code that
+        # `rt.transaction_type` carries — so a derived service needs its own rule
+        # (spec §8). Gating on the resolved code instead would make derived
+        # services permanently unrewardable no matter how they are configured,
+        # because REWARDABLE_TYPES only ever lists platform base codes.
+        base_type = request.base_transaction_type or request.transaction_type
+        if base_type in REWARDABLE_TYPES and await rewards_from_wallet_enabled(
             session, request.tenant_id
         ):
             session.add(

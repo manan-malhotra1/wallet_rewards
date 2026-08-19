@@ -83,6 +83,7 @@ from app.shared.models import (
     TaxConfig,
     WalletLimitConfig,
 )
+from app.shared.tenant_mode import assert_points_scope_allowed
 
 # A create needs the schema to parse the payload + the create fn. `_CreateFn`
 # mirrors every config service's create signature.
@@ -367,6 +368,18 @@ async def apply_config_request(
             (e.g. unique collision, bad payload).
     """
     _schema_cls, create_fn = _DISPATCH[request.config_type]
+    if request.operation in (CONFIG_OP_CREATE, CONFIG_OP_UPDATE):
+        # B6.1 belt-and-braces: propose already rejects a points scope for a
+        # wallet-only tenant, but a request proposed before that guard shipped
+        # (or a tenant narrowed to wallet-only while a request sat pending)
+        # must still fail here rather than write dead config.
+        for band in validate_band_payload(request.config_type, request.payload or {}):
+            await assert_points_scope_allowed(
+                session,
+                request.tenant_id,
+                account_type=getattr(band, "account_type", None),
+                currency=getattr(band, "currency", None),
+            )
     if request.operation == CONFIG_OP_CREATE:
         # A create may be a multi-band schedule — apply every band in this same
         # transaction so approval is all-or-none (a failure rolls back all rows

@@ -1,7 +1,9 @@
 # Base and Derived Services — Design
 
-**Date:** 2026-08-17 (rev. 2 — base/derived model replaces the nullable-base draft)
-**Status:** Draft — awaiting review. No code written.
+**Date:** 2026-08-17 (rev. 3 — access-policy and approval decisions locked; client-impact section added)
+**Status:** Draft — awaiting review. No code written. Lives on
+`feature/base-derived-services`; not merged to `main`, because the
+implementation carries a breaking-change risk for clients (§12).
 **Scope:** `backend/app/modules/{services,pricing,limits,payments,cashin,cashout,airtime,redemption,external}`, `admin-ui/app/(authenticated)/services`. New Alembic migration. No ledger-invariant changes.
 
 ## 1. Problem
@@ -74,6 +76,8 @@ Decisions, with rationale:
 | Config inheritance | **None.** A derived service needs its own pricing + limit rows or it 422s | Invariant #12 forbids implicit defaults; a silently inherited fee is a revenue incident |
 | Recorded `transaction_type` | The **derived** code | Free slicing in analytics, rewards targeting, reconciliation |
 | Derivable bases | Money-moving bases only; `change_pin` excluded | A derived copy of a non-financial flow has no fee or limit to differentiate |
+| Access policy scope | **Narrower only.** A derived service may restrict user types / channels beyond its base, never widen them | A base restriction is a tenant-level control; if a derived service could widen it, creating one would become a way to bypass policy |
+| Approval to create | **No maker-checker on creation.** See §6.1 | Creation yields an *unusable* service — it fails closed until priced, and pricing is already maker-checker |
 
 ## 4. Data model
 
@@ -157,6 +161,40 @@ unpriced is Open Question 4.
 Absent → the base code, i.e. today's behaviour byte for byte. Present →
 resolved per §7; the resolved code then drives permission, pricing, limits
 and the recorded `transaction_type`. Execution is untouched.
+
+### 6.1 Why creation needs no maker-checker
+
+Creating a derived service is deliberately *not* an approval-gated action,
+because it cannot move money or change a price on its own:
+
+- A derived service with no `pricing_configs` row fails closed at
+  `require_pricing_and_limits` — `422`, before any ledger write. Same for a
+  missing `limit_configs` row (invariant #12).
+- Pricing has **no direct mutation endpoint at all** (`pricing/router.py`
+  exposes only `/quote`); every pricing change goes through the
+  `config_requests` maker-checker flow, where `pricing` is one of the
+  approved config types. Limits are the same.
+
+So the money-affecting step is already gated, and gating creation too would
+add a second approval for an inert row. The audit trail still records
+`service.created` with the actor, and the "Not yet usable" state is visible
+in the UI (§9), so nothing is silent.
+
+### 6.2 Access policy is narrowing-only
+
+At resolution time the effective policy is the **intersection** of the base's
+policy and the derived service's, not a replacement:
+
+- `allowed_user_types`: effective = base ∩ derived (NULL/empty on either side
+  means "unrestricted on that dimension" and contributes no restriction).
+- `allowed_channels`: same intersection rule.
+
+Validation rejects a derived policy that names a user type or channel its
+base excludes → `422 policy_wider_than_base`, so the impossible
+configuration cannot even be saved. Enforcing the intersection at resolution
+*as well* is deliberate belt-and-braces: if a base is later narrowed, every
+derived service tightens with it automatically instead of silently outliving
+the restriction.
 
 ## 7. Resolution algorithm
 
@@ -264,29 +302,106 @@ is deliberate, and each must be visible in the admin UI.
 - UI: derived-only create flow with the base dropdown, grouped rendering,
   "Not yet usable" badge.
 
-## 12. Open questions for review
+## 12. Client impact — mobile app and partner API
+
+**The API contract is additive: no client is forced to change.**
+`service_code` is optional on every money endpoint, `kind` and
+`base_service_code` are new response fields, and the migration backfills
+every existing row to `kind='base'`. A client that ignores all of it keeps
+working byte for byte.
+
+**But a derived service produces `transaction_type` values no existing client
+has seen**, and that is where the real risk sits. Audit of `mobile/`:
+
+| Place | Behaviour with a derived code | Verdict |
+|---|---|---|
+| `GET /identity/me/services` → home tiles (`lib/api/wallet.ts:74`) | A derived service appears automatically as its own tile with its own `display_name`, already filtered by user type + `mobile` channel | **Works — no change needed.** This also answers old Open Question 5: customer-facing discovery already exists |
+| `pricing.ts` fee quote | Takes a service code; the file's own comment notes "new services need no new client" | **Works** |
+| `transactionTitle()` (`wallet.ts:98`) | Falls through to `transaction_type.replace(/_/g, ' ')` → `cashout_atm` renders as "cashout atm" | **Degrades — cosmetic.** Lower-cased, unpunctuated label |
+| `activityCategory()` (`wallet.ts:121`) | Falls through to `'generic'` → wrong colour tint, and a derived P2P loses its sent/received distinction | **Degrades — visible** |
+| `transactions.tsx:39` filter | `t.transaction_type === 'p2p'` — a derived P2P **disappears from the "Sent" tab** while still being in the full list | **Bug.** A transaction the user made becomes unfindable under a filter |
+
+The pattern is clear: everywhere the app is **data-driven** it works; every
+place with a hardcoded `=== 'p2p'` breaks, because that comparison assumes
+the set of codes is closed. Which is exactly the assumption this design
+invalidates.
+
+### 12.1 Required API addition — expose the base on transactions
+
+Clients must be able to group by flow without knowing every derived code
+that will ever exist. So transaction read models
+(`WalletTransaction`, admin transaction lists, statements) gain:
+
+- `base_transaction_type: str` — the base code, equal to `transaction_type`
+  for transactions on a base service.
+
+Clients then compare against `base_transaction_type` for behaviour
+(filters, icons, sent/received logic) and display `transaction_type` /
+the service's `display_name` for labels. This is the one change that makes
+derived services safe for every current and future client, so it is **in
+scope for phase one, not optional**.
+
+Denormalising it onto `transactions` (rather than joining the catalog on
+read) is the right call: it keeps history immutable and correct even if a
+derived service is later deleted, and matches how the ledger already stores
+facts rather than re-deriving them.
+
+### 12.2 Client work required before any derived service goes live
+
+Ordered by severity. None of it is needed to *merge* the backend, but a
+derived service must not be created in production until items 1–2 ship.
+
+1. **`transactions.tsx` filters** → compare `base_transaction_type`. (Bug.)
+2. **`activityCategory()`** → key off `base_transaction_type`. (Visible.)
+3. **`transactionTitle()`** → prefer the service `display_name` from
+   `/me/services` when available, else the existing fallback. (Cosmetic.)
+4. **Partner API consumers** → third parties reading `transaction_type` from
+   webhooks or reports may have the same hardcoded assumption. Their
+   contract must be versioned or documented before a derived service is
+   enabled for a partner-facing flow. This is the item with the longest
+   lead time, because it involves other people's release cycles.
+
+### 12.3 Rollout sequencing
+
+The safe order, which the implementation plan must follow:
+
+1. Ship the backend (columns, registry, resolution, `base_transaction_type`)
+   — inert, because no derived service exists yet.
+2. Ship the mobile fixes (§12.2 items 1–3) and let them reach users.
+3. Ship the admin UI create flow.
+4. Only then create the first derived service, in a non-production tenant.
+
+Steps 1–3 are independently releasable and each is a no-op for users until
+step 4. That is what turns a breaking change into a sequenced one.
+
+## 13. Open questions for review
+
+**Resolved (rev. 3):**
+
+- ~~May a derived service be wider than its base?~~ **No — narrowing only**,
+  enforced at both save time and resolution time (§6.2).
+- ~~Maker-checker on creation?~~ **No** — creation yields an unusable row and
+  pricing/limits are already maker-checker (§6.1).
+- ~~Customer-facing discovery?~~ **Already exists** —
+  `GET /identity/me/services` drives the mobile home tiles, so a derived
+  service surfaces automatically (§12).
+
+**Still open:**
 
 1. **Naming in the UI.** "Derived service" is accurate but internal.
    "Product", "tariff", or "service variant" may read better to a
    commercial audience. The data model is unaffected.
-2. **May a derived service be *wider* than its base on access policy**, or
-   only narrower? §7 assumes narrower-only, so a base restriction can never
-   be bypassed by creating a derived service. Confirm that is the product
-   rule.
-3. **Does creating a derived service need maker-checker approval?** It
-   enables a new priced money path, and pricing changes already go through
-   config-requests — so arguably yes.
-4. **Deleting a derived service** that has pricing/limit configs and
+2. **Deleting a derived service** that has pricing/limit configs and
    historical transactions: block until unpriced, or soft-delete and leave
    the configs orphaned? Historical transactions must remain readable
-   either way.
-5. **Customer-facing discovery.** If the mobile app must show "ATM" vs
-   "Agent" cash-out as user-selectable options, the catalog needs a
-   customer-facing read endpoint with display metadata. Deferred here —
-   confirm whether it belongs in phase one.
-6. **Cap on derived services per base**, to stop catalog sprawl?
+   either way. (Leaning: soft-delete, block if any config is still live —
+   mirrors how base rows are protected.)
+3. **Cap on derived services per base**, to stop catalog sprawl?
+4. **Partner-API versioning** for the new `transaction_type` values
+   (§12.2 item 4) — does an existing partner contract need a version bump,
+   or is a documented additive change acceptable?
 
-## 13. Non-goals
+## 14. Non-goals
 
 - No new money flows. A derived service never changes execution logic.
 - No derived-of-derived chains.

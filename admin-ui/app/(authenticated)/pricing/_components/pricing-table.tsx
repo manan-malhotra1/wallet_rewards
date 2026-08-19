@@ -55,6 +55,7 @@ function bandRange(from: string | null, to: string | null): string {
 export function PricingTable({
   groups,
   tenantId,
+  pointsAvailable,
   services,
   instruments,
   canPropose,
@@ -63,6 +64,8 @@ export function PricingTable({
 }: {
   groups: PricingConfigGroup[];
   tenantId: string;
+  /** Threaded to the dialog: points options need a points programme (B6.1). */
+  pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
   /** platform-admin gate — hides the Edit affordance for other admins. */
@@ -177,6 +180,7 @@ export function PricingTable({
                       <EditPricingButton
                         group={group}
                         tenantId={tenantId}
+                        pointsAvailable={pointsAvailable}
                         services={services}
                         instruments={instruments}
                         changeProposed={changeProposed}
@@ -223,12 +227,15 @@ export function PricingTable({
 function EditPricingButton({
   group,
   tenantId,
+  pointsAvailable,
   services,
   instruments,
   changeProposed,
 }: {
   group: PricingConfigGroup;
   tenantId: string;
+  /** Threaded to the dialog: points options need a points programme (B6.1). */
+  pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
   /** Open request on this scope → disable Edit; the maker resolves it first. */
@@ -262,6 +269,7 @@ function EditPricingButton({
         </Button>
       </Tooltip>
       <CreatePricingDialog
+        pointsAvailable={pointsAvailable}
         tenantId={tenantId}
         services={services}
         instruments={instruments}

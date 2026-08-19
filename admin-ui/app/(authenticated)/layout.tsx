@@ -13,6 +13,7 @@ import { ServiceUnavailable } from "@/components/branding/service-unavailable";
 import { TenantThemeStyle } from "@/components/branding/tenant-theme-style";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getActiveTenantId } from "@/lib/active-tenant";
+import { tenantHasRewards } from "@/lib/tenant-mode";
 import {
   listConfigRequests,
   listMoneyOperations,
@@ -113,6 +114,9 @@ export default async function AuthenticatedLayout({
         }))}
         activeTenantId={activeTenantId}
         brandIconUrl={activeTenant?.brand_icon_url ?? null}
+        // Fail open to the full nav when no tenant resolved — hiding sections
+        // on a loading hiccup would look like data loss.
+        showRewards={activeTenant ? tenantHasRewards(activeTenant.business_type) : true}
         approvalsPendingCount={approvalsPendingCount}
         user={{
           username: session.user.username ?? session.user.email ?? session.user.id,

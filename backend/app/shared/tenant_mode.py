@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.shared.exceptions import AppHTTPException
 from app.shared.models.tenants import (
     BUSINESS_TYPE_BOTH,
     BUSINESS_TYPE_REWARDS,
@@ -52,3 +53,41 @@ async def rewards_from_wallet_enabled(session: AsyncSession, tenant_id: UUID) ->
 async def external_events_allowed(session: AsyncSession, tenant_id: UUID) -> bool:
     """True when external Kafka events may issue rewards (rewards-only mode)."""
     return await business_type_of(session, tenant_id) == BUSINESS_TYPE_REWARDS
+
+
+async def assert_points_scope_allowed(
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    account_type: str | None = None,
+    currency: str | None = None,
+) -> None:
+    """Reject points-denominated configuration for a tenant with no points programme.
+
+    A wallet-only tenant has no PTS instrument and no points issuance account
+    (B6.1), so a points-scoped pricing/limit/tax/commission row could never
+    execute — it would be dead config of exactly the kind invariant #12 forbids.
+    The UI hides the points options for such tenants, but the API is reachable
+    directly, and a hidden dropdown is not enforcement.
+
+    Args:
+        account_type: The config row's account_type, if it has one.
+        currency: The config row's currency, if it has one. Either dimension
+            marks the row as points-scoped ('points_account' / 'PTS').
+
+    Raises:
+        AppHTTPException: 422 `points_not_available` when the tenant's mode has
+            no points programme and the scope is points-denominated.
+    """
+    is_points_scoped = account_type == "points_account" or (currency or "").strip().upper() == "PTS"
+    if not is_points_scoped:
+        return
+    mode = await business_type_of(session, tenant_id)
+    if mode in (BUSINESS_TYPE_REWARDS, BUSINESS_TYPE_BOTH):
+        return
+    raise AppHTTPException(
+        422,
+        "points_not_available",
+        "This tenant is wallet-only: it has no points programme, so "
+        "points-denominated configuration cannot take effect here.",
+    )

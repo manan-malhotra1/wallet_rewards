@@ -1,6 +1,12 @@
 /**
  * <ServicesTable> — list every service, with inline display_name edit and
  * status toggle. Soft-delete is the trash icon at row end.
+ *
+ * Rows are grouped so each platform base service is followed by the derived
+ * services running on it. That ordering is the point of the screen: a derived
+ * service inherits its execution path from its base but NOT its pricing or
+ * limits, so "what runs on p2p" is the question an operator actually needs
+ * answered before changing anything.
  */
 "use client";
 
@@ -15,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EditServicePolicyDialog } from "./edit-policy-dialog";
 import { PolicySummary } from "./policy-controls";
+import { ReadinessNotice } from "./readiness-notice";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -32,6 +39,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { groupServices } from "@/lib/service-catalog";
+import { cn } from "@/lib/utils";
 import type { Service } from "@/lib/api-types";
 
 export function ServicesTable({
@@ -45,6 +54,8 @@ export function ServicesTable({
   const [editName, setEditName] = React.useState("");
   const [pending, startTransition] = React.useTransition();
   const { toast } = useToast();
+
+  const rows = React.useMemo(() => groupServices(services), [services]);
 
   function startEdit(svc: Service) {
     setEditingId(svc.id);
@@ -111,6 +122,7 @@ export function ServicesTable({
         <TableHead>
           <TableRow>
             <TableHeaderCell>Display name</TableHeaderCell>
+            <TableHeaderCell>Type</TableHeaderCell>
             <TableHeaderCell>Code</TableHeaderCell>
             <TableHeaderCell>Description</TableHeaderCell>
             <TableHeaderCell>Who can initiate</TableHeaderCell>
@@ -120,7 +132,7 @@ export function ServicesTable({
           </TableRow>
         </TableHead>
         <TableBody>
-          {services.map((svc) => (
+          {rows.map((svc) => (
             <TableRow key={svc.id}>
               <TableCell>
                 {editingId === svc.id ? (
@@ -131,8 +143,30 @@ export function ServicesTable({
                     autoFocus
                   />
                 ) : (
-                  <span className="font-medium">{svc.display_name}</span>
+                  // Indent marks a derived row as belonging to the base above
+                  // it; nowrap keeps every name on one line so the column
+                  // stays aligned regardless of name length.
+                  <span
+                    className={cn(
+                      "font-medium whitespace-nowrap",
+                      svc.kind === "derived" && "pl-4",
+                    )}
+                  >
+                    {svc.display_name}
+                  </span>
                 )}
+              </TableCell>
+              <TableCell>
+                {svc.kind === "derived" ? (
+                  <Badge variant="info" className="text-[10px]">
+                    Derived
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-[10px]">
+                    Platform
+                  </Badge>
+                )}
+                <ReadinessNotice readiness={svc.readiness} />
               </TableCell>
               <TableCell className="font-mono text-[12px] text-[--color-text-3]">
                 {svc.code}
@@ -205,14 +239,19 @@ export function ServicesTable({
                         </Button>
                       }
                     />
-                    <Button
-                      size="icon-xs"
-                      variant="ghost"
-                      onClick={() => handleDelete(svc)}
-                      aria-label="Delete service"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {/* Base services ship with the platform: the backend
+                        refuses to delete them (409 base_service_protected),
+                        so don't offer an action that cannot succeed. */}
+                    {svc.kind === "derived" && (
+                      <Button
+                        size="icon-xs"
+                        variant="ghost"
+                        onClick={() => handleDelete(svc)}
+                        aria-label="Delete service"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
                 )}
               </TableCell>
@@ -223,6 +262,3 @@ export function ServicesTable({
     </div>
   );
 }
-
-// Keep Badge import available for future status pill variants.
-export const _UnusedBadgeKeep = Badge;

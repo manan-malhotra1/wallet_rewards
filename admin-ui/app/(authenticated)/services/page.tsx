@@ -47,10 +47,11 @@ export default async function ServicesPage() {
     <div>
       <PageHeader
         title="Services"
-        subtitle="The transaction types this tenant has switched on. Used by Limits, Pricing and Campaigns dropdowns."
+        subtitle="The transaction types this tenant has switched on. Platform services ship with the product; you can add named variants of them with their own pricing and limits."
         actions={
           <CreateServiceDialog
             tenantId={activeTenantId}
+            services={services}
             trigger={
               <button
                 type="button"
@@ -74,7 +75,7 @@ export default async function ServicesPage() {
           <EmptyState
             icon={Tag}
             title="No services yet"
-            description="Add a service to populate the dropdowns on Limits, Pricing, and Campaigns. The baseline (p2p, airtime_recharge, redemption) is auto-seeded on a fresh database."
+            description="The platform base services are provisioned with the tenant, so an empty catalog means provisioning hasn't run for this tenant yet."
           />
         ) : (
           <ServicesTable services={services} tenantId={activeTenantId} />

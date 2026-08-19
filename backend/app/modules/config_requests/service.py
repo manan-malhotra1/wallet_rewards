@@ -63,6 +63,7 @@ from app.shared.models import (
     ConfigChangeRevision,
     Tenant,
 )
+from app.shared.tenant_mode import assert_points_scope_allowed
 
 # A request still inside the maker-checker loop: the maker may approve/reject/
 # withdraw or revise it, but MUST NOT stack another change on the same scope
@@ -331,6 +332,15 @@ async def propose_config_change(
         payload, bands = _validate_payload(
             request_data.config_type, request_data.payload, tenant_id
         )
+        # Points-denominated scope needs a points programme (B6.1): reject at
+        # PROPOSE so the maker hears it immediately, not the checker at apply.
+        for band in bands:
+            await assert_points_scope_allowed(
+                session,
+                tenant_id,
+                account_type=getattr(band, "account_type", None),
+                currency=getattr(band, "currency", None),
+            )
         target_config_id = None
         if request_data.operation == CONFIG_OP_UPDATE:
             # An update edits a live row: require the target, then — the
@@ -522,6 +532,15 @@ async def revise_config_request(
     # validates the (possibly multi-band) payload AND asserts every band's
     # tenant matches the request scope (422 config_request_tenant_mismatch).
     normalised, bands = _validate_payload(request.config_type, payload, request.tenant_id)
+    for band in bands:
+        # Same B6.1 guard as propose — a revise must not smuggle in a points
+        # scope the original proposal could not have carried.
+        await assert_points_scope_allowed(
+            session,
+            request.tenant_id,
+            account_type=getattr(band, "account_type", None),
+            currency=getattr(band, "currency", None),
+        )
     if request.operation == CONFIG_OP_UPDATE:
         # Same trust boundary as propose: the revised payload's scope must still
         # match the target the request names, else on approval it would replace a

@@ -42,6 +42,10 @@ const services: Service[] = [
     display_name: "Cash-out",
     description: null,
     status: "active",
+    kind: "base",
+    base_service_code: null,
+    derivable: true,
+    readiness: null,
     allowed_user_types: null,
     allowed_channels: null,
     created_at: "2026-07-01T00:00:00Z",
@@ -88,6 +92,7 @@ function renderSection(request: ConfigChangeRequest, currentAdminId: string) {
   render(
     <TooltipProvider>
       <LimitChangesRequested
+      pointsAvailable
         requests={[request]}
         tenantId="tenant-1"
         currentAdminId={currentAdminId}

@@ -34,7 +34,7 @@ export default async function DashboardPage({
           <EmptyState
             icon={Sparkles}
             title="No tenants yet"
-            description="Create the first tenant via the seed script or the Tenants page."
+            description="Create the first tenant on the Tenants page."
           />
         </div>
       );

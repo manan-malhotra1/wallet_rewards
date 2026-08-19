@@ -16,12 +16,15 @@ import { CreatePricingDialog } from "./create-pricing-dialog";
 export function PricingChangesRequested({
   requests,
   tenantId,
+  pointsAvailable,
   currentAdminId,
   services,
   instruments,
 }: {
   requests: ConfigChangeRequest[];
   tenantId: string;
+  /** Threaded to the dialog: points options need a points programme (B6.1). */
+  pointsAvailable: boolean;
   currentAdminId: string;
   services: Service[];
   instruments: Instrument[];
@@ -53,6 +56,7 @@ export function PricingChangesRequested({
             editAction={
               canEdit ? (
                 <CreatePricingDialog
+        pointsAvailable={pointsAvailable}
                   tenantId={tenantId}
                   services={services}
                   instruments={instruments}

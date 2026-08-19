@@ -115,6 +115,7 @@ function initialForm(
 
 export function CreateLimitDialog({
   tenantId,
+  pointsAvailable,
   services,
   instruments,
   trigger,
@@ -124,6 +125,13 @@ export function CreateLimitDialog({
   onOpenChange,
 }: {
   tenantId: string;
+  /**
+   * Whether the tenant's mode includes a points programme (B6.1). When false
+   * the points account type is not offered at all — the backend would 422 it
+   * with `points_not_available` anyway; this keeps the dead option out of
+   * reach instead of letting the operator build a doomed proposal.
+   */
+  pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
   /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
@@ -268,7 +276,9 @@ export function CreateLimitDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="financial_wallet">Wallet</SelectItem>
-                  <SelectItem value="points_account">Points</SelectItem>
+                  {pointsAvailable && (
+                    <SelectItem value="points_account">Points</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>

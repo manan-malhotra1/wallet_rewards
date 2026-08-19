@@ -596,3 +596,33 @@ Today the change is a bare column update.
 - Narrowing either 422s while rewards data exists, or is explicit about what
   becomes inert (and the UI says so before the operator confirms)
 - Audit row captures before/after mode
+
+---
+
+## Epic B7 — Approvals page does not scale · **Backlog**
+
+Found 2026-08-19 after load testing left ~2,200 money-operation rows in the dev
+DB: a single visit to the unified approvals page takes tens of seconds and has
+badly slowed the Playwright e2e suite.
+
+### Story B7.1 — Server-side pagination for the maker-checker queues · Backlog
+
+**Description:** `admin-ui/app/(authenticated)/approvals/page.tsx` fetches the
+FULL dataset of all three maker-checker queues (config_requests,
+money_operations, user_operations) with no status filter or limit on every
+visit, then filters entirely client-side in
+`_components/approvals-toolbar.tsx`. The backend list endpoints (e.g.
+`backend/app/modules/money_operations/service.py`) already accept a `status`
+param but have no `limit`/`offset`.
+
+**Acceptance criteria:**
+- Backend list endpoints for all three queues accept `limit`/`offset` (keeping
+  the existing `status` param), with docstrings per the coding guidelines
+- Tests for the new query params on each endpoint (happy path, bounds/422,
+  tenant isolation preserved)
+- The approvals page fetches a status- and limit-aware window instead of the
+  full dataset
+- Tab-bar counts stay correct via cheap count queries (not by fetching rows)
+- The toolbar keeps its client-side facets, applied to the fetched window
+- Page load on a ~2,200-row queue is interactive in low single-digit seconds
+  in dev; Playwright e2e suite time recovers

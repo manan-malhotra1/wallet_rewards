@@ -11,9 +11,10 @@
     "test:watch": "vitest",
     "test:report": "vitest run --reporter=default --reporter=json --outputFile=../test-reports/frontend-run.json; python3 ../scripts/build_test_report.py",
     "typecheck": "tsc --noEmit",
-    "e2e": "playwright test",
+    "e2e": "playwright test; code=$?; node e2e/archive-report.mjs; exit $code",
     "e2e:ui": "playwright test --ui",
-    "e2e:report": "playwright show-report"
+    "e2e:report": "playwright show-report",
+    "e2e:archive": "node e2e/archive-report.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.4",

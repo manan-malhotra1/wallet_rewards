@@ -5523,6 +5523,132 @@
       "outcome": "passed"
     }
   ],
+  "e2e::admin-ui/e2e/access-lock.spec.ts::lock then restore a user's login access": [
+    {
+      "date": "2026-08-19T12:34:20",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-08-19T12:52:28",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-08-20T00:15:40",
+      "outcome": "passed"
+    }
+  ],
+  "e2e::admin-ui/e2e/approvals.spec.ts::approvals page shows the queue tabs and status filter": [
+    {
+      "date": "2026-08-19T12:34:20",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-08-19T12:52:28",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-08-20T00:15:40",
+      "outcome": "passed"
+    }
+  ],
+  "e2e::admin-ui/e2e/config-approval.spec.ts::maker proposes a ZAR tax-rate change; checker approves and it applies": [
+    {
+      "date": "2026-08-19T12:34:20",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-19T12:52:28",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-20T00:15:40",
+      "outcome": "passed"
+    }
+  ],
+  "e2e::admin-ui/e2e/dashboard.spec.ts::dashboard loads with the app shell": [
+    {
+      "date": "2026-08-19T12:34:20",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-19T12:52:28",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-20T00:15:40",
+      "outcome": "passed"
+    }
+  ],
+  "e2e::admin-ui/e2e/fund-user.spec.ts::maker proposes funding Alice; checker approves and her balance rises": [
+    {
+      "date": "2026-08-19T12:34:20",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-19T12:52:28",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-20T00:15:40",
+      "outcome": "passed"
+    }
+  ],
+  "e2e::admin-ui/e2e/identifier.spec.ts::add an account-number identifier, then verify it": [
+    {
+      "date": "2026-08-19T12:34:20",
+      "outcome": "passed"
+    },
+    {
+      "date": "2026-08-19T12:52:28",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-20T00:15:40",
+      "outcome": "passed"
+    }
+  ],
+  "e2e::admin-ui/e2e/step-up.spec.ts::maker proposes a step-up threshold change; checker approves it": [
+    {
+      "date": "2026-08-19T12:34:20",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-19T12:52:28",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-20T00:15:40",
+      "outcome": "passed"
+    }
+  ],
+  "e2e::admin-ui/e2e/treasury-adjust.spec.ts::maker proposes a cash-float top-up; checker approves and the float rises": [
+    {
+      "date": "2026-08-19T12:34:20",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-19T12:52:28",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-20T00:15:40",
+      "outcome": "passed"
+    }
+  ],
+  "e2e::admin-ui/e2e/user-ops.spec.ts::maker proposes an edit to Alice's name; checker approves and it applies": [
+    {
+      "date": "2026-08-19T12:34:20",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-19T12:52:28",
+      "outcome": "failed"
+    },
+    {
+      "date": "2026-08-20T00:15:40",
+      "outcome": "passed"
+    }
+  ],
   "frontend::admin-ui/app/(authenticated)/_components/config-view-button.test.tsx::Config version history Verify a config created during setup shows a baseline version": [
     {
       "date": "2026-07-30T16:58:02",

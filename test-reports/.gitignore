@@ -1,10 +1,17 @@
-# Regenerated on every report build — not source of truth.
-index.html
+# Transient run dumps — consumed by scripts/build_test_report.py on each build.
 backend-run.json
 frontend-run.json
+e2e-run.json
 latest.json
 .date-cache.json
 
-# Committed (last-3-run history + friendly labels) are tracked explicitly:
+# Playwright working dirs, wiped/rewritten every run. The durable per-run
+# copies (JSON + screenshots/videos) live in e2e-runs/, which IS committed.
+e2e-artifacts/
+e2e-history/
+
+# Committed and source-controlled: index.html (the report itself), e2e-runs/
+# (per-run e2e artifacts), history.json (rolling last-3 outcomes) and
+# section-labels.json (friendly names).
 !history.json
 !section-labels.json

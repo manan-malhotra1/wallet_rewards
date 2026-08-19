@@ -11,9 +11,12 @@
  * writes a storageState under e2e/.auth/. Every real spec depends on `setup`
  * and loads the appropriate storageState, so specs start already authenticated.
  *
- * Failure artefacts: screenshot + video + trace are captured only on failure
- * and land under test-results/. `npx playwright show-report` opens the HTML
- * report (playwright-report/) with the trace viewer.
+ * Artefacts: screenshot + video are captured for EVERY test (pass or fail) so
+ * the HTML report shows what each scenario actually looked like; traces are
+ * kept only on failure to bound overhead. `npm run e2e:report` opens the
+ * latest HTML report (playwright-report/); each run is also archived to
+ * ../test-reports/e2e-history/<timestamp>/ by e2e/archive-report.mjs so past
+ * runs stay viewable.
  */
 import { defineConfig, devices } from "@playwright/test";
 
@@ -37,14 +40,21 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["html", { outputFolder: "playwright-report", open: "never" }], ["list"]],
-  outputDir: "test-results",
-  timeout: 60_000,
-  expect: { timeout: 10_000 },
+  // Failure artifacts (videos/screenshots/traces) are written DURING runs; keep
+  // them OUTSIDE admin-ui so the Next dev watcher doesn't see the writes and
+  // recompile mid-test (that thrash was blowing test budgets).
+  outputDir: "../test-reports/e2e-artifacts",
+  // Dev-mode reality: routes compile lazily and /approvals SSRs its full queues
+  // (thousands of rows after load tests), so a maker-checker flow with two
+  // approvals visits can be slow. Generous per-test budget; expect stays tight.
+  timeout: 150_000,
+  expect: { timeout: 15_000 },
 
   use: {
     baseURL: BASE_URL,
-    screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    // Always capture visual evidence — passing tests need review artefacts too.
+    screenshot: "on",
+    video: "on",
     trace: "retain-on-failure",
   },
 

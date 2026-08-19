@@ -28,6 +28,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { accountTypeLabel } from "@/lib/account-type-label";
 import type { UserDetail, UserType } from "@/lib/api-types";
 import type { UserTransaction } from "@/lib/api-endpoints";
 import { transactionTypeLabel } from "@/lib/transaction-type-label";
@@ -65,13 +66,6 @@ const IDENTIFIER_ICON: Record<string, React.ComponentType<{ className?: string }
   card_number: CreditCard,
 };
 
-const ACCOUNT_TYPE_LABEL: Record<string, string> = {
-  financial_wallet: "Financial wallet",
-  points_account: "Points",
-  system_points_issuance: "System points issuance",
-  provider_redemption_wallet: "Provider redemption wallet",
-  system_cash_inflow: "System cash inflow",
-};
 
 function fullName(detail: UserDetail): string | null {
   if (!detail.profile) return null;
@@ -398,7 +392,7 @@ export function UserDetailCard({
                   return (
                     <TableRow key={acct.id}>
                       <TableCell className="font-medium">
-                        {ACCOUNT_TYPE_LABEL[acct.account_type] ?? acct.account_type}
+                        {accountTypeLabel(acct.account_type)}
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {acct.currency}

@@ -3,6 +3,7 @@
  * by the money-approvals table and its detail drawer so a raw operation code
  * like `withdraw_user` always reads as "Withdraw from user" and never leaks.
  */
+import { accountTypeLabel } from "@/lib/account-type-label";
 import type { MoneyOperation, MoneyOperationType } from "@/lib/api-types";
 import { formatCap, shortId } from "@/lib/utils";
 
@@ -32,41 +33,55 @@ function field(payload: Record<string, unknown>, key: string): string | null {
   return String(value);
 }
 
+/** "ZAR 150.00" from a payload's currency + amount; just "150.00" if no currency. */
+function moneyText(payload: Record<string, unknown>): string {
+  const amount = formatCap(field(payload, "amount"));
+  const currency = field(payload, "currency");
+  return currency ? `${currency} ${amount}` : amount;
+}
+
 /**
- * A compact, human one-liner describing what a money operation would do —
- * shown in the table's summary column. Amounts render at 2 decimals; account
- * UUIDs are shortened. Never throws on an unexpected payload shape.
+ * A human one-liner describing what a money operation would do — shown in the
+ * table's summary column. Reads as a sentence ("Add 500.00 to Cash float via
+ * Steward Bank"), with amounts at 2 decimals, wallet type keys translated to
+ * friendly labels, and account UUIDs shortened only as a last resort. Never
+ * throws on an unexpected payload shape.
  */
 export function moneyOperationSummary(op: MoneyOperation): string {
   const p = op.payload;
   switch (op.operation) {
     case "fund_user": {
-      const amount = formatCap(field(p, "amount"));
-      const currency = field(p, "currency") ?? "";
+      const money = moneyText(p);
       // Prefer the resolved user name; fall back to the raw identifier.
       const target = op.subject_name ?? field(p, "identifier_value") ?? "—";
-      return `${currency} ${amount} → ${target}`.trim();
+      return `Fund ${target} with ${money}`;
     }
     case "withdraw_user": {
       const target = op.subject_name ?? field(p, "identifier_value") ?? "—";
-      const currency = field(p, "currency") ?? "";
-      const amount =
-        p.withdraw_all === true ? "all" : formatCap(field(p, "amount"));
-      return `${currency} ${amount} ← ${target}`.trim();
+      if (p.withdraw_all === true) return `Withdraw all funds from ${target}`;
+      return `Withdraw ${moneyText(p)} from ${target}`;
     }
     case "adjust_system_wallet": {
       const raw = Number(field(p, "amount") ?? 0);
-      const signed = `${raw >= 0 ? "+" : "−"}${formatCap(Math.abs(raw))}`;
-      // Prefer resolved wallet names; fall back to shortened UUIDs.
+      const amount = formatCap(Math.abs(raw));
+      // Prefer resolved wallet names (translating raw type keys like
+      // `system_cash_inflow` to their labels); shortened UUIDs only as a
+      // last resort.
       const accountId = field(p, "account_id");
-      const account = op.account_name ?? (accountId ? shortId(accountId) : "wallet");
-      const mirror = op.bank_mirror_name;
-      return mirror ? `${signed} on ${account} via ${mirror}` : `${signed} on ${account}`;
+      const account = op.account_name
+        ? accountTypeLabel(op.account_name)
+        : accountId
+          ? shortId(accountId)
+          : "wallet";
+      const move =
+        raw >= 0 ? `Add ${amount} to ${account}` : `Deduct ${amount} from ${account}`;
+      const mirror = op.bank_mirror_name ? accountTypeLabel(op.bank_mirror_name) : null;
+      return mirror ? `${move} via ${mirror}` : move;
     }
     case "create_bank_mirror": {
       const name = field(p, "name") ?? "—";
       const currency = field(p, "currency") ?? "";
-      return `${name} (${currency})`;
+      return `New bank mirror “${name}” (${currency})`;
     }
     default:
       return "—";

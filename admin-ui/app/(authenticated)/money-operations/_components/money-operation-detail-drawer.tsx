@@ -37,6 +37,7 @@ import { Money } from "@/components/ui/money";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { accountTypeLabel } from "@/lib/account-type-label";
 import type { MoneyOperation } from "@/lib/api-types";
 import { moneyOperationLabel } from "@/lib/money-operation-label";
 import { formatCap, formatTimestamp, shortId } from "@/lib/utils";
@@ -133,18 +134,19 @@ function FieldValue({
       </span>
     );
   }
-  // System-account / bank-mirror legs — show the resolved wallet name; fall
-  // back to a shortened UUID only when the name couldn't be resolved.
+  // System-account / bank-mirror legs — show the resolved wallet name (raw
+  // account_type keys translated to friendly labels); fall back to a
+  // shortened UUID only when the name couldn't be resolved.
   if (fieldKey === "account_id") {
     return op.account_name ? (
-      <span className="text-sm text-foreground">{op.account_name}</span>
+      <span className="text-sm text-foreground">{accountTypeLabel(op.account_name)}</span>
     ) : (
       <span className="font-mono text-xs">{shortId(String(value))}</span>
     );
   }
   if (fieldKey === "bank_mirror_account_id") {
     return op.bank_mirror_name ? (
-      <span className="text-sm text-foreground">{op.bank_mirror_name}</span>
+      <span className="text-sm text-foreground">{accountTypeLabel(op.bank_mirror_name)}</span>
     ) : (
       <span className="font-mono text-xs">{shortId(String(value))}</span>
     );

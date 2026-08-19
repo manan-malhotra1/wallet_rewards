@@ -204,6 +204,9 @@ async def get_operation(
     request, reviews = await get_money_operation(session, request_id, tenant_id)
     out = _build_out(request, reviews)
     await _attach_admin_names(session, [out])
+    # Same display enrichment as the list endpoint — the detail drawer refetches
+    # through here, so skipping it would regress names back to raw UUIDs.
+    await _attach_payload_names(session, [out])
     return out
 
 

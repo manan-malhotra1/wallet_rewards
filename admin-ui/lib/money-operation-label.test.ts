@@ -43,7 +43,7 @@ describe("Treasury operation wording", () => {
     expect(moneyOperationLabel("teleport_funds")).toBe("teleport_funds");
   });
 
-  it("Verify funding a user reads as the amount, currency and recipient on one line", () => {
+  it("Verify funding a user reads as a sentence naming the recipient and amount", () => {
     const summary = moneyOperationSummary(
       op({
         operation: "fund_user",
@@ -51,10 +51,21 @@ describe("Treasury operation wording", () => {
         subject_name: "Bob Jones",
       }),
     );
-    expect(summary).toBe("ZAR 150.00 → Bob Jones");
+    expect(summary).toBe("Fund Bob Jones with ZAR 150.00");
   });
 
-  it("Verify adjusting a treasury wallet shows whether the amount is added or removed, and on which account", () => {
+  it("Verify withdrawing everything from a user says so without a meaningless amount", () => {
+    const summary = moneyOperationSummary(
+      op({
+        operation: "withdraw_user",
+        payload: { withdraw_all: true, currency: "ZAR" },
+        subject_name: "Bob Jones",
+      }),
+    );
+    expect(summary).toBe("Withdraw all funds from Bob Jones");
+  });
+
+  it("Verify removing from a treasury wallet reads as a deduction from the named account", () => {
     const summary = moneyOperationSummary(
       op({
         operation: "adjust_system_wallet",
@@ -62,6 +73,20 @@ describe("Treasury operation wording", () => {
         account_name: "Cash float",
       }),
     );
-    expect(summary).toBe("−50.00 on Cash float");
+    expect(summary).toBe("Deduct 50.00 from Cash float");
+  });
+
+  it("Verify a top-up names the wallet and its bank-mirror counter-leg, translating raw type keys", () => {
+    const summary = moneyOperationSummary(
+      op({
+        operation: "adjust_system_wallet",
+        payload: { amount: "100000", account_id: "acc-1" },
+        // The backend falls back to the raw account_type when the wallet has
+        // no custom name — the summary must still read friendly.
+        account_name: "system_cash_inflow",
+        bank_mirror_name: "Steward Bank",
+      }),
+    );
+    expect(summary).toBe("Add 100,000.00 to Cash float via Steward Bank");
   });
 });

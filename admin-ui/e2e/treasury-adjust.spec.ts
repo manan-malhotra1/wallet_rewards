@@ -88,13 +88,15 @@ test("maker proposes a cash-float top-up; checker approves and the float rises",
   });
   const checkerPage = await checkerContext.newPage();
   try {
-    await checkerPage.goto("/approvals?tab=transactions&status=pending");
+    // Status values are the UPPERCASE StatusKeys (lib/approvals-filter.ts);
+    // anything else silently falls back to the default PENDING filter.
+    await checkerPage.goto("/approvals?tab=transactions&status=PENDING");
     await expect(
       checkerPage.getByRole("heading", { name: "Approvals" }),
     ).toBeVisible();
 
-    // Locate this proposal by its unique magnitude (summary: "+457.NN on Cash
-    // float via Primary"), then open its detail drawer.
+    // Locate this proposal by its unique magnitude (summary: "Add 457.NN to
+    // Cash float via Primary"), then open its detail drawer.
     const opRow = checkerPage.getByRole("row").filter({ hasText: amount.shown });
     await expect(opRow).toBeVisible();
     await opRow.getByRole("button", { name: "View" }).click();
@@ -108,7 +110,7 @@ test("maker proposes a cash-float top-up; checker approves and the float rises",
     // Approving revalidates the queue (the applied op drops off the Pending
     // filter and the drawer unmounts), so confirm APPLIED under the Applied
     // filter rather than in the now-closed drawer.
-    await checkerPage.goto("/approvals?tab=transactions&status=applied");
+    await checkerPage.goto("/approvals?tab=transactions&status=APPLIED");
     await expect(
       checkerPage.getByRole("row").filter({ hasText: amount.shown }),
     ).toBeVisible();

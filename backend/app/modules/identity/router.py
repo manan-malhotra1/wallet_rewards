@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal, UserPrincipal
@@ -249,7 +249,7 @@ async def patch_user_type(
 async def get_user_transactions(
     user_id: UUID,
     tenant_id: UUID,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=200),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[AdminUserTransactionOut]:

@@ -18,12 +18,13 @@ prior round may approve again.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
@@ -53,6 +54,7 @@ from app.shared.models import (
     USER_OP_STATUS_CHANGES_REQUESTED,
     USER_OP_STATUS_PENDING,
     USER_OP_STATUS_WITHDRAWN,
+    USER_OP_STATUSES,
     USER_OP_TERMINAL_STATUSES,
     USER_OP_UPDATE,
     USER_REVIEW_ACTION_APPLIED,
@@ -68,6 +70,14 @@ from app.shared.models import (
     User,
     UserOperationRequest,
     UserOperationReview,
+    UserProfile,
+)
+from app.shared.queue_counts import (
+    QueueCountsOut,
+    apply_newest_first_window,
+    count_queue_by_status,
+    queue_search_condition,
+    search_needle,
 )
 from app.shared.utils.normalize import normalize_identifier
 
@@ -110,6 +120,27 @@ async def load_reviews(session: AsyncSession, request_id: UUID) -> list[UserOper
         .order_by(UserOperationReview.created_at.asc(), UserOperationReview.id.asc())
     )
     return list(result.scalars().all())
+
+
+async def load_reviews_for_requests(
+    session: AsyncSession, request_ids: Sequence[UUID]
+) -> dict[UUID, list[UserOperationReview]]:
+    """Batch-load many requests' review threads in ONE query (B7.2).
+
+    Threads are oldest-first per request, matching `load_reviews`. Requests
+    with no reviews are simply absent — callers default to [].
+    """
+    if not request_ids:
+        return {}
+    result = await session.execute(
+        select(UserOperationReview)
+        .where(UserOperationReview.request_id.in_(request_ids))
+        .order_by(UserOperationReview.created_at.asc(), UserOperationReview.id.asc())
+    )
+    by_request: dict[UUID, list[UserOperationReview]] = {}
+    for review in result.scalars():
+        by_request.setdefault(review.request_id, []).append(review)
+    return by_request
 
 
 def _current_round(reviews: list[UserOperationReview]) -> list[UserOperationReview]:
@@ -619,16 +650,81 @@ async def withdraw_user_operation(
     return request
 
 
+"""Queue-specific text columns the free-text search also matches (B7.2c)."""
+_SEARCH_TEXT_COLUMNS = (UserOperationRequest.operation,)
+
+
+def _target_name_conditions(q: str) -> tuple[ColumnElement[bool], ...]:
+    """Search conditions matching the edited user's PROFILE name.
+
+    An update_user payload carries only the target's UUID, but the UI shows
+    the resolved display name — so checkers search by name. (create_user
+    payloads carry the name inline, so the payload-text match covers them.)
+
+    The "users whose name matches q" subquery is UNCORRELATED, so Postgres
+    evaluates it once and hash-probes it per queue row — a correlated EXISTS
+    here would re-scan profiles for every row. The outer query is already
+    tenant-scoped, and target ids are UUIDs, so no tenant filter is needed.
+    """
+    needle = search_needle(q)
+    matching_user_ids = select(cast(UserProfile.user_id, String)).where(
+        func.concat_ws(" ", UserProfile.first_name, UserProfile.last_name).ilike(
+            needle, escape="\\"
+        )
+    )
+    return (UserOperationRequest.payload["target_user_id"].astext.in_(matching_user_ids),)
+
+
 async def list_user_operations(
-    session: AsyncSession, tenant_id: UUID, *, status: str | None = None
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    status: str | None = None,
+    q: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[UserOperationRequest]:
-    """Return a tenant's user-operation requests, newest-first, optionally by status."""
+    """Return a tenant's user-operation requests, newest-first, optionally by status.
+
+    Args:
+        q: Free-text search across the whole queue (id, maker, operation,
+            payload text) — see `queue_search_condition` (B7.2c).
+        limit: Maximum rows to return; None means unbounded (existing callers).
+        offset: Rows to skip before the window starts (B7.1 pagination). The
+            ordering tie-breaks on id so a fixed window never duplicates or
+            drops rows created in the same instant.
+    """
     stmt = select(UserOperationRequest).where(UserOperationRequest.tenant_id == tenant_id)
     if status is not None:
         stmt = stmt.where(UserOperationRequest.status == status)
-    stmt = stmt.order_by(UserOperationRequest.created_at.desc())
+    if q:
+        stmt = stmt.where(
+            queue_search_condition(
+                UserOperationRequest, q, _SEARCH_TEXT_COLUMNS, _target_name_conditions(q)
+            )
+        )
+    stmt = apply_newest_first_window(stmt, UserOperationRequest, limit=limit, offset=offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def count_user_operations(
+    session: AsyncSession, tenant_id: UUID, *, q: str | None = None
+) -> QueueCountsOut:
+    """Count a tenant's user operations per status in one grouped query (no rows).
+
+    `q` scopes the counts to search matches so a searching page's pager and
+    status segments stay truthful (B7.2c).
+    """
+    return await count_queue_by_status(
+        session,
+        UserOperationRequest,
+        tenant_id,
+        USER_OP_STATUSES,
+        q=q,
+        extra_text_columns=_SEARCH_TEXT_COLUMNS,
+        extra_conditions=_target_name_conditions(q) if q else (),
+    )
 
 
 async def get_user_operation(

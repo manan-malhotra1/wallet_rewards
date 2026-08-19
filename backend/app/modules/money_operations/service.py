@@ -18,11 +18,12 @@ prior round may approve again.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import ValidationError
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
@@ -44,6 +45,7 @@ from app.shared.models import (
     MONEY_OP_STATUS_CHANGES_REQUESTED,
     MONEY_OP_STATUS_PENDING,
     MONEY_OP_STATUS_WITHDRAWN,
+    MONEY_OP_STATUSES,
     MONEY_OP_TERMINAL_STATUSES,
     MONEY_REVIEW_ACTION_APPLIED,
     MONEY_REVIEW_ACTION_APPROVED,
@@ -58,6 +60,15 @@ from app.shared.models import (
     MoneyOperationRequest,
     MoneyOperationReview,
     Tenant,
+    UserIdentifier,
+    UserProfile,
+)
+from app.shared.queue_counts import (
+    QueueCountsOut,
+    apply_newest_first_window,
+    count_queue_by_status,
+    queue_search_condition,
+    search_needle,
 )
 
 # -----------------------------------------------------------------------------
@@ -97,6 +108,27 @@ async def load_reviews(session: AsyncSession, request_id: UUID) -> list[MoneyOpe
         .order_by(MoneyOperationReview.created_at.asc(), MoneyOperationReview.id.asc())
     )
     return list(result.scalars().all())
+
+
+async def load_reviews_for_requests(
+    session: AsyncSession, request_ids: Sequence[UUID]
+) -> dict[UUID, list[MoneyOperationReview]]:
+    """Batch-load many requests' review threads in ONE query (B7.2).
+
+    Threads are oldest-first per request, matching `load_reviews`. Requests
+    with no reviews are simply absent — callers default to [].
+    """
+    if not request_ids:
+        return {}
+    result = await session.execute(
+        select(MoneyOperationReview)
+        .where(MoneyOperationReview.request_id.in_(request_ids))
+        .order_by(MoneyOperationReview.created_at.asc(), MoneyOperationReview.id.asc())
+    )
+    by_request: dict[UUID, list[MoneyOperationReview]] = {}
+    for review in result.scalars():
+        by_request.setdefault(review.request_id, []).append(review)
+    return by_request
 
 
 def _current_round(reviews: list[MoneyOperationReview]) -> list[MoneyOperationReview]:
@@ -519,16 +551,101 @@ async def withdraw_money_operation(
     return request
 
 
+"""Queue-specific text columns the free-text search also matches (B7.2c)."""
+_SEARCH_TEXT_COLUMNS = (MoneyOperationRequest.operation,)
+
+
+def _subject_name_conditions(q: str, tenant_id: UUID) -> tuple[ColumnElement[bool], ...]:
+    """Search conditions matching the funded/withdrawn user's PROFILE name.
+
+    The payload stores only the subject's identifier (e.g. a phone number),
+    but the UI shows the resolved display name — so checkers search by name.
+
+    Shape matters for speed: the "identifiers of users whose name matches q"
+    subquery is deliberately UNCORRELATED (tenant_id is a bound literal, not
+    the outer row's column), so Postgres evaluates it once and hash-probes it
+    per row. A correlated EXISTS here re-scanned every identifier per queue
+    row and took seconds on a few-thousand-row queue.
+
+    The payload keeps the value as TYPED while `user_identifiers` stores the
+    normalised form (the ORM normalises on write), so the payload side is
+    compared in every canonical form `normalize_identifier` could have
+    produced: trimmed (account/card), lower-trimmed (email), '+digits' (phone).
+    """
+    needle = search_needle(q)
+    matching_identifier_values = select(UserIdentifier.identifier_value).where(
+        UserIdentifier.tenant_id == tenant_id,
+        UserIdentifier.user_id.in_(
+            select(UserProfile.user_id).where(
+                func.concat_ws(" ", UserProfile.first_name, UserProfile.last_name).ilike(
+                    needle, escape="\\"
+                )
+            )
+        ),
+    )
+    raw = MoneyOperationRequest.payload["identifier_value"].astext
+    return (
+        func.trim(raw).in_(matching_identifier_values),
+        func.lower(func.trim(raw)).in_(matching_identifier_values),
+        func.concat("+", func.regexp_replace(raw, r"\D", "", "g")).in_(
+            matching_identifier_values
+        ),
+    )
+
+
 async def list_money_operations(
-    session: AsyncSession, tenant_id: UUID, *, status: str | None = None
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    status: str | None = None,
+    q: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[MoneyOperationRequest]:
-    """Return a tenant's money-operation requests, newest-first, optionally by status."""
+    """Return a tenant's money-operation requests, newest-first, optionally by status.
+
+    Args:
+        q: Free-text search across the whole queue (id, maker, operation,
+            payload text) — see `queue_search_condition` (B7.2c).
+        limit: Maximum rows to return; None means unbounded (existing callers).
+        offset: Rows to skip before the window starts (B7.1 pagination). The
+            ordering tie-breaks on id so a fixed window never duplicates or
+            drops rows created in the same instant.
+    """
     stmt = select(MoneyOperationRequest).where(MoneyOperationRequest.tenant_id == tenant_id)
     if status is not None:
         stmt = stmt.where(MoneyOperationRequest.status == status)
-    stmt = stmt.order_by(MoneyOperationRequest.created_at.desc())
+    if q:
+        stmt = stmt.where(
+            queue_search_condition(
+                MoneyOperationRequest,
+                q,
+                _SEARCH_TEXT_COLUMNS,
+                _subject_name_conditions(q, tenant_id),
+            )
+        )
+    stmt = apply_newest_first_window(stmt, MoneyOperationRequest, limit=limit, offset=offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def count_money_operations(
+    session: AsyncSession, tenant_id: UUID, *, q: str | None = None
+) -> QueueCountsOut:
+    """Count a tenant's money operations per status in one grouped query (no rows).
+
+    `q` scopes the counts to search matches so a searching page's pager and
+    status segments stay truthful (B7.2c).
+    """
+    return await count_queue_by_status(
+        session,
+        MoneyOperationRequest,
+        tenant_id,
+        MONEY_OP_STATUSES,
+        q=q,
+        extra_text_columns=_SEARCH_TEXT_COLUMNS,
+        extra_conditions=_subject_name_conditions(q, tenant_id) if q else (),
+    )
 
 
 async def get_money_operation(

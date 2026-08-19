@@ -794,6 +794,16 @@ export type ConfigRequestStatus =
   | "WITHDRAWN";
 
 /**
+ * A maker-checker queue's row total plus per-status counts, as returned by the
+ * three `/counts` endpoints (B7.1). `by_status` is zero-filled by the backend,
+ * but clients still treat missing keys as 0 defensively.
+ */
+export interface QueueCounts {
+  total: number;
+  by_status: Record<string, number>;
+}
+
+/**
  * Action recorded on a single review entry. Values mirror the backend
  * review verbs. Kept as a union for display switching; render defensively
  * since the backend owns the canonical set.

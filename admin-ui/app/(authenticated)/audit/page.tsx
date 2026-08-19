@@ -6,6 +6,7 @@
  * filters.
  */
 import { ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 import { getActiveTenantId } from "@/lib/active-tenant";
 import { queryAuditLog } from "@/lib/api-endpoints";
@@ -20,8 +21,16 @@ import { AuditTable } from "./_components/audit-table";
 
 export const dynamic = "force-dynamic";
 
+/** Rows fetched per page — the log grows for 7 years, so views page (B7.3). */
+const AUDIT_PAGE_SIZE = 100;
+
 interface AuditPageProps {
-  searchParams: Promise<{ entity_type?: string; entity_id?: string; limit?: string }>;
+  searchParams: Promise<{
+    entity_type?: string;
+    entity_id?: string;
+    limit?: string;
+    page?: string;
+  }>;
 }
 
 export default async function AuditPage({ searchParams }: AuditPageProps) {
@@ -39,6 +48,10 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
     );
   }
 
+  const requestedPage = Number(params.page);
+  const page = Number.isInteger(requestedPage) && requestedPage >= 1 ? requestedPage : 1;
+  const limit = params.limit ? Number(params.limit) : AUDIT_PAGE_SIZE;
+
   let entries: Awaited<ReturnType<typeof queryAuditLog>> = [];
   let error: ApiError | null = null;
   try {
@@ -46,12 +59,26 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
       tenant_id: activeTenantId,
       entity_type: params.entity_type || undefined,
       entity_id: params.entity_id || undefined,
-      limit: params.limit ? Number(params.limit) : 100,
+      limit,
+      offset: (page - 1) * limit,
     });
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
   }
+
+  // Blind pager (the log has no counts endpoint): a full window means there
+  // may be more, so offer Next; Previous appears whenever we're past page 1.
+  const pageHref = (target: number) => {
+    const sp = new URLSearchParams();
+    if (params.entity_type) sp.set("entity_type", params.entity_type);
+    if (params.entity_id) sp.set("entity_id", params.entity_id);
+    if (target > 1) sp.set("page", String(target));
+    const qs = sp.toString();
+    return qs ? `/audit?${qs}` : "/audit";
+  };
+  const hasPrevious = page > 1;
+  const hasNext = entries.length === limit;
 
   return (
     <div>
@@ -81,6 +108,21 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
             <AuditTable entries={entries} />
           )}
         </div>
+        {!error && (hasPrevious || hasNext) && (
+          <div className="mt-4 flex items-center justify-end gap-3 text-sm">
+            {hasPrevious && (
+              <Link href={pageHref(page - 1)} className="text-muted-foreground hover:text-foreground">
+                ← Previous
+              </Link>
+            )}
+            <span className="text-xs text-muted-foreground tabular-nums">Page {page}</span>
+            {hasNext && (
+              <Link href={pageHref(page + 1)} className="text-muted-foreground hover:text-foreground">
+                Next →
+              </Link>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

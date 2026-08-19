@@ -465,12 +465,18 @@ async def list_account_transactions(
     tenant_id: UUID,
     account_id: UUID,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[SystemWalletTransactionOut]:
     """Return recent transactions touching a system account.
 
     Tenant-scoped — cross-tenant lookups return 404 (no existence leak).
     Joins ledger_entries → transactions so we can surface the entry's
     direction (DEBIT/CREDIT) for the row in the drill-down UI.
+
+    Ordered by the LEDGER ENTRY's timestamp (≈ the transaction's, entries are
+    written in the same commit) with an id tie-break, so the sort can ride the
+    entry-side index instead of sorting the account's whole history — treasury
+    accounts hold a leg of nearly every transaction, forever (B7.3).
     """
     acct = (
         await session.execute(
@@ -488,7 +494,8 @@ async def list_account_transactions(
         select(Transaction, LedgerEntry)
         .join(LedgerEntry, LedgerEntry.transaction_id == Transaction.id)
         .where(LedgerEntry.account_id == account_id)
-        .order_by(desc(Transaction.created_at))
+        .order_by(desc(LedgerEntry.created_at), desc(LedgerEntry.id))
+        .offset(offset)
         .limit(limit)
     )
     rows = (await session.execute(stmt)).all()

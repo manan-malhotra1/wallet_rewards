@@ -1,18 +1,22 @@
 /**
  * Client toolbar for the unified Approvals page (1a design). Owns the four
  * facets — search, a status segmented control with counts, a type multi-select,
- * and a date-range preset — over the active tab's rows, mirrors them to the URL
- * (shareable) without a server round-trip, renders removable filter chips and
- * the "X of Y" line, then hands the filtered rows to the existing queue table.
+ * and a date-range preset — renders removable filter chips and the "X of Y"
+ * line, then hands the filtered rows to the existing queue table.
  *
- * Tab switching is a real navigation (each queue is a distinct server fetch);
- * the facets are client-side over the tab's already-loaded rows.
+ * Since Story B7.1 the rows are a server-fetched WINDOW, not the full queue:
+ * tab switches, status segment clicks, and the pager are real navigations
+ * (each changes what the server fetches — `?tab=` / `?status=` / `?page=`).
+ * Since B7.2c the SEARCH is server-side too (`?q=`, debounced) and covers the
+ * whole queue; only type and date stay client-side over the fetched window.
+ * The status segment counts and pager totals come from the backend /counts
+ * endpoints — q-scoped while searching, whole-queue otherwise.
  */
 "use client";
 
 import { GitPullRequest, Landmark, UserCog, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,14 +31,15 @@ import type {
   UserOperation,
 } from "@/lib/api-types";
 import {
+  applyFilters,
   DEFAULT_FILTERS,
   STATUS_KEYS,
-  summarize,
   type ApprovalFilters,
   type ApprovalRow,
   type DateRangeKey,
   type StatusKey,
 } from "@/lib/approvals-filter";
+import { DEFAULT_SERVER_STATUS, pageCount } from "@/lib/approvals-window";
 import { configTypeLabel } from "@/lib/config-type-label";
 import { moneyOperationLabel, moneyOperationSummary } from "@/lib/money-operation-label";
 import { userOperationLabel, userOperationSummary } from "@/lib/user-operation-label";
@@ -175,19 +180,15 @@ function normalizeUser(op: UserOperation): ApprovalRow {
 
 // ---- Initial-state parsing from the URL ----------------------------------
 
-/** Read the four facets out of the current query string, validated per tab. */
+/**
+ * Read the CLIENT facets (type, date) out of the current query string,
+ * validated per tab. Status (B7.1) and search (B7.2c) are SERVER params —
+ * they change what window is fetched — and are parsed by the page, not here.
+ */
 function readFilters(
   params: URLSearchParams,
   validTypes: Set<string>,
 ): ApprovalFilters {
-  const statusParam = params.get("status");
-  const status: StatusKey | "ALL" =
-    statusParam === "ALL"
-      ? "ALL"
-      : (STATUS_KEYS as readonly string[]).includes(statusParam ?? "")
-        ? (statusParam as StatusKey)
-        : DEFAULT_FILTERS.status;
-
   const types = (params.get("type") ?? "")
     .split(",")
     .map((t) => t.trim())
@@ -199,7 +200,7 @@ function readFilters(
       ? dateParam
       : DEFAULT_FILTERS.dateRange;
 
-  return { status, types, dateRange, q: params.get("q") ?? "" };
+  return { types, dateRange };
 }
 
 // ---- The toolbar ---------------------------------------------------------
@@ -214,11 +215,25 @@ export interface ApprovalsToolbarProps {
   configRequests: ConfigChangeRequest[];
   moneyOperations: MoneyOperation[];
   userOperations: UserOperation[];
+  /** The server-applied status filter the fetched window reflects. */
+  serverStatus: StatusKey | "ALL";
+  /** The server-applied whole-queue search the fetched window reflects. */
+  serverQ: string;
+  /** Whole-queue per-status counts (from /counts), for the status segments. */
+  statusCounts: Record<StatusKey | "ALL", number>;
+  /** Rows matching `serverStatus` across the WHOLE queue (drives the pager). */
+  queueTotal: number;
+  /** Current 1-based page of the server window. */
+  page: number;
+  /** Server window size (rows per page). */
+  pageSize: number;
 }
 
 export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
-  const { activeTab, tabs } = props;
+  const { activeTab, tabs, serverStatus, serverQ, statusCounts, queueTotal, page, pageSize } =
+    props;
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const typeOptions = typeOptionsFor(activeTab);
@@ -233,6 +248,10 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
     readFilters(new URLSearchParams(searchParams.toString()), validTypes),
   );
 
+  // The search box's live value. Server state (`serverQ`) trails it by one
+  // debounced navigation — typing stays instant, fetching is coalesced.
+  const [q, setQ] = React.useState(serverQ);
+
   // Normalise the active tab's typed rows into the generic filter shape. Only
   // the active tab carries data; the others are empty arrays.
   const normalized = React.useMemo<ApprovalRow[]>(() => {
@@ -241,25 +260,66 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
     return props.userOperations.map(normalizeUser);
   }, [activeTab, props.configRequests, props.moneyOperations, props.userOperations]);
 
-  const { filtered, statusCounts, shown, total } = React.useMemo(
-    () => summarize(normalized, filters),
+  // Client facets over the fetched window (the window is already
+  // status-filtered server-side; the segment counts come from /counts).
+  const filtered = React.useMemo(
+    () => applyFilters(normalized, filters),
     [normalized, filters],
   );
+  const shown = filtered.length;
+  const total = normalized.length;
 
-  // Mirror the facets into the address bar without re-running the server
-  // component (History API, not router navigation) — search stays snappy and
-  // no stale refetch flashes. Only non-default facets are written.
-  const syncUrl = React.useCallback(
-    (next: ApprovalFilters) => {
+  // Build the query string for a given server window (status + page) with the
+  // current client facets carried along, so a status/page navigation — which
+  // re-runs the server component and remounts this toolbar — preserves them.
+  const buildQuery = React.useCallback(
+    (
+      next: ApprovalFilters,
+      qValue: string,
+      status: StatusKey | "ALL",
+      targetPage: number,
+    ) => {
       const sp = new URLSearchParams();
       sp.set("tab", activeTab);
-      if (next.status !== DEFAULT_FILTERS.status) sp.set("status", next.status);
+      if (status !== DEFAULT_SERVER_STATUS) sp.set("status", status);
+      if (targetPage > 1) sp.set("page", String(targetPage));
+      if (qValue.trim()) sp.set("q", qValue.trim());
       if (next.types.length > 0) sp.set("type", next.types.join(","));
       if (next.dateRange !== DEFAULT_FILTERS.dateRange) sp.set("date", next.dateRange);
-      if (next.q.trim()) sp.set("q", next.q.trim());
-      window.history.replaceState(null, "", `${pathname}?${sp.toString()}`);
+      return `${pathname}?${sp.toString()}`;
     },
     [activeTab, pathname],
+  );
+
+  // A status or page change is a REAL navigation — the server fetches a new
+  // window. A status change resets to page 1 (fresh window).
+  const navigateToWindow = React.useCallback(
+    (status: StatusKey | "ALL", targetPage: number) => {
+      router.push(buildQuery(filters, q, status, targetPage));
+    },
+    [buildQuery, filters, q, router],
+  );
+
+  // Debounced server-side search (B7.2c): typing edits local state instantly;
+  // shortly after the last keystroke the page navigates (replace, not push —
+  // a keystroke stream must not pile up history entries) and the server
+  // fetches matches across the WHOLE queue. A new search resets to page 1.
+  React.useEffect(() => {
+    if (q.trim() === serverQ) return;
+    const timer = setTimeout(() => {
+      router.replace(buildQuery(filters, q, serverStatus, 1));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [q, serverQ, buildQuery, filters, router, serverStatus]);
+
+  // Mirror the CLIENT facets into the address bar without re-running the
+  // server component (History API, not router navigation) — no stale refetch
+  // flashes. Only non-default facets are written.
+  const syncUrl = React.useCallback(
+    (next: ApprovalFilters) => {
+      window.history.replaceState(null, "", buildQuery(next, q, serverStatus, page));
+    },
+    [buildQuery, page, q, serverStatus],
   );
 
   /** Apply a partial facet change: update state and mirror to the URL. */
@@ -274,12 +334,23 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
     [syncUrl],
   );
 
-  const resetAll = React.useCallback(() => update({ ...DEFAULT_FILTERS }), [update]);
+  // Full reset — client facets, search, AND server window. The navigation
+  // re-renders the server component but PRESERVES this client component
+  // instance, so the local state must be reset explicitly, not just erased
+  // from the URL.
+  const resetAll = React.useCallback(() => {
+    setFilters({ ...DEFAULT_FILTERS });
+    setQ("");
+    router.push(`${pathname}?tab=${activeTab}`);
+  }, [activeTab, pathname, router]);
 
-  // Which chips are active (a facet away from its default)?
-  const statusChipActive = filters.status !== DEFAULT_FILTERS.status;
+  // Which chips are active (a facet away from its default)? Status is the
+  // server-applied filter; the rest are client facets.
+  const statusChipActive = serverStatus !== DEFAULT_SERVER_STATUS;
   const dateChipActive = filters.dateRange !== DEFAULT_FILTERS.dateRange;
   const anyChip = statusChipActive || dateChipActive || filters.types.length > 0;
+
+  const pages = pageCount(queueTotal, pageSize);
 
   const TabEmptyIcon = TAB_ICON[activeTab];
 
@@ -326,15 +397,15 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
             type="search"
             aria-label="Search approvals"
             placeholder="Search by maker, entity or request ID"
-            value={filters.q}
-            onChange={(e) => update({ q: e.target.value })}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
           />
         </div>
 
         <StatusSegments
           counts={statusCounts}
-          value={filters.status}
-          onChange={(status) => update({ status })}
+          value={serverStatus}
+          onChange={(status) => navigateToWindow(status, 1)}
         />
 
         <MultiSelectDropdown
@@ -365,8 +436,8 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
         <div className="flex flex-wrap items-center gap-2">
           {statusChipActive && (
             <FilterChip
-              label={`Status: ${STATUS_LABEL[filters.status]}`}
-              onRemove={() => update({ status: DEFAULT_FILTERS.status })}
+              label={`Status: ${STATUS_LABEL[serverStatus]}`}
+              onRemove={() => navigateToWindow(DEFAULT_SERVER_STATUS, 1)}
             />
           )}
           {filters.types.map((t) => (
@@ -388,20 +459,64 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
         </div>
       )}
 
-      {/* "X of Y" count line. */}
-      <p className="text-xs text-muted-foreground tabular-nums">
-        {shown} of {total} {total === 1 ? "request" : "requests"}
-      </p>
+      {/* "X of Y" count line + the server-window pager (only when the queue
+          exceeds one fetched page for the current status). */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {shown} of {total} {total === 1 ? "request" : "requests"}
+          {pages > 1 && ` on this page · ${queueTotal} in queue`}
+        </p>
+        {pages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={page <= 1}
+              onClick={() => navigateToWindow(serverStatus, page - 1)}
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              Page {page} of {pages}
+            </span>
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={page >= pages}
+              onClick={() => navigateToWindow(serverStatus, page + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </div>
 
-      {/* The active queue's table, fed the filtered rows. */}
+      {/* The active queue's table, fed the filtered rows. Empty states, most
+          specific first: client type/date facets emptied a non-empty page; a
+          whole-queue search found nothing (statusCounts are q-scoped then);
+          the server status window is empty; or the queue itself is empty. */}
       {filtered.length === 0 ? (
         <EmptyState
           icon={TabEmptyIcon}
-          title={total === 0 ? "No requests in this queue" : "No matching requests"}
+          title={
+            total > 0
+              ? "No matching requests"
+              : serverQ
+                ? "No matching requests"
+                : statusCounts.ALL === 0
+                  ? "No requests in this queue"
+                  : `No ${STATUS_LABEL[serverStatus].toLowerCase()} requests`
+          }
           description={
-            total === 0
-              ? "Proposed changes appear here for an approver to review and approve."
-              : "No requests match the current filters. Adjust or clear them to see more."
+            total > 0
+              ? "No rows on this page match the type/date filters — they apply only to the fetched page. Adjust or clear them, or page through the queue."
+              : serverQ
+                ? statusCounts.ALL === 0
+                  ? "Nothing in this queue matches your search (it covers every page and status of this queue)."
+                  : `No ${STATUS_LABEL[serverStatus].toLowerCase()} requests match your search — try another status segment.`
+                : statusCounts.ALL === 0
+                  ? "Proposed changes appear here for an approver to review and approve."
+                  : "Nothing in this queue has that status. Pick another status segment to see the rest."
           }
         />
       ) : (

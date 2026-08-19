@@ -1,20 +1,17 @@
 /**
- * Tests for the Approvals toolbar filter/count helpers. These are the pure
- * core behind every facet, so they carry the coverage for the whole toolbar:
- * status tallies, multi-type OR, the inclusive date-range boundary, search
- * across maker/entity/request-id, and the composed "X of Y" derivation.
+ * Tests for the Approvals toolbar client-facet helpers. These are the pure
+ * core behind the client-side facets (type, date) applied to the
+ * server-fetched window: multi-type OR, the inclusive date-range boundary,
+ * and default-tab resolution. (Status and search are server params — see
+ * approvals-window.test.ts.)
  */
 import { describe, expect, it } from "vitest";
 
 import {
   applyFilters,
-  countByStatus,
-  countPending,
   DEFAULT_FILTERS,
   dateRangeCutoff,
-  matchesSearch,
   resolveActiveTab,
-  summarize,
   withinDateRange,
   type ApprovalFilters,
   type ApprovalRow,
@@ -41,75 +38,6 @@ function row(overrides: Partial<ApprovalRow> = {}): ApprovalRow {
 function filters(overrides: Partial<ApprovalFilters> = {}): ApprovalFilters {
   return { ...DEFAULT_FILTERS, ...overrides };
 }
-
-describe("countByStatus", () => {
-  it("Verify an empty queue reports every status and the total as zero", () => {
-    expect(countByStatus([])).toEqual({
-      PENDING: 0,
-      CHANGES_REQUESTED: 0,
-      APPLIED: 0,
-      WITHDRAWN: 0,
-      ALL: 0,
-    });
-  });
-
-  it("Verify a mixed queue tallies each status and sums them into the All total", () => {
-    const rows = [
-      row({ status: "PENDING" }),
-      row({ status: "PENDING" }),
-      row({ status: "APPLIED" }),
-      row({ status: "WITHDRAWN" }),
-      row({ status: "CHANGES_REQUESTED" }),
-    ];
-    const counts = countByStatus(rows);
-    expect(counts.PENDING).toBe(2);
-    expect(counts.APPLIED).toBe(1);
-    expect(counts.WITHDRAWN).toBe(1);
-    expect(counts.CHANGES_REQUESTED).toBe(1);
-    expect(counts.ALL).toBe(5);
-  });
-
-  it("Verify an unrecognised status is counted in the total but never mis-bucketed", () => {
-    const counts = countByStatus([row({ status: "SOMETHING_NEW" })]);
-    expect(counts.ALL).toBe(1);
-    expect(counts.PENDING).toBe(0);
-  });
-});
-
-describe("matchesSearch", () => {
-  const r = row({
-    id: "req-abc123",
-    maker: "Bob Jones",
-    makerId: "admin-bob",
-    summary: "Fund user → Carol",
-  });
-
-  it("Verify an empty query keeps every row", () => {
-    expect(matchesSearch(r, "")).toBe(true);
-    expect(matchesSearch(r, "   ")).toBe(true);
-  });
-
-  it("Verify a search matches the maker name case-insensitively", () => {
-    expect(matchesSearch(r, "bob jones")).toBe(true);
-    expect(matchesSearch(r, "JONES")).toBe(true);
-  });
-
-  it("Verify a search matches the raw maker id even when a name is displayed", () => {
-    expect(matchesSearch(r, "admin-bob")).toBe(true);
-  });
-
-  it("Verify a search matches the entity/summary text", () => {
-    expect(matchesSearch(r, "carol")).toBe(true);
-  });
-
-  it("Verify a search matches a partial request id", () => {
-    expect(matchesSearch(r, "abc123")).toBe(true);
-  });
-
-  it("Verify an unrelated query keeps no row", () => {
-    expect(matchesSearch(r, "zzz-nope")).toBe(false);
-  });
-});
 
 describe("date range", () => {
   it("Verify the All-time preset applies no lower bound", () => {
@@ -148,108 +76,48 @@ describe("applyFilters", () => {
     row({ id: "c", status: "PENDING", type: "commission", createdAt: NOW.toISOString() }),
   ];
 
-  it("Verify a status filter keeps only rows in that status", () => {
-    const out = applyFilters(rows, filters({ status: "PENDING" }), NOW);
-    expect(out.map((r) => r.id)).toEqual(["a", "c"]);
-  });
-
-  it("Verify selecting All status skips the status filter", () => {
-    const out = applyFilters(rows, filters({ status: "ALL" }), NOW);
+  it("Verify rows are never filtered by status (status is a server param)", () => {
+    const out = applyFilters(rows, filters(), NOW);
     expect(out).toHaveLength(3);
   });
 
   it("Verify multiple selected types are OR-matched", () => {
-    const out = applyFilters(
-      rows,
-      filters({ status: "ALL", types: ["pricing", "tax"] }),
-      NOW,
-    );
+    const out = applyFilters(rows, filters({ types: ["pricing", "tax"] }), NOW);
     expect(out.map((r) => r.id)).toEqual(["a", "b"]);
   });
 
   it("Verify an empty type selection matches every type", () => {
-    const out = applyFilters(rows, filters({ status: "ALL", types: [] }), NOW);
+    const out = applyFilters(rows, filters({ types: [] }), NOW);
     expect(out).toHaveLength(3);
   });
 
   it("Verify a facet-less (null type) row is excluded once any type is selected", () => {
     const withNull = [...rows, row({ id: "d", status: "PENDING", type: null })];
-    const out = applyFilters(
-      withNull,
-      filters({ status: "ALL", types: ["pricing"] }),
-      NOW,
-    );
+    const out = applyFilters(withNull, filters({ types: ["pricing"] }), NOW);
     expect(out.map((r) => r.id)).toEqual(["a"]);
   });
 
-  it("Verify the facets combine (status AND type AND search)", () => {
+  it("Verify the facets combine (type AND date)", () => {
+    const stale = new Date(NOW);
+    stale.setDate(stale.getDate() - 60);
+    const withStale = [...rows, row({ id: "d", type: "commission", createdAt: stale.toISOString() })];
     const out = applyFilters(
-      rows,
-      filters({ status: "PENDING", types: ["commission"], q: "service charge" }),
+      withStale,
+      filters({ types: ["commission"], dateRange: "30d" }),
       NOW,
     );
     expect(out.map((r) => r.id)).toEqual(["c"]);
   });
 
   it("Verify a combined filter can narrow to nothing", () => {
+    const stale = new Date(NOW);
+    stale.setDate(stale.getDate() - 60);
     const out = applyFilters(
-      rows,
-      filters({ status: "APPLIED", types: ["commission"] }),
+      [row({ id: "old", type: "commission", createdAt: stale.toISOString() })],
+      filters({ types: ["commission"], dateRange: "7d" }),
       NOW,
     );
     expect(out).toHaveLength(0);
-  });
-});
-
-describe("summarize (X of Y + segment counts)", () => {
-  const rows = [
-    row({ id: "a", status: "PENDING", type: "pricing" }),
-    row({ id: "b", status: "PENDING", type: "tax" }),
-    row({ id: "c", status: "APPLIED", type: "pricing" }),
-    row({ id: "d", status: "WITHDRAWN", type: "pricing" }),
-  ];
-
-  it("Verify X is the fully-filtered count and Y is the untouched tab total", () => {
-    const { shown, total } = summarize(rows, filters({ status: "PENDING" }), NOW);
-    expect(shown).toBe(2);
-    expect(total).toBe(4);
-  });
-
-  it("Verify segment counts reflect the other facets but not the chosen status", () => {
-    // Type=pricing narrows the pool to a, c, d; the status segments count that pool.
-    const { statusCounts, shown } = summarize(
-      rows,
-      filters({ status: "PENDING", types: ["pricing"] }),
-      NOW,
-    );
-    expect(statusCounts.ALL).toBe(3); // a, c, d
-    expect(statusCounts.PENDING).toBe(1); // a
-    expect(statusCounts.APPLIED).toBe(1); // c
-    expect(statusCounts.WITHDRAWN).toBe(1); // d
-    // The table shows only the pending pricing row.
-    expect(shown).toBe(1);
-  });
-
-  it("Verify selecting All status shows the whole pool", () => {
-    const { shown, total } = summarize(rows, filters({ status: "ALL" }), NOW);
-    expect(shown).toBe(4);
-    expect(total).toBe(4);
-  });
-});
-
-describe("countPending — rows awaiting a checker", () => {
-  it("Verify pending rows are counted case-insensitively", () => {
-    expect(
-      countPending([
-        { status: "pending" },
-        { status: "PENDING" },
-        { status: "applied" },
-      ]),
-    ).toBe(2);
-  });
-
-  it("Verify an empty queue counts zero", () => {
-    expect(countPending([])).toBe(0);
   });
 });
 

@@ -252,3 +252,71 @@ async def test_points_history_cross_tenant_isolated(
     )
     assert response.status_code == 200
     assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_points_history_limit_and_offset_window(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+    user_points: Account,
+    system_points_account: Account,
+) -> None:
+    """Verify limit/offset window the history newest-first (B7.3).
+
+    Points ledgers grow for 7 years — the endpoint must never return the
+    user's entire entry history in one response.
+    """
+    for i in range(3):
+        await _seed_reward(
+            db_session,
+            test_tenant,
+            test_user,
+            Decimal("10") + i,
+            rule_name=f"Rule {i}",
+            event_key=f"evt-window-{i}",
+        )
+
+    response = await async_client.get(
+        "/api/v1/catalog/me/points-history",
+        params={"limit": 2},
+        headers=await _user_header(test_user),
+    )
+    assert response.status_code == 200
+    window = response.json()
+    assert [row["rule_name"] for row in window] == ["Rule 2", "Rule 1"]
+
+    response = await async_client.get(
+        "/api/v1/catalog/me/points-history",
+        params={"limit": 2, "offset": 2},
+        headers=await _user_header(test_user),
+    )
+    assert response.status_code == 200
+    assert [row["rule_name"] for row in response.json()] == ["Rule 0"]
+
+
+@pytest.mark.asyncio
+async def test_points_history_bounds_422(
+    async_client: AsyncClient, test_user: User
+) -> None:
+    """Verify out-of-bounds limit/offset are rejected with 422, not clamped."""
+    header = await _user_header(test_user)
+    for params in ({"limit": 0}, {"limit": 501}, {"offset": -1}):
+        response = await async_client.get(
+            "/api/v1/catalog/me/points-history", params=params, headers=header
+        )
+        assert response.status_code == 422, params
+
+
+@pytest.mark.asyncio
+async def test_redemption_history_bounds_422(
+    async_client: AsyncClient, test_user: User
+) -> None:
+    """Verify the redemption history rejects out-of-bounds limit/offset (B7.3)."""
+    header = await _user_header(test_user)
+    for params in ({"limit": 0}, {"limit": 501}, {"offset": -1}):
+        response = await async_client.get(
+            "/api/v1/catalog/me/redemption-history", params=params, headers=header
+        )
+        assert response.status_code == 422, params

@@ -49,6 +49,7 @@ from app.shared.models import (
     CONFIG_STATUS_CHANGES_REQUESTED,
     CONFIG_STATUS_PENDING,
     CONFIG_STATUS_WITHDRAWN,
+    CONFIG_STATUSES,
     CONFIG_TERMINAL_STATUSES,
     REVIEW_ACTION_APPROVED,
     REVIEW_ACTION_CHANGES_REQUESTED,
@@ -62,6 +63,12 @@ from app.shared.models import (
     ConfigChangeReview,
     ConfigChangeRevision,
     Tenant,
+)
+from app.shared.queue_counts import (
+    QueueCountsOut,
+    apply_newest_first_window,
+    count_queue_by_status,
+    queue_search_condition,
 )
 from app.shared.tenant_mode import assert_points_scope_allowed
 
@@ -645,26 +652,61 @@ async def withdraw_config_request(
     return request
 
 
+"""Queue-specific text columns the free-text search also matches (B7.2c)."""
+_SEARCH_TEXT_COLUMNS = (ConfigChangeRequest.operation, ConfigChangeRequest.config_type)
+
+
 async def list_config_requests(
     session: AsyncSession,
     tenant_id: UUID,
     *,
     status: str | None = None,
     config_type: str | None = None,
+    q: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[ConfigChangeRequest]:
     """Return a tenant's config requests, newest-first, optionally by status/type.
 
     `config_type` lets a native page (Service charges / Commission / …) fetch only
     its own requests (e.g. its CHANGES_REQUESTED items).
+
+    Args:
+        q: Free-text search across the whole queue (id, maker, operation,
+            config type, payload text) — see `queue_search_condition` (B7.2c).
+        limit: Maximum rows to return; None means unbounded (existing callers).
+        offset: Rows to skip before the window starts (B7.1 pagination). The
+            ordering tie-breaks on id so a fixed window never duplicates or
+            drops rows created in the same instant.
     """
     stmt = select(ConfigChangeRequest).where(ConfigChangeRequest.tenant_id == tenant_id)
     if status is not None:
         stmt = stmt.where(ConfigChangeRequest.status == status)
     if config_type is not None:
         stmt = stmt.where(ConfigChangeRequest.config_type == config_type)
-    stmt = stmt.order_by(ConfigChangeRequest.created_at.desc())
+    if q:
+        stmt = stmt.where(queue_search_condition(ConfigChangeRequest, q, _SEARCH_TEXT_COLUMNS))
+    stmt = apply_newest_first_window(stmt, ConfigChangeRequest, limit=limit, offset=offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def count_config_requests(
+    session: AsyncSession, tenant_id: UUID, *, q: str | None = None
+) -> QueueCountsOut:
+    """Count a tenant's config requests per status in one grouped query (no rows).
+
+    `q` scopes the counts to search matches so a searching page's pager and
+    status segments stay truthful (B7.2c).
+    """
+    return await count_queue_by_status(
+        session,
+        ConfigChangeRequest,
+        tenant_id,
+        CONFIG_STATUSES,
+        q=q,
+        extra_text_columns=_SEARCH_TEXT_COLUMNS,
+    )
 
 
 def _synthesize_baseline(

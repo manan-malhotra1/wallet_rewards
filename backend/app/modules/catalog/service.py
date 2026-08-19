@@ -12,7 +12,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.accounts.service import derive_balance
@@ -68,8 +68,10 @@ async def _sum_by_transaction_type(
     Used for "lifetime earned" (CREDIT + reward_issuance) and
     "lifetime redeemed" (DEBIT + redemption, status=COMPLETED).
     """
+    # SUM in SQL — a user's lifetime ledger grows for 7 years, so pulling
+    # every row into Python to add them up scales with account history (B7.3).
     result = await session.execute(
-        select(LedgerEntry.amount, Transaction.transaction_type, Transaction.status)
+        select(func.coalesce(func.sum(LedgerEntry.amount), 0))
         .join(Transaction, Transaction.id == LedgerEntry.transaction_id)
         .where(
             LedgerEntry.account_id == account_id,
@@ -78,10 +80,7 @@ async def _sum_by_transaction_type(
             Transaction.transaction_type == transaction_type,
         )
     )
-    total = Decimal("0")
-    for amount, _, _ in result.all():
-        total += Decimal(amount)
-    return total
+    return Decimal(result.scalar_one())
 
 
 async def get_user_summary(
@@ -124,24 +123,31 @@ async def get_user_summary(
 
 
 async def get_user_redemption_history(
-    session: AsyncSession, tenant_id: UUID, user_id: UUID
+    session: AsyncSession, tenant_id: UUID, user_id: UUID, *, limit: int = 50, offset: int = 0
 ) -> list[RedemptionHistoryItem]:
-    """Return the user's redemption history newest-first (Pay-PRD-1030)."""
+    """Return the user's redemption history newest-first (Pay-PRD-1030).
+
+    Windowed by limit/offset (B7.3) — history grows for 7 years, so the
+    endpoint must never return it whole. The ordering tie-breaks on id so a
+    fixed window never duplicates or drops same-instant rows.
+    """
     result = await session.execute(
         select(Redemption)
         .where(
             Redemption.tenant_id == tenant_id,
             Redemption.user_id == user_id,
         )
-        .order_by(Redemption.created_at.desc())
+        .order_by(Redemption.created_at.desc(), Redemption.id.desc())
+        .offset(offset)
+        .limit(limit)
     )
     return [RedemptionHistoryItem.model_validate(r) for r in result.scalars().all()]
 
 
 async def get_user_points_history(
-    session: AsyncSession, tenant_id: UUID, user_id: UUID
+    session: AsyncSession, tenant_id: UUID, user_id: UUID, *, limit: int = 50, offset: int = 0
 ) -> list[PointsHistoryItem]:
-    """Return every ledger entry on the user's points_account, newest first.
+    """Return a window of the user's points-account ledger, newest first.
 
     Joins ledger_entries -> transactions -> (optional) reward_events -> rules
     so each entry shows whether it came from a reward (and which rule fired)
@@ -149,10 +155,16 @@ async def get_user_points_history(
     user has no points_account in this tenant, returns an empty list (NOT
     a 404, matching the summary endpoint's behaviour).
 
+    Windowed by limit/offset (B7.3) — a points ledger grows for 7 years, so
+    the endpoint must never return it whole. The ordering tie-breaks on the
+    entry id so a fixed window never duplicates or drops same-instant rows.
+
     Args:
         session: Async DB session.
         tenant_id: Tenant scope.
         user_id: The user whose points history we want.
+        limit: Maximum rows to return.
+        offset: Rows to skip before the window starts.
 
     Returns:
         List of PointsHistoryItem ordered by entry timestamp DESC.
@@ -176,7 +188,9 @@ async def get_user_points_history(
         .outerjoin(RewardEvent, RewardEvent.ledger_entry_id == LedgerEntry.id)
         .outerjoin(Rule, Rule.id == RewardEvent.rule_id)
         .where(LedgerEntry.account_id == account.id)
-        .order_by(LedgerEntry.created_at.desc())
+        .order_by(LedgerEntry.created_at.desc(), LedgerEntry.id.desc())
+        .offset(offset)
+        .limit(limit)
     )
     rows = (await session.execute(stmt)).all()
     return [

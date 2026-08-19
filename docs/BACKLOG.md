@@ -596,3 +596,135 @@ Today the change is a bare column update.
 - Narrowing either 422s while rewards data exists, or is explicit about what
   becomes inert (and the UI says so before the operator confirms)
 - Audit row captures before/after mode
+
+---
+
+## Epic B7 — Approvals page does not scale · **Backlog**
+
+Found 2026-08-19 after load testing left ~2,200 money-operation rows in the dev
+DB: a single visit to the unified approvals page takes tens of seconds and has
+badly slowed the Playwright e2e suite.
+
+### Story B7.1 — Server-side pagination for the maker-checker queues · Done (2026-08-19)
+
+**Description:** `admin-ui/app/(authenticated)/approvals/page.tsx` fetches the
+FULL dataset of all three maker-checker queues (config_requests,
+money_operations, user_operations) with no status filter or limit on every
+visit, then filters entirely client-side in
+`_components/approvals-toolbar.tsx`. The backend list endpoints (e.g.
+`backend/app/modules/money_operations/service.py`) already accept a `status`
+param but have no `limit`/`offset`.
+
+**Acceptance criteria:**
+- Backend list endpoints for all three queues accept `limit`/`offset` (keeping
+  the existing `status` param), with docstrings per the coding guidelines
+- Tests for the new query params on each endpoint (happy path, bounds/422,
+  tenant isolation preserved)
+- The approvals page fetches a status- and limit-aware window instead of the
+  full dataset
+- Tab-bar counts stay correct via cheap count queries (not by fetching rows)
+- The toolbar keeps its client-side facets, applied to the fetched window
+- Page load on a ~2,200-row queue is interactive in low single-digit seconds
+  in dev; Playwright e2e suite time recovers
+
+**Shipped:** `limit`/`offset` (cap 500) on all three list endpoints plus a
+`GET /counts` per queue (one grouped query, served through each module's
+service layer; window ordering shared in `app/shared/queue_counts.py`). The
+approvals page now fetches counts for every visible queue but ROWS only for
+the active tab, as one status-filtered window (`?status=`, default PENDING;
+`?page=` × 200, clamped to the real page count). The toolbar's status segments
+and pager are real navigations fed by whole-queue counts; search/type/date stay
+client-side over the fetched page (the empty state says so explicitly). The
+sidebar Approvals badge — rendered on every page — switched from three full
+PENDING list fetches to the counts endpoints. 24 new backend tests
+(happy/bounds-422/401/403/tenant isolation × 3 queues) + lib tests.
+
+### Story B7.2 — Bound the per-row enrichment and index the window query · Done (2026-08-19)
+
+**Description:** Follow-ups the B7.1 review confirmed but deferred. (a) The
+money/user list endpoints still run `load_reviews` per row plus per-row payload
+name resolution — bounded at 200/page now, but still ~200-800 sequential
+queries per approvals page load; batch them with `IN (...)` loads. (b) The new
+hot query `WHERE tenant_id=? AND status=? ORDER BY created_at DESC, id DESC
+LIMIT/OFFSET` is only covered by the (tenant_id, status) index, so Postgres
+sorts the whole matching set per page; add a composite
+(tenant_id, status, created_at DESC, id DESC) index via Alembic to all three
+request tables. (c) Consider a server-side `q` search param so the approvals
+search can cover the whole queue, not just the fetched page — a checker
+searching a request id that is outside the window currently sees "no match",
+which reads as "does not exist".
+
+**Shipped, all three parts:**
+- (a) Batched: `load_reviews_for_requests` (one `IN` query per page instead of
+  one per row) in money/user routers, the money payload-name enrichment
+  resolves each UNIQUE identifier once + one `resolve_user_names` + one
+  accounts-`IN` query, and user-op target names resolve in one call. Pinned by
+  query-count tests asserting a 6-row page costs exactly as many statements as
+  a 2-row page.
+- (b) Migration 0057 swaps each queue's (tenant_id, status) index for
+  (tenant_id, status, created_at, id) — EXPLAIN on the 2.2k-row dev queue now
+  shows a backward index scan, no sort (0.2 ms).
+- (c) Server-side search: `q` on all three list AND /counts endpoints (id,
+  maker sub, maker display name, operation/config_type, payload text, plus the
+  subject/target user's PROFILE name — the payload stores identifiers in
+  whatever format the maker typed, so the name join normalises them in SQL the
+  way `normalize_identifier` does). The approvals search box is now a debounced
+  `?q=` navigation covering the whole queue; segments and pager show q-scoped
+  counts while searching. Proven live: typing a funded user's name found the
+  one matching pending request among 2,206 rows.
+
+**Measured before/after (2,206-row dev queue, best of 3):** old page ~9.0s
+server-side / ~8,818 queries / 2,206 rows downloaded per visit; new page ~18ms
+/ ~8 queries / 10 rows; browser full-load 575–711ms (~110 KB) identical across
+Pending, ALL, deep pages, and search. A follow-up commit decorrelated the
+name-search subqueries after the benchmark caught a 16.3s plan (now 81ms).
+
+### Story B7.3 — Bound the remaining transaction/audit listings · Done (2026-08-19)
+
+**Description:** A full audit (backend endpoints + admin pages) after B7.2
+found the remaining unbounded or unindexed listing reads on tables that grow
+for 7 years.
+
+**Shipped:**
+- Audit log: `offset` param (id tie-break ordering), a blind Previous/Next
+  pager on the audit page, and migration 0058 adding
+  `ix_audit_log_tenant_created` — the default view previously seq-scanned and
+  top-N sorted the whole table.
+- Mobile `/catalog/me/points-history` + `/me/redemption-history`: were fully
+  unbounded (every ledger entry / redemption, ever); now limit (default 50,
+  cap 500) + offset. `/catalog/me/summary` lifetime sums moved from Python
+  row-loops into SQL `SUM`.
+- Admin user-transactions: `limit` was an unvalidated plain default (a caller
+  could request the full history); now `Query(ge=1, le=200)`.
+- System-wallet drill-down: gained `offset`, and orders by the ledger entry's
+  timestamp so the sort no longer needs every joined transaction row.
+
+### Story B7.4 — Remaining unbounded admin reads (audit findings) · Backlog
+
+**Description:** The rest of the B7.3 audit, deferred. (a) Reconciliation
+`list_pending` / `list_manual_review` return ALL matching rows with no LIMIT
+and no (tenant_id, status, created_at) index on redemptions; consumed by the
+reconciliation page, redemption page, AND the dashboard attention strip —
+which only needs counts. (b) The campaigns page calls `getRulePerformance`
+once per rule while the purpose-built batch endpoint
+`GET /rules/performance` ("one SQL round-trip") sits unwrapped in
+`api-endpoints.ts`. (c) Six native config pages fetch every change request of
+their type ever, then filter to open ones in JS — push `status_filter` +
+`limit` down instead. (d) The users page fetches the whole PENDING +
+CHANGES_REQUESTED user-op queues just to `.find()` one target's open request —
+needs a targeted lookup param. (e) `event_ingestion_log` (90-day retention but
+high volume) has no list endpoint yet — design it with limit/offset from day
+one.
+
+### Story B7.5 — Ledger-derived aggregates at scale · Backlog
+
+**Description:** Every balance read is `SUM(ledger_entries)` over an account's
+full 7-year history (invariant #1), and several surfaces run it in loops:
+system-wallets page (per wallet — treasury accounts hold a leg of nearly every
+transaction), user detail card (per account), catalog summary, and analytics
+`liquidity` (whole-ledger aggregate with no time bound, twice per dashboard
+load). `AccountBalanceSnapshot` exists in the models as a designed-but-unused
+read optimisation. Also: `reward_events` has no created_at/tenant-reachable
+index (analytics + budgets loop aggregates over it), and the system-wallet
+drill-down sort would want a (account_id, created_at) ledger index — both are
+measure-first decisions on hot money-path tables, same discipline as B1.9.

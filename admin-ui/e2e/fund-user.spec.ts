@@ -79,12 +79,14 @@ test("maker proposes funding Alice; checker approves and her balance rises", asy
   });
   const checkerPage = await checkerContext.newPage();
   try {
-    await checkerPage.goto("/approvals?tab=transactions&status=pending");
+    // Status values are the UPPERCASE StatusKeys (lib/approvals-filter.ts);
+    // anything else silently falls back to the default PENDING filter.
+    await checkerPage.goto("/approvals?tab=transactions&status=PENDING");
     await expect(
       checkerPage.getByRole("heading", { name: "Approvals" }),
     ).toBeVisible();
 
-    // Summary reads "ZAR NNN.NN → Alice Mokoena" — match by the unique amount.
+    // Summary reads "Fund Alice Mokoena with ZAR NNN.NN" — match by the unique amount.
     const opRow = checkerPage.getByRole("row").filter({ hasText: amount });
     await expect(opRow).toBeVisible();
     await opRow.getByRole("button", { name: "View" }).click();
@@ -96,7 +98,7 @@ test("maker proposes funding Alice; checker approves and her balance rises", asy
     await expect(checkerPage.getByText(/operation approved/i)).toBeVisible();
     // Approving revalidates + closes the drawer; the APPLIED effect is verified
     // below on Alice's balance. Confirm it also left the Pending queue.
-    await checkerPage.goto("/approvals?tab=transactions&status=applied");
+    await checkerPage.goto("/approvals?tab=transactions&status=APPLIED");
     await expect(
       checkerPage.getByRole("row").filter({ hasText: amount }),
     ).toBeVisible();

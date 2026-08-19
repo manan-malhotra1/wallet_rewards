@@ -95,7 +95,17 @@ class ConfigChangeRequest(Base):
             "status IN ('PENDING', 'CHANGES_REQUESTED', 'APPLIED', 'WITHDRAWN')",
             name="ck_config_change_requests_status",
         ),
-        Index("ix_config_change_requests_tenant_status", "tenant_id", "status"),
+        # Covers the B7.1 approvals window query (WHERE tenant_id, status
+        # ORDER BY created_at DESC, id DESC LIMIT/OFFSET) via a backward index
+        # scan — no per-page sort. The (tenant_id, status) prefix still serves
+        # the /counts grouped query and every status-filtered lookup.
+        Index(
+            "ix_config_change_requests_tenant_status_created",
+            "tenant_id",
+            "status",
+            "created_at",
+            "id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()

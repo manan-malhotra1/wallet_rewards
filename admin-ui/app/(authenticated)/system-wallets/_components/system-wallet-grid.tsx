@@ -34,67 +34,60 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
+import { accountTypeLabel } from "@/lib/account-type-label";
 import type { SystemWallet } from "@/lib/api-types";
 
 import { AdjustSystemWalletDialog } from "./adjust-system-wallet-dialog";
 import { RenameBankMirrorDialog } from "./rename-bank-mirror-dialog";
 import { TransactionsDialog } from "./transactions-dialog";
 
-// Friendly name + a tooltip explaining what each platform account is for.
+// Icon + a tooltip explaining what each platform account is for. Friendly
+// names come from the shared lib/account-type-label map so every surface
+// (this table, approvals summaries, user detail) uses the same wording.
 const TYPE_META: Record<
   string,
   {
-    label: string;
     icon: React.ComponentType<{ className?: string }>;
     description: string;
   }
 > = {
   system_cash_inflow: {
-    label: "Cash float",
     icon: Banknote,
     description:
       "The platform's operating cash. Funding a user wallet debits this float; withdrawals return to it.",
   },
   system_points_issuance: {
-    label: "Points issuance pool",
     icon: Sparkles,
     description:
       "Master source of reward points. Its balance trends negative — that figure is total points outstanding.",
   },
   system_fee_collected: {
-    label: "Fees collected",
     icon: Coins,
     description: "Where every service-charge fee is collected.",
   },
   provider_redemption_wallet: {
-    label: "Provider redemption wallet",
     icon: Wallet,
     description: "Points settled to a redemption provider (e.g. voucher partner).",
   },
   operator_adjustment: {
-    label: "Bank Mirror Account",
     icon: Landmark,
     description:
       "Mirrors real bank movements. The counter-leg for admin fund/withdraw and operator-float adjustments so the ledger stays balanced.",
   },
   commission: {
-    label: "Commission Funded Wallet",
     icon: HandCoins,
     description:
       "Platform-funded pool from which agent commissions are paid. Debited when an agent earns a commission (may run negative).",
   },
   tax_service_collected: {
-    label: "Tax Collected on Service Charges",
     icon: Receipt,
     description: "Tax charged on service fees is collected here.",
   },
   tax_commission_collected: {
-    label: "Tax Collected on Commissions",
     icon: Percent,
     description: "Tax charged on agent commissions is collected here.",
   },
   airtime_merchant_holding: {
-    label: "Airtime merchant holding",
     icon: Smartphone,
     description: "Escrow for airtime recharges pending settlement with the merchant/MNO.",
   },
@@ -129,7 +122,6 @@ export function SystemWalletGrid({
         <TableBody>
           {wallets.map((w) => {
             const meta = TYPE_META[w.account_type] ?? {
-              label: w.account_type,
               icon: Wallet,
               description: "",
             };
@@ -137,8 +129,10 @@ export function SystemWalletGrid({
             const isPoints = w.currency === "PTS";
             const isMirror = w.account_type === "operator_adjustment";
             // Bank mirrors show their operator-chosen name; every other type
-            // keeps its generic TYPE_META label.
-            const label = isMirror ? (w.name ?? "Bank Mirror") : meta.label;
+            // keeps its generic shared label.
+            const label = isMirror
+              ? (w.name ?? "Bank Mirror")
+              : accountTypeLabel(w.account_type);
             return (
               <TableRow key={w.id}>
                 <TableCell>

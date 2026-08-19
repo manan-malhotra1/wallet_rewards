@@ -658,22 +658,21 @@ def _target_name_conditions(q: str) -> tuple[ColumnElement[bool], ...]:
     """Search conditions matching the edited user's PROFILE name.
 
     An update_user payload carries only the target's UUID, but the UI shows
-    the resolved display name — so checkers search by name. Joins the
-    payload's target_user_id to user_profiles. (create_user payloads carry the
-    name inline, so the payload-text match already covers them.)
+    the resolved display name — so checkers search by name. (create_user
+    payloads carry the name inline, so the payload-text match covers them.)
+
+    The "users whose name matches q" subquery is UNCORRELATED, so Postgres
+    evaluates it once and hash-probes it per queue row — a correlated EXISTS
+    here would re-scan profiles for every row. The outer query is already
+    tenant-scoped, and target ids are UUIDs, so no tenant filter is needed.
     """
     needle = search_needle(q)
-    return (
-        select(UserProfile.id)
-        .where(
-            cast(UserProfile.user_id, String)
-            == UserOperationRequest.payload["target_user_id"].astext,
-            func.concat_ws(" ", UserProfile.first_name, UserProfile.last_name).ilike(
-                needle, escape="\\"
-            ),
+    matching_user_ids = select(cast(UserProfile.user_id, String)).where(
+        func.concat_ws(" ", UserProfile.first_name, UserProfile.last_name).ilike(
+            needle, escape="\\"
         )
-        .exists(),
     )
+    return (UserOperationRequest.payload["target_user_id"].astext.in_(matching_user_ids),)
 
 
 async def list_user_operations(

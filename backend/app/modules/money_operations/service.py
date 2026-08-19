@@ -555,38 +555,41 @@ async def withdraw_money_operation(
 _SEARCH_TEXT_COLUMNS = (MoneyOperationRequest.operation,)
 
 
-def _subject_name_conditions(q: str) -> tuple[ColumnElement[bool], ...]:
+def _subject_name_conditions(q: str, tenant_id: UUID) -> tuple[ColumnElement[bool], ...]:
     """Search conditions matching the funded/withdrawn user's PROFILE name.
 
     The payload stores only the subject's identifier (e.g. a phone number),
     but the UI shows the resolved display name — so checkers search by name.
-    Joins the payload's identifier_value to user_identifiers → user_profiles,
-    tenant-scoped through the identifier row.
+
+    Shape matters for speed: the "identifiers of users whose name matches q"
+    subquery is deliberately UNCORRELATED (tenant_id is a bound literal, not
+    the outer row's column), so Postgres evaluates it once and hash-probes it
+    per row. A correlated EXISTS here re-scanned every identifier per queue
+    row and took seconds on a few-thousand-row queue.
 
     The payload keeps the value as TYPED while `user_identifiers` stores the
-    normalised form (the ORM normalises on write), so the join compares the
-    stored value against every canonical form `normalize_identifier` could
-    have produced: trimmed (account/card), lower-trimmed (email), and
-    '+digits' (phone).
+    normalised form (the ORM normalises on write), so the payload side is
+    compared in every canonical form `normalize_identifier` could have
+    produced: trimmed (account/card), lower-trimmed (email), '+digits' (phone).
     """
     needle = search_needle(q)
-    raw = MoneyOperationRequest.payload["identifier_value"].astext
-    canonical_forms = (
-        func.trim(raw),
-        func.lower(func.trim(raw)),
-        func.concat("+", func.regexp_replace(raw, r"\D", "", "g")),
+    matching_identifier_values = select(UserIdentifier.identifier_value).where(
+        UserIdentifier.tenant_id == tenant_id,
+        UserIdentifier.user_id.in_(
+            select(UserProfile.user_id).where(
+                func.concat_ws(" ", UserProfile.first_name, UserProfile.last_name).ilike(
+                    needle, escape="\\"
+                )
+            )
+        ),
     )
+    raw = MoneyOperationRequest.payload["identifier_value"].astext
     return (
-        select(UserIdentifier.id)
-        .join(UserProfile, UserProfile.user_id == UserIdentifier.user_id)
-        .where(
-            UserIdentifier.tenant_id == MoneyOperationRequest.tenant_id,
-            UserIdentifier.identifier_value.in_(canonical_forms),
-            func.concat_ws(" ", UserProfile.first_name, UserProfile.last_name).ilike(
-                needle, escape="\\"
-            ),
-        )
-        .exists(),
+        func.trim(raw).in_(matching_identifier_values),
+        func.lower(func.trim(raw)).in_(matching_identifier_values),
+        func.concat("+", func.regexp_replace(raw, r"\D", "", "g")).in_(
+            matching_identifier_values
+        ),
     )
 
 
@@ -615,7 +618,10 @@ async def list_money_operations(
     if q:
         stmt = stmt.where(
             queue_search_condition(
-                MoneyOperationRequest, q, _SEARCH_TEXT_COLUMNS, _subject_name_conditions(q)
+                MoneyOperationRequest,
+                q,
+                _SEARCH_TEXT_COLUMNS,
+                _subject_name_conditions(q, tenant_id),
             )
         )
     stmt = apply_newest_first_window(stmt, MoneyOperationRequest, limit=limit, offset=offset)
@@ -638,7 +644,7 @@ async def count_money_operations(
         MONEY_OP_STATUSES,
         q=q,
         extra_text_columns=_SEARCH_TEXT_COLUMNS,
-        extra_conditions=_subject_name_conditions(q) if q else (),
+        extra_conditions=_subject_name_conditions(q, tenant_id) if q else (),
     )
 
 

@@ -605,7 +605,7 @@ Found 2026-08-19 after load testing left ~2,200 money-operation rows in the dev
 DB: a single visit to the unified approvals page takes tens of seconds and has
 badly slowed the Playwright e2e suite.
 
-### Story B7.1 — Server-side pagination for the maker-checker queues · Backlog
+### Story B7.1 — Server-side pagination for the maker-checker queues · Done (2026-08-19)
 
 **Description:** `admin-ui/app/(authenticated)/approvals/page.tsx` fetches the
 FULL dataset of all three maker-checker queues (config_requests,
@@ -626,3 +626,30 @@ param but have no `limit`/`offset`.
 - The toolbar keeps its client-side facets, applied to the fetched window
 - Page load on a ~2,200-row queue is interactive in low single-digit seconds
   in dev; Playwright e2e suite time recovers
+
+**Shipped:** `limit`/`offset` (cap 500) on all three list endpoints plus a
+`GET /counts` per queue (one grouped query, served through each module's
+service layer; window ordering shared in `app/shared/queue_counts.py`). The
+approvals page now fetches counts for every visible queue but ROWS only for
+the active tab, as one status-filtered window (`?status=`, default PENDING;
+`?page=` × 200, clamped to the real page count). The toolbar's status segments
+and pager are real navigations fed by whole-queue counts; search/type/date stay
+client-side over the fetched page (the empty state says so explicitly). The
+sidebar Approvals badge — rendered on every page — switched from three full
+PENDING list fetches to the counts endpoints. 24 new backend tests
+(happy/bounds-422/401/403/tenant isolation × 3 queues) + lib tests.
+
+### Story B7.2 — Bound the per-row enrichment and index the window query · Backlog
+
+**Description:** Follow-ups the B7.1 review confirmed but deferred. (a) The
+money/user list endpoints still run `load_reviews` per row plus per-row payload
+name resolution — bounded at 200/page now, but still ~200-800 sequential
+queries per approvals page load; batch them with `IN (...)` loads. (b) The new
+hot query `WHERE tenant_id=? AND status=? ORDER BY created_at DESC, id DESC
+LIMIT/OFFSET` is only covered by the (tenant_id, status) index, so Postgres
+sorts the whole matching set per page; add a composite
+(tenant_id, status, created_at DESC, id DESC) index via Alembic to all three
+request tables. (c) Consider a server-side `q` search param so the approvals
+search can cover the whole queue, not just the fetched page — a checker
+searching a request id that is outside the window currently sees "no match",
+which reads as "does not exist".

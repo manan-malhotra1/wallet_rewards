@@ -6,9 +6,10 @@
  * unit-testable without React.
  *
  * The toolbar drives four independent facets — status, type, date range, and a
- * free-text search — over the active tab's rows. `summarize` composes them into
- * everything the UI renders: the per-status segmented counts, the filtered set,
- * and the "X of Y" line.
+ * free-text search — over the active tab's rows. Since B7.1 the status facet
+ * and the segment counts are SERVER-side (see `lib/approvals-window.ts`); this
+ * module owns only the client facets (type, date, search) applied to the
+ * fetched window via `applyFilters`.
  */
 
 /** Preset windows for the date-range facet. `"all"` disables date filtering. */
@@ -46,10 +47,13 @@ export interface ApprovalRow {
   summary: string;
 }
 
-/** The four facet selections the toolbar owns. */
+/**
+ * The CLIENT facet selections the toolbar owns: type, date, and search. Status
+ * is deliberately absent — since B7.1 it is a SERVER param (it changes what
+ * window is fetched; see `lib/approvals-window.ts`), so client filtering never
+ * re-filters by status.
+ */
 export interface ApprovalFilters {
-  /** A specific `StatusKey`, or `"ALL"` for no status filter. */
-  status: StatusKey | "ALL";
   /** Selected type codes — OR-matched; empty means "any type". */
   types: string[];
   /** Selected date-range preset. */
@@ -59,13 +63,10 @@ export interface ApprovalFilters {
 }
 
 /**
- * The neutral starting point. Status defaults to `PENDING` because an approvals
- * queue is an action list — the pending items are what a checker came to do —
- * and the date range defaults to `"all"` so a genuinely old pending request is
- * never hidden by an implicit window.
+ * The neutral starting point. The date range defaults to `"all"` so a genuinely
+ * old pending request is never hidden by an implicit window.
  */
 export const DEFAULT_FILTERS: ApprovalFilters = {
-  status: "PENDING",
   types: [],
   dateRange: "all",
   q: "",
@@ -122,33 +123,11 @@ export function matchesSearch(row: ApprovalRow, q: string): boolean {
 }
 
 /**
- * Tally rows by lifecycle status. Always returns all four keys (zero-filled)
- * plus `ALL` (the total), so the status segmented control can render a count
- * next to every segment without post-processing.
- */
-export function countByStatus(
-  rows: ApprovalRow[],
-): Record<StatusKey | "ALL", number> {
-  const counts: Record<StatusKey | "ALL", number> = {
-    PENDING: 0,
-    CHANGES_REQUESTED: 0,
-    APPLIED: 0,
-    WITHDRAWN: 0,
-    ALL: rows.length,
-  };
-  for (const row of rows) {
-    if (row.status in counts && row.status !== "ALL") {
-      counts[row.status as StatusKey] += 1;
-    }
-  }
-  return counts;
-}
-
-/**
- * Apply every facet to `rows`. Type, date, and search always apply; status is
- * skipped when set to `"ALL"`. Pure — never mutates the input.
+ * Apply every client facet (type, date, search) to `rows`. The rows are the
+ * server-fetched window, already status-filtered server-side. Pure — never
+ * mutates the input.
  *
- * @param rows Normalised rows for the active tab.
+ * @param rows Normalised rows for the active tab's fetched window.
  * @param filters The current facet selections.
  * @param now Reference "now" for the date facet (defaults to the wall clock).
  */
@@ -163,17 +142,8 @@ export function applyFilters(
     }
     if (!withinDateRange(row, filters.dateRange, now)) return false;
     if (!matchesSearch(row, filters.q)) return false;
-    if (filters.status !== "ALL" && row.status !== filters.status) return false;
     return true;
   });
-}
-
-/**
- * Count rows awaiting a checker. Case-insensitive because the raw domain
- * statuses are lowercase while the toolbar normalises to uppercase.
- */
-export function countPending(rows: { status: string }[]): number {
-  return rows.filter((row) => row.status.toUpperCase() === "PENDING").length;
 }
 
 /**
@@ -196,43 +166,4 @@ export function resolveActiveTab<K extends string>(
   if (explicit) return explicit.key;
   const firstPending = tabs.find((t) => t.pending > 0);
   return (firstPending ?? tabs[0]).key;
-}
-
-/** Everything the toolbar needs to render in one pass over the active rows. */
-export interface ApprovalSummary {
-  /** Rows passing every facet except status — the pool the segments count. */
-  pool: ApprovalRow[];
-  /** Rows passing every facet including status — what the table shows. */
-  filtered: ApprovalRow[];
-  /** Per-status counts of `pool`, so each segment's count reflects the other facets. */
-  statusCounts: Record<StatusKey | "ALL", number>;
-  /** `X` in "X of Y" — rows after all filters. */
-  shown: number;
-  /** `Y` in "X of Y" — total rows in the tab, before any filter. */
-  total: number;
-}
-
-/**
- * Compose the facets into the toolbar's full view model. The status segmented
- * counts are computed over `pool` (rows matching every *other* facet), so each
- * segment shows how many rows selecting it would yield — standard faceted-search
- * behaviour that keeps the counts and the "X of Y" line mutually consistent.
- */
-export function summarize(
-  rows: ApprovalRow[],
-  filters: ApprovalFilters,
-  now: Date = new Date(),
-): ApprovalSummary {
-  const pool = applyFilters(rows, { ...filters, status: "ALL" }, now);
-  const filtered =
-    filters.status === "ALL"
-      ? pool
-      : pool.filter((row) => row.status === filters.status);
-  return {
-    pool,
-    filtered,
-    statusCounts: countByStatus(pool),
-    shown: filtered.length,
-    total: rows.length,
-  };
 }

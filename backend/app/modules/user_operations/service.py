@@ -53,6 +53,7 @@ from app.shared.models import (
     USER_OP_STATUS_CHANGES_REQUESTED,
     USER_OP_STATUS_PENDING,
     USER_OP_STATUS_WITHDRAWN,
+    USER_OP_STATUSES,
     USER_OP_TERMINAL_STATUSES,
     USER_OP_UPDATE,
     USER_REVIEW_ACTION_APPLIED,
@@ -68,6 +69,11 @@ from app.shared.models import (
     User,
     UserOperationRequest,
     UserOperationReview,
+)
+from app.shared.queue_counts import (
+    QueueCountsOut,
+    apply_newest_first_window,
+    count_queue_by_status,
 )
 from app.shared.utils.normalize import normalize_identifier
 
@@ -620,15 +626,32 @@ async def withdraw_user_operation(
 
 
 async def list_user_operations(
-    session: AsyncSession, tenant_id: UUID, *, status: str | None = None
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    status: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[UserOperationRequest]:
-    """Return a tenant's user-operation requests, newest-first, optionally by status."""
+    """Return a tenant's user-operation requests, newest-first, optionally by status.
+
+    Args:
+        limit: Maximum rows to return; None means unbounded (existing callers).
+        offset: Rows to skip before the window starts (B7.1 pagination). The
+            ordering tie-breaks on id so a fixed window never duplicates or
+            drops rows created in the same instant.
+    """
     stmt = select(UserOperationRequest).where(UserOperationRequest.tenant_id == tenant_id)
     if status is not None:
         stmt = stmt.where(UserOperationRequest.status == status)
-    stmt = stmt.order_by(UserOperationRequest.created_at.desc())
+    stmt = apply_newest_first_window(stmt, UserOperationRequest, limit=limit, offset=offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def count_user_operations(session: AsyncSession, tenant_id: UUID) -> QueueCountsOut:
+    """Count a tenant's user operations per status in one grouped query (no rows)."""
+    return await count_queue_by_status(session, UserOperationRequest, tenant_id, USER_OP_STATUSES)
 
 
 async def get_user_operation(

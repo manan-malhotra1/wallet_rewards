@@ -44,6 +44,7 @@ from app.shared.models import (
     MONEY_OP_STATUS_CHANGES_REQUESTED,
     MONEY_OP_STATUS_PENDING,
     MONEY_OP_STATUS_WITHDRAWN,
+    MONEY_OP_STATUSES,
     MONEY_OP_TERMINAL_STATUSES,
     MONEY_REVIEW_ACTION_APPLIED,
     MONEY_REVIEW_ACTION_APPROVED,
@@ -58,6 +59,11 @@ from app.shared.models import (
     MoneyOperationRequest,
     MoneyOperationReview,
     Tenant,
+)
+from app.shared.queue_counts import (
+    QueueCountsOut,
+    apply_newest_first_window,
+    count_queue_by_status,
 )
 
 # -----------------------------------------------------------------------------
@@ -520,15 +526,32 @@ async def withdraw_money_operation(
 
 
 async def list_money_operations(
-    session: AsyncSession, tenant_id: UUID, *, status: str | None = None
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    status: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[MoneyOperationRequest]:
-    """Return a tenant's money-operation requests, newest-first, optionally by status."""
+    """Return a tenant's money-operation requests, newest-first, optionally by status.
+
+    Args:
+        limit: Maximum rows to return; None means unbounded (existing callers).
+        offset: Rows to skip before the window starts (B7.1 pagination). The
+            ordering tie-breaks on id so a fixed window never duplicates or
+            drops rows created in the same instant.
+    """
     stmt = select(MoneyOperationRequest).where(MoneyOperationRequest.tenant_id == tenant_id)
     if status is not None:
         stmt = stmt.where(MoneyOperationRequest.status == status)
-    stmt = stmt.order_by(MoneyOperationRequest.created_at.desc())
+    stmt = apply_newest_first_window(stmt, MoneyOperationRequest, limit=limit, offset=offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def count_money_operations(session: AsyncSession, tenant_id: UUID) -> QueueCountsOut:
+    """Count a tenant's money operations per status in one grouped query (no rows)."""
+    return await count_queue_by_status(session, MoneyOperationRequest, tenant_id, MONEY_OP_STATUSES)
 
 
 async def get_money_operation(

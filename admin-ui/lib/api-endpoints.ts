@@ -46,6 +46,7 @@ import type {
   NetFlowPoint,
   PendingItem,
   PricingConfig,
+  QueueCounts,
   RedemptionProvider,
   ReferralTrigger,
   RevenueServiceSlice,
@@ -599,10 +600,16 @@ export const listConfigRequests = (
   tenant_id: string,
   status_filter?: ConfigRequestStatus,
   config_type?: ConfigType,
+  limit?: number,
+  offset?: number,
 ) =>
   apiGet<ConfigChangeRequest[]>("/api/v1/config-requests", {
-    query: { tenant_id, status_filter, config_type },
+    query: { tenant_id, status_filter, config_type, limit, offset },
   });
+
+/** Cheap per-status counts for the config-requests queue (approvals tab bar). */
+export const getConfigRequestCounts = (tenant_id: string) =>
+  apiGet<QueueCounts>("/api/v1/config-requests/counts", { query: { tenant_id } });
 
 /**
  * Full applied-version history for one live config row (Epic 25 — version
@@ -855,14 +862,23 @@ export const adjustSystemWallet = (payload: AdjustSystemWalletPayload) =>
 
 // ---- Epic 18 — Money operations (maker-checker review verbs) -------------
 
-/** List a tenant's money operations, optionally filtered by lifecycle status. */
+/**
+ * List a tenant's money operations, optionally filtered by lifecycle status and
+ * windowed by limit/offset (newest-first; the approvals page fetches one page).
+ */
 export const listMoneyOperations = (
   tenant_id: string,
   status_filter?: MoneyOperationStatus,
+  limit?: number,
+  offset?: number,
 ) =>
   apiGet<MoneyOperation[]>("/api/v1/money-operations", {
-    query: { tenant_id, status_filter },
+    query: { tenant_id, status_filter, limit, offset },
   });
+
+/** Cheap per-status counts for the money-operations queue (approvals tab bar). */
+export const getMoneyOperationCounts = (tenant_id: string) =>
+  apiGet<QueueCounts>("/api/v1/money-operations/counts", { query: { tenant_id } });
 
 /** Fetch a single money operation with its full review thread + progress. */
 export const getMoneyOperation = (id: string, tenant_id: string) =>
@@ -936,14 +952,23 @@ export const proposeUserOperation = (
     { query: { tenant_id } },
   );
 
-/** List a tenant's user operations, optionally filtered by lifecycle status. */
+/**
+ * List a tenant's user operations, optionally filtered by lifecycle status and
+ * windowed by limit/offset (newest-first; the approvals page fetches one page).
+ */
 export const listUserOperations = (
   tenant_id: string,
   status_filter?: UserOperationStatus,
+  limit?: number,
+  offset?: number,
 ) =>
   apiGet<UserOperation[]>("/api/v1/user-operations", {
-    query: { tenant_id, status_filter },
+    query: { tenant_id, status_filter, limit, offset },
   });
+
+/** Cheap per-status counts for the user-operations queue (approvals tab bar). */
+export const getUserOperationCounts = (tenant_id: string) =>
+  apiGet<QueueCounts>("/api/v1/user-operations/counts", { query: { tenant_id } });
 
 /** Fetch a single user operation with its full review thread + progress. */
 export const getUserOperation = (id: string, tenant_id: string) =>

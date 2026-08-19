@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
@@ -29,6 +29,7 @@ from app.modules.user_operations.schemas import (
 )
 from app.modules.user_operations.service import (
     approve_user_operation,
+    count_user_operations,
     distinct_approver_ids,
     get_user_operation,
     list_user_operations,
@@ -44,6 +45,7 @@ from app.shared.models import (
     UserOperationRequest,
     UserOperationReview,
 )
+from app.shared.queue_counts import QueueCountsOut
 
 router = APIRouter(prefix="/api/v1/user-operations", tags=["user-operations"])
 
@@ -132,12 +134,18 @@ async def post_propose(
 async def get_operations(
     tenant_id: UUID,
     status_filter: str | None = None,
+    limit: int | None = Query(None, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[UserOperationOut]:
-    """List a tenant's user operations (optionally filtered by status)."""
+    """List a tenant's user operations, optionally filtered by status and
+    windowed by limit/offset (B7.1 — the approvals page fetches a bounded
+    window, never the whole queue)."""
     _ = admin
-    requests = await list_user_operations(session, tenant_id, status=status_filter)
+    requests = await list_user_operations(
+        session, tenant_id, status=status_filter, limit=limit, offset=offset
+    )
     outs: list[UserOperationOut] = []
     for request in requests:
         reviews = await load_reviews(session, request.id)
@@ -145,6 +153,21 @@ async def get_operations(
     await _attach_admin_names(session, outs)
     await _attach_target_names(session, outs)
     return outs
+
+
+@router.get("/counts", response_model=QueueCountsOut)
+async def get_counts(
+    tenant_id: UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> QueueCountsOut:
+    """Per-status counts for the approvals tab bar — one grouped query, no rows.
+
+    This STATIC route is declared before `GET /{request_id}` so "counts" is
+    never captured as a request id.
+    """
+    _ = admin
+    return await count_user_operations(session, tenant_id)
 
 
 @router.get("/{request_id}", response_model=UserOperationOut)

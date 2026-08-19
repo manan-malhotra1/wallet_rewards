@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
@@ -27,6 +27,7 @@ from app.modules.config_requests.schemas import (
 )
 from app.modules.config_requests.service import (
     approve_config_request,
+    count_config_requests,
     get_config_request,
     list_config_history_for_scope,
     list_config_requests,
@@ -36,6 +37,7 @@ from app.modules.config_requests.service import (
     revise_config_request,
     withdraw_config_request,
 )
+from app.shared.queue_counts import QueueCountsOut
 
 router = APIRouter(prefix="/api/v1/config-requests", tags=["config-governance"])
 
@@ -91,17 +93,41 @@ async def get_requests(
     tenant_id: UUID,
     status_filter: str | None = None,
     config_type: str | None = None,
+    limit: int | None = Query(None, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> list[ConfigChangeRequestOut]:
-    """List a tenant's config-change requests (optionally filtered by status/type)."""
+    """List a tenant's config-change requests, optionally filtered by status/type
+    and windowed by limit/offset (B7.1 — the approvals page fetches a bounded
+    window, never the whole queue)."""
     _ = admin
     requests = await list_config_requests(
-        session, tenant_id, status=status_filter, config_type=config_type
+        session,
+        tenant_id,
+        status=status_filter,
+        config_type=config_type,
+        limit=limit,
+        offset=offset,
     )
     outs = [ConfigChangeRequestOut.model_validate(r) for r in requests]
     await _attach_admin_names(session, outs)
     return outs
+
+
+@router.get("/counts", response_model=QueueCountsOut)
+async def get_counts(
+    tenant_id: UUID,
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> QueueCountsOut:
+    """Per-status counts for the approvals tab bar — one grouped query, no rows.
+
+    This STATIC route is declared before `GET /{request_id}` so "counts" is
+    never captured as a request id.
+    """
+    _ = admin
+    return await count_config_requests(session, tenant_id)
 
 
 @router.get("/history", response_model=list[ConfigChangeRequestOut])

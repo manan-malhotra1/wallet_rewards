@@ -10,25 +10,40 @@
  * to the first visible queue with PENDING items (falling back to the first
  * visible tab); if they can see none, an empty state is shown.
  *
- * This server component resolves the visible tabs, fetches each visible queue's
- * FULL dataset (all statuses — the counts on the tab bar need every row), and
- * hands the active tab's rows + per-tab counts + role flags into the client
- * `<ApprovalsToolbar>`, which owns the search / status / type / date facets and
+ * Fetch strategy (Story B7.1 — this page must scale past thousands of rows):
+ * every visible queue contributes only a cheap /counts call (tab-bar totals +
+ * status segment counts + default-tab resolution); actual rows are fetched for
+ * the ACTIVE tab only, as one status-filtered window (`?status=`, default
+ * PENDING; `?page=` × APPROVALS_PAGE_SIZE). The client `<ApprovalsToolbar>`
+ * keeps the search / type / date facets client-side over that window and
  * renders the per-domain queue tables + detail drawers (reused unchanged).
  */
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
 import {
+  getConfigRequestCounts,
+  getMoneyOperationCounts,
+  getUserOperationCounts,
   listConfigRequests,
   listMoneyOperations,
   listServices,
   listUserOperations,
 } from "@/lib/api-endpoints";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { countPending, resolveActiveTab } from "@/lib/approvals-filter";
+import { resolveActiveTab } from "@/lib/approvals-filter";
+import {
+  APPROVALS_PAGE_SIZE,
+  pageCount,
+  readPage,
+  readServerStatus,
+  serverStatusParam,
+  statusCountsWithAll,
+  windowOffset,
+} from "@/lib/approvals-window";
 import type {
   ConfigChangeRequest,
   MoneyOperation,
+  QueueCounts,
   Service,
   UserOperation,
 } from "@/lib/api-types";
@@ -54,12 +69,19 @@ const TABS: { key: TabKey; label: string; role: string }[] = [
   { key: "users", label: "Users", role: "user-approver" },
 ];
 
+/** The counts endpoint for a queue tab. */
+function countsFor(key: TabKey, tenantId: string): Promise<QueueCounts> {
+  if (key === "configuration") return getConfigRequestCounts(tenantId);
+  if (key === "transactions") return getMoneyOperationCounts(tenantId);
+  return getUserOperationCounts(tenantId);
+}
+
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string; page?: string }>;
 }) {
-  const { tab } = await searchParams;
+  const { tab, status: statusParam, page: pageParam } = await searchParams;
 
   const session = await auth();
   const roles = session?.user?.roles ?? [];
@@ -102,71 +124,91 @@ export default async function ApprovalsPage({
     );
   }
 
-  // Fetch the FULL dataset (all statuses) for every visible queue: the tab-bar
-  // counts need every row, and the toolbar filters client-side. Admin volumes
-  // are small, so three list calls on load is acceptable. Only visible queues
-  // are fetched — a queue the admin can't see is never requested (no 403 risk).
+  const serverStatus = readServerStatus(statusParam);
+  let page = readPage(pageParam);
+  // Rows the current server status filter matches ACROSS the whole queue —
+  // drives the pager ("page P of N"), not just the fetched window.
+  let queueTotal = 0;
+
   let error: ApiError | null = null;
   let configRequests: ConfigChangeRequest[] = [];
   let moneyOperations: MoneyOperation[] = [];
   let userOperations: UserOperation[] = [];
   let serviceNames: Record<string, string> = {};
+  const counts: Partial<Record<TabKey, QueueCounts>> = {};
+  let activeTab: TabKey = visibleTabs[0].key;
+
   try {
-    const jobs: Promise<void>[] = [];
-    if (canSee("config-approver")) {
-      jobs.push(
-        Promise.all([
-          listConfigRequests(activeTenantId, undefined, undefined),
-          listServices(activeTenantId, "active"),
-        ]).then(([requests, services]) => {
-          configRequests = requests;
-          serviceNames = Object.fromEntries(
-            services.map((s: Service) => [s.code, s.display_name]),
-          );
-        }),
+    // One cheap grouped-count query per visible queue — no rows fetched.
+    await Promise.all(
+      visibleTabs.map(async (t) => {
+        counts[t.key] = await countsFor(t.key, activeTenantId);
+      }),
+    );
+
+    // Land the checker where the work is: without an explicit ?tab=, default
+    // to the first visible queue with PENDING items, not a fixed first tab.
+    const pendingOf = (key: TabKey) => counts[key]?.by_status["PENDING"] ?? 0;
+    activeTab =
+      resolveActiveTab(
+        visibleTabs.map((t) => ({ key: t.key, pending: pendingOf(t.key) })),
+        tab,
+      ) ?? visibleTabs[0].key;
+
+    const forStatus = counts[activeTab] ?? { total: 0, by_status: {} };
+    queueTotal =
+      serverStatus === "ALL"
+        ? forStatus.total
+        : (forStatus.by_status[serverStatus] ?? 0);
+    // Clamp a stale bookmark or hand-edited ?page= to the real page count, so
+    // a shrunken queue never strands the user on an empty out-of-range window.
+    page = Math.min(page, pageCount(queueTotal, APPROVALS_PAGE_SIZE));
+
+    // Rows for the ACTIVE tab only, as one status-filtered window.
+    const statusFilter = serverStatusParam(serverStatus);
+    const offset = windowOffset(page, APPROVALS_PAGE_SIZE);
+    if (activeTab === "configuration") {
+      const [requests, services] = await Promise.all([
+        listConfigRequests(
+          activeTenantId,
+          statusFilter,
+          undefined,
+          APPROVALS_PAGE_SIZE,
+          offset,
+        ),
+        listServices(activeTenantId, "active"),
+      ]);
+      configRequests = requests;
+      serviceNames = Object.fromEntries(
+        services.map((s: Service) => [s.code, s.display_name]),
+      );
+    } else if (activeTab === "transactions") {
+      moneyOperations = await listMoneyOperations(
+        activeTenantId,
+        statusFilter,
+        APPROVALS_PAGE_SIZE,
+        offset,
+      );
+    } else {
+      userOperations = await listUserOperations(
+        activeTenantId,
+        statusFilter,
+        APPROVALS_PAGE_SIZE,
+        offset,
       );
     }
-    if (canSee("treasury-approver")) {
-      jobs.push(
-        listMoneyOperations(activeTenantId, undefined).then((ops) => {
-          moneyOperations = ops;
-        }),
-      );
-    }
-    if (canSee("user-approver")) {
-      jobs.push(
-        listUserOperations(activeTenantId, undefined).then((ops) => {
-          userOperations = ops;
-        }),
-      );
-    }
-    await Promise.all(jobs);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
   }
 
-  const rowsFor = (key: TabKey): { status: string }[] => {
-    if (key === "configuration") return configRequests;
-    if (key === "transactions") return moneyOperations;
-    return userOperations;
-  };
   const tabs: TabMeta[] = visibleTabs.map((t) => ({
     key: t.key,
     label: t.label,
-    count: rowsFor(t.key).length,
+    count: counts[t.key]?.total ?? 0,
   }));
 
-  // Land the checker where the work is: without an explicit ?tab=, default to
-  // the first visible queue with PENDING items rather than a fixed first tab.
-  const activeTab: TabKey =
-    resolveActiveTab(
-      visibleTabs.map((t) => ({
-        key: t.key,
-        pending: countPending(rowsFor(t.key)),
-      })),
-      tab,
-    ) ?? visibleTabs[0].key;
+  const activeCounts = counts[activeTab] ?? { total: 0, by_status: {} };
 
   // The approve/withdraw affordance for the ACTIVE queue's table.
   const canApproveActive =
@@ -200,6 +242,11 @@ export default async function ApprovalsPage({
             configRequests={configRequests}
             moneyOperations={moneyOperations}
             userOperations={userOperations}
+            serverStatus={serverStatus}
+            statusCounts={statusCountsWithAll(activeCounts)}
+            queueTotal={queueTotal}
+            page={page}
+            pageSize={APPROVALS_PAGE_SIZE}
           />
         )}
       </div>

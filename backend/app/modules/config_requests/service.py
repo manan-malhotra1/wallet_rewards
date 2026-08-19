@@ -49,6 +49,7 @@ from app.shared.models import (
     CONFIG_STATUS_CHANGES_REQUESTED,
     CONFIG_STATUS_PENDING,
     CONFIG_STATUS_WITHDRAWN,
+    CONFIG_STATUSES,
     CONFIG_TERMINAL_STATUSES,
     REVIEW_ACTION_APPROVED,
     REVIEW_ACTION_CHANGES_REQUESTED,
@@ -62,6 +63,11 @@ from app.shared.models import (
     ConfigChangeReview,
     ConfigChangeRevision,
     Tenant,
+)
+from app.shared.queue_counts import (
+    QueueCountsOut,
+    apply_newest_first_window,
+    count_queue_by_status,
 )
 from app.shared.tenant_mode import assert_points_scope_allowed
 
@@ -651,20 +657,33 @@ async def list_config_requests(
     *,
     status: str | None = None,
     config_type: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[ConfigChangeRequest]:
     """Return a tenant's config requests, newest-first, optionally by status/type.
 
     `config_type` lets a native page (Service charges / Commission / …) fetch only
     its own requests (e.g. its CHANGES_REQUESTED items).
+
+    Args:
+        limit: Maximum rows to return; None means unbounded (existing callers).
+        offset: Rows to skip before the window starts (B7.1 pagination). The
+            ordering tie-breaks on id so a fixed window never duplicates or
+            drops rows created in the same instant.
     """
     stmt = select(ConfigChangeRequest).where(ConfigChangeRequest.tenant_id == tenant_id)
     if status is not None:
         stmt = stmt.where(ConfigChangeRequest.status == status)
     if config_type is not None:
         stmt = stmt.where(ConfigChangeRequest.config_type == config_type)
-    stmt = stmt.order_by(ConfigChangeRequest.created_at.desc())
+    stmt = apply_newest_first_window(stmt, ConfigChangeRequest, limit=limit, offset=offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def count_config_requests(session: AsyncSession, tenant_id: UUID) -> QueueCountsOut:
+    """Count a tenant's config requests per status in one grouped query (no rows)."""
+    return await count_queue_by_status(session, ConfigChangeRequest, tenant_id, CONFIG_STATUSES)
 
 
 def _synthesize_baseline(

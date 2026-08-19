@@ -15,10 +15,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import { tenantHasRewards } from "@/lib/tenant-mode";
 import {
-  listConfigRequests,
-  listMoneyOperations,
+  getConfigRequestCounts,
+  getMoneyOperationCounts,
+  getUserOperationCounts,
   listTenants,
-  listUserOperations,
 } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
 import { isBackendUnreachable } from "@/lib/is-backend-unreachable";
@@ -62,35 +62,27 @@ export default async function AuthenticatedLayout({
   // Sidebar "Approvals" badge: total PENDING requests awaiting review across
   // the queues this admin can see. A platform-admin sees every queue; everyone
   // else sees only queues matching an approver role they hold — so the badge
-  // never advertises work the admin can't act on. Best effort: a backend hiccup
-  // on any queue just drops that queue's contribution, never the shell.
+  // never advertises work the admin can't act on. Uses the B7.1 /counts
+  // endpoints (one grouped query each) — this layout renders on EVERY page, so
+  // it must never fetch queue rows. Best effort: a backend hiccup on any queue
+  // just drops that queue's contribution, never the shell.
   const roles = session.user.roles ?? [];
   const isPlatformAdmin = roles.includes("platform-admin");
   const canSee = (role: string) => isPlatformAdmin || roles.includes(role);
   let approvalsPendingCount = 0;
   if (activeTenantId) {
-    if (canSee("config-approver")) {
+    const queues = [
+      { role: "config-approver", counts: getConfigRequestCounts },
+      // Epic 18: PENDING treasury money operations awaiting approval.
+      { role: "treasury-approver", counts: getMoneyOperationCounts },
+      // Epic 3: PENDING user create/edit operations awaiting approval.
+      { role: "user-approver", counts: getUserOperationCounts },
+    ];
+    for (const queue of queues) {
+      if (!canSee(queue.role)) continue;
       try {
-        const pending = await listConfigRequests(activeTenantId, "PENDING");
-        approvalsPendingCount += pending.length;
-      } catch (err) {
-        if (!(err instanceof ApiError)) throw err;
-      }
-    }
-    // Epic 18: PENDING treasury money operations awaiting approval.
-    if (canSee("treasury-approver")) {
-      try {
-        const pending = await listMoneyOperations(activeTenantId, "PENDING");
-        approvalsPendingCount += pending.length;
-      } catch (err) {
-        if (!(err instanceof ApiError)) throw err;
-      }
-    }
-    // Epic 3: PENDING user create/edit operations awaiting approval.
-    if (canSee("user-approver")) {
-      try {
-        const pending = await listUserOperations(activeTenantId, "PENDING");
-        approvalsPendingCount += pending.length;
+        const counts = await queue.counts(activeTenantId);
+        approvalsPendingCount += counts.by_status["PENDING"] ?? 0;
       } catch (err) {
         if (!(err instanceof ApiError)) throw err;
       }

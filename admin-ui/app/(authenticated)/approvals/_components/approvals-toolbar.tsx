@@ -1,18 +1,21 @@
 /**
  * Client toolbar for the unified Approvals page (1a design). Owns the four
  * facets — search, a status segmented control with counts, a type multi-select,
- * and a date-range preset — over the active tab's rows, mirrors them to the URL
- * (shareable) without a server round-trip, renders removable filter chips and
- * the "X of Y" line, then hands the filtered rows to the existing queue table.
+ * and a date-range preset — renders removable filter chips and the "X of Y"
+ * line, then hands the filtered rows to the existing queue table.
  *
- * Tab switching is a real navigation (each queue is a distinct server fetch);
- * the facets are client-side over the tab's already-loaded rows.
+ * Since Story B7.1 the rows are a server-fetched WINDOW, not the full queue:
+ * tab switches, status segment clicks, and the pager are real navigations
+ * (each changes what the server fetches — `?tab=` / `?status=` / `?page=`),
+ * while search, type, and date stay client-side over the fetched window. The
+ * status segment counts come from the backend /counts endpoints (whole queue),
+ * so they no longer reflect the other client facets.
  */
 "use client";
 
 import { GitPullRequest, Landmark, UserCog, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,14 +30,15 @@ import type {
   UserOperation,
 } from "@/lib/api-types";
 import {
+  applyFilters,
   DEFAULT_FILTERS,
   STATUS_KEYS,
-  summarize,
   type ApprovalFilters,
   type ApprovalRow,
   type DateRangeKey,
   type StatusKey,
 } from "@/lib/approvals-filter";
+import { DEFAULT_SERVER_STATUS, pageCount } from "@/lib/approvals-window";
 import { configTypeLabel } from "@/lib/config-type-label";
 import { moneyOperationLabel, moneyOperationSummary } from "@/lib/money-operation-label";
 import { userOperationLabel, userOperationSummary } from "@/lib/user-operation-label";
@@ -175,19 +179,15 @@ function normalizeUser(op: UserOperation): ApprovalRow {
 
 // ---- Initial-state parsing from the URL ----------------------------------
 
-/** Read the four facets out of the current query string, validated per tab. */
+/**
+ * Read the CLIENT facets (type, date, search) out of the current query string,
+ * validated per tab. Status is a SERVER param since B7.1 (it changes what
+ * window is fetched) and is parsed by the page, not here.
+ */
 function readFilters(
   params: URLSearchParams,
   validTypes: Set<string>,
 ): ApprovalFilters {
-  const statusParam = params.get("status");
-  const status: StatusKey | "ALL" =
-    statusParam === "ALL"
-      ? "ALL"
-      : (STATUS_KEYS as readonly string[]).includes(statusParam ?? "")
-        ? (statusParam as StatusKey)
-        : DEFAULT_FILTERS.status;
-
   const types = (params.get("type") ?? "")
     .split(",")
     .map((t) => t.trim())
@@ -199,7 +199,7 @@ function readFilters(
       ? dateParam
       : DEFAULT_FILTERS.dateRange;
 
-  return { status, types, dateRange, q: params.get("q") ?? "" };
+  return { types, dateRange, q: params.get("q") ?? "" };
 }
 
 // ---- The toolbar ---------------------------------------------------------
@@ -214,11 +214,22 @@ export interface ApprovalsToolbarProps {
   configRequests: ConfigChangeRequest[];
   moneyOperations: MoneyOperation[];
   userOperations: UserOperation[];
+  /** The server-applied status filter the fetched window reflects. */
+  serverStatus: StatusKey | "ALL";
+  /** Whole-queue per-status counts (from /counts), for the status segments. */
+  statusCounts: Record<StatusKey | "ALL", number>;
+  /** Rows matching `serverStatus` across the WHOLE queue (drives the pager). */
+  queueTotal: number;
+  /** Current 1-based page of the server window. */
+  page: number;
+  /** Server window size (rows per page). */
+  pageSize: number;
 }
 
 export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
-  const { activeTab, tabs } = props;
+  const { activeTab, tabs, serverStatus, statusCounts, queueTotal, page, pageSize } = props;
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const typeOptions = typeOptionsFor(activeTab);
@@ -241,25 +252,49 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
     return props.userOperations.map(normalizeUser);
   }, [activeTab, props.configRequests, props.moneyOperations, props.userOperations]);
 
-  const { filtered, statusCounts, shown, total } = React.useMemo(
-    () => summarize(normalized, filters),
+  // Client facets over the fetched window (the window is already
+  // status-filtered server-side; the segment counts come from /counts).
+  const filtered = React.useMemo(
+    () => applyFilters(normalized, filters),
     [normalized, filters],
   );
+  const shown = filtered.length;
+  const total = normalized.length;
 
-  // Mirror the facets into the address bar without re-running the server
-  // component (History API, not router navigation) — search stays snappy and
-  // no stale refetch flashes. Only non-default facets are written.
-  const syncUrl = React.useCallback(
-    (next: ApprovalFilters) => {
+  // Build the query string for a given server window (status + page) with the
+  // current client facets carried along, so a status/page navigation — which
+  // re-runs the server component and remounts this toolbar — preserves them.
+  const buildQuery = React.useCallback(
+    (next: ApprovalFilters, status: StatusKey | "ALL", targetPage: number) => {
       const sp = new URLSearchParams();
       sp.set("tab", activeTab);
-      if (next.status !== DEFAULT_FILTERS.status) sp.set("status", next.status);
+      if (status !== DEFAULT_SERVER_STATUS) sp.set("status", status);
+      if (targetPage > 1) sp.set("page", String(targetPage));
       if (next.types.length > 0) sp.set("type", next.types.join(","));
       if (next.dateRange !== DEFAULT_FILTERS.dateRange) sp.set("date", next.dateRange);
       if (next.q.trim()) sp.set("q", next.q.trim());
-      window.history.replaceState(null, "", `${pathname}?${sp.toString()}`);
+      return `${pathname}?${sp.toString()}`;
     },
     [activeTab, pathname],
+  );
+
+  // A status or page change is a REAL navigation — the server fetches a new
+  // window. A status change resets to page 1 (fresh window).
+  const navigateToWindow = React.useCallback(
+    (status: StatusKey | "ALL", targetPage: number) => {
+      router.push(buildQuery(filters, status, targetPage));
+    },
+    [buildQuery, filters, router],
+  );
+
+  // Mirror the CLIENT facets into the address bar without re-running the
+  // server component (History API, not router navigation) — search stays
+  // snappy and no stale refetch flashes. Only non-default facets are written.
+  const syncUrl = React.useCallback(
+    (next: ApprovalFilters) => {
+      window.history.replaceState(null, "", buildQuery(next, serverStatus, page));
+    },
+    [buildQuery, page, serverStatus],
   );
 
   /** Apply a partial facet change: update state and mirror to the URL. */
@@ -274,12 +309,21 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
     [syncUrl],
   );
 
-  const resetAll = React.useCallback(() => update({ ...DEFAULT_FILTERS }), [update]);
+  // Full reset — client facets AND server window. The navigation re-renders
+  // the server component but PRESERVES this client component instance, so the
+  // facet state must be reset explicitly, not just erased from the URL.
+  const resetAll = React.useCallback(() => {
+    setFilters({ ...DEFAULT_FILTERS });
+    router.push(`${pathname}?tab=${activeTab}`);
+  }, [activeTab, pathname, router]);
 
-  // Which chips are active (a facet away from its default)?
-  const statusChipActive = filters.status !== DEFAULT_FILTERS.status;
+  // Which chips are active (a facet away from its default)? Status is the
+  // server-applied filter; the rest are client facets.
+  const statusChipActive = serverStatus !== DEFAULT_SERVER_STATUS;
   const dateChipActive = filters.dateRange !== DEFAULT_FILTERS.dateRange;
   const anyChip = statusChipActive || dateChipActive || filters.types.length > 0;
+
+  const pages = pageCount(queueTotal, pageSize);
 
   const TabEmptyIcon = TAB_ICON[activeTab];
 
@@ -333,8 +377,8 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
 
         <StatusSegments
           counts={statusCounts}
-          value={filters.status}
-          onChange={(status) => update({ status })}
+          value={serverStatus}
+          onChange={(status) => navigateToWindow(status, 1)}
         />
 
         <MultiSelectDropdown
@@ -365,8 +409,8 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
         <div className="flex flex-wrap items-center gap-2">
           {statusChipActive && (
             <FilterChip
-              label={`Status: ${STATUS_LABEL[filters.status]}`}
-              onRemove={() => update({ status: DEFAULT_FILTERS.status })}
+              label={`Status: ${STATUS_LABEL[serverStatus]}`}
+              onRemove={() => navigateToWindow(DEFAULT_SERVER_STATUS, 1)}
             />
           )}
           {filters.types.map((t) => (
@@ -388,20 +432,58 @@ export function ApprovalsToolbar(props: ApprovalsToolbarProps) {
         </div>
       )}
 
-      {/* "X of Y" count line. */}
-      <p className="text-xs text-muted-foreground tabular-nums">
-        {shown} of {total} {total === 1 ? "request" : "requests"}
-      </p>
+      {/* "X of Y" count line + the server-window pager (only when the queue
+          exceeds one fetched page for the current status). */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {shown} of {total} {total === 1 ? "request" : "requests"}
+          {pages > 1 && ` on this page · ${queueTotal} in queue`}
+        </p>
+        {pages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={page <= 1}
+              onClick={() => navigateToWindow(serverStatus, page - 1)}
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              Page {page} of {pages}
+            </span>
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={page >= pages}
+              onClick={() => navigateToWindow(serverStatus, page + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </div>
 
-      {/* The active queue's table, fed the filtered rows. */}
+      {/* The active queue's table, fed the filtered rows. Three empty states:
+          the queue itself is empty; the server status window is empty (the
+          default PENDING window shows no chip, so name the status instead of
+          blaming "filters"); or the client facets emptied a non-empty page. */}
       {filtered.length === 0 ? (
         <EmptyState
           icon={TabEmptyIcon}
-          title={total === 0 ? "No requests in this queue" : "No matching requests"}
+          title={
+            statusCounts.ALL === 0
+              ? "No requests in this queue"
+              : total === 0
+                ? `No ${STATUS_LABEL[serverStatus].toLowerCase()} requests`
+                : "No matching requests"
+          }
           description={
-            total === 0
+            statusCounts.ALL === 0
               ? "Proposed changes appear here for an approver to review and approve."
-              : "No requests match the current filters. Adjust or clear them to see more."
+              : total === 0
+                ? "Nothing in this queue has that status. Pick another status segment to see the rest."
+                : "No rows on this page match the current filters — search, type, and date apply only to the fetched page, not the whole queue. Adjust or clear them, or page through the queue."
           }
         />
       ) : (

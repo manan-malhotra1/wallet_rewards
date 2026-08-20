@@ -12,7 +12,11 @@
 
 ## 1. Overview
 
-Redemption converts points into an external benefit (voucher, airtime, etc.) fulfilled by a third-party
+There are two redemption modes: the **external** flow below (points → third-party benefit, as built), and an
+**internal** flow (points → fiat credited to the user's own wallet at an admin-configured rate) which is
+**specced in §6 and not yet built**.
+
+The external flow converts points into an external benefit (voucher, airtime, etc.) fulfilled by a third-party
 provider. Because fulfilment is external and asynchronous, the redemption row is a **state machine**:
 `PENDING → COMPLETED | FAILED | REVERSED`. Points are reserved on initiation and only truly spent on success; a
 failure reverses the reservation. All money movement funnels through the ledger `post_transaction` choke point
@@ -151,3 +155,99 @@ a deliberate, operator-initiated action.
 | Pay-PRD-0720–0740 (points reservation / overdraft) | points_account `FOR UPDATE` lock at `:322` |
 | Pay-PRD-0750–0780 (sweep + manual review) | `sweep_pending`, `list_manual_review`, `manually_resolve` |
 | Pay-PRD-0790–0800 (audit query) | `query_audit_log` + `_enrich_audit_entries` |
+
+---
+
+## 6. Internal redemption — SPEC (Pay-PRD-1200–1290, planned)
+
+> **Status: not built.** This section is the agreed design for the internal (points → own-wallet) mode.
+> The external flow above is unchanged; its per-provider PTS wallet keeps being auto-created at provider
+> registration (`register_provider`) — no manual wallet step exists in either mode.
+
+### 6.1 New system accounts
+
+| Account type | Currency | Cardinality | Purpose |
+|---|---|---|---|
+| `points_redemption_wallet` | PTS | 1 per tenant | Sink for internally redeemed points (the internal analogue of a provider redemption wallet). |
+| `cashback_provider_wallet` | fiat | 1 per tenant **per currency** | Funds internal-redemption payouts AND rule-engine cashback rewards. Pre-funded from the bank via `treasury.adjust_system_wallet` (maker-checker), exactly like `system_cash_inflow`. |
+
+Both are system-owned (`user_id NULL`). The `cashback_provider_wallet` joins the ledger choke-point guard
+with a **non-negative floor** (same corollary as the cash float, invariant #11a): any net debit that would
+drive it below zero is rejected 409 `insufficient_cashback_funds` under the row lock. Wallets for every
+enabled tenant currency are created at tenant provisioning / instrument enablement.
+
+### 6.2 Conversion-rate config
+
+New table `points_conversion_rates`: `(tenant_id, currency, points_per_unit NUMERIC, value_per_unit NUMERIC,
+status, created_at, updated_at)` — read as "`points_per_unit` PTS = `value_per_unit` `currency`"
+(e.g. 100 PTS = 10.00 ZAR). One ACTIVE row per (tenant, currency), unique-indexed. Changes ride the existing
+**config change request** maker-checker (like pricing/limits) and are audit-logged. **Fail-closed
+(Pay-PRD-1220):** no ACTIVE row for the requested currency → 422 `conversion_rate_missing` before any ledger
+write. No default rate, ever.
+
+### 6.3 Initiation flow (`POST /redemption/internal`, user, [IDEM])
+
+Gate order mirrors `initiate_redemption` (§2.2), then diverges after the reservation because there is no
+external dependency:
+
+1. RBAC (`redemption` permission) → step-up (threshold vs `points_amount`) → account `active`.
+2. Resolve the ACTIVE conversion rate for the requested currency (fail-closed) and compute
+   `fiat_amount = points_amount × value_per_unit / points_per_unit`, rounded to the currency's minor unit.
+3. **Pricing + limits fail-closed (invariant #12)** for the new transaction types — a zero-fee internal
+   redemption must be an explicit pricing row.
+4. Lock the user's `points_account` FOR UPDATE (points overdraft guard, same as §2.2) and post, **in one DB
+   transaction**, two balanced transactions:
+   - `redemption_internal_points` (PTS): DEBIT user points → CREDIT `points_redemption_wallet`;
+   - `redemption_internal_payout` (fiat): DEBIT `cashback_provider_wallet(currency)` → CREDIT user
+     `financial_wallet(currency)` — floored at the choke point; receive-cap-exempt like other system credits
+     is **not** granted here (a payout is user-initiated, normal caps apply).
+5. Both transactions settle **COMPLETED immediately** — no PENDING state, no callback, no reconciliation
+   involvement. A single `Idempotency-Key` covers the pair (the payout key is derived:
+   `"{key}:payout"`), so a replay returns the original result without a second burn or payout.
+
+Two separate transactions (not one 4-leg transaction) keep each currency's ledger self-balancing — the
+`ledger_sum_to_zero` invariant holds per transaction in one currency. Atomicity comes from the shared DB
+transaction; cross-tracing from the shared reference (§6.4).
+
+### 6.4 Cross-referencing (Pay-PRD-1260)
+
+A new `internal_redemptions` row `(id, tenant_id, user_id, points_txn_id, payout_txn_id, currency,
+points_amount, fiat_amount, rate_snapshot, created_at)` binds the pair; both transactions carry its id in
+their `reference`. Either leg resolves to the other in txn detail, statements, and admin ledger views. The
+rate is **snapshotted** on the row — later rate changes never reinterpret history.
+
+### 6.5 Cashback rewards re-pointing (Pay-PRD-1270)
+
+`issue_cashback_reward` (rewards/service.py) changes its DEBIT leg from `system_cash_inflow` to the
+currency-matching `cashback_provider_wallet`. Everything else (budget check before ledger write,
+deterministic idempotency key, receive-cap exemption for rewards) is unchanged. Operationally this separates
+promo liability (cashback wallet) from customer-money float (cash inflow) — the float can no longer be
+drained by reward campaigns.
+
+### 6.6 Failure & reversal story
+
+There is no in-flight failure mode (no external call): the pair either commits or rolls back. Post-hoc
+correction is an admin operator action that posts a compensating pair (opposite legs on both sides, new
+transactions, append-only), cross-referenced to the original `internal_redemptions` row and audit-logged.
+Reconciliation (§3) is not involved — nothing can get stuck.
+
+### 6.7 UI surfaces
+
+- **Admin — Conversion rates**: per-currency list (rate, status, last change), add/edit via config change
+  request; empty state states the fail-closed rule.
+- **Admin — Cashback wallets**: balance per currency + "Fund wallet" action (treasury maker-checker), and
+  the redemption/cashback outflow history.
+- **Mobile — Redeem**: entry from the Rewards screen; pick currency (only rate-configured currencies are
+  offered), enter points with a live fiat preview at the quoted rate, PIN step-up per policy, instant
+  success receipt showing both references. The external-provider flow gets its own separate UI later.
+
+### 6.8 Build checklist (tests per coding guidelines §3)
+
+Migrations (2 account types + `points_conversion_rates` + `internal_redemptions`), choke-point floor for the
+cashback wallet, service + router, rate-config endpoints behind config-requests, mobile + admin UI. Required
+tests: happy path both legs balance; `conversion_rate_missing` 422; pricing/limits fail-closed 422s;
+`insufficient_cashback_funds` 409; idempotent replay (no double burn/payout); points overdraft under
+concurrency; cross-reference integrity; cashback reward debits the new wallet; `ledger_sum_to_zero` stays
+green.
+
+---

@@ -364,6 +364,32 @@ The Wallet and Rewards Platform directly resolves each of these. It gives users 
 
 ---
 
+### Module 11b — Internal Redemption (Points → Wallet Value)
+
+*Status: **Planned — specced 2026-08-20, not yet built.** Detailed design in
+[docs/design/07-redemption-and-reconciliation.md §6](design/07-redemption-and-reconciliation.md).
+The external-provider flow (Module 11) is retained unchanged; internal redemption is a second,
+fully in-platform mode that converts points into fiat value credited to the user's own wallet.*
+
+| Req. ID | Requirement | Acceptance Criteria | Priority |
+|---|---|---|---|
+| Pay-PRD-1200 | Two redemption modes | The platform must support two redemption modes side by side: (a) external — points redeemed against a registered external provider (Module 11, unchanged), and (b) internal — points converted to fiat value credited directly to the user's own financial wallet in a chosen currency. | P0 |
+| Pay-PRD-1210 | Configurable conversion rates | An Administrator must be able to configure, per tenant and per currency, how many points convert to how much currency value (e.g. 100 PTS = 10.00 ZAR; 100 PTS = 50.00 INR). Rate changes are maker-checker approved (config change requests) and audit-logged with before/after state. | P0 |
+| Pay-PRD-1220 | Fail closed on missing rate | An internal redemption into a currency with no ACTIVE conversion rate must be rejected before any ledger write with a distinct error (`conversion_rate_missing`, 422). There is no implicit or default rate; only explicitly configured currencies are redeemable. | P0 |
+| Pay-PRD-1230 | Cashback provider wallet (per currency) | The platform must maintain a system-owned `cashback_provider_wallet` per tenant currency (created for every enabled currency). It is the single funding source for internal redemption payouts and cashback rewards. It must be pre-funded via the treasury maker-checker flow (like the operator cash float) and must never go negative — a payout that would overdraw it is rejected (409 `insufficient_cashback_funds`) under the ledger choke-point lock. | P0 |
+| Pay-PRD-1240 | Points redemption wallet | Internally redeemed points must be credited to a single tenant-level system `points_redemption_wallet` (PTS) — no per-provider wallet is involved in the internal mode. | P0 |
+| Pay-PRD-1250 | Atomic dual-leg accounting | An internal redemption must atomically post, in one database transaction: (a) a points transaction — DEBIT user points account / CREDIT points redemption wallet — and (b) a fiat transaction — DEBIT cashback provider wallet / CREDIT user financial wallet at the configured rate. Both settle COMPLETED immediately (no external dependency, no PENDING state); if either leg cannot post, both roll back. | P0 |
+| Pay-PRD-1260 | Cross-referenced transactions | The fiat payout transaction must carry the reference of the points transaction and vice versa (a shared internal-redemption reference), so either side of the conversion can be traced from the other in transaction detail, statements, and the admin ledger views. | P0 |
+| Pay-PRD-1270 | Cashback rewards funded from the cashback wallet | Rule-engine cashback rewards (`cashback_reward`) must be funded from the currency-matching `cashback_provider_wallet` instead of the operator cash float, and must carry the triggering rule/reward reference. Budget checks (Module 10) continue to apply unchanged. | P1 |
+| Pay-PRD-1280 | Conversion & wallet admin UI | The Admin UI must provide: (a) a conversion-rates screen listing each currency's active rate with add/edit via maker-checker, and (b) visibility of each cashback provider wallet's balance with a funding action (treasury maker-checker). | P0 |
+| Pay-PRD-1290 | User redemption UI | The mobile app must offer an internal-redemption flow: pick a destination currency (only currencies with an active rate are offered), enter points to redeem, preview the quoted fiat value at the configured rate, authorise (PIN step-up per policy), and receive an instant receipt. The external-provider flow retains a separate UI. | P0 |
+
+*Note: internal redemption is a money-moving service — the platform-wide fail-closed rule
+(Pay-PRD-0420) applies: pricing and limit configs must resolve for the internal-redemption
+transaction types or the request is rejected before any ledger write.*
+
+---
+
 ### Module 12 — Reconciliation
 
 | Req. ID | Requirement | Acceptance Criteria | Priority |

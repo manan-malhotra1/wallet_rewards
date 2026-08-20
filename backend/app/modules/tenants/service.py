@@ -27,9 +27,11 @@ from app.modules.tenants.schemas import (
 )
 from app.shared.exceptions import TenantNameAlreadyExists, TenantNotFound
 from app.shared.models import (
+    ACCOUNT_TYPE_CASHBACK_PROVIDER,
     ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
+    ACCOUNT_TYPE_POINTS_REDEMPTION,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
@@ -266,7 +268,27 @@ _SYSTEM_WALLETS: list[tuple[str, bool]] = [
     (ACCOUNT_TYPE_TAX_SERVICE, True),
     (ACCOUNT_TYPE_TAX_COMMISSION, True),
     (ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE, False),
+    # Internal redemption (Pay-PRD-1230/1240). Both are rewards-surface, so
+    # they follow the points-issuance gate below. The cashback wallet is here
+    # for the SAME reason as the cash float: it is floored and must be
+    # treasury-funded before it can pay out, which needs its account id to
+    # exist first — lazily creating it on first redemption would deadlock the
+    # operator (fund fails because the wallet doesn't exist; the wallet only
+    # appears after a payout has already been attempted and rejected).
+    (ACCOUNT_TYPE_CASHBACK_PROVIDER, True),
+    (ACCOUNT_TYPE_POINTS_REDEMPTION, False),
 ]
+
+# Rewards-surface system accounts — skipped entirely for a wallet-only tenant
+# (B6.1): no points programme means no issuance pool, no redemption sink, and
+# no cashback payout wallet.
+_REWARDS_ONLY_WALLETS = frozenset(
+    {
+        ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
+        ACCOUNT_TYPE_POINTS_REDEMPTION,
+        ACCOUNT_TYPE_CASHBACK_PROVIDER,
+    }
+)
 
 
 async def _system_account_exists(
@@ -303,8 +325,9 @@ async def _provision_system_wallets(session: AsyncSession, tenant: Tenant) -> No
 
     Fiat accounts are denominated in the tenant's OWN base_currency — never a
     hard-coded ZAR (the same bug class this function already fixed for
-    instruments); the points issuance pool is PTS, and is skipped entirely for
-    a wallet-only tenant (B6.1) — no points programme, no issuance master.
+    instruments); the points pools are PTS. Every rewards-surface account
+    (issuance pool, redemption sink, cashback payout wallet) is skipped
+    entirely for a wallet-only tenant (B6.1).
 
     Idempotent, and safe against the lazy get-or-create paths racing it: both
     sides funnel into `uq_accounts_system_scoped`, and this runs inside the
@@ -315,9 +338,7 @@ async def _provision_system_wallets(session: AsyncSession, tenant: Tenant) -> No
         Inserts Account rows. Does NOT commit — the caller does.
     """
     for account_type, in_base_currency in _SYSTEM_WALLETS:
-        if account_type == ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE and not _mode_includes_rewards(
-            tenant
-        ):
+        if account_type in _REWARDS_ONLY_WALLETS and not _mode_includes_rewards(tenant):
             continue
         currency = tenant.base_currency.strip().upper() if in_base_currency else "PTS"
         if not await _system_account_exists(session, tenant.id, account_type, currency):

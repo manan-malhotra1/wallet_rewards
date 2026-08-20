@@ -318,6 +318,51 @@ async def test_new_tenant_system_wallets_use_own_currency_not_zar(
 
 
 @pytest.mark.asyncio
+async def test_rewards_tenant_gets_internal_redemption_wallets(
+    db_session: AsyncSession,
+) -> None:
+    """Verify a rewards tenant is provisioned the internal-redemption wallets.
+
+    Pay-PRD-1230/1240: the cashback payout source must exist BEFORE it can be
+    treasury-funded (the same pre-funding deadlock that put the cash float in
+    the provisioning table), and the points sink must exist for the burn leg.
+    """
+    tenant = await create_tenant(
+        db_session,
+        TenantCreate(
+            name=f"sysw-redeem-{uuid4().hex[:8]}",
+            business_type="both",
+            base_currency="USD",
+        ),
+    )
+    accounts = await _system_accounts(db_session, tenant.id)
+
+    # Payout source is fiat in the tenant's OWN currency; the points sink is PTS.
+    assert accounts["cashback_provider_wallet"] == "USD"
+    assert accounts["points_redemption_wallet"] == "PTS"
+
+
+@pytest.mark.asyncio
+async def test_wallet_only_tenant_gets_no_redemption_wallets(
+    db_session: AsyncSession,
+) -> None:
+    """Verify a wallet-only tenant gets no points/redemption surface (B6.1)"""
+    tenant = await create_tenant(
+        db_session,
+        TenantCreate(
+            name=f"sysw-walletonly-{uuid4().hex[:8]}",
+            business_type="wallet",
+            base_currency="ZAR",
+        ),
+    )
+    accounts = await _system_accounts(db_session, tenant.id)
+
+    assert "cashback_provider_wallet" not in accounts
+    assert "points_redemption_wallet" not in accounts
+    assert "system_points_issuance" not in accounts
+
+
+@pytest.mark.asyncio
 async def test_no_bank_mirror_is_provisioned(db_session: AsyncSession) -> None:
     """Verify provisioning never creates an operator_adjustment account.
 

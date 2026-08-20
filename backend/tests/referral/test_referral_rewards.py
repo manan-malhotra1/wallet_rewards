@@ -18,9 +18,9 @@ from app.modules.accounts.service import derive_balance
 from app.modules.rewards.service import issue_cashback_reward
 from app.modules.rules.referral_evaluator import evaluate_referral_on_signup
 from app.shared.models import (
+    ACCOUNT_TYPE_CASHBACK_PROVIDER,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
-    ACCOUNT_TYPE_CASHBACK_PROVIDER,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
     Referral,

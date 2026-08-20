@@ -18,6 +18,8 @@ export const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   tax_service_collected: "Tax Collected on Service Charges",
   tax_commission_collected: "Tax Collected on Commissions",
   airtime_merchant_holding: "Airtime merchant holding",
+  cashback_provider_wallet: "Cashback & Redemption Wallet",
+  points_redemption_wallet: "Points Redemption Wallet",
 };
 
 /**

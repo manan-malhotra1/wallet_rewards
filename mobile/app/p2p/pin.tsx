@@ -25,6 +25,7 @@ import { ClaySurface } from '@/components/clay';
 import { useColors } from '@/lib/colors';
 import { ApiError, InvalidStepUpPin, RateLimited } from '@/lib/api/errors';
 import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
+import { redeemPointsToWallet } from '@/lib/api/redemption';
 import { qk } from '@/lib/query';
 import { formatMoney, maskPhone } from '@/lib/format';
 
@@ -38,12 +39,17 @@ export default function PinConfirmScreen() {
     amount: string;
     currency?: string;
     idem?: string;
+    points?: string;
   }>();
   const recipientPhone = typeof params.phone === 'string' ? params.phone : '';
   const amount = typeof params.amount === 'string' ? params.amount : '0';
   // Currency threaded through from the amount screen's step-up branch so the
   // PIN-bearing retry debits the same wallet. Defaults to ZAR when absent.
   const currency = typeof params.currency === 'string' ? params.currency : 'ZAR';
+  // Points the sender chose to apply on the amount screen. Redeemed here (with
+  // the PIN) right before the payment — under the SAME derived key as the
+  // no-PIN attempt, so a replay returns the original burn rather than a second.
+  const pointsToApply = Number(params.points ?? 0) || 0;
 
   const [pin, setPin] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -74,6 +80,14 @@ export default function PinConfirmScreen() {
     setSubmitting(true);
     setError(null);
     try {
+      if (pointsToApply > 0) {
+        await redeemPointsToWallet({
+          points: String(pointsToApply),
+          currency,
+          pin: entered,
+          idempotencyKey: `${idemRef.current}:points`,
+        });
+      }
       const res = await sendP2P({
         recipientPhone,
         amount,

@@ -36,10 +36,16 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { PhoneInput } from '@/components/forms/PhoneInput';
 import { CurrencySelector, defaultWalletCurrency } from '@/components/forms/CurrencySelector';
+import { PointsDiscount } from '@/components/forms/PointsDiscount';
 import { ClayButton, ClaySurface } from '@/components/clay';
 import { useColors } from '@/lib/colors';
 import { ApiError } from '@/lib/api/errors';
 import { buyAirtime, newAirtimeIdempotencyKey } from '@/lib/api/airtime';
+import {
+  getConversionRates,
+  pointsToFiat,
+  redeemPointsToWallet,
+} from '@/lib/api/redemption';
 import { getMyWallet } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
 import { maskPhone } from '@/lib/format';
@@ -91,6 +97,8 @@ export default function AirtimeScreen() {
   const [pickedName, setPickedName] = useState<string | null>(null);
   const [network, setNetwork] = useState<string>(NETWORKS[0]);
   const [amount, setAmount] = useState('');
+  // Points the buyer is applying to this recharge (0 = not using points).
+  const [points, setPoints] = useState(0);
   const [busy, setBusy] = useState(false);
   // Wallet to debit — defaults to ZAR, reconciled to the ZAR-preferred default
   // once the wallet loads. Switchable in-flow via the CurrencySelector.
@@ -103,6 +111,18 @@ export default function AirtimeScreen() {
     wallet?.accounts.find(
       (a) => a.currency === currency && a.account_type === 'financial_wallet',
     )?.available_balance ?? '0',
+  );
+
+  // Active conversion rates + PTS balance drive the "pay with points" option;
+  // a failure just hides it (points never block buying airtime).
+  const { data: rates } = useQuery({
+    queryKey: qk.conversionRates(),
+    queryFn: getConversionRates,
+    staleTime: 300_000,
+  });
+  const rate = rates?.find((r) => r.currency === currency) ?? null;
+  const pointsBalance = parseFloat(
+    wallet?.accounts.find((a) => a.currency === 'PTS')?.available_balance ?? '0',
   );
 
   // Reconcile the default once the wallet resolves: if the selection isn't a
@@ -123,9 +143,12 @@ export default function AirtimeScreen() {
   const phoneDigits = phone.replace(/\D/g, '');
   const canBuy = phoneDigits.length >= 9 && parsed > 0 && !busy;
 
-  /** Reset the pending idempotency key when any input changes. */
+  /** Reset the pending idempotency key + points when any input changes.
+   *  The points ceiling depends on the amount and currency, so a stale
+   *  selection could exceed it. */
   function resetAttempt() {
     idemRef.current = null;
+    setPoints((p) => (p === 0 ? p : 0));
   }
 
   function handlePhone(next: string) {
@@ -175,6 +198,16 @@ export default function AirtimeScreen() {
     const amountStr = parsed.toFixed(2);
     const base = { msisdn: phone, network, amount: amountStr, currency };
     try {
+      // Redeem FIRST so the wallet is topped up before the full-amount debit.
+      // Key derived from the buy's, so a retry replays the SAME redemption
+      // (backend fast-path) rather than burning points twice.
+      if (points > 0) {
+        await redeemPointsToWallet({
+          points: String(points),
+          currency,
+          idempotencyKey: `${idemRef.current}:points`,
+        });
+      }
       const result = await buyAirtime({ ...base, idempotencyKey: idemRef.current });
       await qc.invalidateQueries({ queryKey: qk.wallet() });
       if (result.status === 'COMPLETED') {
@@ -437,6 +470,15 @@ export default function AirtimeScreen() {
                   </XStack>
                 </YStack>
 
+                <PointsDiscount
+                  rate={rate}
+                  balance={pointsBalance}
+                  txnAmount={parsed}
+                  currency={currency}
+                  points={points}
+                  onChange={setPoints}
+                />
+
                 <ClayButton
                   onPress={onBuy}
                   disabled={!canBuy}
@@ -446,7 +488,12 @@ export default function AirtimeScreen() {
                   {busy
                     ? 'Processing…'
                     : parsed > 0
-                      ? `Buy ${currency} ${parsed.toFixed(2)} airtime`
+                      ? points > 0 && rate
+                        ? `Buy ${currency} ${parsed.toFixed(2)} · pay ${currency} ${Math.max(
+                            0,
+                            parsed - pointsToFiat(points, rate),
+                          ).toFixed(2)}`
+                        : `Buy ${currency} ${parsed.toFixed(2)} airtime`
                       : 'Buy airtime'}
                 </ClayButton>
               </YStack>

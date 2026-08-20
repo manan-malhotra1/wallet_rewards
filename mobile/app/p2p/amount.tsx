@@ -18,12 +18,18 @@ import { GradientHeader } from '@/components/brand/GradientHeader';
 import { HeaderBack } from '@/components/brand/HeaderBack';
 import { StepIndicator } from '@/components/brand/StepIndicator';
 import { NumericKeypad } from '@/components/forms/NumericKeypad';
+import { PointsDiscount } from '@/components/forms/PointsDiscount';
 import { CurrencySelector } from '@/components/forms/CurrencySelector';
 import { ClayButton, ClayInset, ClaySurface } from '@/components/clay';
 import { useColors } from '@/lib/colors';
 import { ApiError, RateLimited, StepUpRequired } from '@/lib/api/errors';
 import { newP2PIdempotencyKey, sendP2P } from '@/lib/api/payments';
 import { quoteServiceFee } from '@/lib/api/pricing';
+import {
+  getConversionRates,
+  pointsToFiat,
+  redeemPointsToWallet,
+} from '@/lib/api/redemption';
 import { getMyWallet } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
 import { currencySymbol, formatMoney, maskPhone } from '@/lib/format';
@@ -68,6 +74,8 @@ export default function AmountScreen() {
   const paramCurrency = typeof params.currency === 'string' ? params.currency : 'ZAR';
   const [selectedCurrency, setSelectedCurrency] = useState(paramCurrency);
   const [amount, setAmount] = useState('');
+  // Points the sender is applying to this payment (0 = not using points).
+  const [points, setPoints] = useState(0);
   const [busy, setBusy] = useState(false);
   const { data } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
 
@@ -75,6 +83,19 @@ export default function AmountScreen() {
   const walletCurrencies = (data?.accounts ?? [])
     .filter((a) => a.account_type === 'financial_wallet')
     .map((a) => a.currency);
+
+  // Active conversion rates + the PTS balance drive the "pay with points"
+  // option. Both are best-effort: a failure just hides the option (points are
+  // a sweetener, never a blocker for sending money).
+  const { data: rates } = useQuery({
+    queryKey: qk.conversionRates(),
+    queryFn: getConversionRates,
+    staleTime: 300_000,
+  });
+  const rate = rates?.find((r) => r.currency === selectedCurrency) ?? null;
+  const pointsBalance = parseFloat(
+    data?.accounts.find((a) => a.currency === 'PTS')?.available_balance ?? '0',
+  );
 
   const symbol = currencySymbol(selectedCurrency).trim();
   const wallet = data?.accounts.find(
@@ -96,10 +117,21 @@ export default function AmountScreen() {
   const fee = quote ? parseFloat(quote.fee) : 0;
   const total = parsed + fee;
 
-  // Overdraft must account for the fee — the wallet is debited amount + fee.
-  const overdrawn = total > available;
+  // Points are redeemed into the wallet BEFORE the payment is charged, so the
+  // wallet effectively only needs (total − discount) available.
+  const discount = rate && points > 0 ? pointsToFiat(points, rate) : 0;
+  const payable = Math.max(0, total - discount);
+
+  // Overdraft must account for the fee — the wallet is debited amount + fee,
+  // less whatever the points top it up by first.
+  const overdrawn = payable > available;
   const canContinue = parsed > 0 && !overdrawn && !busy;
   const display = splitAmount(amount);
+
+  /** A changed amount / currency invalidates the points ceiling — reset it. */
+  function resetPoints() {
+    if (points !== 0) setPoints(0);
+  }
 
   /**
    * Try-then-PIN entry point. We fire /payments/p2p without a PIN first
@@ -114,6 +146,16 @@ export default function AmountScreen() {
     const idempotencyKey = newP2PIdempotencyKey();
     setBusy(true);
     try {
+      // Redeem FIRST so the wallet is topped up before the full-amount debit.
+      // The key is derived from the payment's, so a step-up retry replays the
+      // SAME redemption (backend fast-path) instead of burning points twice.
+      if (points > 0) {
+        await redeemPointsToWallet({
+          points: String(points),
+          currency: selectedCurrency,
+          idempotencyKey: `${idempotencyKey}:points`,
+        });
+      }
       const res = await sendP2P({
         recipientPhone,
         amount: amountStr,
@@ -133,7 +175,8 @@ export default function AmountScreen() {
       });
     } catch (e) {
       if (e instanceof StepUpRequired) {
-        // Above threshold — route to PIN screen, carry the key forward.
+        // Above threshold — route to PIN screen, carry the key + points
+        // forward so the retry redeems (idempotently) and pays under a PIN.
         router.push({
           pathname: '/p2p/pin' as never,
           params: {
@@ -141,6 +184,7 @@ export default function AmountScreen() {
             amount: amountStr,
             currency: selectedCurrency,
             idem: idempotencyKey,
+            points: String(points),
           },
         });
         return;
@@ -162,14 +206,17 @@ export default function AmountScreen() {
 
   function handleKey(key: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '.' | 'back') {
     if (key === 'back') {
+      resetPoints();
       setAmount((a) => a.slice(0, -1));
       return;
     }
     if (key === '.') {
       if (amount.includes('.')) return;
+      resetPoints();
       setAmount((a) => (a === '' ? '0.' : a + '.'));
       return;
     }
+    resetPoints();
     setAmount((a) => {
       const dotAt = a.indexOf('.');
       // Cap cents at 2 digits.
@@ -237,7 +284,10 @@ export default function AmountScreen() {
             <CurrencySelector
               currencies={walletCurrencies}
               selected={selectedCurrency}
-              onSelect={setSelectedCurrency}
+              onSelect={(c) => {
+                resetPoints();
+                setSelectedCurrency(c);
+              }}
               available={available}
             />
             <ClayInset
@@ -302,11 +352,27 @@ export default function AmountScreen() {
                 );
               })}
             </XStack>
+            <View width="100%" marginTop={16}>
+              <PointsDiscount
+                rate={rate}
+                balance={pointsBalance}
+                txnAmount={total}
+                currency={selectedCurrency}
+                points={points}
+                onChange={setPoints}
+              />
+            </View>
             <Text fontFamily="PlusJakartaSans-Medium" fontSize={12} color={colors.textMuted} marginTop={16}>
               Fee {formatMoney(fee, selectedCurrency)} · You pay{' '}
               <Text fontFamily="PlusJakartaSans-Bold" color={colors.text}>
-                {formatMoney(total, selectedCurrency)}
+                {formatMoney(payable, selectedCurrency)}
               </Text>
+              {discount > 0 ? (
+                <Text fontFamily="PlusJakartaSans-Medium" color={colors.textMuted}>
+                  {' '}
+                  ({formatMoney(discount, selectedCurrency)} from points)
+                </Text>
+              ) : null}
             </Text>
             {overdrawn ? (
               <Text

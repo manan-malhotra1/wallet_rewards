@@ -1,20 +1,20 @@
 /**
  * /airtime — buy prepaid airtime (Epic 17).
  *
- * A single self-contained screen: pick the number to top up (PhoneInput),
- * the carrier network (clay chips), and an amount, then "Buy airtime". The
- * result is shown INLINE on the same screen — we deliberately do NOT navigate
- * to a separate pending/receipt route, because airtime resolves synchronously
- * often enough that an in-place success/failure panel feels instant.
+ * Pick the number to top up (PhoneInput or a quick-pick list, mirroring the
+ * P2P recipient screen), the carrier network, and an amount, then "Buy
+ * airtime". The result routes to a dedicated receipt screen — success /
+ * pending / failed — exactly like the P2P and cash-in flows.
  *
- * The buy calls `buyAirtime`, which fires the recharge and — when the provider
- * is still PENDING — polls once for a terminal status before returning, so the
- * inline panel usually lands on COMPLETED/REVERSED rather than a spinner.
+ * The quick-pick list doubles as the SIMULATOR cheat-sheet: the backend's
+ * SimulatorProvider is deterministic by msisdn suffix (…0001 → provider
+ * fails and the debit is reversed; …0002 → stays PENDING awaiting the
+ * provider callback; anything else vends instantly), so the list carries
+ * numbers for each outcome with a hint label.
  *
  * The wallet to debit defaults to ZAR (falling back to the user's first wallet
  * currency if they hold no ZAR wallet) and is switchable in-flow via the shared
- * CurrencySelector, mirroring the P2P / cash-out flows. The chosen currency is
- * sent to the backend, which resolves the buyer's financial wallet in it.
+ * CurrencySelector, mirroring the P2P / cash-out flows.
  */
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -26,7 +26,8 @@ import {
   TextInput,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, View, XStack, YStack } from 'tamagui';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,11 +39,7 @@ import { CurrencySelector, defaultWalletCurrency } from '@/components/forms/Curr
 import { ClayButton, ClaySurface } from '@/components/clay';
 import { useColors } from '@/lib/colors';
 import { ApiError } from '@/lib/api/errors';
-import {
-  buyAirtime,
-  newAirtimeIdempotencyKey,
-  type AirtimeResult,
-} from '@/lib/api/airtime';
+import { buyAirtime, newAirtimeIdempotencyKey } from '@/lib/api/airtime';
 import { getMyWallet } from '@/lib/api/wallet';
 import { qk } from '@/lib/query';
 import { maskPhone } from '@/lib/format';
@@ -54,17 +51,19 @@ const NETWORKS = ['MTN', 'Vodacom', 'Cell C', 'Telkom'] as const;
 const QUICK_AMOUNTS = [10, 20, 50, 100] as const;
 
 /**
- * Inline outcome state for the buy. `null` = nothing shown yet; otherwise a
- * kind + message pair the panel renders.
+ * Quick-pick recharge numbers — the airtime mirror of P2P's RECENTS list.
+ * The hints map to the backend SimulatorProvider's magic suffixes
+ * (…0001 fails, …0002 stays pending); the rest vend instantly.
  */
-type Outcome =
-  | { kind: 'success'; result: AirtimeResult }
-  | { kind: 'processing'; result: AirtimeResult }
-  | { kind: 'error'; message: string }
-  | null;
+const QUICK_NUMBERS = [
+  { initials: 'TC', name: 'Tariro', phone: '+263786612093', hint: 'Delivers instantly', bg: '#fff7e6', fg: '#c98a00' },
+  { initials: 'RS', name: 'Rudo', phone: '+263787715040', hint: 'Delivers instantly', bg: '#fdeef0', fg: '#c0455a' },
+  { initials: 'AL', name: 'Alice', phone: '+27825550001', hint: 'Test: provider fails, refund issued', bg: '#50C0D0', fg: '#013a6b' },
+  { initials: 'BB', name: 'Bob', phone: '+27825550002', hint: 'Test: stays pending (callback)', bg: '#eef3fb', fg: '#00508F' },
+] as const;
 
 /**
- * Map a thrown error (or a REVERSED result) to a friendly inline message.
+ * Map a thrown error to a friendly failure-screen reason.
  *
  * Typed API errors carry an HTTP status we branch on: 409 insufficient funds,
  * 403 not permitted, 422 validation / no airtime merchant. Everything else
@@ -80,18 +79,21 @@ function errorMessage(e: unknown): string {
   return 'Airtime purchase failed. Please try again.';
 }
 
-/** Airtime top-up screen. */
+/** Airtime top-up screen — number, network, amount → receipt route. */
 export default function AirtimeScreen() {
+  const router = useRouter();
   const colors = useColors();
+  const qc = useQueryClient();
 
   const [phone, setPhone] = useState('');
+  // Name of the tapped quick-pick, shown as a selected pill. Cleared when the
+  // user types in the PhoneInput (manual entry overrides the pick).
+  const [pickedName, setPickedName] = useState<string | null>(null);
   const [network, setNetwork] = useState<string>(NETWORKS[0]);
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<Outcome>(null);
   // Wallet to debit — defaults to ZAR, reconciled to the ZAR-preferred default
-  // once the wallet loads (a user with no ZAR wallet snaps to their first
-  // currency). Switchable in-flow via the CurrencySelector.
+  // once the wallet loads. Switchable in-flow via the CurrencySelector.
   const [currency, setCurrency] = useState('ZAR');
   const { data: wallet } = useQuery({ queryKey: qk.wallet(), queryFn: getMyWallet });
   const walletCurrencies = (wallet?.accounts ?? [])
@@ -104,9 +106,8 @@ export default function AirtimeScreen() {
   );
 
   // Reconcile the default once the wallet resolves: if the selection isn't a
-  // currency the user holds (e.g. seeded ZAR but no ZAR wallet), snap to the
-  // ZAR-preferred default. A manual pick is always in the list, so this never
-  // overrides the user's own choice.
+  // currency the user holds, snap to the ZAR-preferred default. A manual pick
+  // is always in the list, so this never overrides the user's own choice.
   useEffect(() => {
     if (walletCurrencies.length > 0 && !walletCurrencies.includes(currency)) {
       setCurrency(defaultWalletCurrency(walletCurrencies));
@@ -114,23 +115,28 @@ export default function AirtimeScreen() {
   }, [walletCurrencies, currency]);
 
   // Idempotency key for the CURRENT attempt. Held in a ref so a retry after an
-  // error reuses the same key (the backend dedups a replay). It is reset to
-  // null whenever an input changes — a changed request is a new attempt and
-  // must not collide with the previous key.
+  // error reuses the same key (the backend dedups a replay). Reset whenever an
+  // input changes — a changed request is a new attempt.
   const idemRef = useRef<string | null>(null);
 
   const parsed = parseFloat(amount || '0');
   const phoneDigits = phone.replace(/\D/g, '');
   const canBuy = phoneDigits.length >= 9 && parsed > 0 && !busy;
 
-  /** Reset the pending idempotency key + any stale outcome when inputs change. */
+  /** Reset the pending idempotency key when any input changes. */
   function resetAttempt() {
     idemRef.current = null;
-    setOutcome(null);
   }
 
   function handlePhone(next: string) {
     setPhone(next);
+    setPickedName(null);
+    resetAttempt();
+  }
+
+  function handlePick(name: string, e164: string) {
+    setPhone(e164);
+    setPickedName(name);
     resetAttempt();
   }
 
@@ -155,44 +161,57 @@ export default function AirtimeScreen() {
   }
 
   /**
-   * Submit the buy and render the outcome inline.
-   *
-   * Reuses the ref-held idempotency key so a post-error retry is a safe replay.
-   * Branches the returned recharge on `status`: COMPLETED → success panel,
-   * PENDING (after the single poll) → processing panel with the reference,
-   * anything else (REVERSED/failed) → error panel.
+   * Submit the buy, then route to the matching receipt screen:
+   * COMPLETED → /airtime/success, PENDING → /airtime/pending (carries the
+   * recharge id so that screen can re-poll), REVERSED / thrown → /airtime/failed.
+   * The wallet query is invalidated on any outcome that debited (success or
+   * pending reservation) so /home shows the fresh balance.
    */
   async function onBuy() {
     if (!canBuy) return;
     Keyboard.dismiss();
     if (idemRef.current === null) idemRef.current = newAirtimeIdempotencyKey();
     setBusy(true);
-    setOutcome(null);
+    const amountStr = parsed.toFixed(2);
+    const base = { msisdn: phone, network, amount: amountStr, currency };
     try {
-      const result = await buyAirtime({
-        msisdn: phone,
-        network,
-        amount: parsed.toFixed(2),
-        currency,
-        idempotencyKey: idemRef.current,
-      });
+      const result = await buyAirtime({ ...base, idempotencyKey: idemRef.current });
+      await qc.invalidateQueries({ queryKey: qk.wallet() });
       if (result.status === 'COMPLETED') {
-        setOutcome({ kind: 'success', result });
-        // A terminal success shouldn't be replayed under the same key if the
-        // user buys again — mint a fresh one next time.
-        idemRef.current = null;
+        idemRef.current = null; // terminal — a future buy is a new attempt
+        router.replace({
+          pathname: '/airtime/success',
+          params: {
+            ...base,
+            reference:
+              result.provider_reference ?? result.transaction_id.slice(0, 8).toUpperCase(),
+          },
+        });
       } else if (result.status === 'PENDING') {
-        setOutcome({ kind: 'processing', result });
+        router.replace({
+          pathname: '/airtime/pending',
+          params: { ...base, id: result.id },
+        });
       } else {
-        // REVERSED / failed — funds (if reserved) are refunded server-side.
-        setOutcome({
-          kind: 'error',
-          message: result.failure_reason || 'The recharge was reversed. No airtime was delivered.',
+        // REVERSED — the debit was refunded server-side.
+        idemRef.current = null;
+        router.replace({
+          pathname: '/airtime/failed',
+          params: {
+            ...base,
+            reason:
+              result.failure_reason === 'simulated_provider_failure'
+                ? 'The carrier could not deliver this recharge.'
+                : result.failure_reason || 'The recharge was reversed. No airtime was delivered.',
+          },
         });
       }
     } catch (e) {
-      // Keep idemRef so "Try again" replays under the same key.
-      setOutcome({ kind: 'error', message: errorMessage(e) });
+      // Keep idemRef so a retry from the failed screen replays the same key.
+      router.replace({
+        pathname: '/airtime/failed',
+        params: { ...base, reason: errorMessage(e) },
+      });
     } finally {
       setBusy(false);
     }
@@ -225,8 +244,81 @@ export default function AirtimeScreen() {
               </GradientHeader>
 
               <YStack padding={22} paddingTop={20} gap={18}>
-                {/* Number to recharge. */}
+                {/* Number to recharge — manual entry or a quick-pick below. */}
                 <PhoneInput onChange={handlePhone} variant="focused" />
+
+                {/* Selected quick-pick pill (manual typing clears it). */}
+                {pickedName ? (
+                  <XStack
+                    alignSelf="flex-start"
+                    alignItems="center"
+                    gap={8}
+                    backgroundColor="#eaf1fb"
+                    paddingHorizontal={12}
+                    paddingVertical={7}
+                    borderRadius={18}
+                  >
+                    <Ionicons name="call" size={13} color={colors.navy} />
+                    <Text fontFamily="PlusJakartaSans-Bold" fontSize={12.5} color={colors.navy}>
+                      {pickedName} · {maskPhone(phone)}
+                    </Text>
+                    <Pressable onPress={() => handlePick('', '')} accessibilityLabel="Clear picked number">
+                      <Ionicons name="close-circle" size={16} color={colors.navy} />
+                    </Pressable>
+                  </XStack>
+                ) : null}
+
+                {/* Quick-pick numbers — the airtime mirror of P2P's recents. */}
+                <YStack gap={8}>
+                  <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={14} color={colors.text}>
+                    Recharge again
+                  </Text>
+                  <ClaySurface depth="soft" radius={18} paddingHorizontal={14}>
+                    {QUICK_NUMBERS.map((r, i) => (
+                      <Pressable
+                        key={r.phone}
+                        onPress={() => handlePick(r.name, r.phone)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Recharge ${r.name}`}
+                        style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                      >
+                        <XStack
+                          alignItems="center"
+                          gap={12}
+                          paddingVertical={12}
+                          borderBottomWidth={i === QUICK_NUMBERS.length - 1 ? 0 : 1}
+                          borderBottomColor={colors.hairline}
+                        >
+                          <View
+                            width={42}
+                            height={42}
+                            borderRadius={21}
+                            backgroundColor={r.bg}
+                            alignItems="center"
+                            justifyContent="center"
+                          >
+                            <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={r.fg}>
+                              {r.initials}
+                            </Text>
+                          </View>
+                          <YStack flex={1} gap={1}>
+                            <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.text}>
+                              {r.name}
+                            </Text>
+                            <Text
+                              fontFamily="PlusJakartaSans-Medium"
+                              fontSize={11.5}
+                              color={colors.textMuted}
+                            >
+                              {r.phone} · {r.hint}
+                            </Text>
+                          </YStack>
+                          <Text fontSize={18} color={colors.textFaint}>›</Text>
+                        </XStack>
+                      </Pressable>
+                    ))}
+                  </ClaySurface>
+                </YStack>
 
                 {/* Network selector — plain string chips. */}
                 <YStack gap={8}>
@@ -345,9 +437,6 @@ export default function AirtimeScreen() {
                   </XStack>
                 </YStack>
 
-                {/* Inline outcome panel — success / processing / error. */}
-                {outcome ? <OutcomePanel outcome={outcome} currency={currency} /> : null}
-
                 <ClayButton
                   onPress={onBuy}
                   disabled={!canBuy}
@@ -366,83 +455,5 @@ export default function AirtimeScreen() {
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
-  );
-}
-
-/**
- * Inline result panel rendered under the form after a buy.
- *
- * Success → green confirmation with the number + amount. Processing → neutral
- * "still processing" note carrying the provider/transaction reference so the
- * user has something to quote. Error → red callout with the mapped reason.
- */
-function OutcomePanel({ outcome, currency }: { outcome: NonNullable<Outcome>; currency: string }) {
-  const colors = useColors();
-  if (outcome.kind === 'success') {
-    const { msisdn, amount } = outcome.result;
-    return (
-      <ClaySurface depth="soft" radius={16} padding={14}>
-        <XStack gap={11} alignItems="flex-start">
-          <Ionicons name="checkmark-circle" size={22} color={colors.success} />
-          <YStack flex={1} gap={2}>
-            <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.success}>
-              Airtime sent
-            </Text>
-            <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color={colors.text} lineHeight={18}>
-              {currency} {parseFloat(amount).toFixed(2)} of airtime is on its way to{' '}
-              {maskPhone(msisdn)}.
-            </Text>
-          </YStack>
-        </XStack>
-      </ClaySurface>
-    );
-  }
-
-  if (outcome.kind === 'processing') {
-    const ref = outcome.result.provider_reference || outcome.result.transaction_id.slice(0, 8).toUpperCase();
-    return (
-      <ClaySurface depth="soft" radius={16} padding={14}>
-        <XStack gap={11} alignItems="flex-start">
-          <Ionicons name="time-outline" size={22} color={colors.warning} />
-          <YStack flex={1} gap={2}>
-            <Text fontFamily="PlusJakartaSans-Bold" fontSize={13.5} color={colors.warning}>
-              Processing
-            </Text>
-            <Text fontFamily="PlusJakartaSans-Medium" fontSize={12.5} color={colors.text} lineHeight={18}>
-              Your top-up is being confirmed. Reference {ref}. We'll update your wallet once it
-              completes.
-            </Text>
-          </YStack>
-        </XStack>
-      </ClaySurface>
-    );
-  }
-
-  return (
-    <XStack
-      backgroundColor="#fdf0ee"
-      borderColor="#f6d5cf"
-      borderWidth={1}
-      borderRadius={16}
-      padding={14}
-      gap={11}
-      alignItems="flex-start"
-    >
-      <Ionicons name="warning" size={20} color={colors.danger} />
-      <YStack flex={1}>
-        <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color="#a52e22">
-          Couldn't buy airtime
-        </Text>
-        <Text
-          fontFamily="PlusJakartaSans-Medium"
-          fontSize={12}
-          color="#8a5a54"
-          marginTop={3}
-          lineHeight={18}
-        >
-          {outcome.message}
-        </Text>
-      </YStack>
-    </XStack>
   );
 }

@@ -17,6 +17,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
@@ -31,6 +32,17 @@ import { StepIndicator } from '@/components/brand/StepIndicator';
 import { PhoneInput } from '@/components/forms/PhoneInput';
 import { ClayButton, ClaySurface } from '@/components/clay';
 import { useColors } from '@/lib/colors';
+
+/**
+ * Quick-pick cash-out agents — the seeded dev-tenant agents, mirroring the
+ * P2P recents / airtime quick-pick lists. Tapping one goes straight to the
+ * amount screen (the backend still validates the agent on submit).
+ */
+const AGENTS = [
+  { initials: 'SA', name: 'Sipho (Agent)', phone: '+27825558001', bg: '#eaf1fb', fg: '#00508F' },
+  { initials: 'SU', name: 'Naledi (Super agent)', phone: '+278610000001', bg: '#fff7e6', fg: '#c98a00' },
+  { initials: 'AG', name: 'Kagiso (Agent)', phone: '+278620000006', bg: '#fdeef0', fg: '#c0455a' },
+] as const;
 
 /** Agent picker screen — step 1 of cash-out. */
 export default function CashOutAgentScreen() {
@@ -111,6 +123,63 @@ export default function CashOutAgentScreen() {
                 >
                   Continue
                 </ClayButton>
+
+                {/* Quick-pick agents — tap goes straight to the amount screen. */}
+                <YStack gap={8} marginTop={4}>
+                  <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={14} color={colors.text}>
+                    Agents near you
+                  </Text>
+                  <ClaySurface depth="soft" radius={18} paddingHorizontal={14}>
+                    {AGENTS.map((a, i) => (
+                      <Pressable
+                        key={a.phone}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/cashout/amount',
+                            params: { phone: a.phone, currency },
+                          })
+                        }
+                        accessibilityRole="button"
+                        accessibilityLabel={`Cash out with ${a.name}`}
+                        style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                      >
+                        <XStack
+                          alignItems="center"
+                          gap={12}
+                          paddingVertical={12}
+                          borderBottomWidth={i === AGENTS.length - 1 ? 0 : 1}
+                          borderBottomColor={colors.hairline}
+                        >
+                          <View
+                            width={42}
+                            height={42}
+                            borderRadius={21}
+                            backgroundColor={a.bg}
+                            alignItems="center"
+                            justifyContent="center"
+                          >
+                            <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={a.fg}>
+                              {a.initials}
+                            </Text>
+                          </View>
+                          <YStack flex={1} gap={1}>
+                            <Text fontFamily="PlusJakartaSans-Bold" fontSize={14} color={colors.text}>
+                              {a.name}
+                            </Text>
+                            <Text
+                              fontFamily="PlusJakartaSans-Medium"
+                              fontSize={11.5}
+                              color={colors.textMuted}
+                            >
+                              {a.phone}
+                            </Text>
+                          </YStack>
+                          <Text fontSize={18} color={colors.textFaint}>›</Text>
+                        </XStack>
+                      </Pressable>
+                    ))}
+                  </ClaySurface>
+                </YStack>
               </YStack>
             </ScrollView>
           </TouchableWithoutFeedback>

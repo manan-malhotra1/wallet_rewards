@@ -27,6 +27,8 @@ export const qk = {
   limits: () => ['me-limits'] as const,
   /** The current user's rewards catalog + recent earnings. */
   rewards: () => ['rewards'] as const,
+  /** The user's points ledger — earns + redemptions (rewards history). */
+  pointsHistory: () => ['points-history'] as const,
   /** The tenant's ACTIVE points→fiat rates (drives the pay-with-points option). */
   conversionRates: () => ['conversion-rates'] as const,
 };

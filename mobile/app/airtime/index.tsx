@@ -210,6 +210,9 @@ export default function AirtimeScreen() {
       }
       const result = await buyAirtime({ ...base, idempotencyKey: idemRef.current });
       await qc.invalidateQueries({ queryKey: qk.wallet() });
+      // Points moved too when the payment used them — refresh the
+      // rewards-side ledger so the chip + history agree with the wallet.
+      await qc.invalidateQueries({ queryKey: qk.pointsHistory() });
       if (result.status === 'COMPLETED') {
         idemRef.current = null; // terminal — a future buy is a new attempt
         router.replace({

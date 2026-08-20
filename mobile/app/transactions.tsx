@@ -85,15 +85,13 @@ function metaFor(t: WalletTransaction): string {
 }
 
 /**
- * Format amount with sign in the transaction's OWN currency (ZAR, INR, …),
- * or as points for PTS rows. Returns e.g. ["+₹ 50.00", true].
+ * Format amount with sign in the transaction's OWN currency (ZAR, INR, …).
+ * Returns e.g. ["+₹ 50.00", true]. This tab is fiat-only — points rows are
+ * filtered out upstream and shown in the rewards history instead.
  */
 function displayAmount(t: WalletTransaction): { text: string; positive: boolean } {
   const positive = t.direction === 'in';
   const sign = positive ? '+' : '−';
-  if (t.currency === 'PTS') {
-    return { text: `${sign}${Math.abs(parseFloat(t.amount)).toFixed(0)} PTS`, positive };
-  }
   return { text: `${sign}${formatMoney(Math.abs(parseFloat(t.amount)), t.currency)}`, positive };
 }
 
@@ -145,15 +143,12 @@ export default function TransactionsScreen() {
   const currency =
     currencyFilter ?? (currencies.includes('ZAR') ? 'ZAR' : currencies[0] ?? 'ZAR');
 
-  // Filtered transactions (drives the list + the summary totals). Scoped to the
-  // selected currency; PTS reward/redemption rows are kept regardless since
-  // points aren't a spendable currency tied to any wallet.
+  // Filtered transactions (drives the list + the summary totals). MONEY ONLY:
+  // points rows (earn / redeem) live in the rewards history behind the points
+  // chip on home — this tab is the fiat statement, so mixing PTS in made the
+  // running totals meaningless and buried real payments.
   const filtered = useMemo(
-    () =>
-      all.filter(
-        (t) =>
-          (t.currency === currency || t.currency === 'PTS') && matchesFilter(t, filter),
-      ),
+    () => all.filter((t) => t.currency === currency && matchesFilter(t, filter)),
     [all, filter, currency],
   );
 

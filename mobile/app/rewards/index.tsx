@@ -26,6 +26,8 @@ import {
   getRewards,
   type RecentReward,
   type RewardCatalogItem,
+  getPointsHistory,
+  type PointsHistoryItem,
 } from '@/lib/api/rewards';
 import { qk } from '@/lib/query';
 import { formatMoney } from '@/lib/format';
@@ -95,59 +97,129 @@ function ProgressBar({ fraction }: { fraction: number }) {
   );
 }
 
-/** A single catalog rule as a clay card: name, reward, progress bar, status. */
+/**
+ * A single catalog rule as a COMPACT clay card — two fit per row.
+ *
+ * The full-width version cost a whole screen per campaign and forced endless
+ * scrolling, so this drops the description (the name + reward already say
+ * what it is), shrinks the status to a dot beside the name, and keeps the
+ * progress bar + its caption, which are the parts users actually track.
+ */
 function CatalogCard({ item }: { item: RewardCatalogItem }) {
   const colors = useColors();
   const pill = statusPill(item.status, colors);
   const fraction = progressFraction(item.progress.current, item.progress.target);
 
   return (
-    <ClaySurface depth="soft" radius={18} paddingHorizontal={16} paddingVertical={16}>
-      <XStack alignItems="flex-start" justifyContent="space-between" gap={12}>
-        <YStack flex={1} gap={3}>
-          <Text fontFamily="PlusJakartaSans-Bold" fontSize={14.5} color={colors.text}>
-            {item.name}
-          </Text>
-          <Text fontFamily="PlusJakartaSans-ExtraBold" fontSize={13} color={colors.teal}>
-            {rewardText(item.reward_type, item.reward_value, item.currency)}
-          </Text>
-          {item.description ? (
-            <Text
-              fontFamily="PlusJakartaSans-Medium"
-              fontSize={11.5}
-              color={colors.textMuted}
-              marginTop={1}
-            >
-              {item.description}
-            </Text>
-          ) : null}
-        </YStack>
-        <XStack
-          alignItems="center"
-          gap={5}
-          backgroundColor={pill.bg}
-          paddingHorizontal={9}
-          paddingVertical={5}
-          borderRadius={20}
+    <ClaySurface depth="soft" radius={16} paddingHorizontal={12} paddingVertical={12} flex={1}>
+      <XStack alignItems="center" gap={6}>
+        <Ionicons name={pill.icon} size={12} color={pill.fg} />
+        <Text
+          fontFamily="PlusJakartaSans-Bold"
+          fontSize={12.5}
+          color={colors.text}
+          numberOfLines={1}
+          flex={1}
         >
-          <Ionicons name={pill.icon} size={12} color={pill.fg} />
-          <Text fontFamily="PlusJakartaSans-Bold" fontSize={10.5} color={pill.fg}>
-            {pill.label}
-          </Text>
-        </XStack>
+          {item.name}
+        </Text>
       </XStack>
+      <Text
+        fontFamily="PlusJakartaSans-ExtraBold"
+        fontSize={12}
+        color={colors.teal}
+        marginTop={3}
+        numberOfLines={1}
+      >
+        {rewardText(item.reward_type, item.reward_value, item.currency)}
+      </Text>
 
       <ProgressBar fraction={fraction} />
 
       <Text
         fontFamily="PlusJakartaSans-Medium"
-        fontSize={11.5}
+        fontSize={10.5}
         color={colors.textMuted}
-        marginTop={7}
+        marginTop={6}
+        numberOfLines={1}
       >
         {item.progress.label}
       </Text>
     </ClaySurface>
+  );
+}
+
+/** Chunk the catalog into rows of two so the grid stays a simple XStack map. */
+function inPairs<T>(items: T[]): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
+  return rows;
+}
+
+/**
+ * Operator-speak → user-speak for a points ledger row. Reward credits carry
+ * their rule name instead; this covers the rest, so a raw type key like
+ * `redemption_internal` never reaches the screen.
+ */
+const POINTS_ENTRY_LABEL: Record<string, string> = {
+  redemption_internal: 'Redeemed to wallet',
+  redemption: 'Redeemed with partner',
+  reward_issuance: 'Reward earned',
+};
+
+function pointsEntryTitle(transactionType: string): string {
+  return (
+    POINTS_ENTRY_LABEL[transactionType] ??
+    transactionType.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
+  );
+}
+
+/** One row of the points ledger — earned (teal, +) or redeemed (muted, −). */
+function PointsRow({ item, last }: { item: PointsHistoryItem; last: boolean }) {
+  const colors = useColors();
+  const earned = item.direction === 'CREDIT';
+  const amount = Math.abs(parseFloat(item.amount));
+  const title = item.rule_name ?? pointsEntryTitle(item.transaction_type);
+
+  return (
+    <XStack
+      alignItems="center"
+      gap={11}
+      paddingVertical={12}
+      borderBottomWidth={last ? 0 : 1}
+      borderBottomColor={colors.hairline}
+    >
+      <View
+        width={34}
+        height={34}
+        borderRadius={17}
+        backgroundColor={earned ? colors.chipTealBg : colors.clayInset}
+        alignItems="center"
+        justifyContent="center"
+      >
+        <Ionicons
+          name={earned ? 'arrow-down' : 'arrow-up'}
+          size={15}
+          color={earned ? colors.chipTealText : colors.textMuted}
+        />
+      </View>
+      <YStack flex={1} gap={1}>
+        <Text fontFamily="PlusJakartaSans-Bold" fontSize={13} color={colors.text} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text fontFamily="PlusJakartaSans-Medium" fontSize={11} color={colors.textMuted}>
+          {earnedSubtitle(item.occurred_at)}
+        </Text>
+      </YStack>
+      <Text
+        fontFamily="PlusJakartaSans-ExtraBold"
+        fontSize={13}
+        color={earned ? colors.success : colors.text}
+      >
+        {earned ? '+' : '−'}
+        {amount.toFixed(0)} PTS
+      </Text>
+    </XStack>
   );
 }
 
@@ -283,6 +355,14 @@ export default function RewardsScreen() {
     queryFn: getRewards,
   });
 
+  // The points ledger — earns AND redemptions. This is the rewards-side
+  // statement: points deliberately never appear in the fiat transaction tab.
+  const { data: pointsHistory } = useQuery({
+    queryKey: qk.pointsHistory(),
+    queryFn: () => getPointsHistory(50),
+  });
+  const history = pointsHistory ?? [];
+
   const catalog = data?.catalog ?? [];
   const recent = data?.recent ?? [];
 
@@ -362,12 +442,37 @@ export default function RewardsScreen() {
                     </Text>
                   </ClaySurface>
                 ) : (
-                  catalog.map((item) => <CatalogCard key={item.rule_id} item={item} />)
+                  inPairs(catalog).map((pair, i) => (
+                    <XStack key={pair[0].rule_id ?? i} gap={10}>
+                      {pair.map((item) => (
+                        <CatalogCard key={item.rule_id} item={item} />
+                      ))}
+                      {/* Odd tail: an invisible spacer keeps the last card
+                          half-width instead of stretching across the row. */}
+                      {pair.length === 1 ? <View flex={1} /> : null}
+                    </XStack>
+                  ))
                 )}
               </YStack>
 
-              {/* Recent — rewards already earned. */}
-              {recent.length > 0 ? (
+              {/* Points activity — the full points ledger (earned + redeemed).
+                  Supersedes the old "Recent" reward-events list: every earn
+                  shows up here too, plus the redemptions that are deliberately
+                  absent from the fiat transaction tab. */}
+              {history.length > 0 ? (
+                <YStack gap={10}>
+                  <SectionTitle>Points activity</SectionTitle>
+                  <ClaySurface depth="soft" radius={20} paddingHorizontal={14}>
+                    {history.map((h, i) => (
+                      <PointsRow
+                        key={h.ledger_entry_id}
+                        item={h}
+                        last={i === history.length - 1}
+                      />
+                    ))}
+                  </ClaySurface>
+                </YStack>
+              ) : recent.length > 0 ? (
                 <YStack gap={10}>
                   <SectionTitle>Recent</SectionTitle>
                   <ClaySurface depth="soft" radius={20} paddingHorizontal={14}>

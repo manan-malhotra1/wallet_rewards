@@ -123,3 +123,31 @@ export async function markRewardsSeen(ids: string[]): Promise<void> {
     body: { reward_event_ids: ids },
   });
 }
+
+/**
+ * One row of the user's POINTS ledger (Pay-PRD-0980) — the rewards-side
+ * statement. Points never appear in the fiat transaction history; earns and
+ * redemptions both land here.
+ */
+export interface PointsHistoryItem {
+  ledger_entry_id: string;
+  /** CREDIT = earned, DEBIT = redeemed/spent. */
+  direction: 'CREDIT' | 'DEBIT' | string;
+  amount: string;
+  status: string;
+  /** e.g. reward_issuance, redemption_internal. */
+  transaction_type: string;
+  /** Set for reward credits — the rule that paid out. */
+  rule_name: string | null;
+  triggering_event_id: string | null;
+  occurred_at: string;
+}
+
+/** GET /catalog/me/points-history — the points ledger, newest-first. */
+export async function getPointsHistory(limit = 50): Promise<PointsHistoryItem[]> {
+  return api<PointsHistoryItem[]>({
+    path: `/api/v1/catalog/me/points-history?limit=${limit}`,
+    method: 'GET',
+    withAuth: true,
+  });
+}

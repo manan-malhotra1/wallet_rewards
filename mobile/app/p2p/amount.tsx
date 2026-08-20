@@ -164,6 +164,9 @@ export default function AmountScreen() {
       });
       // Below step-up threshold → backend let it through without a PIN.
       await qc.invalidateQueries({ queryKey: qk.wallet() });
+      // Points moved too when the payment used them — refresh the
+      // rewards-side ledger so the chip + history agree with the wallet.
+      await qc.invalidateQueries({ queryKey: qk.pointsHistory() });
       router.replace({
         pathname: '/p2p/success',
         params: {

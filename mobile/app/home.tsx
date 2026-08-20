@@ -39,6 +39,7 @@ import {
   type WalletAccount,
 } from '@/lib/api/wallet';
 import { getRewards, markRewardsSeen } from '@/lib/api/rewards';
+import { findExhaustedLimits, getMyLimits } from '@/lib/api/limits';
 import { currencySymbol, formatMoney } from '@/lib/format';
 import { qk } from '@/lib/query';
 import { clearAll, getLastPhone } from '@/lib/storage';
@@ -259,6 +260,13 @@ export default function HomeScreen() {
     queryKey: qk.rewards(),
     queryFn: getRewards,
   });
+  // Limits feed the "limit reached" banner. Errors are swallowed (no data →
+  // no banner) so a limits outage never breaks home.
+  const { data: limitBlocks } = useQuery({
+    queryKey: qk.limits(),
+    queryFn: getMyLimits,
+  });
+  const exhausted = limitBlocks ? findExhaustedLimits(limitBlocks) : [];
 
   // Pull the phone the user last logged in with from secure storage so
   // the drawer can show it. The wallet endpoint doesn't echo phone back
@@ -327,8 +335,10 @@ export default function HomeScreen() {
   // Recent activity is scoped to the visible card's currency so swiping to the
   // INR card shows INR activity, ZAR shows ZAR. PTS (reward/redemption) rows are
   // kept regardless — points aren't a spendable currency tied to any one card.
+  // MONEY ONLY on home's activity list — points earn/redeem rows live in the
+  // rewards history behind the points chip, so the wallet feed stays fiat.
   const recentForCurrency = (data?.recent_transactions ?? []).filter(
-    (t) => t.currency === activeCurrency || t.currency === 'PTS',
+    (t) => t.currency === activeCurrency,
   );
 
   // Celebrate the first unseen earned reward. Gated on `enabled` so we never
@@ -541,6 +551,47 @@ export default function HomeScreen() {
               ) : null}
             </View>
 
+            {/* Limit-reached banner — tap deep-links to /limits pre-filtered
+                on the exhausted currency. Leads with the daily window (the
+                most actionable); extra exhausted axes collapse into "+N". */}
+            {exhausted.length > 0 ? (
+              <Pressable
+                onPress={() =>
+                  router.push(`/limits?currency=${exhausted[0].currency}` as never)
+                }
+                accessibilityRole="button"
+                accessibilityLabel="View your limits"
+                style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
+              >
+                <XStack
+                  marginHorizontal={18}
+                  marginTop={16}
+                  alignItems="center"
+                  gap={10}
+                  backgroundColor="#fdeef0"
+                  borderColor="#f6d5cf"
+                  borderWidth={1}
+                  borderRadius={14}
+                  paddingVertical={11}
+                  paddingHorizontal={14}
+                >
+                  <Ionicons name="alert-circle" size={19} color={colors.danger} />
+                  <Text
+                    fontFamily="PlusJakartaSans-Bold"
+                    fontSize={12.5}
+                    color="#a52e22"
+                    flex={1}
+                    numberOfLines={2}
+                  >
+                    You've reached your {exhausted[0].currency} {exhausted[0].window}{' '}
+                    {exhausted[0].direction} limit
+                    {exhausted.length > 1 ? ` (+${exhausted.length - 1} more)` : ''}. Tap to view.
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color="#a52e22" />
+                </XStack>
+              </Pressable>
+            ) : null}
+
             {/* Quick actions. Tiles carry the active wallet currency forward. */}
             <XStack justifyContent="space-between" paddingHorizontal={22} paddingTop={22}>
               {tiles.map((tile) => (
@@ -610,10 +661,7 @@ export default function HomeScreen() {
                     const positive = t.direction === 'in';
                     const sign = positive ? '+' : '−';
                     const absAmount = Math.abs(parseFloat(t.amount));
-                    const amtText =
-                      t.currency === 'PTS'
-                        ? `${sign}${absAmount.toFixed(0)} PTS`
-                        : `${sign}${formatMoney(absAmount, t.currency)}`;
+                    const amtText = `${sign}${formatMoney(absAmount, t.currency)}`;
                     const when = new Date(t.created_at);
                     const now = new Date();
                     const sameDay =

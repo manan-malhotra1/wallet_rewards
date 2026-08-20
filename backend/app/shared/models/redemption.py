@@ -159,6 +159,15 @@ class PointsConversionRate(Base):
         ),
         CheckConstraint("points_per_unit > 0", name="ck_points_conversion_rates_points"),
         CheckConstraint("value_per_unit > 0", name="ck_points_conversion_rates_value"),
+        CheckConstraint(
+            "max_points_per_txn IS NULL OR max_points_per_txn > 0",
+            name="ck_points_conversion_rates_txn_cap",
+        ),
+        CheckConstraint(
+            "max_balance_pct_per_txn IS NULL OR "
+            "(max_balance_pct_per_txn > 0 AND max_balance_pct_per_txn <= 100)",
+            name="ck_points_conversion_rates_pct_cap",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -168,6 +177,11 @@ class PointsConversionRate(Base):
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     points_per_unit: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
     value_per_unit: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
+    # Per-transaction anti-drain caps (Pay-PRD-1295). NULL = uncapped on that
+    # axis: an absolute points ceiling, and/or a max percentage of the user's
+    # CURRENT points balance a single redemption may burn.
+    max_points_per_txn: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    max_balance_pct_per_txn: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()

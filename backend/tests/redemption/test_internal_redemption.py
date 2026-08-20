@@ -1,6 +1,6 @@
 """Internal redemption — points → own-wallet value (Module 11b).
 
-Covers the Pay-PRD-1200–1290 acceptance criteria: the happy path posts a
+Covers the Pay-PRD-1200-1290 acceptance criteria: the happy path posts a
 cross-referenced burn/payout pair at the configured rate; the flow FAILS
 CLOSED on a missing conversion rate and on missing pricing/limit configs;
 an underfunded cashback wallet 409s and the burn is compensated (points come
@@ -45,6 +45,8 @@ async def _seed_rate(
     points_per_unit: str = "100",
     value_per_unit: str = "10",
     status: str = "active",
+    max_points_per_txn: str | None = None,
+    max_balance_pct_per_txn: str | None = None,
 ) -> None:
     """Insert a conversion rate row directly (config-request path has own tests)."""
     session.add(
@@ -54,6 +56,12 @@ async def _seed_rate(
             points_per_unit=Decimal(points_per_unit),
             value_per_unit=Decimal(value_per_unit),
             status=status,
+            max_points_per_txn=(
+                Decimal(max_points_per_txn) if max_points_per_txn is not None else None
+            ),
+            max_balance_pct_per_txn=(
+                Decimal(max_balance_pct_per_txn) if max_balance_pct_per_txn is not None else None
+            ),
         )
     )
     await session.commit()
@@ -370,3 +378,49 @@ async def test_cashback_wallet_lazy_creation_is_idempotent(
     # Sanity: the test tenant's wallet is the pre-funded one.
     balance, _ = await derive_balance(db_session, first.id)
     assert balance > 0
+
+
+@pytest.mark.asyncio
+async def test_internal_redemption_absolute_txn_cap(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+) -> None:
+    """Verify the absolute per-transaction points cap blocks a drain attempt"""
+    await _seed_redemption_configs(db_session, test_tenant)
+    await _seed_rate(db_session, test_tenant, max_points_per_txn="50")
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("500"))
+    await _ensure_zar_wallet(db_session, test_tenant, test_user)
+
+    over = await _redeem(async_client, test_user, points="51")
+    assert over.status_code == 422, over.text
+    assert over.json()["error_code"] == "redemption_txn_cap_exceeded"
+    # Nothing burned on the rejected attempt.
+    assert await _points_balance(db_session, test_tenant, test_user) == Decimal("500")
+
+    at_cap = await _redeem(async_client, test_user, points="50")
+    assert at_cap.status_code == 201, at_cap.text
+
+
+@pytest.mark.asyncio
+async def test_internal_redemption_pct_of_balance_txn_cap(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    test_user: User,
+) -> None:
+    """Verify the %-of-balance cap allows at most 10 of a 100-point balance"""
+    await _seed_redemption_configs(db_session, test_tenant)
+    await _seed_rate(db_session, test_tenant, max_balance_pct_per_txn="10")
+    await _credit_user_points(db_session, test_tenant, test_user, Decimal("100"))
+    await _ensure_zar_wallet(db_session, test_tenant, test_user)
+
+    over = await _redeem(async_client, test_user, points="11")
+    assert over.status_code == 422, over.text
+    assert over.json()["error_code"] == "redemption_txn_cap_exceeded"
+    assert await _points_balance(db_session, test_tenant, test_user) == Decimal("100")
+
+    at_cap = await _redeem(async_client, test_user, points="10")
+    assert at_cap.status_code == 201, at_cap.text
+    assert await _points_balance(db_session, test_tenant, test_user) == Decimal("90")

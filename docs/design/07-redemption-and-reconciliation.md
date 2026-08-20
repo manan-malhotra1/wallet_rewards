@@ -179,8 +179,12 @@ enabled tenant currency are created at tenant provisioning / instrument enableme
 ### 6.2 Conversion-rate config
 
 New table `points_conversion_rates`: `(tenant_id, currency, points_per_unit NUMERIC, value_per_unit NUMERIC,
-status, created_at, updated_at)` — read as "`points_per_unit` PTS = `value_per_unit` `currency`"
-(e.g. 100 PTS = 10.00 ZAR). One ACTIVE row per (tenant, currency), unique-indexed. Changes ride the existing
+max_points_per_txn NUMERIC NULL, max_balance_pct_per_txn NUMERIC NULL, status, created_at, updated_at)` —
+read as "`points_per_unit` PTS = `value_per_unit` `currency`" (e.g. 100 PTS = 10.00 ZAR). The two nullable
+caps bound a SINGLE redemption (Pay-PRD-1295, anti-drain): an absolute points ceiling and/or a percentage of
+the user's current points balance (balance 100 + 10% → at most 10 points per transaction). NULL = uncapped
+on that axis; breaching either → 422 `redemption_txn_cap_exceeded`, checked under the points lock (the
+percentage is computed from the derived balance) before the burn posts. One ACTIVE row per (tenant, currency), unique-indexed. Changes ride the existing
 **config change request** maker-checker (like pricing/limits) and are audit-logged. **Fail-closed
 (Pay-PRD-1220):** no ACTIVE row for the requested currency → 422 `conversion_rate_missing` before any ledger
 write. No default rate, ever.
@@ -196,8 +200,9 @@ external dependency:
 3. **Pricing + limits fail-closed (invariant #12)** for the new transaction types — a zero-fee internal
    redemption must be an explicit pricing row.
 4. **Burn first** (`redemption_internal`, PTS): lock the user's `points_account` FOR UPDATE (points
-   overdraft guard, same as §2.2), check the derived balance, DEBIT user points → CREDIT
-   `points_redemption_wallet`. `post_transaction` commits, so check+debit are atomic under the lock.
+   overdraft guard, same as §2.2), check the derived balance, enforce the rate row's per-transaction caps
+   (absolute + %-of-balance, Pay-PRD-1295) against that same derived balance, then DEBIT user points →
+   CREDIT `points_redemption_wallet`. `post_transaction` commits, so check+debit are atomic under the lock.
 5. **Payout second** (`redemption_internal_payout`, fiat): DEBIT `cashback_provider_wallet(currency)` →
    CREDIT user `financial_wallet(currency)` — floored at the choke point; normal receive caps apply (a
    payout is user-initiated, not a cap-exempt reward). **A payout failure posts an append-only compensating

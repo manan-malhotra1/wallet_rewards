@@ -460,6 +460,21 @@ class ConversionRateMissing(AppHTTPException):
         )
 
 
+class RedemptionTxnCapExceeded(AppHTTPException):
+    """A single internal redemption exceeds the configured per-txn cap.
+
+    Anti-drain guard (Pay-PRD-1295): the rate row may cap a redemption to an
+    absolute points amount and/or a percentage of the user's current balance.
+    """
+
+    def __init__(self, allowed_points: str) -> None:
+        super().__init__(
+            422,
+            "redemption_txn_cap_exceeded",
+            f"At most {allowed_points} points may be redeemed in one transaction.",
+        )
+
+
 class InsufficientCashbackFunds(AppHTTPException):
     """The cashback_provider_wallet cannot cover this payout (Pay-PRD-1230).
 

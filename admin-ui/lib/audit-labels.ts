@@ -42,6 +42,10 @@ const ACTION_LABELS: Record<string, string> = {
   "step_up_policy.created": "Step-up policy created",
   "step_up_policy.updated": "Step-up policy updated",
   "step_up_policy.deleted": "Step-up policy deleted",
+  "conversion_rate_config.created": "Conversion rate created",
+  "conversion_rate_config.updated": "Conversion rate updated",
+  "conversion_rate_config.deleted": "Conversion rate deleted",
+  "redemption.internal": "Points redeemed to wallet",
   // Money movement
   "cash_in.completed": "Cash-in completed",
   "cashout.completed": "Cash-out completed",

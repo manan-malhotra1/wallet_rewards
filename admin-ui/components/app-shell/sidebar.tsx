@@ -5,6 +5,7 @@
 "use client";
 
 import {
+  Repeat,
   Banknote,
   Box,
   ChevronDown,
@@ -85,6 +86,7 @@ const CONFIG: NavEntry[] = [
   },
   { label: "Approvals", href: "/approvals", icon: GitPullRequest },
   { label: "Redemption", href: "/redemption", icon: CreditCard },
+  { label: "Points rates", href: "/redemption-rates", icon: Repeat },
   { label: "Services", href: "/services", icon: Tag },
   { label: "Instruments", href: "/instruments", icon: Ticket },
   { label: "Tenants", href: "/tenants", icon: Settings2 },

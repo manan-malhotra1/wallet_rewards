@@ -63,6 +63,7 @@ import type {
   ServiceSlice,
   SettableAccessLevel,
   StatusBucket,
+  PointsConversionRate,
   StepUpPolicy,
   SweepOutcome,
   SystemWallet,
@@ -721,6 +722,12 @@ export interface CreateStepUpPolicyPayload {
   currency: string;
   threshold_amount: string;
 }
+
+/** Every points→fiat conversion rate in a tenant (any status) — admin list. */
+export const listConversionRates = (tenant_id: string) =>
+  apiGet<PointsConversionRate[]>("/api/v1/redemption/conversion-rates/admin", {
+    query: { tenant_id },
+  });
 
 export const listStepUpPolicies = (tenant_id: string) =>
   apiGet<StepUpPolicy[]>("/api/v1/step-up/policies", { query: { tenant_id } });

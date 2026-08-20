@@ -14,6 +14,7 @@ const CONFIG_TYPE_LABEL: Record<ConfigType, string> = {
   limit: "Transaction limit",
   wallet_limit: "Wallet limit",
   step_up: "Step-up PIN policy",
+  conversion_rate: "Points conversion rate",
 };
 
 /**

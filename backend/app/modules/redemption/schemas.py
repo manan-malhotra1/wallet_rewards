@@ -142,6 +142,12 @@ class ConversionRateCreateRequest(BaseModel):
     currency: str = Field(min_length=2, max_length=10)
     points_per_unit: Decimal = Field(gt=Decimal("0"))
     value_per_unit: Decimal = Field(gt=Decimal("0"))
+    # Anti-drain caps (Pay-PRD-1295): absolute points per redemption and/or a
+    # max percentage of the user's current balance. Omitted = uncapped.
+    max_points_per_txn: Decimal | None = Field(default=None, gt=Decimal("0"))
+    max_balance_pct_per_txn: Decimal | None = Field(
+        default=None, gt=Decimal("0"), le=Decimal("100")
+    )
 
 
 class ConversionRateOut(BaseModel):
@@ -154,6 +160,8 @@ class ConversionRateOut(BaseModel):
     currency: str
     points_per_unit: Decimal
     value_per_unit: Decimal
+    max_points_per_txn: Decimal | None
+    max_balance_pct_per_txn: Decimal | None
     status: str
     created_at: datetime
     updated_at: datetime

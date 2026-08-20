@@ -30,6 +30,12 @@ def _rate_state(rate: PointsConversionRate) -> dict[str, Any]:
         "currency": rate.currency,
         "points_per_unit": str(rate.points_per_unit),
         "value_per_unit": str(rate.value_per_unit),
+        "max_points_per_txn": (
+            str(rate.max_points_per_txn) if rate.max_points_per_txn is not None else None
+        ),
+        "max_balance_pct_per_txn": (
+            str(rate.max_balance_pct_per_txn) if rate.max_balance_pct_per_txn is not None else None
+        ),
         "status": rate.status,
     }
 
@@ -41,6 +47,8 @@ def _new_rate(request: ConversionRateCreateRequest) -> PointsConversionRate:
         currency=request.currency.upper(),
         points_per_unit=request.points_per_unit,
         value_per_unit=request.value_per_unit,
+        max_points_per_txn=request.max_points_per_txn,
+        max_balance_pct_per_txn=request.max_balance_pct_per_txn,
     )
 
 

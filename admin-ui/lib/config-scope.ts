@@ -12,6 +12,7 @@
  *   wallet_limit     → (currency, user_type)
  *   tax              → (currency)
  *   step_up          → (transaction_type, currency)
+ *   conversion_rate  → (currency)
  */
 import type { ConfigChangeRequest, ConfigType } from "@/lib/api-types";
 
@@ -65,6 +66,8 @@ export function configScopeKey(configType: ConfigType, obj: object): string {
   switch (configType) {
     case "tax":
       return `tax|${currency}`;
+    case "conversion_rate":
+      return `conversion_rate|${currency}`;
     case "step_up":
       return `step_up|${normField(src.transaction_type)}|${currency}`;
     case "wallet_limit":

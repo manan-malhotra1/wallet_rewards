@@ -377,6 +377,22 @@ export interface StepUpPolicy {
   updated_at: string;
 }
 
+/** Points→fiat conversion rate for internal redemption (Pay-PRD-1210/1295). */
+export interface PointsConversionRate {
+  id: string;
+  tenant_id: string;
+  currency: string;
+  /** "points_per_unit PTS = value_per_unit currency", e.g. 100 PTS = 10 ZAR. */
+  points_per_unit: string;
+  value_per_unit: string;
+  /** Anti-drain caps — null = uncapped on that axis. */
+  max_points_per_txn: string | null;
+  max_balance_pct_per_txn: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Admin-triggered PIN reset response. */
 export interface AdminPinResetResponse {
   user_id: string;
@@ -777,7 +793,8 @@ export type ConfigType =
   | "wallet_limit"
   | "commission"
   | "tax"
-  | "step_up";
+  | "step_up"
+  | "conversion_rate";
 
 /**
  * The mutation a change request proposes. An `update` re-proposes a live
@@ -1159,6 +1176,10 @@ export interface NetFlowPoint {
   currency: string;
   inflow: string;
   outflow: string;
+  /** Operator cash drawn from the bank into the float (never a customer flow). */
+  treasury_inflow: string;
+  /** Operator cash returned from the float to the bank. */
+  treasury_outflow: string;
 }
 
 export interface UserTypeSlice {

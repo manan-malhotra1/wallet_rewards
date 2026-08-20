@@ -35,7 +35,11 @@ from app.modules.redemption.rates import resolve_active_rate
 from app.modules.redemption.schemas import InternalRedemptionRequest
 from app.modules.redemption.service import _assert_tenant_exists, _find_user_points_account
 from app.modules.roles.service import require_permission
-from app.shared.exceptions import AccountNotFound, InsufficientFunds
+from app.shared.exceptions import (
+    AccountNotFound,
+    InsufficientFunds,
+    RedemptionTxnCapExceeded,
+)
 from app.shared.models import (
     ACCOUNT_TYPE_CASHBACK_PROVIDER,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -45,6 +49,7 @@ from app.shared.models import (
     ENTRY_DEBIT,
     Account,
     InternalRedemption,
+    PointsConversionRate,
     Transaction,
 )
 
@@ -122,20 +127,36 @@ async def _burn_points(
     points_sink: Account,
     points_amount: Decimal,
     idempotency_key: str,
+    rate: PointsConversionRate,
 ) -> Transaction:
     """Post the points burn — balance check + debit atomic under the points lock.
 
     Redemption owns the points FOR UPDATE lock (design 07 §2.2): the ledger
     balance guard skips points accounts, so the derived-balance check here and
     the debit inside `post_transaction` (which commits, releasing the lock)
-    are what serialise concurrent burns.
+    are what serialise concurrent burns. The rate row's anti-drain caps
+    (Pay-PRD-1295) are enforced HERE, against the balance derived under the
+    same lock, so the percentage cap can't race a concurrent burn.
 
     Raises:
+        RedemptionTxnCapExceeded (422): points_amount exceeds the absolute or
+            %-of-balance per-transaction cap.
         InsufficientFunds (409): available points below `points_amount`.
     """
     await lock_account_for_update(session, user_points.id)
     balance, reserved = await derive_balance(session, user_points.id)
-    if balance - reserved < points_amount:
+    available = balance - reserved
+
+    # Per-transaction caps first — a capped request is more actionable than an
+    # overdraft ("redeem at most N") and must reject before any ledger write.
+    if rate.max_points_per_txn is not None and points_amount > Decimal(rate.max_points_per_txn):
+        raise RedemptionTxnCapExceeded(str(rate.max_points_per_txn))
+    if rate.max_balance_pct_per_txn is not None:
+        allowed = available * Decimal(rate.max_balance_pct_per_txn) / Decimal("100")
+        if points_amount > allowed:
+            raise RedemptionTxnCapExceeded(str(allowed.quantize(Decimal("0.01"))))
+
+    if available < points_amount:
         raise InsufficientFunds()
 
     return await post_transaction(
@@ -309,6 +330,7 @@ async def initiate_internal_redemption(
         points_sink=points_sink,
         points_amount=request.points_amount,
         idempotency_key=idempotency_key,
+        rate=rate,
     )
 
     # Fiat payout — the cashback wallet's choke-point floor rejects an

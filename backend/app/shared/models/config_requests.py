@@ -38,6 +38,8 @@ CONFIG_TYPE_WALLET_LIMIT = "wallet_limit"
 CONFIG_TYPE_COMMISSION = "commission"
 CONFIG_TYPE_TAX = "tax"
 CONFIG_TYPE_STEP_UP = "step_up"
+# Internal redemption (Pay-PRD-1210) — points→fiat conversion rates.
+CONFIG_TYPE_CONVERSION_RATE = "conversion_rate"
 CONFIG_TYPES = (
     CONFIG_TYPE_PRICING,
     CONFIG_TYPE_LIMIT,
@@ -45,6 +47,7 @@ CONFIG_TYPES = (
     CONFIG_TYPE_COMMISSION,
     CONFIG_TYPE_TAX,
     CONFIG_TYPE_STEP_UP,
+    CONFIG_TYPE_CONVERSION_RATE,
 )
 
 # Operations a request can carry.
@@ -84,7 +87,8 @@ class ConfigChangeRequest(Base):
     __tablename__ = "config_change_requests"
     __table_args__ = (
         CheckConstraint(
-            "config_type IN ('pricing', 'limit', 'wallet_limit', 'commission', 'tax', 'step_up')",
+            "config_type IN ('pricing', 'limit', 'wallet_limit', 'commission', "
+            "'tax', 'step_up', 'conversion_rate')",
             name="ck_config_change_requests_config_type",
         ),
         CheckConstraint(

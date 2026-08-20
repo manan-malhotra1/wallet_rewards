@@ -6,10 +6,12 @@ and so callers can `from app.shared.models import Tenant, User, ...`.
 
 from app.shared.models.accounts import (
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
+    ACCOUNT_TYPE_CASHBACK_PROVIDER,
     ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
+    ACCOUNT_TYPE_POINTS_REDEMPTION,
     ACCOUNT_TYPE_PROVIDER_REDEMPTION,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
@@ -70,6 +72,7 @@ from app.shared.models.config_requests import (
     CONFIG_STATUSES,
     CONFIG_TERMINAL_STATUSES,
     CONFIG_TYPE_COMMISSION,
+    CONFIG_TYPE_CONVERSION_RATE,
     CONFIG_TYPE_LIMIT,
     CONFIG_TYPE_PRICING,
     CONFIG_TYPE_STEP_UP,
@@ -163,6 +166,8 @@ from app.shared.models.redemption import (
     REDEMPTION_STATUS_PROCESSING,
     REDEMPTION_STATUS_REVERSED,
     REDEMPTION_TERMINAL_STATUSES,
+    InternalRedemption,
+    PointsConversionRate,
     Redemption,
     RedemptionProvider,
 )
@@ -265,10 +270,12 @@ from app.shared.models.users import (
 __all__ = [
     "ACCOUNT_TYPES",
     "ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING",
+    "ACCOUNT_TYPE_CASHBACK_PROVIDER",
     "ACCOUNT_TYPE_COMMISSION",
     "ACCOUNT_TYPE_FINANCIAL_WALLET",
     "ACCOUNT_TYPE_OPERATOR_ADJUSTMENT",
     "ACCOUNT_TYPE_POINTS",
+    "ACCOUNT_TYPE_POINTS_REDEMPTION",
     "ACCOUNT_TYPE_PROVIDER_REDEMPTION",
     "ACCOUNT_TYPE_SYSTEM_CASH_INFLOW",
     "ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED",
@@ -310,6 +317,7 @@ __all__ = [
     "CONFIG_TERMINAL_STATUSES",
     "CONFIG_TYPES",
     "CONFIG_TYPE_COMMISSION",
+    "CONFIG_TYPE_CONVERSION_RATE",
     "CONFIG_TYPE_LIMIT",
     "CONFIG_TYPE_PRICING",
     "CONFIG_TYPE_STEP_UP",
@@ -461,6 +469,7 @@ __all__ = [
     "ExternalUserCreation",
     # Instruments catalog (Phase 3)
     "Instrument",
+    "InternalRedemption",
     "LedgerEntry",
     "LimitConfig",
     # Merchant profiles (Epic 17)
@@ -471,6 +480,7 @@ __all__ = [
     "OtpRequest",
     # Change-PIN (charged self-service)
     "PinChange",
+    "PointsConversionRate",
     "PricingConfig",
     "Redemption",
     # Redemption

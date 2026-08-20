@@ -195,25 +195,28 @@ external dependency:
    `fiat_amount = points_amount × value_per_unit / points_per_unit`, rounded to the currency's minor unit.
 3. **Pricing + limits fail-closed (invariant #12)** for the new transaction types — a zero-fee internal
    redemption must be an explicit pricing row.
-4. Lock the user's `points_account` FOR UPDATE (points overdraft guard, same as §2.2) and post, **in one DB
-   transaction**, two balanced transactions:
-   - `redemption_internal_points` (PTS): DEBIT user points → CREDIT `points_redemption_wallet`;
-   - `redemption_internal_payout` (fiat): DEBIT `cashback_provider_wallet(currency)` → CREDIT user
-     `financial_wallet(currency)` — floored at the choke point; receive-cap-exempt like other system credits
-     is **not** granted here (a payout is user-initiated, normal caps apply).
-5. Both transactions settle **COMPLETED immediately** — no PENDING state, no callback, no reconciliation
-   involvement. A single `Idempotency-Key` covers the pair (the payout key is derived:
-   `"{key}:payout"`), so a replay returns the original result without a second burn or payout.
+4. **Burn first** (`redemption_internal`, PTS): lock the user's `points_account` FOR UPDATE (points
+   overdraft guard, same as §2.2), check the derived balance, DEBIT user points → CREDIT
+   `points_redemption_wallet`. `post_transaction` commits, so check+debit are atomic under the lock.
+5. **Payout second** (`redemption_internal_payout`, fiat): DEBIT `cashback_provider_wallet(currency)` →
+   CREDIT user `financial_wallet(currency)` — floored at the choke point; normal receive caps apply (a
+   payout is user-initiated, not a cap-exempt reward). **A payout failure posts an append-only compensating
+   reversal of the burn** (`{key}:unwind`, `is_reversal=True`) before the error propagates — the pair is a
+   two-step saga with compensation, not one DB transaction (`post_transaction` commits per call).
+6. Both transactions settle **COMPLETED immediately** — no PENDING state, no callback, no reconciliation
+   involvement. A single client `Idempotency-Key` covers the pair (payout key derived as `"{key}:payout"`),
+   so a replay — including one after a crash between the legs — resumes idempotently and returns the
+   original result without a second burn or payout.
 
 Two separate transactions (not one 4-leg transaction) keep each currency's ledger self-balancing — the
-`ledger_sum_to_zero` invariant holds per transaction in one currency. Atomicity comes from the shared DB
-transaction; cross-tracing from the shared reference (§6.4).
+`ledger_sum_to_zero` invariant holds per transaction in one currency. Cross-tracing comes from the shared
+reference (§6.4).
 
 ### 6.4 Cross-referencing (Pay-PRD-1260)
 
 A new `internal_redemptions` row `(id, tenant_id, user_id, points_txn_id, payout_txn_id, currency,
-points_amount, fiat_amount, rate_snapshot, created_at)` binds the pair; both transactions carry its id in
-their `reference`. Either leg resolves to the other in txn detail, statements, and admin ledger views. The
+points_amount, fiat_amount, rate_snapshot, created_at)` binds the pair; both transactions carry
+`internal_redemption:<id>` in `external_reference` (`reference` is the 40-char customer-facing code). Either leg resolves to the other in txn detail, statements, and admin ledger views. The
 rate is **snapshotted** on the row — later rate changes never reinterpret history.
 
 ### 6.5 Cashback rewards re-pointing (Pay-PRD-1270)
@@ -226,7 +229,8 @@ drained by reward campaigns.
 
 ### 6.6 Failure & reversal story
 
-There is no in-flight failure mode (no external call): the pair either commits or rolls back. Post-hoc
+An underfunded cashback wallet fails the payout AFTER the burn; the flow compensates the burn inline
+(append-only reversal) and surfaces 409 `insufficient_cashback_funds` — the attempt nets to zero. Post-hoc
 correction is an admin operator action that posts a compensating pair (opposite legs on both sides, new
 transactions, append-only), cross-referenced to the original `internal_redemptions` row and audit-logged.
 Reconciliation (§3) is not involved — nothing can get stuck.

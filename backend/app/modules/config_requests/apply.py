@@ -53,6 +53,12 @@ from app.modules.pricing.service import (
     delete_pricing_config_for_scope,
     replace_pricing_config_for_scope,
 )
+from app.modules.redemption.rates import (
+    create_conversion_rate_config,
+    delete_conversion_rate_config_for_scope,
+    replace_conversion_rate_config_for_scope,
+)
+from app.modules.redemption.schemas import ConversionRateCreateRequest
 from app.modules.step_up.schemas import StepUpPolicyCreateRequest
 from app.modules.step_up.service import (
     create_policy,
@@ -70,6 +76,7 @@ from app.shared.models import (
     CONFIG_OP_CREATE,
     CONFIG_OP_UPDATE,
     CONFIG_TYPE_COMMISSION,
+    CONFIG_TYPE_CONVERSION_RATE,
     CONFIG_TYPE_LIMIT,
     CONFIG_TYPE_PRICING,
     CONFIG_TYPE_STEP_UP,
@@ -78,6 +85,7 @@ from app.shared.models import (
     CommissionConfig,
     ConfigChangeRequest,
     LimitConfig,
+    PointsConversionRate,
     PricingConfig,
     StepUpPolicy,
     TaxConfig,
@@ -102,6 +110,7 @@ _DISPATCH: dict[str, tuple[type[BaseModel], _CreateFn]] = {
     CONFIG_TYPE_COMMISSION: (CommissionConfigCreateRequest, create_commission_config),
     CONFIG_TYPE_TAX: (TaxConfigCreateRequest, create_tax_config),
     CONFIG_TYPE_STEP_UP: (StepUpPolicyCreateRequest, create_policy),
+    CONFIG_TYPE_CONVERSION_RATE: (ConversionRateCreateRequest, create_conversion_rate_config),
 }
 
 # config_type -> the atomic-replace helper an `update` dispatches to.
@@ -112,6 +121,7 @@ _REPLACE_DISPATCH: dict[str, _ReplaceFn] = {
     CONFIG_TYPE_COMMISSION: replace_commission_config_for_scope,
     CONFIG_TYPE_TAX: replace_tax_config_for_scope,
     CONFIG_TYPE_STEP_UP: replace_step_up_policy_for_scope,
+    CONFIG_TYPE_CONVERSION_RATE: replace_conversion_rate_config_for_scope,
 }
 
 # config_type -> the scope-delete helper a `delete` dispatches to. Each removes
@@ -124,6 +134,7 @@ _DELETE_SCOPE_DISPATCH: dict[str, _DeleteScopeFn] = {
     CONFIG_TYPE_COMMISSION: delete_commission_config_for_scope,
     CONFIG_TYPE_TAX: delete_tax_config_for_scope,
     CONFIG_TYPE_STEP_UP: delete_step_up_policy_for_scope,
+    CONFIG_TYPE_CONVERSION_RATE: delete_conversion_rate_config_for_scope,
 }
 
 # config_type -> its real config-table model (for the update/delete target
@@ -135,6 +146,7 @@ _MODEL_BY_TYPE: dict[str, type[Any]] = {
     CONFIG_TYPE_COMMISSION: CommissionConfig,
     CONFIG_TYPE_TAX: TaxConfig,
     CONFIG_TYPE_STEP_UP: StepUpPolicy,
+    CONFIG_TYPE_CONVERSION_RATE: PointsConversionRate,
 }
 
 # config_type -> the attributes that identify a config's SCOPE. An update must
@@ -149,6 +161,7 @@ _SCOPE_KEYS: dict[str, tuple[str, ...]] = {
     CONFIG_TYPE_WALLET_LIMIT: ("currency", "user_type"),
     CONFIG_TYPE_TAX: ("currency",),
     CONFIG_TYPE_STEP_UP: ("transaction_type", "currency"),
+    CONFIG_TYPE_CONVERSION_RATE: ("currency",),
 }
 
 

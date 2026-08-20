@@ -7,8 +7,8 @@ Guards two money-path fixes:
   2. Cashback issuance is budget-checked BEFORE the ledger write, so a
      rule-scoped (campaign-local) budget caps the operator float drain.
 
-`test_tenant` pre-funds the ZAR cash float, so cashback debits don't trip the
-float floor. `user_wallet` is the test user's ZAR financial wallet.
+`test_tenant` pre-funds the ZAR cashback_provider_wallet (Pay-PRD-1270), so
+cashback debits don't trip its floor. `user_wallet` is the test user's ZAR financial wallet.
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ async def test_cashback_blocked_by_rule_scoped_budget(
     await db_session.commit()
 
     # The budget check runs BEFORE any ledger write, so raising here proves no
-    # cashback was posted — the operator float is never touched.
+    # cashback was posted — the cashback wallet is never touched.
     with pytest.raises(BudgetExceeded):
         await issue_cashback_reward(
             db_session,

@@ -445,6 +445,36 @@ class UserPointsAccountMissing(AppHTTPException):
         )
 
 
+class ConversionRateMissing(AppHTTPException):
+    """No ACTIVE points→fiat conversion rate for the requested currency.
+
+    Internal redemption is FAIL-CLOSED on rate config (Pay-PRD-1220): only
+    explicitly configured currencies are redeemable — never a default rate.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "conversion_rate_missing",
+            "No conversion rate is configured for this currency.",
+        )
+
+
+class InsufficientCashbackFunds(AppHTTPException):
+    """The cashback_provider_wallet cannot cover this payout (Pay-PRD-1230).
+
+    The wallet must be pre-funded via treasury; distinct from the user-facing
+    InsufficientFunds so the operator learns to replenish the cashback wallet.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "insufficient_cashback_funds",
+            "The cashback wallet cannot cover this payout. Fund it via treasury.",
+        )
+
+
 class SystemPointsIssuanceMissing(AppHTTPException):
     """Tenant has no system_points_issuance account — cannot issue points rewards."""
 

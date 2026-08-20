@@ -20,7 +20,7 @@ from app.modules.rules.referral_evaluator import evaluate_referral_on_signup
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
-    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ACCOUNT_TYPE_CASHBACK_PROVIDER,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     Account,
     Referral,
@@ -158,19 +158,20 @@ async def test_signup_cashback_credits_wallets_from_system_inflow(
     await db_session.commit()
     referral = await _pending_referral(db_session, test_tenant, referrer, referee)
 
-    # The cash float carries a no-overdraft floor now (invariant #11), so cashback
-    # can only draw from a pre-funded float. `test_tenant` pre-funds it; capture the
-    # balance so we can assert the cashback drew EXACTLY 150 regardless of the seed.
-    inflow = (
+    # Cashback draws from the pre-funded cashback_provider_wallet
+    # (Pay-PRD-1270), which is floored at the choke point. `test_tenant`
+    # pre-funds it; capture the balance so we can assert the cashback drew
+    # EXACTLY 150 regardless of the seed.
+    cashback_wallet = (
         await db_session.execute(
             select(Account).where(
                 Account.tenant_id == test_tenant.id,
-                Account.account_type == ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+                Account.account_type == ACCOUNT_TYPE_CASHBACK_PROVIDER,
                 Account.currency == "ZAR",
             )
         )
     ).scalar_one()
-    float_before, _ = await derive_balance(db_session, inflow.id)
+    float_before, _ = await derive_balance(db_session, cashback_wallet.id)
 
     await evaluate_referral_on_signup(db_session, tenant_id=test_tenant.id, referral=referral)
 
@@ -179,8 +180,8 @@ async def test_signup_cashback_credits_wallets_from_system_inflow(
     assert ref_bal == Decimal("50")
     assert ree_bal == Decimal("100")
 
-    # The float (funding master) was debited the full 150 (50 + 100).
-    inflow_bal, _ = await derive_balance(db_session, inflow.id)
+    # The cashback wallet (funding master) was debited the full 150 (50 + 100).
+    inflow_bal, _ = await derive_balance(db_session, cashback_wallet.id)
     assert inflow_bal == float_before - Decimal("150")
 
 

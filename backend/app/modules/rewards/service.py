@@ -30,7 +30,6 @@ from app.shared.exceptions import (
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
-    ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
@@ -328,51 +327,6 @@ async def _find_user_financial_wallet(
     return account
 
 
-async def _get_or_create_system_cash_inflow(
-    session: AsyncSession, tenant_id: UUID, currency: str
-) -> Account:
-    """Return the tenant's system_cash_inflow account for this currency.
-
-    Cashback promos are system-funded, so the debit master may not have been
-    provisioned by seed for every currency. Create it on first use — the
-    partial unique index `uq_accounts_system_scoped` keeps it single-instance
-    per (tenant, currency); on a concurrent-create race we reload the winner.
-    """
-    result = await session.execute(
-        select(Account).where(
-            Account.tenant_id == tenant_id,
-            Account.account_type == ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-            Account.currency == currency.upper(),
-            Account.user_id.is_(None),
-        )
-    )
-    account = result.scalar_one_or_none()
-    if account is not None:
-        return account
-
-    account = Account(
-        tenant_id=tenant_id,
-        account_type=ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-        currency=currency.upper(),
-    )
-    session.add(account)
-    try:
-        await session.flush()
-    except IntegrityError:
-        await session.rollback()
-        account = (
-            await session.execute(
-                select(Account).where(
-                    Account.tenant_id == tenant_id,
-                    Account.account_type == ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
-                    Account.currency == currency.upper(),
-                    Account.user_id.is_(None),
-                )
-            )
-        ).scalar_one()
-    return account
-
-
 async def issue_cashback_reward(
     session: AsyncSession,
     *,
@@ -386,8 +340,12 @@ async def issue_cashback_reward(
     """Credit a system-funded cashback reward to a user's financial_wallet.
 
     Mirrors `issue_points_reward` but moves money instead of points:
-        DEBIT  system_cash_inflow (tenant master, this currency)
+        DEBIT  cashback_provider_wallet (tenant, this currency — Pay-PRD-1270)
         CREDIT user's financial_wallet (this currency)
+
+    The cashback wallet is pre-funded via treasury and floored at the ledger
+    choke point, so promo campaigns can never drain the operator cash float
+    (409 insufficient_cashback_funds when the wallet runs dry).
 
     Idempotent: if a reward_events row already exists for (user, rule,
     triggering_event_id) the existing row is returned without writing new
@@ -420,11 +378,22 @@ async def issue_cashback_reward(
         return existing
 
     user_wallet = await _find_user_financial_wallet(session, tenant_id, user_id, currency)
-    system_inflow = await _get_or_create_system_cash_inflow(session, tenant_id, currency)
+    # Pay-PRD-1270: cashback is funded from the cashback_provider_wallet, not
+    # the operator cash float — promo liability stays separate from customer
+    # money. Lazy import avoids a rewards↔redemption module cycle.
+    from app.modules.redemption.internal import get_or_create_system_account
+    from app.shared.models import ACCOUNT_TYPE_CASHBACK_PROVIDER
 
-    # Phase G.1 parity with points — cashback is REAL money out of the operator
-    # cash float, so it MUST be budget-checked before the ledger write (this is
-    # the primary defence against a campaign draining the float). Budgets are
+    cashback_wallet = await get_or_create_system_account(
+        session,
+        tenant_id=tenant_id,
+        account_type=ACCOUNT_TYPE_CASHBACK_PROVIDER,
+        currency=currency,
+    )
+
+    # Phase G.1 parity with points — cashback is REAL money out of the cashback
+    # wallet, so it MUST be budget-checked before the ledger write (first
+    # defence against a runaway campaign; the wallet floor is the second). Budgets are
     # currency-scoped, so a ZAR budget (tenant- or rule-scoped) caps cashback
     # independently of any PTS points budget. Locks matching budget rows FOR
     # UPDATE; raises BudgetExceeded on breach. No multiplier applies to cashback,
@@ -452,7 +421,7 @@ async def issue_cashback_reward(
             currency=currency.upper(),
             entries=[
                 LedgerEntryRequest(
-                    account_id=system_inflow.id,
+                    account_id=cashback_wallet.id,
                     entry_type=ENTRY_DEBIT,
                     amount=amount,
                 ),

@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.shared.exceptions import (
     AccountNotFound,
     DuplicateIdempotencyKey,
+    InsufficientCashbackFunds,
     InsufficientFloat,
     InsufficientFunds,
     MaxBalanceExceeded,
@@ -34,6 +35,7 @@ from app.shared.exceptions import (
     UnbalancedTransaction,
 )
 from app.shared.models import (
+    ACCOUNT_TYPE_CASHBACK_PROVIDER,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ENTRY_CREDIT,
@@ -53,9 +55,16 @@ from app.shared.models import (
 # serialised at this choke point. Only `financial_wallet` additionally carries
 # the max_balance CEILING (the float has no user_id, so the credit branch below
 # skips it). Other system / pool accounts (operator_adjustment bank mirrors,
-# merchant collection, points) are unguarded — no floor, no cap.
+# merchant collection, points) are unguarded — no floor, no cap. The
+# `cashback_provider_wallet` (Pay-PRD-1230) joins the floor: it funds internal
+# redemption payouts + cashback rewards and must be pre-funded via treasury —
+# a debit that would overdraw it raises the distinct InsufficientCashbackFunds.
 _OVERDRAFT_GUARDED_ACCOUNT_TYPES = frozenset(
-    {ACCOUNT_TYPE_FINANCIAL_WALLET, ACCOUNT_TYPE_SYSTEM_CASH_INFLOW}
+    {
+        ACCOUNT_TYPE_FINANCIAL_WALLET,
+        ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+        ACCOUNT_TYPE_CASHBACK_PROVIDER,
+    }
 )
 
 
@@ -427,6 +436,8 @@ async def _enforce_balance_guard(
             if balance - reserved + delta < 0:
                 if account.account_type == ACCOUNT_TYPE_SYSTEM_CASH_INFLOW:
                     raise InsufficientFloat()
+                if account.account_type == ACCOUNT_TYPE_CASHBACK_PROVIDER:
+                    raise InsufficientCashbackFunds()
                 raise InsufficientFunds()
         elif (
             not request.is_reversal and not request.skip_receive_cap and account.user_id is not None

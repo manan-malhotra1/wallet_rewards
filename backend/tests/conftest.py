@@ -232,6 +232,69 @@ async def prefund_float(
     )
 
 
+# Dedicated bank-mirror name for the test cashback-wallet pre-fund.
+TEST_CASHBACK_SEED_MIRROR_NAME = "__test_cashback_seed__"
+
+
+async def prefund_cashback_wallet(
+    session: AsyncSession,
+    tenant_id: Any,
+    *,
+    currency: str = "ZAR",
+    amount: Decimal = Decimal("1000000000"),
+) -> None:
+    """Inject a large cashback_provider_wallet balance so cashback tests pass.
+
+    Cashback rewards and internal-redemption payouts debit the
+    `cashback_provider_wallet` (Pay-PRD-1230/1270), which is floored at the
+    ledger choke point — with a zero balance every cashback would 409
+    `insufficient_cashback_funds`. Mirrors `prefund_float`: one big top-up per
+    tenant against a uniquely-named bank mirror. Floor-specific tests must use
+    a FRESH, un-prefunded tenant (do not call this).
+    """
+    from app.modules.ledger import (
+        LedgerEntryRequest,
+        PostTransactionRequest,
+        post_transaction,
+    )
+    from app.modules.redemption.internal import get_or_create_system_account
+    from app.shared.models import (
+        ACCOUNT_TYPE_CASHBACK_PROVIDER,
+        ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+    )
+
+    currency = currency.upper()
+    wallet = await get_or_create_system_account(
+        session,
+        tenant_id=tenant_id,
+        account_type=ACCOUNT_TYPE_CASHBACK_PROVIDER,
+        currency=currency,
+    )
+    mirror = Account(
+        tenant_id=tenant_id,
+        account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+        currency=currency,
+        name=TEST_CASHBACK_SEED_MIRROR_NAME,
+    )
+    session.add(mirror)
+    await session.commit()
+    await session.refresh(mirror)
+    await post_transaction(
+        session,
+        PostTransactionRequest(
+            tenant_id=tenant_id,
+            idempotency_key=f"__test_cashback_seed__-{currency}",
+            transaction_type="treasury.adjust",
+            currency=currency,
+            amount=amount,
+            entries=[
+                LedgerEntryRequest(account_id=mirror.id, entry_type="DEBIT", amount=amount),
+                LedgerEntryRequest(account_id=wallet.id, entry_type="CREDIT", amount=amount),
+            ],
+        ),
+    )
+
+
 @pytest_asyncio.fixture
 async def test_tenant(db_session: AsyncSession) -> Tenant:
     """A fresh tenant with full business-type (wallet + rewards) in ZAR per test.
@@ -248,6 +311,7 @@ async def test_tenant(db_session: AsyncSession) -> Tenant:
     await db_session.commit()
     await db_session.refresh(tenant)
     await prefund_float(db_session, tenant.id, currency="ZAR")
+    await prefund_cashback_wallet(db_session, tenant.id, currency="ZAR")
     return tenant
 
 
@@ -267,6 +331,7 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
     await db_session.commit()
     await db_session.refresh(tenant)
     await prefund_float(db_session, tenant.id, currency="ZAR")
+    await prefund_cashback_wallet(db_session, tenant.id, currency="ZAR")
     return tenant
 
 

@@ -58,6 +58,14 @@ ACCOUNT_TYPE_COMMISSION = "commission"
 # each per (tenant, currency).
 ACCOUNT_TYPE_TAX_SERVICE = "tax_service_collected"
 ACCOUNT_TYPE_TAX_COMMISSION = "tax_commission_collected"
+# Internal redemption (Pay-PRD-1230/1240, design doc 07 §6). The
+# points_redemption_wallet is the tenant-level PTS sink for internally
+# redeemed points (one per tenant). The cashback_provider_wallet funds
+# internal-redemption payouts AND cashback rewards; one per (tenant,
+# currency), pre-funded via treasury, floored at the ledger choke point
+# (may never go negative — 409 insufficient_cashback_funds).
+ACCOUNT_TYPE_POINTS_REDEMPTION = "points_redemption_wallet"
+ACCOUNT_TYPE_CASHBACK_PROVIDER = "cashback_provider_wallet"
 
 ACCOUNT_TYPES = (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
@@ -71,6 +79,8 @@ ACCOUNT_TYPES = (
     ACCOUNT_TYPE_COMMISSION,
     ACCOUNT_TYPE_TAX_SERVICE,
     ACCOUNT_TYPE_TAX_COMMISSION,
+    ACCOUNT_TYPE_POINTS_REDEMPTION,
+    ACCOUNT_TYPE_CASHBACK_PROVIDER,
 )
 
 
@@ -99,7 +109,9 @@ class Account(Base):
             "'airtime_merchant_holding', "
             "'commission', "
             "'tax_service_collected', "
-            "'tax_commission_collected'"
+            "'tax_commission_collected', "
+            "'points_redemption_wallet', "
+            "'cashback_provider_wallet'"
             ")",
             name="ck_accounts_type",
         ),

@@ -127,3 +127,65 @@ class RedemptionOut(BaseModel):
     failure_reason: str | None
     completed_at: datetime | None
     created_at: datetime
+
+
+class ConversionRateCreateRequest(BaseModel):
+    """Admin payload for a per-(tenant, currency) points→fiat conversion rate.
+
+    Read as "`points_per_unit` PTS = `value_per_unit` `currency`" — e.g.
+    100 PTS = 10.00 ZAR. Rides the config change-request maker-checker
+    (config_type `conversion_rate`, Pay-PRD-1210). Exactly one rate per
+    (tenant, currency); both sides must be positive.
+    """
+
+    tenant_id: UUID
+    currency: str = Field(min_length=2, max_length=10)
+    points_per_unit: Decimal = Field(gt=Decimal("0"))
+    value_per_unit: Decimal = Field(gt=Decimal("0"))
+
+
+class ConversionRateOut(BaseModel):
+    """Conversion-rate resource returned by the API."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    currency: str
+    points_per_unit: Decimal
+    value_per_unit: Decimal
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class InternalRedemptionRequest(BaseModel):
+    """User payload for an internal redemption (Pay-PRD-1200, design 07 §6.3).
+
+    `tenant_id` / `user_id` come from the session token. Body carries the
+    points to burn and the destination wallet currency; `pin` is required only
+    when a step-up policy for ("redemption", "PTS") sets a threshold below
+    `points_amount`.
+    """
+
+    points_amount: Decimal = Field(gt=Decimal("0"))
+    currency: str = Field(min_length=2, max_length=10)
+    pin: str | None = Field(default=None, min_length=4, max_length=12)
+
+
+class InternalRedemptionOut(BaseModel):
+    """Internal-redemption receipt — the cross-referenced points/fiat pair."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    user_id: UUID
+    points_transaction_id: UUID
+    payout_transaction_id: UUID
+    currency: str
+    points_amount: Decimal
+    fiat_amount: Decimal
+    points_per_unit: Decimal
+    value_per_unit: Decimal
+    created_at: datetime

@@ -38,10 +38,13 @@ export class InvalidStepUpPin extends ApiError {
   }
 }
 
-/** 401 session_expired — the bearer token is no longer valid. */
+/** 401 invalid_session — the bearer token is missing, unknown, or expired.
+ *  The backend's session guard raises `invalid_session` for ALL of these
+ *  (see backend shared/exceptions InvalidSession); `session_expired` is kept
+ *  as an alias in the mapper for safety. */
 export class SessionExpired extends ApiError {
-  constructor(message: string) {
-    super(401, 'session_expired', message);
+  constructor(errorCode: string, message: string) {
+    super(401, errorCode, message);
     this.name = 'SessionExpired';
   }
 }
@@ -75,7 +78,8 @@ export function toTypedError(
     if (errorCode === 'step_up_required') return new StepUpRequired(message);
     if (errorCode === 'invalid_step_up_pin')
       return new InvalidStepUpPin(message);
-    if (errorCode === 'session_expired') return new SessionExpired(message);
+    if (errorCode === 'invalid_session' || errorCode === 'session_expired')
+      return new SessionExpired(errorCode, message);
     if (errorCode === 'invalid_pin') return new InvalidPin(message);
   }
   if (status === 429) return new RateLimited(errorCode, message);

@@ -84,6 +84,17 @@ const FALLBACK_TILES: ReadonlyArray<Tile> = [
 ];
 
 /**
+ * Card top-up SIMULATOR tile — always appended (not service-driven): the flow
+ * fakes a card load and credits the wallet through the partner fund API, so
+ * there is deliberately no backend service behind it.
+ */
+const CARD_LOAD_TILE: Tile = {
+  icon: 'card',
+  label: 'Load',
+  route: (c) => `/cardload?currency=${c}`,
+};
+
+/**
  * Map the per-user services to renderable tiles: keep only codes we have a
  * money-tile for (drops `change_pin`, `redemption`, and any non-money/settings
  * code). Always uses the SHORT hardcoded `base.label` (Send / Airtime / Cash
@@ -308,7 +319,10 @@ export default function HomeScreen() {
 
   // Quick-action tiles: real per-user tiles once services resolve, else the
   // static consumer fallback so the row renders immediately.
-  const tiles = services ? tilesFromServices(services) : FALLBACK_TILES;
+  const tiles = [
+    ...(services ? tilesFromServices(services) : FALLBACK_TILES),
+    CARD_LOAD_TILE,
+  ];
 
   // Recent activity is scoped to the visible card's currency so swiping to the
   // INR card shows INR activity, ZAR shows ZAR. PTS (reward/redemption) rows are

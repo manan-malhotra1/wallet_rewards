@@ -1129,6 +1129,63 @@ async def _resolve_counterparty_phones(
     return phones
 
 
+def _user_txns_stmt(
+    stmt: Any,
+    *,
+    tenant_id: UUID,
+    account_ids: list[UUID],
+    currency: str | None = None,
+    reference: str | None = None,
+) -> Any:
+    """Scope a Transaction query to one user's accounts, with optional filters.
+
+    One definition for the page query and its COUNT so the two can never
+    disagree about what "matching" means (a paginator whose total counts
+    different rows than the page is worse than no total at all).
+
+    Args:
+        currency: Exact match, upper-cased (e.g. "ZAR", "PTS"). None = all.
+        reference: Case-insensitive substring of the customer-facing
+            reference (e.g. "S_20260820180829019411"). None = all.
+    """
+    from app.shared.models import LedgerEntry, Transaction
+
+    stmt = stmt.join(LedgerEntry, LedgerEntry.transaction_id == Transaction.id).where(
+        Transaction.tenant_id == tenant_id,
+        LedgerEntry.account_id.in_(account_ids),
+    )
+    if currency:
+        stmt = stmt.where(Transaction.currency == currency.upper())
+    if reference:
+        stmt = stmt.where(Transaction.reference.ilike(f"%{reference.strip()}%"))
+    return stmt.distinct()
+
+
+async def _count_user_txns(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    account_ids: list[UUID],
+    currency: str | None = None,
+    reference: str | None = None,
+) -> int:
+    """Total transactions matching the same filters as the page query."""
+    from sqlalchemy import func as sa_func
+
+    from app.shared.models import Transaction
+
+    if not account_ids:
+        return 0
+    inner = _user_txns_stmt(
+        select(Transaction.id),
+        tenant_id=tenant_id,
+        account_ids=account_ids,
+        currency=currency,
+        reference=reference,
+    ).subquery()
+    return int((await session.execute(select(sa_func.count()).select_from(inner))).scalar_one())
+
+
 async def _build_recent_txns_payload(
     session: AsyncSession,
     *,
@@ -1136,6 +1193,9 @@ async def _build_recent_txns_payload(
     user_id: UUID,
     account_ids: list[UUID],
     limit: int = 20,
+    offset: int = 0,
+    currency: str | None = None,
+    reference: str | None = None,
     include_counterparty_phone: bool = False,
 ) -> list[dict[str, Any]]:
     """Build the recent-transactions list for /me/wallet.
@@ -1183,14 +1243,17 @@ async def _build_recent_txns_payload(
         return []
 
     txns_q = await session.execute(
-        select(Transaction)
-        .join(LedgerEntry, LedgerEntry.transaction_id == Transaction.id)
-        .where(
-            Transaction.tenant_id == tenant_id,
-            LedgerEntry.account_id.in_(account_ids),
+        _user_txns_stmt(
+            select(Transaction),
+            tenant_id=tenant_id,
+            account_ids=account_ids,
+            currency=currency,
+            reference=reference,
         )
-        .distinct()
-        .order_by(Transaction.created_at.desc())
+        # Tie-break on id so a fixed window never duplicates or drops rows
+        # created in the same instant (same contract as the queue windows).
+        .order_by(Transaction.created_at.desc(), Transaction.id.desc())
+        .offset(offset)
         .limit(limit)
     )
     txns = list(txns_q.scalars().all())
@@ -1314,8 +1377,11 @@ async def list_user_transactions(
     tenant_id: UUID,
     user_id: UUID,
     limit: int = 50,
-) -> list[dict[str, Any]]:
-    """Return a user's recent transactions for the admin user-detail view.
+    offset: int = 0,
+    currency: str | None = None,
+    reference: str | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """Return one page of a user's transactions + the total matching count.
 
     Resolves the user's accounts then delegates to the same payload
     builder the mobile /me/wallet endpoint uses, so the response shape
@@ -1325,12 +1391,15 @@ async def list_user_transactions(
         tenant_id: Required for tenant isolation; cross-tenant lookups
             return UserNotFound (404).
         user_id: Target user.
-        limit: Cap on rows returned. UI default is 50 — operators looking
-            at a single account rarely need more on one screen.
+        limit: Page size. The admin panel pages 20 at a time.
+        offset: Rows to skip — `page * limit`.
+        currency: Optional exact currency filter ("ZAR" / "INR" / "PTS").
+        reference: Optional case-insensitive reference substring search.
 
     Returns:
-        List of dicts shaped to match `AdminUserTransactionOut` — including
-        `counterparty_phone`, which the user-facing feed omits.
+        `(rows, total)` — the page shaped to match `AdminUserTransactionOut`
+        (including `counterparty_phone`, which the user-facing feed omits),
+        and the total number of rows matching the filters across all pages.
 
     Raises:
         UserNotFound: user_id is unknown or belongs to a different tenant.
@@ -1347,16 +1416,27 @@ async def list_user_transactions(
         select(Account.id).where(Account.tenant_id == tenant_id, Account.user_id == user_id)
     )
     account_ids = list(accounts_q.scalars().all())
-    return await _build_recent_txns_payload(
+    rows = await _build_recent_txns_payload(
         session,
         tenant_id=tenant_id,
         user_id=user_id,
         account_ids=account_ids,
         limit=limit,
+        offset=offset,
+        currency=currency,
+        reference=reference,
         # Admin surface: operators tracing a transfer need the counterparty's
         # number. The user-facing /me/wallet feed leaves this off.
         include_counterparty_phone=True,
     )
+    total = await _count_user_txns(
+        session,
+        tenant_id=tenant_id,
+        account_ids=account_ids,
+        currency=currency,
+        reference=reference,
+    )
+    return rows, total
 
 
 async def admin_reset_pin(

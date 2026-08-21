@@ -316,14 +316,36 @@ export interface UserTransaction {
   counterparty_phone: string | null;
 }
 
+/** One page of a user's transactions + the total matching the same filters. */
+export interface UserTransactionsPage {
+  items: UserTransaction[];
+  total: number;
+}
+
+/**
+ * One page of a user's transactions. Filtering and paging are SERVER-side so
+ * an operator can find a single movement in a long ledger without the page
+ * loading it all.
+ *
+ * @param currency Exact match ("ZAR" / "INR" / "PTS"); omit for all.
+ * @param q Case-insensitive substring of the reference (e.g. "S_2026...").
+ */
 export const listUserTransactions = (
   tenant_id: string,
   user_id: string,
-  limit: number = 50,
+  opts: { limit?: number; offset?: number; currency?: string; q?: string } = {},
 ) =>
-  apiGet<UserTransaction[]>(
+  apiGet<UserTransactionsPage>(
     `/api/v1/identity/users/${user_id}/transactions`,
-    { query: { tenant_id, limit } },
+    {
+      query: {
+        tenant_id,
+        limit: opts.limit ?? 20,
+        offset: opts.offset ?? 0,
+        ...(opts.currency ? { currency: opts.currency } : {}),
+        ...(opts.q ? { q: opts.q } : {}),
+      },
+    },
   );
 
 /**

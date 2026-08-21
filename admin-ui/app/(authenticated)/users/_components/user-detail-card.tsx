@@ -35,7 +35,7 @@ import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
 import { AccessLevelPill } from "./access-level-pill";
-import { CounterpartyCell } from "./counterparty-cell";
+import { UserTransactionsPanel } from "./user-transactions-panel";
 import { AccessLockControl } from "./access-lock-control";
 import { AddIdentifierDialog } from "./add-identifier-dialog";
 import { EditUserDrawer, type OpenUpdateRequest } from "./edit-user-drawer";
@@ -116,7 +116,10 @@ function Section({
 
 export interface UserDetailCardProps {
   detail: UserDetail;
+  /** Server-rendered FIRST page of transactions (the panel pages from here). */
   transactions: UserTransaction[];
+  /** Total transactions across all pages — drives the pager's "of N". */
+  transactionsTotal: number;
   resolvedIdentifierValue: string | null;
   resolvedIdentifierType: string;
   /** An update request already awaiting review, so Edit can surface it. */
@@ -128,6 +131,7 @@ export interface UserDetailCardProps {
 export function UserDetailCard({
   detail,
   transactions,
+  transactionsTotal,
   resolvedIdentifierValue,
   resolvedIdentifierType,
   openUpdate,
@@ -142,6 +146,12 @@ export function UserDetailCard({
   const pointsAccount = detail.accounts.find(
     (a) => a.account_type === "points_account",
   );
+  // Filter chips: the user's own wallet currencies, plus PTS when they hold
+  // points — never a hardcoded list, so a tenant's currencies drive it.
+  const txnCurrencies = [
+    ...financialWallets.map((a) => a.currency),
+    ...(pointsAccount ? ["PTS"] : []),
+  ];
   // The backend exposes status lowercased ("active"/"suspended").
   const editStatus: "active" | "suspended" =
     detail.status === "suspended" ? "suspended" : "active";
@@ -423,90 +433,18 @@ export function UserDetailCard({
         )}
       </Section>
 
-      {/* Transactions — latest 50 ledger events touching this user */}
+      {/* Transactions — server-paged, filterable (20 per page) */}
       <Section
         title="Transactions"
-        description="Latest 50 movements on this user's wallets."
+        description="Movements on this user's wallets. Filter by currency or search a transaction ID."
       >
-        {transactions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No transactions yet on this user's wallets.
-          </p>
-        ) : (
-          <div className="-mx-5 overflow-x-auto">
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell>When</TableHeaderCell>
-                  <TableHeaderCell>Service</TableHeaderCell>
-                  <TableHeaderCell>Direction</TableHeaderCell>
-                  <TableHeaderCell>Counterparty</TableHeaderCell>
-                  <TableHeaderCell className="text-right">Amount</TableHeaderCell>
-                  <TableHeaderCell className="text-right">Service charge</TableHeaderCell>
-                  <TableHeaderCell>Currency</TableHeaderCell>
-                  <TableHeaderCell>Txn ID</TableHeaderCell>
-                  <TableHeaderCell>Status</TableHeaderCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {transactions.map((t) => {
-                  const isIn = t.direction === "in";
-                  const isPoints = t.currency === "PTS";
-                  return (
-                    <TableRow key={t.id}>
-                      <TableCell className="whitespace-nowrap text-[11px] text-muted-foreground">
-                        {formatTimestamp(t.created_at)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap font-medium">
-                        {transactionTypeLabel(t.transaction_type)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        <span
-                          className={
-                            "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold " +
-                            (isIn
-                              ? "bg-emerald-500/15 text-emerald-700"
-                              : "bg-rose-500/15 text-rose-700")
-                          }
-                        >
-                          {isIn ? "IN" : "OUT"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        <CounterpartyCell txn={t} />
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right font-mono tabular-nums">
-                        {isIn ? "+" : "−"}
-                        {isPoints ? (
-                          <Points amount={t.amount} />
-                        ) : (
-                          <Money amount={t.amount} currency={t.currency} />
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-muted-foreground">
-                        {/* Service charge only applies to financial (non-points) debits. */}
-                        {!isPoints && parseFloat(t.fee_amount) > 0 ? (
-                          <Money amount={t.fee_amount} currency={t.currency} />
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {t.currency}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap font-mono text-[11px] text-muted-foreground">
-                        {t.reference ?? shortId(t.id, "txn")}
-                      </TableCell>
-                      <TableCell>
-                        <StatusPill status={t.status.toUpperCase()} variant="dense" />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+        <UserTransactionsPanel
+          tenantId={detail.tenant_id}
+          userId={detail.id}
+          initialItems={transactions}
+          initialTotal={transactionsTotal}
+          currencies={txnCurrencies}
+        />
       </Section>
     </div>
   );

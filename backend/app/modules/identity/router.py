@@ -28,6 +28,7 @@ from app.modules.identity.schemas import (
     AdminPinResetResponse,
     AdminUnlockResponse,
     AdminUserTransactionOut,
+    AdminUserTransactionsPage,
     AuthStartRequest,
     AuthStartResponse,
     ChangeUserTypeRequest,
@@ -244,25 +245,46 @@ async def patch_user_type(
 
 @router.get(
     "/users/{user_id}/transactions",
-    response_model=list[AdminUserTransactionOut],
+    response_model=AdminUserTransactionsPage,
 )
 async def get_user_transactions(
     user_id: UUID,
     tenant_id: UUID,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    currency: str | None = Query(default=None, max_length=10),
+    q: str | None = Query(default=None, max_length=64),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
-) -> list[AdminUserTransactionOut]:
-    """Recent transactions for a user — admin user-detail page.
+) -> AdminUserTransactionsPage:
+    """One page of a user's transactions — admin user-detail panel.
 
     Shares the mobile /me/wallet payload builder, so the type + direction +
     counterparty logic stays in one place; this admin view additionally
     carries `counterparty_phone`. Tenant-scoped: a user that belongs to a
     different tenant returns 404 (no leak).
+
+    Filtering and paging are SERVER-side so an operator can find one movement
+    in a 7-year ledger without the page loading it all:
+      - `currency` — exact match ("ZAR" / "INR" / "PTS");
+      - `q` — case-insensitive substring of the customer-facing reference
+        (e.g. "S_20260820180829019411");
+      - `limit` / `offset` — the page window; `total` counts every match.
     """
     _ = admin
-    rows = await list_user_transactions(session, tenant_id=tenant_id, user_id=user_id, limit=limit)
-    return [AdminUserTransactionOut.model_validate(r) for r in rows]
+    rows, total = await list_user_transactions(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+        currency=currency,
+        reference=q,
+    )
+    return AdminUserTransactionsPage(
+        items=[AdminUserTransactionOut.model_validate(r) for r in rows],
+        total=total,
+    )
 
 
 @router.post("/users/{user_id}/pin/reset", response_model=AdminPinResetResponse)

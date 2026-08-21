@@ -388,6 +388,18 @@ class AdminUserTransactionOut(WalletTransactionOut):
     counterparty_phone: str | None = None
 
 
+class AdminUserTransactionsPage(BaseModel):
+    """One page of a user's transactions plus the total matching count.
+
+    An envelope rather than a bare list because the admin panel pages 20 at a
+    time and needs the total to render "1-20 of N" and disable Next on the
+    last page. `total` counts rows matching the SAME filters as `items`.
+    """
+
+    items: list[AdminUserTransactionOut]
+    total: int
+
+
 class WalletOut(BaseModel):
     """Authenticated user's own wallet — accounts + recent transactions.
 

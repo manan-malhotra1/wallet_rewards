@@ -8,12 +8,14 @@ import { revalidatePath } from "next/cache";
 import { ApiError } from "@/lib/api";
 import {
   addUserIdentifier,
+  listUserTransactions,
   adminResetPin,
   proposeUserOperation,
   setUserAccess,
   unlockUser,
   verifyUserIdentifier,
 } from "@/lib/api-endpoints";
+import type { UserTransaction } from "@/lib/api-endpoints";
 import type {
   AccessLevel,
   AddableIdentifierType,
@@ -254,4 +256,34 @@ function toProposeResult(err: unknown): ProposeActionResult {
     errorCode: "internal_error",
     message: err instanceof Error ? err.message : "Unknown error",
   };
+}
+
+/**
+ * Fetch one page of a user's transactions for the detail panel.
+ *
+ * The panel is a client component (paging + filters are interactive), and
+ * client components never call the backend directly — this action is the
+ * server-side hop that carries the admin's Bearer token.
+ */
+export async function fetchUserTransactionsAction(
+  tenantId: string,
+  userId: string,
+  opts: { limit?: number; offset?: number; currency?: string; q?: string },
+): Promise<
+  | { ok: true; items: UserTransaction[]; total: number }
+  | { ok: false; errorCode: string; message: string }
+> {
+  try {
+    const page = await listUserTransactions(tenantId, userId, opts);
+    return { ok: true, items: page.items, total: page.total };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, errorCode: err.errorCode, message: err.message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
 }

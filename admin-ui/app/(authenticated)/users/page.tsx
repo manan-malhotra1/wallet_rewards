@@ -92,6 +92,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
 
   let detail: Awaited<ReturnType<typeof getUserDetail>> | null = null;
   let transactions: UserTransaction[] = [];
+  let transactionsTotal = 0;
   let resolvedIdentifierValue: string | null = null;
   let openUpdate: OpenUpdateRequest | null = null;
   let error: ApiError | null = null;
@@ -103,10 +104,13 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         params.value,
       );
       resolvedIdentifierValue = params.value;
-      [detail, transactions] = await Promise.all([
+      const [detailRes, txnPage] = await Promise.all([
         getUserDetail(activeTenantId, resolved.user_id),
-        listUserTransactions(activeTenantId, resolved.user_id),
+        listUserTransactions(activeTenantId, resolved.user_id, { limit: 20 }),
       ]);
+      detail = detailRes;
+      transactions = txnPage.items;
+      transactionsTotal = txnPage.total;
       openUpdate = await findOpenUpdateRequest(activeTenantId, resolved.user_id);
     } catch (err) {
       if (err instanceof ApiError) error = err;
@@ -146,6 +150,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
           <UserDetailCard
             detail={detail}
             transactions={transactions}
+            transactionsTotal={transactionsTotal}
             resolvedIdentifierValue={resolvedIdentifierValue}
             resolvedIdentifierType={params.type ?? "phone"}
             openUpdate={openUpdate}

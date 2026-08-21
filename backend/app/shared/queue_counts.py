@@ -108,9 +108,7 @@ async def count_queue_by_status(
     """
     stmt = select(model.status, func.count()).where(model.tenant_id == tenant_id)
     if q:
-        stmt = stmt.where(
-            queue_search_condition(model, q, extra_text_columns, extra_conditions)
-        )
+        stmt = stmt.where(queue_search_condition(model, q, extra_text_columns, extra_conditions))
     result = await session.execute(stmt.group_by(model.status))
     found: dict[str, int] = {row[0]: row[1] for row in result.all()}
     by_status = {status: found.get(status, 0) for status in statuses}
@@ -131,6 +129,4 @@ def apply_newest_first_window(
         limit: Maximum rows to return; None means unbounded (existing callers).
         offset: Rows to skip before the window starts.
     """
-    return (
-        stmt.order_by(model.created_at.desc(), model.id.desc()).offset(offset).limit(limit)
-    )
+    return stmt.order_by(model.created_at.desc(), model.id.desc()).offset(offset).limit(limit)

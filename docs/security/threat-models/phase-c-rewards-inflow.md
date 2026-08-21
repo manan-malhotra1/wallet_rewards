@@ -5,6 +5,14 @@
 > **PRD reference:** Pay-PRD-0480 to 0650 (Modules 8–10)
 > **Code reference:** `backend/app/modules/{events,rules,rewards}/`
 
+> ### ⚠ Correction — 2026-08-21
+>
+> This phase recorded S-1 as *mitigated* on the strength of HMAC verification. That
+> verification was never wired into the Kafka consumer, and the "Phase F enforces" note below
+> did not come true — F.5 built the verifier and enforced it on the HTTP routes only.
+> **S-1 is open.** Tracked as **Epic SEC** in
+> [`docs/09-epics-and-stories.md`](../../09-epics-and-stories.md).
+
 ---
 
 ## 1. What this phase delivers
@@ -67,7 +75,7 @@ Deferred to later phases:
 
 | Boundary | What crosses | Trust assumption (Phase C) |
 |---|---|---|
-| Kafka topic → consumer | Raw event JSON | Anyone with broker access can publish — local dev only |
+| Kafka topic → consumer | Raw event JSON | Anyone with broker access can publish — **still true, and no longer local-dev-only in effect**: the broker has no SASL and no ACLs (SEC.6), and the consumer does not verify signatures (SEC.1) |
 | Consumer → events service | NormalisedEvent | source_key validated against `external_event_sources` |
 | Events service → Rules evaluator | NormalisedEvent | Source already validated; tenant_id is from the event body (trusted) |
 | Rules → Rewards → Ledger | RewardEvent + LedgerEntryRequest | Unique index on reward_events is the structural guarantee against double issue |
@@ -76,7 +84,7 @@ Deferred to later phases:
 
 | ID | Category | Threat | Likelihood | Impact | Mitigation | Status |
 |---|---|---|---|---|---|---|
-| S-1 | Spoofing | Attacker writes to Kafka with fake `source_key` | High | Critical | Source must exist in `external_event_sources`; HMAC verification (when secret set) | mitigated (HMAC optional Phase C) |
+| S-1 | Spoofing | Attacker writes to Kafka with fake `source_key` | High | Critical | Source must exist in `external_event_sources`. ~~HMAC verification (when secret set)~~ — never wired into the consumer | **⚠ OPEN** — see SEC.1 / SEC.2. Source registration alone is the control, and a `source_key` is not a secret |
 | S-2 | Spoofing | Attacker forges `tenant_id` to credit themselves in another tenant | Med | Critical | source_key is tenant-scoped — verified that source.tenant_id == event.tenant_id | mitigated |
 | T-1 | Tampering | Reward value modified between rule eval and issuance | Low | High | `reward_value` is read from `rules` table at issuance time, never trusted from event | mitigated |
 | R-1 | Repudiation | Source denies sending an event | Low | Med | `event_ingestion_log` records every received event with timestamp + outcome | mitigated |
@@ -104,7 +112,7 @@ Deferred to later phases:
 
 ## 6. Residual risks accepted for Phase C
 
-- **HMAC signature verification optional.** Sources without a shared_secret can publish unverified events. Documented as test-only acceptable for local dev. Phase F enforces.
+- **HMAC signature verification optional.** Sources without a shared_secret can publish unverified events. Documented as test-only acceptable for local dev. ~~Phase F enforces.~~ **⚠ This did not happen.** F.5 built the verifier and enforced it on the HTTP ingest routes; the Kafka consumer still passes neither the raw bytes nor the signature, and the secret is still optional at registration. Open as SEC.1 / SEC.2.
 - **No auth on rule CRUD endpoints.** Anyone can create a million-point rule. Flagged test-only.
 - **No auth on event ingestion HTTP endpoint.** Only used for test demos.
 - **No segment binding.** Rules apply platform-wide within tenant. Phase D adds segments.

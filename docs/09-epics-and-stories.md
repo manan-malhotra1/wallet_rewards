@@ -65,8 +65,9 @@
 | MOB | Mobile App (Expo) | Partial | 8 | 1 Identity · 4 Payment · 16 Catalog |
 | HARD | Ledger / money-path hardening (cross-cutting) | Partial | 5 | 3 Ledger · 5 Limits |
 | SEG | Customer Segmentation — Phase 1 (rules) + Phase 2 (AI, planned) | Partial | 12 | 16 Rewards Catalog · 14 Config |
+| SEC | **External event-source authorization hardening** | Planned · **CRITICAL** | 6 | 8 Event Ingestion · 14 Tenant/Platform Config |
 
-**Totals:** 35 epics/initiatives · ~157 catalogued stories.
+**Totals:** 36 epics/initiatives · ~163 catalogued stories.
 
 ---
 
@@ -96,6 +97,11 @@ and architectural memory, the real picture is:
   cap surface (budget model exists; the 50/80/100% alerting story is open); hot-path balance
   denormalisation + ledger partitioning (trigger-gated, pre-scale); channel-aware money controls;
   and system-wallet provisioning on new-instrument creation.
+- **⚠ Open CRITICAL security finding (raised 2026-08-21)** — external event-source
+  authorization. The HMAC integrity gate is not wired into the Kafka consumer, and the
+  signing secret is optional at registration, so on the only production ingestion path a
+  registered `source_key` — an identifier, not a credential — is the sole control between a
+  Kafka message and minted points. Tracked as **Epic SEC**; nothing shipped against it.
 
 In short: the transactional and rewards core, the governance layer, and both frontends are
 delivered; the remaining backlog is mostly engagement/notifications, gamification surfaces,
@@ -436,6 +442,82 @@ by a batch job against a registry of 9 wallet-attributed metrics. Design:
 - **Seeded default tiers** — 3 system groups × 3 tiers each (Engagement: Dormant/New/Active; Transaction Value: Low/Mid/High; Customer Loyalty: Bronze/Silver/Gold) ship via `make seed`. **Shipped**
 - **Admin UI** — a group-sectioned `/segments` page with a criteria builder dialog (metric/operator/value rows, AND/OR composition, live match-count preview) and a manual "Recompute now" action. **Shipped**
 - **AI layer (Phase 2)** — natural-language → criteria DSL generation, reviewed before save. **Planned**; see the design doc above.
+
+### SEC — External event-source authorization hardening · **Planned** · ⚠ **CRITICAL**
+*Raised 2026-08-21 from a code read of the Kafka ingestion path. The five gates in
+`process_external_event` — source registered → tenant scope → deployment mode → HMAC → dedup —
+are correctly built and correctly ordered, and the HMAC primitive itself is sound (300s replay
+window, constant-time compare, Fernet-encrypted secret at rest, rotation-friendly multi-`v1=`).
+The problem is wiring, not cryptography: **the only path that carries production traffic — the
+Kafka consumer — never supplies the raw bytes or the signature**, so the integrity gate is inert
+there. A registered `source_key` is an identifier, not a credential; with signature verification
+bypassed it is the sole control between a Kafka message and minted points.*
+*Blast radius: anyone who can reach the broker and knows one registered `source_key` can mint
+points for any user in that source's tenant, in any amount. Points convert to fiat through
+internal redemption (Module 11b), so this is a money-loss path, not a data-integrity nuisance.*
+
+- **SEC.1 — Kafka consumer must actually verify the HMAC signature** · **Critical** —
+  `scripts/run_consumer.py:63` calls `process_external_event(session, event)` with neither
+  `raw_body=` nor `signature_header=`, and never reads `msg.headers()`. Gate 4 therefore has
+  exactly two behaviours and neither is "verify": a source **with** a secret rejects every message
+  as `integrity_check_missing` (fail-closed, but the Kafka path is dead), and a source **without**
+  one skips verification entirely and issues the reward. *AC:* the producer sets
+  `X-Sasai-Signature` as a Kafka message header; the consumer passes `msg.value()` as `raw_body`
+  and that header through to the pipeline; a valid signature is PROCESSED, a forged one REJECTED +
+  audited, a missing one REJECTED; consumer-level tests cover all three (today there are none —
+  HMAC is only tested on the HTTP `/external` and `/sim-ingest` routes);
+  `/events/sim-kafka-produce` signs its payload the same way; and
+  `docs/security/threat-models/phase-f5-hmac-and-audit.md` (§ "Kafka consumer … enforces HMAC",
+  and the claim that the consumer receives the raw payload bytes) is corrected — both statements
+  are currently false. **Planned**
+
+- **SEC.2 — `shared_secret` must be mandatory on event-source registration** · **Critical** —
+  the secret is optional in the admin dialog ("HMAC shared secret (optional, ≥ 32 chars)") and in
+  `SourceRegistrationRequest`, which sets no minimum length at all. Registering a source without
+  one is a single click and produces exactly the source that accepts unsigned events, because
+  `process_external_event` skips gate 4 entirely when `shared_secret_encrypted IS NULL`. *AC:*
+  the secret is required with a ≥32-char minimum in both the Pydantic schema and the dialog;
+  registration without one → 422; the NULL-means-skip branch is removed so a legacy source with no
+  secret rejects every event rather than trusting it; `seed.py` and any existing rows are migrated
+  or explicitly deactivated. This is the story with teeth — SEC.1 is only meaningful once no
+  source can opt out. **Planned**
+
+- **SEC.3 — Event sources need list / deactivate / rotate** · **High** — the backend exposes only
+  `POST /events/sources`, so `/events` in the admin UI renders an empty state ("Source list view
+  ships in Phase G"). Operators cannot see which sources exist, which have a secret configured, or
+  turn one off; flipping `status` to `inactive` or rotating a leaked signing key currently means a
+  direct DB write or a `seed.py` re-run. For a credential that mints money, create-only with no
+  revoke is the larger operational exposure. *AC:* `GET /events/sources` (tenant-scoped),
+  `PATCH /events/sources/{id}` for status, and a rotate-secret endpoint that accepts a new secret
+  and keeps the old one valid for one replay window; the admin table shows name, key, status,
+  secret-configured, created-at, and last-event-seen; every action audit-logged. **Planned**
+
+- **SEC.4 — Event-source registration must go through maker-checker** · **High** — pricing,
+  limits, wallet limits, commissions, taxes, step-up and conversion rates all route through the
+  config-request four-eyes pipeline. Registering an event source does not: one `platform-admin`
+  creates a live points-minting channel in one dialog with no second approver, which is a weaker
+  control than the one guarding a fee change. *AC:* `event_source` becomes a config type in the
+  config-request registry; create / deactivate / rotate all land in the Configuration tab of
+  `/approvals` and require a distinct approver; the direct `POST` is removed or restricted.
+  **Planned**
+
+- **SEC.5 — `source_key` uniqueness should be tenant-scoped** · **Low** — the column is
+  `unique=True` globally rather than unique per tenant, so tenant A cannot register a key tenant B
+  already holds, and the resulting `source_key_taken` 409 confirms to A that some other tenant has
+  it — a small cross-tenant existence leak through a namespace the tenants do not share. *AC:*
+  uniqueness moves to `(tenant_id, source_key)`; source lookup at ingestion resolves on the pair
+  rather than the key alone; a migration handles existing rows; a cross-tenant registration of the
+  same key succeeds. **Planned**
+
+- **SEC.6 — Kafka broker has no authentication or ACLs** · **Critical for any shared environment**
+  — `sasai-wallet-infra/docker-compose.yml` runs `PLAINTEXT` with no SASL and no ACLs
+  (`KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"` is the only hardening). Acceptable for a laptop;
+  it means that outside local dev, "authorization" on the event channel reduces to network
+  reachability, and it is what turns SEC.1/SEC.2 from a defence-in-depth gap into a live one.
+  *AC:* SASL_SSL (or mTLS) on the broker with a distinct principal per producer, per-topic ACLs
+  restricting `wallet.events.external` writes to registered sources, TLS 1.2+ in transit per
+  NFR-0260, and no credential in the compose file — this is a prerequisite for any non-local
+  deployment, not a follow-up to it. **Planned**
 
 ---
 

@@ -239,118 +239,123 @@ export function UserDetailCard({
         </StatCard>
       </div>
 
-      {/* Personal & KYC */}
-      <Section
-        title="Personal & KYC"
-        description="Profile fields captured during registration."
-        defaultOpen
-      >
-        {detail.profile ? (
-          <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
-            <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                First name
-              </dt>
-              <dd className="text-foreground">{detail.profile.first_name ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Last name
-              </dt>
-              <dd className="text-foreground">{detail.profile.last_name ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Date of birth
-              </dt>
-              <dd className="text-foreground">
-                {detail.profile.date_of_birth ?? "—"}
-              </dd>
-            </div>
-          </dl>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No profile data captured yet.
-          </p>
-        )}
-        <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Identifiers
-            </p>
-            {canManageLockout && (
-              <AddIdentifierDialog
-                userId={detail.id}
-                tenantId={detail.tenant_id}
-              />
-            )}
-          </div>
-          {detail.identifiers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No identifiers.</p>
+      {/* Two-up row: these two panels are short, so pairing them halves the
+          vertical run before the wide panels below. One column on narrow
+          screens. */}
+      <div className="grid gap-4 md:grid-cols-2 md:items-start">
+        {/* Personal & KYC */}
+        <Section
+          title="Personal & KYC"
+          description="Profile fields captured during registration."
+          defaultOpen
+        >
+          {detail.profile ? (
+            <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
+              <div>
+                <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  First name
+                </dt>
+                <dd className="text-foreground">{detail.profile.first_name ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Last name
+                </dt>
+                <dd className="text-foreground">{detail.profile.last_name ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Date of birth
+                </dt>
+                <dd className="text-foreground">
+                  {detail.profile.date_of_birth ?? "—"}
+                </dd>
+              </div>
+            </dl>
           ) : (
-            <ul className="space-y-2">
-              {detail.identifiers.map((ident) => {
-                const Icon = IDENTIFIER_ICON[ident.identifier_type] ?? UserCircle;
-                return (
-                  <li
-                    key={`${ident.identifier_type}-${ident.identifier_value}`}
-                    className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2"
-                  >
-                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                      <Icon className="h-3.5 w-3.5 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        {ident.identifier_type}
-                      </p>
-                      <p className="font-mono text-sm text-foreground">
-                        {ident.identifier_value}
-                      </p>
-                    </div>
-                    {ident.verified ? (
-                      <Badge variant="success">
-                        <ShieldCheck className="h-3 w-3" />
-                        Verified
-                      </Badge>
-                    ) : ident.identifier_type === "account_number" &&
-                      canManageLockout ? (
-                      <VerifyIdentifierButton
-                        userId={detail.id}
-                        identifierId={ident.id}
-                        tenantId={detail.tenant_id}
-                      />
-                    ) : (
-                      <Badge variant="secondary">Unverified</Badge>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <p className="text-sm text-muted-foreground">
+              No profile data captured yet.
+            </p>
           )}
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Account numbers are verified manually by an admin; phone and email
-            verify via OTP.
-          </p>
-        </div>
-      </Section>
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Identifiers
+              </p>
+              {canManageLockout && (
+                <AddIdentifierDialog
+                  userId={detail.id}
+                  tenantId={detail.tenant_id}
+                />
+              )}
+            </div>
+            {detail.identifiers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No identifiers.</p>
+            ) : (
+              <ul className="space-y-2">
+                {detail.identifiers.map((ident) => {
+                  const Icon = IDENTIFIER_ICON[ident.identifier_type] ?? UserCircle;
+                  return (
+                    <li
+                      key={`${ident.identifier_type}-${ident.identifier_value}`}
+                      className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+                        <Icon className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {ident.identifier_type}
+                        </p>
+                        <p className="font-mono text-sm text-foreground">
+                          {ident.identifier_value}
+                        </p>
+                      </div>
+                      {ident.verified ? (
+                        <Badge variant="success">
+                          <ShieldCheck className="h-3 w-3" />
+                          Verified
+                        </Badge>
+                      ) : ident.identifier_type === "account_number" &&
+                        canManageLockout ? (
+                        <VerifyIdentifierButton
+                          userId={detail.id}
+                          identifierId={ident.id}
+                          tenantId={detail.tenant_id}
+                        />
+                      ) : (
+                        <Badge variant="secondary">Unverified</Badge>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Account numbers are verified manually by an admin; phone and email
+              verify via OTP.
+            </p>
+          </div>
+        </Section>
 
-      {/* Address & country — not exposed by the API yet; shown gracefully. */}
-      <Section
-        title="Address & country"
-        description="Residential address and country of residence."
-      >
-        {detail.parent_user_id ? (
-          <p className="mb-2 text-sm text-muted-foreground">
-            Reports to{" "}
-            <span className="font-mono">
-              {detail.parent_name ?? shortId(detail.parent_user_id, "usr")}
-            </span>
+        {/* Address & country — not exposed by the API yet; shown gracefully. */}
+        <Section
+          title="Address & country"
+          description="Residential address and country of residence."
+        >
+          {detail.parent_user_id ? (
+            <p className="mb-2 text-sm text-muted-foreground">
+              Reports to{" "}
+              <span className="font-mono">
+                {detail.parent_name ?? shortId(detail.parent_user_id, "usr")}
+              </span>
+            </p>
+          ) : null}
+          <p className="text-sm text-muted-foreground">
+            No address on file — address capture is not part of registration yet.
           </p>
-        ) : null}
-        <p className="text-sm text-muted-foreground">
-          No address on file — address capture is not part of registration yet.
-        </p>
-      </Section>
+        </Section>
+      </div>
 
       {/* KYC documents — not exposed by the API yet; shown gracefully. */}
       <Section

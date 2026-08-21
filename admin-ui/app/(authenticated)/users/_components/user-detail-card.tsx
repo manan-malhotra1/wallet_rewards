@@ -35,6 +35,7 @@ import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
 import { AccessLevelPill } from "./access-level-pill";
+import { SectionTabs } from "./section-tabs";
 import { UserTransactionsPanel } from "./user-transactions-panel";
 import { AccessLockControl } from "./access-lock-control";
 import { AddIdentifierDialog } from "./add-identifier-dialog";
@@ -76,41 +77,6 @@ function StatCard({
       </p>
       <div className="mt-1 text-lg font-semibold tabular-nums">{children}</div>
     </div>
-  );
-}
-
-/** A collapsible section using native <details> — no client JS needed. */
-function Section({
-  title,
-  description,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  description?: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <details
-      open={defaultOpen}
-      className="glass-panel group overflow-hidden rounded-lg"
-    >
-      <summary className="flex cursor-pointer items-center justify-between px-5 py-3.5 text-sm font-medium marker:content-none hover:bg-muted/40">
-        <span className="flex flex-col">
-          {title}
-          {description && (
-            <span className="text-xs font-normal text-muted-foreground">
-              {description}
-            </span>
-          )}
-        </span>
-        <span className="text-xs text-muted-foreground transition-transform group-open:rotate-90">
-          ▶
-        </span>
-      </summary>
-      <div className="border-t px-5 py-4">{children}</div>
-    </details>
   );
 }
 
@@ -239,218 +205,230 @@ export function UserDetailCard({
         </StatCard>
       </div>
 
-      {/* Two-up row: these two panels are short, so pairing them halves the
-          vertical run before the wide panels below. One column on narrow
-          screens. */}
-      <div className="grid gap-4 md:grid-cols-2 md:items-start">
-        {/* Personal & KYC */}
-        <Section
-          title="Personal & KYC"
-          description="Profile fields captured during registration."
-          defaultOpen
-        >
-          {detail.profile ? (
-            <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
-              <div>
-                <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  First name
-                </dt>
-                <dd className="text-foreground">{detail.profile.first_name ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Last name
-                </dt>
-                <dd className="text-foreground">{detail.profile.last_name ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Date of birth
-                </dt>
-                <dd className="text-foreground">
-                  {detail.profile.date_of_birth ?? "—"}
-                </dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No profile data captured yet.
-            </p>
-          )}
-          <div className="mt-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Identifiers
-              </p>
-              {canManageLockout && (
-                <AddIdentifierDialog
-                  userId={detail.id}
+      {/* One header row; the selected section expands full-width below.
+          Five stacked accordions made the page scroll far longer than its
+          content warranted, and the wide panels (transactions, balances)
+          need the whole width when open. */}
+      <SectionTabs
+        tabs={[
+          {
+            id: "personal-kyc",
+            label: "Personal & KYC",
+            description: "Profile fields captured during registration.",
+            content: (
+              <>
+                {detail.profile ? (
+                  <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
+                    <div>
+                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        First name
+                      </dt>
+                      <dd className="text-foreground">{detail.profile.first_name ?? "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Last name
+                      </dt>
+                      <dd className="text-foreground">{detail.profile.last_name ?? "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Date of birth
+                      </dt>
+                      <dd className="text-foreground">
+                        {detail.profile.date_of_birth ?? "—"}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No profile data captured yet.
+                  </p>
+                )}
+                <div className="mt-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Identifiers
+                    </p>
+                    {canManageLockout && (
+                      <AddIdentifierDialog
+                        userId={detail.id}
+                        tenantId={detail.tenant_id}
+                      />
+                    )}
+                  </div>
+                  {detail.identifiers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No identifiers.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {detail.identifiers.map((ident) => {
+                        const Icon = IDENTIFIER_ICON[ident.identifier_type] ?? UserCircle;
+                        return (
+                          <li
+                            key={`${ident.identifier_type}-${ident.identifier_value}`}
+                            className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2"
+                          >
+                            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+                              <Icon className="h-3.5 w-3.5 text-primary" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                {ident.identifier_type}
+                              </p>
+                              <p className="font-mono text-sm text-foreground">
+                                {ident.identifier_value}
+                              </p>
+                            </div>
+                            {ident.verified ? (
+                              <Badge variant="success">
+                                <ShieldCheck className="h-3 w-3" />
+                                Verified
+                              </Badge>
+                            ) : ident.identifier_type === "account_number" &&
+                              canManageLockout ? (
+                              <VerifyIdentifierButton
+                                userId={detail.id}
+                                identifierId={ident.id}
+                                tenantId={detail.tenant_id}
+                              />
+                            ) : (
+                              <Badge variant="secondary">Unverified</Badge>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Account numbers are verified manually by an admin; phone and email
+                    verify via OTP.
+                  </p>
+                </div>
+              </>
+            ),
+          },
+          {
+            id: "address-country",
+            label: "Address & country",
+            description: "Residential address and country of residence.",
+            content: (
+              <>
+                {detail.parent_user_id ? (
+                  <p className="mb-2 text-sm text-muted-foreground">
+                    Reports to{" "}
+                    <span className="font-mono">
+                      {detail.parent_name ?? shortId(detail.parent_user_id, "usr")}
+                    </span>
+                  </p>
+                ) : null}
+                <p className="text-sm text-muted-foreground">
+                  No address on file — address capture is not part of registration yet.
+                </p>
+              </>
+            ),
+          },
+          {
+            id: "kyc-documents",
+            label: "KYC documents",
+            description: "Uploaded identity documents and verification state.",
+            content: (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  No documents on file — document upload arrives in a later phase.
+                </p>
+              </>
+            ),
+          },
+          {
+            id: "accounts-balances",
+            label: "Accounts & balances",
+            description: "Derived balances live from the ledger — no snapshot caching.",
+            content: (
+              <>
+                {detail.accounts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">This user has no accounts.</p>
+                ) : (
+                  <div className="-mx-5 overflow-x-auto">
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableHeaderCell>Type</TableHeaderCell>
+                          <TableHeaderCell>Currency</TableHeaderCell>
+                          <TableHeaderCell className="text-right">Balance</TableHeaderCell>
+                          <TableHeaderCell className="text-right">Reserved</TableHeaderCell>
+                          <TableHeaderCell className="text-right">Available</TableHeaderCell>
+                          <TableHeaderCell>Status</TableHeaderCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {detail.accounts.map((acct) => {
+                          const isPoints = acct.currency === "PTS";
+                          return (
+                            <TableRow key={acct.id}>
+                              <TableCell className="font-medium">
+                                {accountTypeLabel(acct.account_type)}
+                              </TableCell>
+                              <TableCell className="font-mono text-xs text-muted-foreground">
+                                {acct.currency}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {isPoints ? (
+                                  <Points amount={acct.balance} />
+                                ) : (
+                                  <Money amount={acct.balance} currency={acct.currency} />
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {isPoints ? (
+                                  <Points amount={acct.reserved_balance} />
+                                ) : (
+                                  <Money
+                                    amount={acct.reserved_balance}
+                                    currency={acct.currency}
+                                  />
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right font-semibold">
+                                {isPoints ? (
+                                  <Points amount={acct.available_balance} />
+                                ) : (
+                                  <Money
+                                    amount={acct.available_balance}
+                                    currency={acct.currency}
+                                  />
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <StatusPill status={acct.status.toUpperCase()} variant="dense" />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            id: "transactions",
+            label: "Transactions",
+            description: "Movements on this user's wallets. Filter by currency or search a transaction ID.",
+            content: (
+              <>
+                <UserTransactionsPanel
                   tenantId={detail.tenant_id}
+                  userId={detail.id}
+                  initialItems={transactions}
+                  initialTotal={transactionsTotal}
+                  currencies={txnCurrencies}
                 />
-              )}
-            </div>
-            {detail.identifiers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No identifiers.</p>
-            ) : (
-              <ul className="space-y-2">
-                {detail.identifiers.map((ident) => {
-                  const Icon = IDENTIFIER_ICON[ident.identifier_type] ?? UserCircle;
-                  return (
-                    <li
-                      key={`${ident.identifier_type}-${ident.identifier_value}`}
-                      className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2"
-                    >
-                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                        <Icon className="h-3.5 w-3.5 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          {ident.identifier_type}
-                        </p>
-                        <p className="font-mono text-sm text-foreground">
-                          {ident.identifier_value}
-                        </p>
-                      </div>
-                      {ident.verified ? (
-                        <Badge variant="success">
-                          <ShieldCheck className="h-3 w-3" />
-                          Verified
-                        </Badge>
-                      ) : ident.identifier_type === "account_number" &&
-                        canManageLockout ? (
-                        <VerifyIdentifierButton
-                          userId={detail.id}
-                          identifierId={ident.id}
-                          tenantId={detail.tenant_id}
-                        />
-                      ) : (
-                        <Badge variant="secondary">Unverified</Badge>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Account numbers are verified manually by an admin; phone and email
-              verify via OTP.
-            </p>
-          </div>
-        </Section>
-
-        {/* Address & country — not exposed by the API yet; shown gracefully. */}
-        <Section
-          title="Address & country"
-          description="Residential address and country of residence."
-        >
-          {detail.parent_user_id ? (
-            <p className="mb-2 text-sm text-muted-foreground">
-              Reports to{" "}
-              <span className="font-mono">
-                {detail.parent_name ?? shortId(detail.parent_user_id, "usr")}
-              </span>
-            </p>
-          ) : null}
-          <p className="text-sm text-muted-foreground">
-            No address on file — address capture is not part of registration yet.
-          </p>
-        </Section>
-      </div>
-
-      {/* KYC documents — not exposed by the API yet; shown gracefully. */}
-      <Section
-        title="KYC documents"
-        description="Uploaded identity documents and verification state."
-      >
-        <p className="text-sm text-muted-foreground">
-          No documents on file — document upload arrives in a later phase.
-        </p>
-      </Section>
-
-      {/* Accounts & balances */}
-      <Section
-        title="Accounts & balances"
-        description="Derived balances live from the ledger — no snapshot caching."
-        defaultOpen
-      >
-        {detail.accounts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">This user has no accounts.</p>
-        ) : (
-          <div className="-mx-5 overflow-x-auto">
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell>Type</TableHeaderCell>
-                  <TableHeaderCell>Currency</TableHeaderCell>
-                  <TableHeaderCell className="text-right">Balance</TableHeaderCell>
-                  <TableHeaderCell className="text-right">Reserved</TableHeaderCell>
-                  <TableHeaderCell className="text-right">Available</TableHeaderCell>
-                  <TableHeaderCell>Status</TableHeaderCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {detail.accounts.map((acct) => {
-                  const isPoints = acct.currency === "PTS";
-                  return (
-                    <TableRow key={acct.id}>
-                      <TableCell className="font-medium">
-                        {accountTypeLabel(acct.account_type)}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {acct.currency}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {isPoints ? (
-                          <Points amount={acct.balance} />
-                        ) : (
-                          <Money amount={acct.balance} currency={acct.currency} />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {isPoints ? (
-                          <Points amount={acct.reserved_balance} />
-                        ) : (
-                          <Money
-                            amount={acct.reserved_balance}
-                            currency={acct.currency}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {isPoints ? (
-                          <Points amount={acct.available_balance} />
-                        ) : (
-                          <Money
-                            amount={acct.available_balance}
-                            currency={acct.currency}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <StatusPill status={acct.status.toUpperCase()} variant="dense" />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </Section>
-
-      {/* Transactions — server-paged, filterable (20 per page) */}
-      <Section
-        title="Transactions"
-        description="Movements on this user's wallets. Filter by currency or search a transaction ID."
-      >
-        <UserTransactionsPanel
-          tenantId={detail.tenant_id}
-          userId={detail.id}
-          initialItems={transactions}
-          initialTotal={transactionsTotal}
-          currencies={txnCurrencies}
-        />
-      </Section>
+              </>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

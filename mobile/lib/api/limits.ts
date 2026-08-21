@@ -58,3 +58,45 @@ export async function getMyLimits(): Promise<MyLimits[]> {
     withAuth: true,
   });
 }
+
+/**
+ * True when an axis is fully consumed on EITHER dimension — the transaction
+ * count has hit its cap, or the value has. Uncapped dimensions never exhaust.
+ */
+export function axisExhausted(axis: LimitAxis): boolean {
+  const countFull = axis.cap_count != null && axis.consumed_count >= axis.cap_count;
+  const capNum = axis.cap_value != null ? parseFloat(axis.cap_value) : null;
+  const valueFull =
+    capNum != null && Number.isFinite(capNum) && capNum > 0
+      ? parseFloat(axis.consumed_value) >= capNum
+      : false;
+  return countFull || valueFull;
+}
+
+/** One exhausted limit axis, named for user-facing copy ("ZAR daily send"). */
+export interface ExhaustedLimit {
+  currency: string;
+  direction: 'send' | 'receive';
+  window: 'daily' | 'weekly' | 'monthly';
+}
+
+/**
+ * Every exhausted axis across all currency blocks, daily windows first —
+ * drives the home-screen "limit reached" banner. Empty array = nothing full.
+ */
+export function findExhaustedLimits(blocks: MyLimits[]): ExhaustedLimit[] {
+  const windows = ['daily', 'weekly', 'monthly'] as const;
+  const directions = ['send', 'receive'] as const;
+  const out: ExhaustedLimit[] = [];
+  // Window-major order so a daily exhaustion (the most actionable) leads.
+  for (const window of windows) {
+    for (const block of blocks) {
+      for (const direction of directions) {
+        if (axisExhausted(block[direction][window])) {
+          out.push({ currency: block.currency, direction, window });
+        }
+      }
+    }
+  }
+  return out;
+}

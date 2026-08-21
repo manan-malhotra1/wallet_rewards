@@ -66,8 +66,9 @@
 | HARD | Ledger / money-path hardening (cross-cutting) | Partial | 5 | 3 Ledger · 5 Limits |
 | SEG | Customer Segmentation — Phase 1 (rules) + Phase 2 (AI, planned) | Partial | 12 | 16 Rewards Catalog · 14 Config |
 | SEC | **External event-source authorization hardening** | Planned · **CRITICAL** | 6 | 8 Event Ingestion · 14 Tenant/Platform Config |
+| VAPT | **Backend VAPT remediation (2026-08-21 sweep)** | Planned · **CRITICAL** | 13 | 1 Identity · 7 Roles · 11 Redemption · 14 Config |
 
-**Totals:** 36 epics/initiatives · ~163 catalogued stories.
+**Totals:** 37 epics/initiatives · ~176 catalogued stories.
 
 ---
 
@@ -102,6 +103,13 @@ and architectural memory, the real picture is:
   signing secret is optional at registration, so on the only production ingestion path a
   registered `source_key` — an identifier, not a credential — is the sole control between a
   Kafka message and minted points. Tracked as **Epic SEC**; nothing shipped against it.
+- **⚠ Open CRITICAL/HIGH findings from the backend VAPT sweep (2026-08-21)** — a white-box
+  review of the ledger, auth chain, redemption saga, partner API and FastAPI assembly. The
+  money core came out clean (no double-spend, no lock-ordering defect, no missing tenant
+  filter on user-facing queries); the exposure is on the **authorization boundary and the
+  configuration surface** — the platform authenticates callers well and scopes them weakly.
+  Two Critical (no admin↔tenant binding; `SIMULATOR_DEV_MODE=true` in the shipped template),
+  three High, five Medium, three Low. Tracked as **Epic VAPT**; nothing shipped against it.
 
 In short: the transactional and rewards core, the governance layer, and both frontends are
 delivered; the remaining backlog is mostly engagement/notifications, gamification surfaces,
@@ -518,6 +526,162 @@ internal redemption (Module 11b), so this is a money-loss path, not a data-integ
   restricting `wallet.events.external` writes to registered sources, TLS 1.2+ in transit per
   NFR-0260, and no credential in the compose file — this is a prerequisite for any non-local
   deployment, not a follow-up to it. **Planned**
+
+### VAPT — Backend security sweep remediation · **Planned** · ⚠ **CRITICAL**
+*White-box VAPT of `backend/app/**`, `scripts/` and `sasai-wallet-infra/` on 2026-08-21. Mobile
+was out of scope. Every item below was verified by reading the code path, not inferred from a
+design doc.*
+*Two things the sweep checked and did NOT find, recorded so nobody re-opens them speculatively:
+there is **no** double-spend or lock-ordering defect in `post_transaction` (locks taken in
+canonical account-id order before any balance read, held through commit), and **no** missing
+`tenant_id` filter on user-facing domain queries. The concurrency work is sound. The findings
+below are almost all authorization and configuration, not arithmetic.*
+*Event-source authorization is tracked separately as **Epic SEC** and is not duplicated here.*
+
+- **VAPT.1 — Bind admin principals to tenants** · **Critical** — `AdminPrincipal` carries no
+  tenant, `require_admin_role` checks only a realm-role string, and every admin money endpoint
+  reads `tenant_id` straight from the request body (`treasury/router.py` fund / withdraw /
+  adjust-system-wallet). Queries are tenant-filtered, but by a tenant the caller chose — that is
+  scoping, not isolation, and the F.3 threat model's "mitigated" rating for tenant isolation does
+  not hold for admin principals. Any `platform-admin` can act on any tenant by editing one field;
+  maker-checker and audit narrow this but the platform cannot currently express a tenant-restricted
+  operator at all. *AC:* `AdminPrincipal.tenant_ids` populated from a Keycloak claim; a single
+  `require_tenant_access(tenant_id)` dependency on every admin route (one auditable check, not
+  thirty inline ones); a distinct `platform-superadmin` role for genuinely global operations; a
+  test asserting an admin scoped to tenant A gets 403 naming tenant B on `/treasury/fund`.
+  **Planned**
+
+- **VAPT.2 — `SIMULATOR_DEV_MODE` must default to false** · **Critical** —
+  `backend/.env.example:22` ships `SIMULATOR_DEV_MODE=true` and `CLAUDE.md` tells operators to
+  `cp .env.example .env`. The flag exposes `POST /events/sim-kafka-produce` (**no auth at all** —
+  an unauthenticated write primitive onto the reward event bus), `POST /events/sim-ingest` (no
+  admin auth), and `GET /events/sim-bootstrap` (**no auth** — returns every registered phone
+  number mapped to its user UUID, a bulk PII disclosure against NFR-0240). Chained with SEC.1 this
+  is a complete unauthenticated points-minting path: enumerate user ids, then produce events for
+  them. The in-file comment warning against production use is documentation, not a control.
+  *AC:* template default flipped to `false`; `Settings` refuses to boot when the flag is true and
+  the environment is not `local`; the sim router is registered conditionally in `main.py` rather
+  than flag-checked inside each handler; `sim-bootstrap` requires admin auth and masks identifiers
+  even in local mode. **Planned**
+
+- **VAPT.3 — Verify the JWT audience claim** · **High** — `auth/tokens.py` passes
+  `"verify_aud": False`, annotated `# Phase F.4`; F.4 shipped and the setting never changed.
+  Signature, `exp`, `iss` and an RS256 allowlist are all correctly enforced, so the token is
+  genuinely realm-issued — but nothing checks it was issued for this backend, and realm roles are
+  shared across every client in the realm. A token minted for any other realm client authenticates
+  against the money API, widening VAPT.1's blast radius. *AC:* `verify_aud: True` with
+  `audience=settings.KEYCLOAK_CLIENT_ID`; the Keycloak audience mapper added to
+  `bootstrap_keycloak.py` **in the same change** (Keycloak omits `aud` without it, so flipping the
+  flag alone locks out every admin); `azp` checked as a fallback where `aud` can't be relied on.
+  **Planned**
+
+- **VAPT.4 — Points must be whole units and rounding must not favour the redeemer** · **High** —
+  `quote_fiat_amount` quantizes to 0.01 with `ROUND_HALF_UP`, and `InternalRedemptionRequest`
+  constrains `points_amount` only to `gt=0` — no minimum, no integer constraint, backed by a
+  `Numeric(20, 6)` column. Any redemption whose true value lands in `[0.005, 0.01)` rounds up to a
+  full cent, so at a plain 100 PTS = 10 ZAR rate, twenty 0.05-point redemptions pay 0.20 ZAR
+  against a true value of 0.10. The Pay-PRD-1295 anti-drain caps set a per-transaction *maximum*
+  and are silent on minimums, and nothing rate-limits the endpoint (VAPT.9). Each redemption is
+  individually well-priced and correctly ledgered, so aggregate reporting will not show it.
+  *AC:* points constrained to whole units at the schema boundary plus a DB CHECK;
+  `min_points_per_txn` added to `points_conversion_rates` and enforced fail-closed at the same call
+  site as the max caps; quantize changed to `ROUND_DOWN`; `fiat_amount <= 0` rejected before the
+  burn so the degenerate case 422s cleanly instead of burning-then-unwinding; a reconciliation
+  query run over existing `internal_redemptions` to establish whether this has already been
+  exercised. **Planned**
+
+- **VAPT.5 — Session lifecycle: evict on re-auth, cap absolute lifetime** · **High** —
+  NFR-0280 ("a new session on the same channel invalidates the earlier session") is not
+  implemented: `create_session` has exactly one caller and never invalidates prior sessions, and
+  `invalidate_user_sessions` is reached only from the admin access-lock. `read_session` also slides
+  the TTL on every authenticated read with no absolute ceiling, so a stolen token stays valid
+  indefinitely while it is exercised — and the victim re-authenticating does not evict it, giving
+  them neither a signal nor a self-service remedy. *AC:* PIN-auth invalidates the user's existing
+  sessions (channel-filtered) before issuing a new one; `issued_at` in the session payload with an
+  absolute ceiling enforced in `read_session` independent of the sliding TTL; an active-sessions
+  list with user-initiated revoke. **Planned**
+
+- **VAPT.6 — Owner-scope the redemption lookup (intra-tenant BOLA)** · **Medium** —
+  `GET /api/v1/redemption/{redemption_id}` resolves via `get_redemption(session, id, tenant_id)`,
+  filtering on tenant only; object-level ownership is never checked, so any authenticated user can
+  read another user's redemption in the same tenant given its id. Demonstrably an oversight rather
+  than a decision: the equivalent airtime endpoint filters on `tenant_id` **and** `user_id` and its
+  docstring cites "S7 A2, intra-tenant BOLA". Not enumerable (UUIDv4), so the realistic vectors are
+  ids leaking via support, logs or screenshots. *AC:* `user_id` added to the filter and threaded
+  through the route, matching the airtime signature; 404 not 403 on a cross-user read; the
+  cross-user test airtime already has, added for redemption. **Planned**
+
+- **VAPT.7 — Scope idempotency keys to the principal and bind them to the payload** · **Medium** —
+  uniqueness is `(tenant_id, idempotency_key)` with a fully client-supplied key and no stored
+  request fingerprint. Two effects: a key reused by another caller in the same tenant returns
+  *their* transaction, and `P2PResponse` then discloses that transaction's id, reference, amount,
+  fee and timestamp to the wrong party while the intended payment silently does not execute; and a
+  client reusing a key for a genuinely different payment gets a silent no-op success that
+  reconciles as completed. Mobile uses UUIDv4, but partners key on their own order ids
+  (`order-1024`) and share one tenant-wide namespace. *AC:* constraint becomes
+  `(tenant_id, principal_key, idempotency_key)`; a SHA-256 of the canonical body stored and
+  compared on replay — identical returns the original, different returns 409
+  `idempotency_key_reuse`. The server must not be safe only when clients behave. **Planned**
+
+- **VAPT.8 — Stop conflating every `IntegrityError` with a duplicate key** · **Medium** — the
+  commit handler in `ledger/service.py` treats any `IntegrityError` as an idempotency race and,
+  finding no existing row, raises `DuplicateIdempotencyKey`. `ledger_entries` also carries
+  `CHECK (amount > 0)` and several FKs, so a genuine data-integrity violation is reported to the
+  client — and to whoever reads the logs — as a benign retry condition, with the original exception
+  never logged (VAPT.10). *AC:* branch on `exc.orig.sqlstate`; only `23505` on the idempotency
+  index takes the recovery path; everything else is logged with full context and re-raised
+  distinctly. **Planned**
+
+- **VAPT.9 — Rate limiting, body caps, and lockout that can't be weaponised** · **Medium** —
+  `auth/rate_limit.py` limits only OTP sends per phone and 60 req/min per API key. There is no
+  limiter on session-authenticated endpoints, no global limiter, and `main.py` registers **no
+  middleware at all** — no trusted-host, no request-size cap, no timeout. `require_api_key` awaits
+  the full body before any size check and charges quota only after the key authenticates, leaving
+  failed-auth probes unthrottled. Lockout is keyed solely on `user_id` with no IP dimension, so an
+  attacker who can enumerate user ids can lock every account in a tenant with five requests each —
+  denial of service *through* the security control. *AC:* per-session/per-IP limiter on all
+  money-mutating routes; request size capped at the ASGI layer before `await request.body()`; an IP
+  dimension on failed-attempt tracking with progressive delay preferred over hard lockout; a small
+  quota charged to failed API-key attempts keyed on source IP. **Planned**
+
+- **VAPT.10 — Log declined transactions** · **Medium** — limit breaches, insufficient funds, float
+  exhaustion and fail-closed config rejections all raise before any ledger write; the handler at
+  `main.py:93` renders the error envelope and does not log, no middleware logs requests, and only
+  `auth_attempts` persists anything (PIN/OTP only). There is no detection surface for the probing
+  that precedes most wallet fraud, and VAPT.4 / VAPT.7 / VAPT.9 would leave no forensic trace if
+  exploited. Compliance exposure as much as security: NFR-0160 audit expectations are met for
+  approvals and silent for denials. *AC:* every `AppHTTPException` logged with structured fields
+  (`error_code`, `user_id`, `tenant_id`, `transaction_type`, masked amount, IP) per the existing
+  structlog conventions; a `declined_transactions` row persisted on money paths; a "Declined
+  attempts" admin view over it. **Planned**
+
+- **VAPT.11 — Reject non-positive entry amounts in `_assert_balanced`** · **Low** — the guard
+  checks `credits == debits` and `credits != 0` but never that individual amounts are positive, so
+  a uniformly negative entry set satisfies both. The DB `CHECK (amount > 0)` catches it at commit,
+  so **no money bug is reachable today** — but the rejection then routes through VAPT.8 and
+  surfaces as a spurious duplicate-key 409. *AC:* explicit positive-amount assertion in
+  `_assert_balanced`, so the guard is where its own docstring already claims it is. **Planned**
+
+- **VAPT.12 — Make the Redis quota / counter operations atomic** · **Low** —
+  `consume_otp_send_quota` does `exists` → `set` and `register_failure` does `incr` → `expire` as
+  separate round-trips, so concurrent requests can both pass the short-window gate or leave a
+  failure counter with no TTL. *AC:* single-operation semantics via `SET NX EX` or a Lua script.
+  **Planned**
+
+- **VAPT.13 — Ship a compliant `SESSION_TTL_SECONDS` in the template** · **Low** —
+  `.env.example` ships 3600s against NFR-0180's ≤15-minute mobile requirement. The comment explains
+  it as dev convenience, but it is the value that gets copied. *AC:* the template carries the
+  compliant value and developers raise it locally. **Planned**
+
+**Not covered by this sweep** (open for a later pass): Celery task security, reconciliation and
+segments, the rules evaluator as an attack surface, admin-UI server actions, SQL-injection review
+of the analytics aggregates, and dependency CVE scanning. Mobile was excluded by instruction —
+VAPT.5 and VAPT.7 have client-side counterparts worth reviewing when that exclusion lifts.
+
+**Suggested order:** VAPT.2 (one-line default, closes an unauthenticated chain today) → VAPT.3
+(small, but coordinate the Keycloak mapper or it locks out every admin) → VAPT.1 (largest; design
+the claim shape first) → VAPT.4 (ship with the reconciliation query) → VAPT.5, VAPT.7, VAPT.6, then
+the rest.
 
 ---
 

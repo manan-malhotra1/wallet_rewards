@@ -1,12 +1,18 @@
 "use client";
 
 /**
- * Wallet inflow vs outflow for a single currency, mirrored about a zero line.
+ * Inflow vs outflow for a single currency, mirrored about a zero line.
  *
  * Money in grows up, money out grows down, both against the same scale — so a
  * range where the float is draining is visible as an asymmetric silhouette
  * rather than as two bars the reader has to subtract. The dashboard renders one
  * instance per selected currency; they are never combined.
+ *
+ * `series` selects WHICH flow is plotted: customer movement across user wallets,
+ * or operator treasury movement between the float and the bank. They are drawn as
+ * separate instances on purpose — operator funding dwarfs customer activity by
+ * orders of magnitude, so sharing one y-scale would flatten the customer bars to
+ * an invisible line.
  */
 import * as React from "react";
 
@@ -19,7 +25,7 @@ import {
   type PlotRect,
 } from "@/lib/chart-geometry";
 import { abbreviateNumber, formatBucketLabel } from "@/lib/analytics-format";
-import { netFlowFor } from "@/lib/dashboard-series";
+import { netFlowFor, treasuryFlowFor } from "@/lib/dashboard-series";
 import type { AnalyticsGranularity, AnalyticsRange, NetFlowPoint } from "@/lib/api-types";
 import { AxisLabels, GridLines, VB_WIDTH } from "./plot-frame";
 
@@ -38,10 +44,22 @@ interface Props {
   symbol: string;
   granularity: AnalyticsGranularity;
   range: AnalyticsRange;
+  /** Which flow to plot. Defaults to customer wallet movement. */
+  series?: "wallet" | "treasury";
 }
 
-export function NetFlowChart({ data, currency, symbol, granularity, range }: Props) {
-  const points = React.useMemo(() => netFlowFor(data, currency), [data, currency]);
+export function NetFlowChart({
+  data,
+  currency,
+  symbol,
+  granularity,
+  range,
+  series = "wallet",
+}: Props) {
+  const points = React.useMemo(
+    () => (series === "treasury" ? treasuryFlowFor(data, currency) : netFlowFor(data, currency)),
+    [data, currency, series],
+  );
 
   const max = niceMax(
     Math.max(0, ...points.flatMap((point) => [point.inflow, point.outflow])),
@@ -70,6 +88,9 @@ export function NetFlowChart({ data, currency, symbol, granularity, range }: Pro
   );
 
   if (points.length === 0) return null;
+  // A range can contain customer activity but no operator movement at all; an
+  // all-zero frame is noise, so skip it rather than drawing a flat zero line.
+  if (points.every((point) => point.inflow === 0 && point.outflow === 0)) return null;
 
   return (
     <div className="relative mt-3.5 rounded-[14px] bg-surface-inset px-3 pt-3.5 pb-1.5 shadow-[inset_0_1px_0_var(--hairline-top)]">
@@ -78,7 +99,11 @@ export function NetFlowChart({ data, currency, symbol, granularity, range }: Pro
         preserveAspectRatio="none"
         className="block h-[230px] w-full"
         role="img"
-        aria-label={`Wallet inflow versus outflow, ${currency}`}
+        aria-label={
+          series === "treasury"
+            ? `Treasury inflow versus outflow, ${currency}`
+            : `Wallet inflow versus outflow, ${currency}`
+        }
       >
         <GridLines lines={grid} rect={RECT} />
         {points.map((point, i) => (

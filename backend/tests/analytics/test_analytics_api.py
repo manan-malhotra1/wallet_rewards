@@ -23,8 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
     ENTRY_CREDIT,
+    ENTRY_DEBIT,
     ENTRY_STATUS_COMPLETED,
     REWARD_TYPE_POINTS,
     TXN_STATUS_COMPLETED,
@@ -713,6 +715,121 @@ async def test_net_flow_reports_wallet_inflow(
     points = response.json()
     assert sum(Decimal(p["inflow"]) for p in points) == Decimal("300")
     assert sum(Decimal(p["outflow"]) for p in points) == 0
+
+
+async def _make_treasury_move(
+    db_session: AsyncSession,
+    tenant: Tenant,
+    *,
+    amount: Decimal,
+    to_bank: bool,
+    currency: str = "ZAR",
+) -> LedgerEntry:
+    """Seed one operator treasury movement between the float and the bank mirror.
+
+    `to_bank=True` is a withdrawal (CREDIT the bank mirror, cash leaves the float);
+    `to_bank=False` is a top-up (DEBIT the bank mirror, cash enters the float). Only
+    the bank-mirror leg is asserted on, because that is the leg `net_flow` measures
+    operator movement from — the float leg alone cannot distinguish an operator
+    withdrawal from ordinary customer funding.
+    """
+    txn = await _make_txn(
+        db_session, tenant, txn_type="treasury.adjust", amount=amount, currency=currency
+    )
+    mirror = Account(
+        tenant_id=tenant.id,
+        user_id=None,
+        account_type=ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
+        currency=currency,
+        name="Primary",
+    )
+    db_session.add(mirror)
+    await db_session.commit()
+    await db_session.refresh(mirror)
+    entry = LedgerEntry(
+        transaction_id=txn.id,
+        account_id=mirror.id,
+        entry_type=ENTRY_CREDIT if to_bank else ENTRY_DEBIT,
+        amount=amount,
+        currency=currency,
+        status=ENTRY_STATUS_COMPLETED,
+    )
+    db_session.add(entry)
+    await db_session.commit()
+    return entry
+
+
+@pytest.mark.asyncio
+async def test_net_flow_reports_an_operator_withdrawal_as_treasury_outflow(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a float withdrawal surfaces as treasury outflow, not wallet outflow"""
+    # The regression: an operator withdrawal moves float -> bank and touches no
+    # user wallet, so it was previously absent from every series on the chart.
+    tenant = await _make_tenant(db_session, name="net-flow-treasury-out")
+    await _make_treasury_move(db_session, tenant, amount=Decimal("1000000"), to_bank=True)
+
+    response = await async_client.get(
+        "/api/v1/analytics/net-flow",
+        params={"tenant_id": str(tenant.id), "granularity": "day"},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    points = response.json()
+    assert sum(Decimal(p["treasury_outflow"]) for p in points) == Decimal("1000000")
+    assert sum(Decimal(p["treasury_inflow"]) for p in points) == 0
+    # Operator movement must never be reported as customer activity.
+    assert sum(Decimal(p["inflow"]) for p in points) == 0
+    assert sum(Decimal(p["outflow"]) for p in points) == 0
+
+
+@pytest.mark.asyncio
+async def test_net_flow_reports_a_float_topup_as_treasury_inflow(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify a bank-funded float top-up surfaces as treasury inflow"""
+    tenant = await _make_tenant(db_session, name="net-flow-treasury-in")
+    await _make_treasury_move(db_session, tenant, amount=Decimal("250000"), to_bank=False)
+
+    response = await async_client.get(
+        "/api/v1/analytics/net-flow",
+        params={"tenant_id": str(tenant.id), "granularity": "day"},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    points = response.json()
+    assert sum(Decimal(p["treasury_inflow"]) for p in points) == Decimal("250000")
+    assert sum(Decimal(p["treasury_outflow"]) for p in points) == 0
+    assert sum(Decimal(p["inflow"]) for p in points) == 0
+
+
+@pytest.mark.asyncio
+async def test_net_flow_keeps_wallet_and_treasury_series_separate(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_auth_header: dict[str, str],
+) -> None:
+    """Verify customer and operator movement are reported as independent pairs"""
+    tenant = await _make_tenant(db_session, name="net-flow-both")
+    user = await _make_user(db_session, tenant)
+    await _make_wallet_credit(db_session, tenant, user, amount=Decimal("300"))
+    await _make_treasury_move(db_session, tenant, amount=Decimal("500000"), to_bank=False)
+
+    response = await async_client.get(
+        "/api/v1/analytics/net-flow",
+        params={"tenant_id": str(tenant.id), "granularity": "day"},
+        headers=admin_auth_header,
+    )
+    assert response.status_code == 200, response.text
+    points = response.json()
+    # Same window, same currency — the pairs must not bleed into one another, or a
+    # R500k operator top-up would read as customer inflow on the dashboard.
+    assert sum(Decimal(p["inflow"]) for p in points) == Decimal("300")
+    assert sum(Decimal(p["treasury_inflow"]) for p in points) == Decimal("500000")
 
 
 @pytest.mark.asyncio

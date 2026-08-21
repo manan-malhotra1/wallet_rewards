@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTrendData,
   netFlowFor,
+  treasuryFlowFor,
   registrationValues,
   revenueByCurrency,
   rewardsFlow,
@@ -185,8 +186,22 @@ describe("revenueByCurrency", () => {
 
 describe("netFlowFor", () => {
   const POINTS: NetFlowPoint[] = [
-    { bucket: "a", currency: "ZAR", inflow: "10", outflow: "4" },
-    { bucket: "a", currency: "USD", inflow: "1", outflow: "2" },
+    {
+      bucket: "a",
+      currency: "ZAR",
+      inflow: "10",
+      outflow: "4",
+      treasury_inflow: "500",
+      treasury_outflow: "700",
+    },
+    {
+      bucket: "a",
+      currency: "USD",
+      inflow: "1",
+      outflow: "2",
+      treasury_inflow: "0",
+      treasury_outflow: "0",
+    },
   ];
 
   it("Verify only the requested currency's movement is returned", () => {
@@ -195,6 +210,63 @@ describe("netFlowFor", () => {
 
   it("Verify a null payload yields no points", () => {
     expect(netFlowFor(null, "ZAR")).toEqual([]);
+  });
+
+  it("Verify treasury movement is excluded from the wallet series", () => {
+    // The two series must never be conflated: an operator top-up is not customer
+    // inflow, so the wallet mapper reads only the wallet fields.
+    expect(netFlowFor(POINTS, "ZAR")).toEqual([{ bucket: "a", inflow: 10, outflow: 4 }]);
+  });
+});
+
+describe("treasuryFlowFor", () => {
+  const POINTS: NetFlowPoint[] = [
+    {
+      bucket: "a",
+      currency: "ZAR",
+      inflow: "10",
+      outflow: "4",
+      treasury_inflow: "500",
+      treasury_outflow: "700",
+    },
+    {
+      bucket: "a",
+      currency: "USD",
+      inflow: "1",
+      outflow: "2",
+      treasury_inflow: "9",
+      treasury_outflow: "8",
+    },
+  ];
+
+  it("Verify operator movement is read from the treasury fields only", () => {
+    expect(treasuryFlowFor(POINTS, "ZAR")).toEqual([
+      { bucket: "a", inflow: 500, outflow: 700 },
+    ]);
+  });
+
+  it("Verify a float withdrawal surfaces as outflow", () => {
+    // The regression this series exists for: an operator withdrawal touches no
+    // user wallet, so it was previously invisible on the dashboard.
+    expect(
+      treasuryFlowFor(
+        [
+          {
+            bucket: "a",
+            currency: "ZAR",
+            inflow: "0",
+            outflow: "0",
+            treasury_inflow: "0",
+            treasury_outflow: "1000000",
+          },
+        ],
+        "ZAR",
+      ),
+    ).toEqual([{ bucket: "a", inflow: 0, outflow: 1000000 }]);
+  });
+
+  it("Verify a null payload yields no points", () => {
+    expect(treasuryFlowFor(null, "ZAR")).toEqual([]);
   });
 });
 

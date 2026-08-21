@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, Integer, cast, func, select
+from sqlalchemy import ColumnElement, Integer, Select, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -42,6 +42,7 @@ from app.modules.ledger.service import signed_balance_expr
 from app.shared.exceptions import InvalidAnalyticsParameter, TenantNotFound
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
+    ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
@@ -802,12 +803,22 @@ async def net_flow(
     granularity: str,
     now: datetime | None = None,
 ) -> list[NetFlowPoint]:
-    """Per-bucket, per-currency credits (inflow) vs debits (outflow) into wallets.
+    """Per-bucket, per-currency wallet flow plus operator treasury flow.
 
-    Buckets COMPLETED ledger entries on `financial_wallet` accounts by
-    date_trunc(granularity, created_at) AND currency — money is NEVER summed
-    across currencies. CREDIT is money flowing into user wallets (inflow); DEBIT
-    is money flowing out (outflow). Ordered by bucket then currency.
+    Buckets COMPLETED ledger entries by date_trunc(granularity, created_at) AND
+    currency — money is NEVER summed across currencies. Two independent pairs are
+    returned per bucket (see `NetFlowPoint`):
+
+    * wallet `inflow` / `outflow` — CREDIT / DEBIT legs on `financial_wallet`
+      accounts, i.e. money crossing the user-wallet boundary.
+    * `treasury_inflow` / `treasury_outflow` — operator cash moving between the
+      cash float and the bank, measured on the `operator_adjustment` bank-mirror
+      leg: a DEBIT there means cash came FROM the bank into the float (inflow), a
+      CREDIT means cash went back TO the bank (outflow).
+
+    The bank-mirror leg is the right place to measure operator movement. Reading
+    the float leg instead would also catch `fund_user` (which debits the float to
+    credit a customer) and report internal funding as money leaving the platform.
     """
     await _assert_tenant_exists(session, tenant_id)
     granularity = validate_granularity(granularity)
@@ -815,34 +826,68 @@ async def net_flow(
     bucket = func.date_trunc(granularity, LedgerEntry.created_at)
     credit = cast(LedgerEntry.entry_type == ENTRY_CREDIT, Integer) * LedgerEntry.amount
     debit = cast(LedgerEntry.entry_type == ENTRY_DEBIT, Integer) * LedgerEntry.amount
-    stmt = (
-        select(
-            bucket.label("bucket"),
-            LedgerEntry.currency.label("currency"),
-            func.coalesce(func.sum(credit), 0).label("inflow"),
-            func.coalesce(func.sum(debit), 0).label("outflow"),
+
+    def flow_stmt(account_type: str) -> Select[tuple[datetime, str, Decimal, Decimal]]:
+        """Bucketed CREDIT/DEBIT totals for one account type in the window."""
+        return (
+            select(
+                bucket.label("bucket"),
+                LedgerEntry.currency.label("currency"),
+                func.coalesce(func.sum(credit), 0).label("credit_total"),
+                func.coalesce(func.sum(debit), 0).label("debit_total"),
+            )
+            .select_from(LedgerEntry)
+            .join(Account, Account.id == LedgerEntry.account_id)
+            .where(
+                Account.tenant_id == tenant_id,
+                Account.account_type == account_type,
+                LedgerEntry.status == ENTRY_STATUS_COMPLETED,
+                LedgerEntry.created_at >= current.start,
+                LedgerEntry.created_at < current.end,
+            )
+            .group_by(bucket, LedgerEntry.currency)
+            .order_by(bucket, LedgerEntry.currency)
         )
-        .select_from(LedgerEntry)
-        .join(Account, Account.id == LedgerEntry.account_id)
-        .where(
-            Account.tenant_id == tenant_id,
-            Account.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
-            LedgerEntry.status == ENTRY_STATUS_COMPLETED,
-            LedgerEntry.created_at >= current.start,
-            LedgerEntry.created_at < current.end,
+
+    wallet_rows = (await session.execute(flow_stmt(ACCOUNT_TYPE_FINANCIAL_WALLET))).all()
+    treasury_rows = (await session.execute(flow_stmt(ACCOUNT_TYPE_OPERATOR_ADJUSTMENT))).all()
+
+    # Merge on (bucket, currency): a bucket may have treasury movement with no
+    # customer activity (or the reverse), and both must still surface.
+    merged: dict[tuple[datetime, str], dict[str, Decimal]] = {}
+    for bucket_val, currency, credit_total, debit_total in wallet_rows:
+        merged[(bucket_val, currency)] = {
+            "inflow": Decimal(credit_total),
+            "outflow": Decimal(debit_total),
+            "treasury_inflow": Decimal(0),
+            "treasury_outflow": Decimal(0),
+        }
+    for bucket_val, currency, credit_total, debit_total in treasury_rows:
+        entry = merged.setdefault(
+            (bucket_val, currency),
+            {
+                "inflow": Decimal(0),
+                "outflow": Decimal(0),
+                "treasury_inflow": Decimal(0),
+                "treasury_outflow": Decimal(0),
+            },
         )
-        .group_by(bucket, LedgerEntry.currency)
-        .order_by(bucket, LedgerEntry.currency)
-    )
-    rows = (await session.execute(stmt)).all()
+        # DEBIT on the bank mirror = cash drawn from the bank into the float.
+        entry["treasury_inflow"] = Decimal(debit_total)
+        entry["treasury_outflow"] = Decimal(credit_total)
+
     return [
         NetFlowPoint(
             bucket=bucket_val,
             currency=currency,
-            inflow=Decimal(inflow),
-            outflow=Decimal(outflow),
+            inflow=values["inflow"],
+            outflow=values["outflow"],
+            treasury_inflow=values["treasury_inflow"],
+            treasury_outflow=values["treasury_outflow"],
         )
-        for bucket_val, currency, inflow, outflow in rows
+        for (bucket_val, currency), values in sorted(
+            merged.items(), key=lambda item: (item[0][0], item[0][1])
+        )
     ]
 
 

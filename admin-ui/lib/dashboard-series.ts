@@ -220,6 +220,27 @@ export function netFlowFor(points: NetFlowPoint[] | null, currency: string): Flo
     }));
 }
 
+/**
+ * Operator treasury movement per bucket: bank -> float (in) vs float -> bank (out).
+ *
+ * Kept as a separate series from `netFlowFor` rather than folded into it. Operator
+ * funding is orders of magnitude larger than customer activity, so on one shared
+ * scale the customer bars collapse to nothing — and summing the two would report
+ * operator top-ups as customer inflow.
+ */
+export function treasuryFlowFor(
+  points: NetFlowPoint[] | null,
+  currency: string,
+): FlowPoint[] {
+  return (points ?? [])
+    .filter((point) => point.currency === currency)
+    .map((point) => ({
+      bucket: point.bucket,
+      inflow: amount(point.treasury_inflow),
+      outflow: amount(point.treasury_outflow),
+    }));
+}
+
 /** One bucket of rewards-points movement (unitless — points, not money). */
 export interface PointsFlow {
   bucket: string;

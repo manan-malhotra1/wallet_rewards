@@ -364,7 +364,7 @@ export function DashboardClient({ initial, initialRange, initialGranularity }: P
               <Panel key={code}>
                 <PanelHeading
                   title={`Net flow · ${code}`}
-                  subtitle="Inflow vs outflow"
+                  subtitle="Customer wallets: inflow vs outflow"
                   action={
                     <div className="flex items-center gap-3.5">
                       <Legend color="var(--chart-1)" label="Inflow" />
@@ -388,6 +388,48 @@ export function DashboardClient({ initial, initialRange, initialGranularity }: P
                     symbol={currencyMeta[code]?.symbol ?? ""}
                     granularity={granularity}
                     range={range}
+                  />
+                </PanelState>
+              </Panel>
+            ))}
+
+            {/* Operator treasury movement gets its own panel and therefore its own
+                y-scale: float top-ups run orders of magnitude above customer
+                activity, and folding them into the wallet series would both flatten
+                those bars and misreport operator funding as customer inflow. */}
+            {selectedCurrencies.map((code) => (
+              <Panel key={`treasury-${code}`}>
+                <PanelHeading
+                  title={`Treasury flow · ${code}`}
+                  subtitle="Operator cash: bank vs float"
+                  action={
+                    <div className="flex items-center gap-3.5">
+                      <Legend color="var(--chart-1)" label="From bank" />
+                      <Legend color="var(--chart-4)" label="To bank" />
+                    </div>
+                  }
+                />
+                <PanelState
+                  status={panelStatus(
+                    data.netFlow,
+                    (data.netFlow ?? []).every(
+                      (p) =>
+                        p.currency !== code ||
+                        (Number(p.treasury_inflow) === 0 && Number(p.treasury_outflow) === 0),
+                    ),
+                  )}
+                  emptyMessage="No treasury movement."
+                  emptyIcon={BarsGlyph}
+                  emptyClassName="mt-3.5 h-[200px]"
+                  onRetry={retry}
+                >
+                  <NetFlowChart
+                    data={data.netFlow ?? []}
+                    currency={code}
+                    symbol={currencyMeta[code]?.symbol ?? ""}
+                    granularity={granularity}
+                    range={range}
+                    series="treasury"
                   />
                 </PanelState>
               </Panel>

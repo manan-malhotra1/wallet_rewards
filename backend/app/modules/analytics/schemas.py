@@ -180,12 +180,27 @@ class CurrencyLiquidity(BaseModel):
 
 
 class NetFlowPoint(BaseModel):
-    """Inflow vs outflow into user wallets for one bucket, per currency."""
+    """Wallet and treasury flow for one bucket, per currency.
+
+    Two independent pairs, deliberately NOT summed together:
+
+    * `inflow` / `outflow` — money crossing the USER WALLET boundary. An internal
+      transfer (p2p, cashout, cash_in) touches two user wallets and so raises both
+      sides equally; only funding, airtime and withdrawals move the net.
+    * `treasury_inflow` / `treasury_outflow` — OPERATOR cash movements between the
+      cash float and the bank (`treasury.adjust`). These never touch a user wallet,
+      which is why an operator withdrawal was previously invisible here.
+
+    Keeping them apart matters: adding an operator float top-up to customer inflow
+    would read as customer activity that never happened.
+    """
 
     bucket: datetime
     currency: str
     inflow: Decimal
     outflow: Decimal
+    treasury_inflow: Decimal = Decimal("0")
+    treasury_outflow: Decimal = Decimal("0")
 
 
 class UserTypeSlice(BaseModel):

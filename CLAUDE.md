@@ -29,6 +29,7 @@ A multi-tenant wallet + rule-based rewards engine for Sasai Fintech's diaspora e
 | Path | What lives here |
 |---|---|
 | `backend/app/modules/{module}/` | Per-domain service (`router.py`, `service.py`, `schemas.py`) — ~27 modules |
+| `backend/app/modules/user_types/` | User-type catalog — categories, the two-level hierarchy and type validation. Types are **rows** (`user_type_categories` / `user_types`), not constants; writes go through config maker-checker |
 | `backend/app/shared/models/` | SQLAlchemy ORM, one file per domain |
 | `backend/app/shared/exceptions/` | All custom exceptions (one file, all subclass `AppHTTPException`) |
 | `backend/app/auth/` | Keycloak JWT, Redis sessions, bcrypt hashing, HMAC callbacks, API-key + rate-limit |

@@ -112,9 +112,7 @@ async def test_supervisor_of_the_wrong_type_is_refused_at_apply(
         db_session,
         CreateUserRequest(
             tenant_id=test_tenant.id,
-            identifiers=[
-                IdentifierIn(identifier_type="phone", identifier_value="+27825553100")
-            ],
+            identifiers=[IdentifierIn(identifier_type="phone", identifier_value="+27825553100")],
             user_type="consumer",
         ),
     )

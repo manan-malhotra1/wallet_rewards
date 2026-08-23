@@ -65,10 +65,11 @@
 | MOB | Mobile App (Expo) | Partial | 8 | 1 Identity · 4 Payment · 16 Catalog |
 | HARD | Ledger / money-path hardening (cross-cutting) | Partial | 5 | 3 Ledger · 5 Limits |
 | SEG | Customer Segmentation — Phase 1 (rules) + Phase 2 (AI, planned) | Partial | 12 | 16 Rewards Catalog · 14 Config |
+| UTYPE | Configurable User Types — catalog, hierarchy, maker-checker | Shipped | 7 | 1 Identity · 14 Tenant/Platform Config |
 | SEC | **External event-source authorization hardening** | Planned · **CRITICAL** | 6 | 8 Event Ingestion · 14 Tenant/Platform Config |
 | VAPT | **Backend VAPT remediation (2026-08-21 sweep)** | Planned · **CRITICAL** | 13 | 1 Identity · 7 Roles · 11 Redemption · 14 Config |
 
-**Totals:** 37 epics/initiatives · ~176 catalogued stories.
+**Totals:** 38 epics/initiatives · ~183 catalogued stories.
 
 ---
 
@@ -450,6 +451,49 @@ by a batch job against a registry of 9 wallet-attributed metrics. Design:
 - **Seeded default tiers** — 3 system groups × 3 tiers each (Engagement: Dormant/New/Active; Transaction Value: Low/Mid/High; Customer Loyalty: Bronze/Silver/Gold) ship via `make seed`. **Shipped**
 - **Admin UI** — a group-sectioned `/segments` page with a criteria builder dialog (metric/operator/value rows, AND/OR composition, live match-count preview) and a manual "Recompute now" action. **Shipped**
 - **AI layer (Phase 2)** — natural-language → criteria DSL generation, reviewed before save. **Planned**; see the design doc above.
+
+### UTYPE — Configurable User Types · **Shipped**
+*Operators create their own user types from the admin UI instead of the platform shipping five
+hardcoded Python constants. Types are reference rows in `user_type_categories` → `user_types`,
+modelled on the services catalog: a `code` that `users.user_type` and every config table store as
+a plain string with **no foreign key**, plus an active/retired status. Every mutation is governed
+by the existing config four-eyes pipeline. Design:
+[`docs/superpowers/specs/2026-08-23-configurable-user-types-design.md`](superpowers/specs/2026-08-23-configurable-user-types-design.md).*
+*Migrations 0061–0064. The five original codes (`consumer`, `agent`, `super_agent`, `merchant`,
+`head_merchant`) ship as immutable system rows, so every existing user, price, limit, commission
+and cap keeps resolving exactly as before.*
+
+- **Catalog data model** — `user_type_categories` (three fixed, system-seeded: Consumers, Retail,
+  Business) and `user_types` (platform-wide when `tenant_id IS NULL`, otherwise tenant-scoped),
+  each with partial unique indexes on the system and tenant code namespaces. Codes are capped at
+  20 characters to match the `user_type` column every config table already carries. **Shipped**
+- **Static CHECKs removed** — `ck_users_user_type` and the per-config-table `user_type` CHECK
+  constraints are dropped, so a tenant's own type can be assigned, priced and capped; validity is
+  decided at runtime by `assert_user_type_valid`, never by the schema. **Shipped**
+- **Two-level hierarchy** — Retail and Business support one parent tier and one child tier
+  (`parent_type_code` alone expresses the tier — there is no derivable second column to disagree
+  with it); Consumers is flat. Four rules are enforced on every write: no self-parent, parent and
+  child in the same category, a parent must itself be top-level (depth cap), and a type with
+  active children cannot be retired. **Shipped**
+- **Behaviour moved onto the rows** — `MERCHANT_USER_TYPES` and `PARENT_TYPE_BY_CHILD` are gone;
+  merchant-profile / collection-account provisioning now keys off `requires_merchant_profile`, and
+  the supervisor's expected type off `parent_type_code`, so a tenant's own Business type qualifies
+  exactly as `merchant` does. **Shipped**
+- **Maker-checker governance** — `user_type` is a sixth config type in the config-request
+  registry: create and update land in the Configuration tab of `/approvals` and need a distinct
+  approver. There is no delete — a type is **retired**, never removed, because `users.user_type`
+  and every config row hold the code as a bare string and a retired type must stay resolvable for
+  the users already carrying it. **Shipped**
+- **Supervisor attachment** — a child-type user can be attached to its supervisor at creation by
+  phone (or another identifier) instead of an internal UUID: admin creation resolves the
+  supervisor by phone lookup, and the external partner onboarding API accepts an optional
+  `user_type` + `parent_identifier`. Resolution is tenant-scoped and the parent's type must be the
+  child type's declared parent. **Shipped**
+- **Admin UI** — a `/user-types` page listing the catalog by category, Retail and Business nested
+  two-level, where create and edit both raise a maker-checker proposal and system rows carry no
+  mutate affordance at all; plus a shared cascading category→type picker reused by every config
+  dialog, so the type list is loaded from the catalog rather than a TypeScript literal union.
+  **Shipped**
 
 ### SEC — External event-source authorization hardening · **Planned** · ⚠ **CRITICAL**
 *Raised 2026-08-21 from a code read of the Kafka ingestion path. The five gates in

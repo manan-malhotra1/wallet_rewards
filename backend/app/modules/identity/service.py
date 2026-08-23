@@ -45,6 +45,7 @@ from app.modules.identity.schemas import (
     OtpSendResponse,
     OtpVerifyRequest,
     OtpVerifyResponse,
+    ParentIdentifierIn,
     PinAuthRequest,
     PinSetRequest,
     SessionTokenResponse,
@@ -64,6 +65,8 @@ from app.shared.exceptions import (
     InvalidRegistrationToken,
     InvalidUserTypeParent,
     OtpRateLimited,
+    ParentNotFound,
+    ParentReferenceAmbiguous,
     PinAlreadySet,
     PinNotSet,
     SelfReferralNotAllowed,
@@ -155,6 +158,46 @@ async def assert_user_can_transact(
         raise UserNotFound()
     if status != USER_STATUS_ACTIVE:
         raise TransactionsBlocked()
+
+
+async def _resolve_parent_user_id(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    parent_user_id: UUID | None,
+    parent_identifier: ParentIdentifierIn | None,
+) -> UUID | None:
+    """Collapse the two supervisor reference forms into one user id (spec §7.2).
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Resolution is tenant-scoped; a supervisor in another tenant
+            is indistinguishable from a missing one.
+        parent_user_id: Direct reference, or None.
+        parent_identifier: Identifier reference, or None.
+
+    Returns:
+        The supervisor's user id, or None when neither form was supplied —
+        which is valid and the normal case.
+
+    Raises:
+        ParentReferenceAmbiguous: 422 — both forms supplied.
+        ParentNotFound: 422 — the identifier does not resolve in this tenant.
+    """
+    if parent_user_id is not None and parent_identifier is not None:
+        raise ParentReferenceAmbiguous()
+    if parent_identifier is None:
+        return parent_user_id
+
+    # Normalise first: the stored value is canonical, so "+27 82 555 2100" and
+    # "+27825552100" must hit the same row rather than one silently missing.
+    canonical = normalize_identifier(
+        parent_identifier.identifier_type, parent_identifier.identifier_value
+    )
+    row = await _find_identifier(session, tenant_id, parent_identifier.identifier_type, canonical)
+    if row is None:
+        raise ParentNotFound()
+    return row.user_id
 
 
 async def _validate_type_hierarchy(
@@ -355,6 +398,10 @@ async def create_user(
     Raises:
         TenantNotFound: 404 when request.tenant_id is unknown.
         IdentifierAlreadyInUse: 409 when an identifier collides in this tenant.
+        ParentReferenceAmbiguous: 422 when both `parent_user_id` and
+            `parent_identifier` are supplied.
+        ParentNotFound: 422 when `parent_identifier` resolves to nobody in this
+            tenant. Cross-tenant and nonexistent are indistinguishable.
         UnknownUserType: 422 when `user_type` does not resolve for this tenant
             or has been retired.
         InvalidUserTypeParent: 422 when user_type / parent_user_id are
@@ -370,17 +417,25 @@ async def create_user(
         in Epic 17 — this endpoint does not yet require a profile payload.
     """
     await _assert_tenant_exists(session, request.tenant_id)
+    # Collapse the two supervisor reference forms BEFORE validating, so the
+    # identifier path gets exactly the same type check as a raw UUID (§7.2).
+    parent_user_id = await _resolve_parent_user_id(
+        session,
+        tenant_id=request.tenant_id,
+        parent_user_id=request.parent_user_id,
+        parent_identifier=request.parent_identifier,
+    )
     await _validate_type_hierarchy(
         session,
         tenant_id=request.tenant_id,
         user_type=request.user_type,
-        parent_user_id=request.parent_user_id,
+        parent_user_id=parent_user_id,
     )
 
     user = User(
         tenant_id=request.tenant_id,
         user_type=request.user_type,
-        parent_user_id=request.parent_user_id,
+        parent_user_id=parent_user_id,
     )
     session.add(user)
     # Flush to populate user.id before we insert identifiers that reference it.

@@ -44,6 +44,18 @@ class AddIdentifierRequest(BaseModel):
     identifier_value: str = Field(min_length=1, max_length=255)
 
 
+class ParentIdentifierIn(BaseModel):
+    """A supervisor named by one of their registered identifiers.
+
+    Operators and partners hold phone numbers, not UUIDs, so this is the
+    practical way to attach a supervisor at onboarding (spec §7.2). Mutually
+    exclusive with `parent_user_id`; resolution is tenant-scoped.
+    """
+
+    identifier_type: IdentifierType
+    identifier_value: str = Field(min_length=1, max_length=255)
+
+
 class UserProfileIn(BaseModel):
     """Optional profile data provided at registration."""
 
@@ -68,6 +80,10 @@ class CreateUserRequest(BaseModel):
     # compatibility is enforced in the service layer.
     user_type: UserType = "consumer"
     parent_user_id: UUID | None = None
+    # The identifier form of the same supervisor reference (spec §7.2).
+    # Mutually exclusive with `parent_user_id`; BOTH omitted is the normal case
+    # and stays frictionless — a supervisor is never required.
+    parent_identifier: ParentIdentifierIn | None = None
     # Optional referrer's code (Epic 10 / WAL-77). When supplied and valid, a
     # `referrals` row is created and any active signup-trigger referral rule
     # fires. Absent / null → organic signup, no referral.

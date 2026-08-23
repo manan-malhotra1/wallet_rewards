@@ -11,7 +11,7 @@ import hmac
 import json
 import time
 from collections.abc import AsyncIterator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -20,7 +20,19 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.secret_box import encrypt_secret
-from app.shared.models import ApiKey, AuditLog, ExternalUserCreation, Tenant, User, UserIdentifier
+from app.modules.identity.schemas import CreateUserRequest, IdentifierIn
+from app.modules.identity.service import create_user
+from app.modules.user_types.schemas import UserTypeCreateRequest
+from app.modules.user_types.service import create_user_type
+from app.shared.models import (
+    ApiKey,
+    AuditLog,
+    ExternalUserCreation,
+    Role,
+    Tenant,
+    User,
+    UserIdentifier,
+)
 
 _SECRET = "ext-partner-secret-do-not-log"
 
@@ -418,7 +430,14 @@ async def test_partner_cannot_mass_assign_privileged_fields(
     db_session: AsyncSession,
     api_key: dict[str, str],
 ) -> None:
-    """Verify a partner cannot set privileged fields when creating a customer"""
+    """Verify a partner cannot set privileged fields when creating a customer
+
+    `user_type` became a legitimate field with the user-types catalog (spec
+    §7.3) and has its own tests below. The two fields here stayed privileged:
+    a raw `parent_user_id` would let a partner graft the hierarchy without a
+    tenant-scoped lookup, and `verified` would let it assert contact details
+    the platform never confirmed.
+    """
     body = {
         "identifiers": [
             {
@@ -427,7 +446,6 @@ async def test_partner_cannot_mass_assign_privileged_fields(
                 "verified": True,
             }
         ],
-        "user_type": "head_merchant",
         "parent_user_id": str(uuid4()),
     }
     raw = json.dumps(body).encode()
@@ -438,7 +456,6 @@ async def test_partner_cannot_mass_assign_privileged_fields(
     )
     assert resp.status_code == 201, resp.text
     data = resp.json()
-    assert data["user_type"] == "consumer"  # not head_merchant
     assert data["parent_user_id"] is None  # not the supplied uuid
     row = (
         await db_session.execute(
@@ -446,3 +463,146 @@ async def test_partner_cannot_mass_assign_privileged_fields(
         )
     ).scalar_one()
     assert row.verified is False  # partner-supplied verified=True was ignored
+
+
+@pytest.mark.asyncio
+async def test_partner_onboards_an_agent_with_a_supervisor(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    api_key: dict[str, str],
+) -> None:
+    """Verify the partner API can create a non-consumer and attach a supervisor"""
+    boss_body = {
+        "identifiers": [{"identifier_type": "phone", "identifier_value": "+27825556000"}],
+        "user_type": "super_agent",
+    }
+    raw = json.dumps(boss_body).encode()
+    boss = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="idem-boss"),
+    )
+    assert boss.status_code == 201, boss.text
+
+    agent_body = {
+        "identifiers": [{"identifier_type": "phone", "identifier_value": "+27825556001"}],
+        "user_type": "agent",
+        "parent_identifier": {"identifier_type": "phone", "identifier_value": "+27825556000"},
+    }
+    raw = json.dumps(agent_body).encode()
+    agent = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="idem-agent"),
+    )
+    assert agent.status_code == 201, agent.text
+
+    created = (
+        await db_session.execute(select(User).where(User.id == UUID(agent.json()["id"])))
+    ).scalar_one()
+    assert created.tenant_id == test_tenant.id
+    assert created.user_type == "agent"
+    assert created.parent_user_id == UUID(boss.json()["id"])
+
+
+@pytest.mark.asyncio
+async def test_partner_cannot_use_an_unknown_type(
+    async_client: AsyncClient, api_key: dict[str, str]
+) -> None:
+    """Verify widening the endpoint did not make it trust the body"""
+    body = {
+        "identifiers": [{"identifier_type": "phone", "identifier_value": "+27825557000"}],
+        "user_type": "not_a_real_type",
+    }
+    raw = json.dumps(body).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="idem-badtype"),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "unknown_user_type"
+
+
+@pytest.mark.asyncio
+async def test_partner_cannot_use_another_tenants_type(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    other_tenant: Tenant,
+    api_key: dict[str, str],
+) -> None:
+    """Verify the type is resolved against the KEY's tenant, not the whole platform"""
+    await create_user_type(
+        db_session,
+        UserTypeCreateRequest(
+            tenant_id=other_tenant.id,
+            code="franchisee",
+            label="Franchisee",
+            category_code="retail",
+        ),
+    )
+    body = {
+        "identifiers": [{"identifier_type": "phone", "identifier_value": "+27825557100"}],
+        "user_type": "franchisee",
+    }
+    raw = json.dumps(body).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="idem-xtenant"),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "unknown_user_type"
+
+
+@pytest.mark.asyncio
+async def test_partner_supervisor_lookup_is_tenant_scoped(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    other_tenant: Tenant,
+    default_user_role_other_tenant: Role,
+    api_key: dict[str, str],
+) -> None:
+    """Verify a supervisor in another tenant looks identical to a missing one"""
+    await create_user(
+        db_session,
+        CreateUserRequest(
+            tenant_id=other_tenant.id,
+            identifiers=[IdentifierIn(identifier_type="phone", identifier_value="+27825557200")],
+            user_type="super_agent",
+        ),
+    )
+    body = {
+        "identifiers": [{"identifier_type": "phone", "identifier_value": "+27825557201"}],
+        "user_type": "agent",
+        "parent_identifier": {"identifier_type": "phone", "identifier_value": "+27825557200"},
+    }
+    raw = json.dumps(body).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="idem-xparent"),
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "parent_not_found"
+
+
+@pytest.mark.asyncio
+async def test_partner_still_defaults_to_consumer(
+    async_client: AsyncClient, db_session: AsyncSession, api_key: dict[str, str]
+) -> None:
+    """Verify omitting user_type keeps the old behaviour for existing partners"""
+    body = {"identifiers": [{"identifier_type": "phone", "identifier_value": "+27825558000"}]}
+    raw = json.dumps(body).encode()
+    resp = await async_client.post(
+        "/api/v1/external/users",
+        content=raw,
+        headers=_sign_headers(api_key["key_id"], api_key["secret"], raw, idem="idem-default"),
+    )
+    assert resp.status_code == 201, resp.text
+    created = (
+        await db_session.execute(select(User).where(User.id == UUID(resp.json()["id"])))
+    ).scalar_one()
+    assert created.user_type == "consumer"
+    assert created.parent_user_id is None

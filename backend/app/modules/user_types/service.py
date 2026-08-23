@@ -7,9 +7,12 @@ existing user or config row referencing one never falls through to the
 
 The two mutation entry points (`create_user_type`, `replace_user_type_for_scope`)
 match the `_CreateFn` / `_ReplaceFn` signatures in `config_requests/apply.py`, so
-every write arrives through maker-checker (spec D4). Neither commits — the
-config-request pipeline owns the transaction. There is deliberately no delete:
-spec D3 retires types instead.
+every write arrives through maker-checker (spec D4). Both commit, exactly like
+every sibling config service: `approve_config_request` stages the request's
+PENDING → APPLIED transition, the review row and the audit row *before* handing
+off, and relies on the config service's single commit to persist all of it
+atomically. Without that commit an approved change would silently not persist.
+There is deliberately no delete: spec D3 retires types instead.
 """
 
 from __future__ import annotations
@@ -240,7 +243,7 @@ async def create_user_type(
         ip_address: Caller IP, recorded on the audit row.
 
     Returns:
-        The flushed `UserTypeDef` row.
+        The persisted `UserTypeDef` row.
 
     Raises:
         UserTypeCodeReserved, UnknownUserType, ParentTypeNotFound,
@@ -248,8 +251,11 @@ async def create_user_type(
         CategoryDoesNotSupportHierarchy: see spec §5.
 
     Side effects:
-        Inserts a `user_types` row and one `user_type.created` audit row.
-        Does NOT commit — the config-request pipeline owns the transaction.
+        Inserts a `user_types` row and one `user_type.created` audit row, then
+        commits once. The commit also persists whatever the caller staged
+        beforehand — for maker-checker that is the request's PENDING → APPLIED
+        transition, its review row and its audit row, so the approval and the
+        config write land atomically or not at all.
     """
     await assert_type_definition_valid(
         session,
@@ -282,6 +288,8 @@ async def create_user_type(
             after_state=_type_state(row),
             ip_address=ip_address,
         )
+
+    await session.commit()
     return row
 
 
@@ -384,7 +392,10 @@ async def replace_user_type_for_scope(
 
     Side effects:
         Updates one `user_types` row and appends one `user_type.updated` audit
-        row. Does NOT commit — the config-request pipeline owns the transaction.
+        row, then commits once. The commit also persists whatever the caller
+        staged beforehand — for maker-checker that is the request's
+        PENDING → APPLIED transition, its review row and its audit row, so the
+        approval and the config write land atomically or not at all.
     """
     first = requests[0]
     row = await _load_mutable_type(session, tenant_id=first.tenant_id, code=first.code)
@@ -422,3 +433,5 @@ async def replace_user_type_for_scope(
             after_state=_type_state(row),
             ip_address=ip_address,
         )
+
+    await session.commit()

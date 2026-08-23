@@ -23,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import type { UserOperation } from "@/lib/api-types";
+import type { UserOperation, UserTypeCatalog } from "@/lib/api-types";
 import {
   userOperationLabel,
   userOperationSummary,
@@ -40,11 +40,14 @@ export function UserOperationsTable({
   tenantId,
   canApprove,
   currentAdminId,
+  catalog,
 }: {
   operations: UserOperation[];
   tenantId: string;
   canApprove: boolean;
   currentAdminId: string;
+  /** The tenant's user-type catalog, so a type reads by name, not by code. */
+  catalog: UserTypeCatalog | null;
 }) {
   const { toast } = useToast();
   const [detail, setDetail] = React.useState<UserOperation | null>(null);
@@ -89,7 +92,7 @@ export function UserOperationsTable({
                   <Badge variant="info">{userOperationLabel(op.operation)}</Badge>
                 </TableCell>
                 <TableCell className="max-w-[280px] truncate text-sm text-foreground">
-                  {userOperationSummary(op)}
+                  {userOperationSummary(op, catalog)}
                 </TableCell>
                 <TableCell>
                   <StatusPill status={op.status} variant="full" />
@@ -131,6 +134,7 @@ export function UserOperationsTable({
           tenantId={tenantId}
           canApprove={canApprove}
           currentAdminId={currentAdminId}
+          catalog={catalog}
           open={open}
           onOpenChange={setOpen}
           onUpdated={(updated) => setDetail(updated)}

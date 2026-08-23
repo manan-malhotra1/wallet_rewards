@@ -60,17 +60,26 @@ export function topLevelTypes(
 }
 
 /**
- * Human label for a user-type code, falling back to the raw code when the
- * catalog does not know it (a retired type still referenced by an old config).
+ * Human label for a user-type code.
+ *
+ * The catalog is the source of truth. When it cannot answer — it failed to
+ * load, or the code belongs to a type retired out of the visible set — the
+ * code is title-cased rather than shown raw, so `head_merchant` still reads as
+ * "Head merchant" on a surface that has no catalog to hand. There is
+ * deliberately no hardcoded map of type codes here: that is what made every
+ * custom type render as its own code.
  *
  * @param catalog - The catalog payload, or null when it could not be loaded.
  * @param code - The stored type code.
- * @returns The catalog label, or the code itself as a last resort.
+ * @returns The catalog label, else the title-cased code, else an em dash.
  */
 export function userTypeLabel(
   catalog: UserTypeCatalog | null | undefined,
   code: string | null | undefined,
 ): string {
   if (!code) return "—";
-  return catalog?.types.find((t) => t.code === code)?.label ?? code;
+  const known = catalog?.types.find((t) => t.code === code);
+  if (known) return known.label;
+  const words = code.replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }

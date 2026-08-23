@@ -26,7 +26,11 @@ import {
 } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import type { Instrument, WalletLimitConfig } from "@/lib/api-types";
+import type {
+  Instrument,
+  UserTypeCatalog,
+  WalletLimitConfig,
+} from "@/lib/api-types";
 import { formatCap } from "@/lib/utils";
 
 import { CreateWalletLimitDialog } from "./create-wallet-limit-dialog";
@@ -59,11 +63,14 @@ function EditWalletLimitButton({
   cfg,
   tenantId,
   instruments,
+  catalog,
   changeProposed,
 }: {
   cfg: WalletLimitConfig;
   tenantId: string;
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
   /** Open request on this scope → disable Edit; the maker resolves it first. */
   changeProposed: boolean;
 }) {
@@ -97,6 +104,7 @@ function EditWalletLimitButton({
       <CreateWalletLimitDialog
         tenantId={tenantId}
         instruments={instruments}
+        catalog={catalog}
         editConfig={cfg}
         open={open}
         onOpenChange={setOpen}
@@ -109,6 +117,7 @@ export function WalletLimitsTable({
   configs,
   tenantId,
   instruments,
+  catalog,
   canPropose,
   changeProposedKeys,
 }: {
@@ -116,6 +125,8 @@ export function WalletLimitsTable({
   tenantId: string;
   /** Financial-wallet instruments offered when editing (currency is locked). */
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
   /** platform-admin gate — hides the Edit affordance for other admins. */
   canPropose: boolean;
   /** Scope keys with an open update/delete request → "change proposed" status. */
@@ -168,7 +179,7 @@ export function WalletLimitsTable({
               <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
               <TableCell>
                 {cfg.user_type ? (
-                  <UserTypeBadge type={cfg.user_type} />
+                  <UserTypeBadge type={cfg.user_type} catalog={catalog} />
                 ) : (
                   <span className="text-xs text-muted-foreground">All types</span>
                 )}
@@ -201,6 +212,7 @@ export function WalletLimitsTable({
                       cfg={cfg}
                       tenantId={tenantId}
                       instruments={instruments}
+                      catalog={catalog}
                       changeProposed={changeProposed}
                     />
                   )}

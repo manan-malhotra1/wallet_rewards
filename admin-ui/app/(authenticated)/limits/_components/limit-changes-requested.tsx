@@ -11,7 +11,12 @@ import type { ReactNode } from "react";
 
 import { OpenRequestCard } from "@/app/(authenticated)/_components/open-request-card";
 import { Button } from "@/components/ui/button";
-import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
+import type {
+  ConfigChangeRequest,
+  Instrument,
+  Service,
+  UserTypeCatalog,
+} from "@/lib/api-types";
 
 import { CreateLimitDialog } from "./create-limit-dialog";
 import { CreateWalletLimitDialog } from "./create-wallet-limit-dialog";
@@ -23,6 +28,7 @@ export function LimitChangesRequested({
   currentAdminId,
   services,
   instruments,
+  catalog,
 }: {
   requests: ConfigChangeRequest[];
   tenantId: string;
@@ -31,6 +37,8 @@ export function LimitChangesRequested({
   currentAdminId: string;
   services: Service[];
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
 }) {
   if (requests.length === 0) return null;
   // Wallet limits apply to financial wallets only — offer financial currencies.
@@ -68,6 +76,7 @@ export function LimitChangesRequested({
               tenantId={tenantId}
               services={services}
               instruments={instruments}
+              catalog={catalog}
               reviseRequest={req}
               trigger={editTrigger}
             />
@@ -77,6 +86,7 @@ export function LimitChangesRequested({
             <CreateWalletLimitDialog
               tenantId={tenantId}
               instruments={financialInstruments}
+              catalog={catalog}
               reviseRequest={req}
               trigger={editTrigger}
             />
@@ -89,6 +99,7 @@ export function LimitChangesRequested({
             tenantId={tenantId}
             currentAdminId={currentAdminId}
             serviceNames={serviceNames}
+            catalog={catalog}
             editAction={editAction}
           />
         );

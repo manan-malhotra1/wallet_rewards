@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PricingChangesRequested } from "@/app/(authenticated)/pricing/_components/pricing-changes-requested";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 vi.mock("./create-pricing-dialog", () => ({
   CreatePricingDialog: (props: { trigger?: React.ReactNode }) => <>{props.trigger}</>,
@@ -81,6 +82,7 @@ function renderSection(request: ConfigChangeRequest, currentAdminId: string) {
         currentAdminId={currentAdminId}
         services={services}
         instruments={instruments}
+        catalog={SEED_USER_TYPE_CATALOG}
       />
     </TooltipProvider>,
   );

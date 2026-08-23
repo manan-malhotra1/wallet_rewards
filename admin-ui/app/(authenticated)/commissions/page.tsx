@@ -8,6 +8,7 @@ import { Percent, Plus } from "lucide-react";
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
 import {
+  getUserTypeCatalog,
   listCommissionConfigs,
   listConfigRequests,
   listInstruments,
@@ -19,6 +20,7 @@ import type {
   ConfigChangeRequest,
   Instrument,
   Service,
+  UserTypeCatalog,
 } from "@/lib/api-types";
 import { groupCommissionConfigs } from "@/lib/config-groups";
 import { changeProposedScopeKeys } from "@/lib/config-scope";
@@ -56,14 +58,18 @@ export default async function CommissionsPage() {
   let configs: CommissionConfig[] = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
+  // User types are runtime data, so the scope pickers and the type badges read
+  // them from the catalog rather than a hardcoded list.
+  let catalog: UserTypeCatalog = { categories: [], types: [] };
   let openRequests: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
     let requests: ConfigChangeRequest[] = [];
-    [configs, services, instruments, requests] = await Promise.all([
+    [configs, services, instruments, catalog, requests] = await Promise.all([
       listCommissionConfigs(activeTenantId),
       listServices(activeTenantId, "active"),
       listInstruments(activeTenantId, "active"),
+      getUserTypeCatalog(activeTenantId),
       // All in-flight commission proposals (both open statuses); card actions
       // are maker-gated.
       listConfigRequests(activeTenantId, undefined, "commission"),
@@ -87,6 +93,7 @@ export default async function CommissionsPage() {
               tenantId={activeTenantId}
               services={services}
               instruments={instruments}
+              catalog={catalog}
               trigger={
                 <button
                   type="button"
@@ -114,6 +121,7 @@ export default async function CommissionsPage() {
             currentAdminId={currentAdminId}
             services={services}
             instruments={instruments}
+            catalog={catalog}
           />
         )}
         {!error && configs.length === 0 ? (
@@ -128,6 +136,7 @@ export default async function CommissionsPage() {
             tenantId={activeTenantId}
             services={services}
             instruments={instruments}
+            catalog={catalog}
             canPropose={canPropose}
             serviceNames={Object.fromEntries(
               services.map((s) => [s.code, s.display_name]),

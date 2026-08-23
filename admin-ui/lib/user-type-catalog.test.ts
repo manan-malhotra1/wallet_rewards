@@ -35,10 +35,12 @@ describe("user-type catalog helpers", () => {
     expect(topLevelTypes(catalog, "consumer")).toEqual([]);
   });
 
-  it("resolves a label from the catalog and falls back to the raw code", () => {
+  it("labels from the catalog, and title-cases a code it cannot resolve", () => {
     expect(userTypeLabel(catalog, "super_agent")).toBe("Super agent");
-    expect(userTypeLabel(catalog, "bureau_de_change")).toBe("bureau_de_change");
-    expect(userTypeLabel(null, "agent")).toBe("agent");
+    // Unknown to this catalog (retired, or the catalog failed to load): still
+    // readable, and never a hardcoded map that would miss a custom type.
+    expect(userTypeLabel(catalog, "bureau_de_change")).toBe("Bureau de change");
+    expect(userTypeLabel(null, "head_merchant")).toBe("Head merchant");
     expect(userTypeLabel(catalog, null)).toBe("—");
   });
 });

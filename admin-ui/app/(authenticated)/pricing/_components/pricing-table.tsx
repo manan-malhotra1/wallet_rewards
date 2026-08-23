@@ -28,7 +28,12 @@ import {
 } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import type { Instrument, PricingConfigGroup, Service } from "@/lib/api-types";
+import type {
+  Instrument,
+  PricingConfigGroup,
+  Service,
+  UserTypeCatalog,
+} from "@/lib/api-types";
 import { serviceLabel } from "@/lib/service-label";
 import { formatAmount } from "@/lib/utils";
 
@@ -58,6 +63,7 @@ export function PricingTable({
   pointsAvailable,
   services,
   instruments,
+  catalog,
   canPropose,
   serviceNames,
   changeProposedKeys,
@@ -68,6 +74,8 @@ export function PricingTable({
   pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
   /** platform-admin gate — hides the Edit affordance for other admins. */
   canPropose: boolean;
   /** `{ code: display_name }` forwarded to the View drawer. */
@@ -141,7 +149,7 @@ export function PricingTable({
                 </TableCell>
                 <TableCell>
                   {group.user_type ? (
-                    <UserTypeBadge type={group.user_type} />
+                    <UserTypeBadge type={group.user_type} catalog={catalog} />
                   ) : (
                     <span className="text-xs text-muted-foreground">
                       All types
@@ -183,6 +191,7 @@ export function PricingTable({
                         pointsAvailable={pointsAvailable}
                         services={services}
                         instruments={instruments}
+                        catalog={catalog}
                         changeProposed={changeProposed}
                       />
                     )}
@@ -230,6 +239,7 @@ function EditPricingButton({
   pointsAvailable,
   services,
   instruments,
+  catalog,
   changeProposed,
 }: {
   group: PricingConfigGroup;
@@ -238,6 +248,8 @@ function EditPricingButton({
   pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
   /** Open request on this scope → disable Edit; the maker resolves it first. */
   changeProposed: boolean;
 }) {
@@ -273,6 +285,7 @@ function EditPricingButton({
         tenantId={tenantId}
         services={services}
         instruments={instruments}
+        catalog={catalog}
         editGroup={group}
         open={open}
         onOpenChange={setOpen}

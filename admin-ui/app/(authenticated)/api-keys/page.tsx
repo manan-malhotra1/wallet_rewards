@@ -6,8 +6,8 @@ import { KeyRound, Plus } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { listApiKeys } from "@/lib/api-endpoints";
-import type { ApiKey } from "@/lib/api-types";
+import { getUserTypeCatalog, listApiKeys } from "@/lib/api-endpoints";
+import type { ApiKey, UserTypeCatalog } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -36,9 +36,16 @@ export default async function ApiKeysPage() {
   }
 
   let keys: ApiKey[] = [];
+  // Which types may back a cash-in key is runtime data
+  // (`requires_merchant_profile`), so the dialog needs the catalog to judge a
+  // resolved user rather than matching against a hardcoded pair of codes.
+  let catalog: UserTypeCatalog = { categories: [], types: [] };
   let error: ApiError | null = null;
   try {
-    keys = await listApiKeys(activeTenantId);
+    [keys, catalog] = await Promise.all([
+      listApiKeys(activeTenantId),
+      getUserTypeCatalog(activeTenantId),
+    ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -52,6 +59,7 @@ export default async function ApiKeysPage() {
         actions={
           <CreateApiKeyDialog
             tenantId={activeTenantId}
+            catalog={catalog}
             trigger={
               <button type="button" className={NEW_BUTTON_CLASS}>
                 <Plus className="h-3.5 w-3.5" />

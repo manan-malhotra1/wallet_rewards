@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreatePricingDialog } from "@/app/(authenticated)/pricing/_components/create-pricing-dialog";
 import type { Instrument, Service } from "@/lib/api-types";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 const proposePricingBandsAction = vi.fn().mockResolvedValue({ ok: true });
 const proposePricingUpdateAction = vi.fn().mockResolvedValue({ ok: true });
@@ -72,6 +73,7 @@ async function openDialog() {
       tenantId="tenant-1"
       services={services}
       instruments={instruments}
+      catalog={SEED_USER_TYPE_CATALOG}
       trigger={<button type="button">New pricing</button>}
     />,
   );
@@ -158,6 +160,7 @@ describe("Propose a pricing schedule", () => {
         tenantId="tenant-1"
         services={services}
         instruments={instruments}
+        catalog={SEED_USER_TYPE_CATALOG}
         trigger={<button type="button">New schedule</button>}
       />,
     );

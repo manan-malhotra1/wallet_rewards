@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CommissionChangesRequested } from "@/app/(authenticated)/commissions/_components/commission-changes-requested";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 // Stub the revise dialog down to whatever trigger it is handed.
 vi.mock("./create-commission-dialog", () => ({
@@ -85,6 +86,7 @@ function renderSection(request: ConfigChangeRequest, currentAdminId: string) {
         currentAdminId={currentAdminId}
         services={services}
         instruments={instruments}
+        catalog={SEED_USER_TYPE_CATALOG}
       />
     </TooltipProvider>,
   );

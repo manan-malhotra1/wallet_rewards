@@ -28,21 +28,16 @@ import {
   withdrawConfigRequestAction,
 } from "@/app/(authenticated)/config-requests/_actions";
 import { RequestDetailDrawer } from "@/app/(authenticated)/config-requests/_components/request-detail-drawer";
-import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { ConfigChangeRequest } from "@/lib/api-types";
+import type { ConfigChangeRequest, UserTypeCatalog } from "@/lib/api-types";
+import { userTypeLabel } from "@/lib/user-type-catalog";
 import { configTypeLabel } from "@/lib/config-type-label";
 import { serviceLabel } from "@/lib/service-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
-
-/** `{ value: label }` for user-type codes, e.g. `agent` → "Agent". */
-const USER_TYPE_LABEL: Record<string, string> = Object.fromEntries(
-  USER_TYPE_OPTIONS.map((o) => [o.value, o.label]),
-);
 
 /** Verb that opens the plain-English description sentence, per operation. */
 const OPERATION_VERB: Record<ConfigChangeRequest["operation"], string> = {
@@ -59,13 +54,16 @@ function isNonTerminal(status: ConfigChangeRequest["status"]): boolean {
 /**
  * A user-type code rendered friendly and pluralised for a "who this applies to"
  * clause, e.g. `agent` → "Agents". A null / absent type means every type.
+ *
+ * @param userType The raw payload value; anything nullish means "all".
+ * @param catalog The tenant's user-type catalog, so a type the operator created
+ *   reads by its own name rather than by its code.
  */
-function userTypeLabel(userType: unknown): string {
+function whoClause(userType: unknown, catalog?: UserTypeCatalog | null): string {
   if (userType == null || userType === "" || userType === "all") {
     return "all users";
   }
-  const code = String(userType);
-  return `${USER_TYPE_LABEL[code] ?? code}s`;
+  return `${userTypeLabel(catalog, String(userType))}s`;
 }
 
 /**
@@ -78,11 +76,13 @@ function userTypeLabel(userType: unknown): string {
  *
  * @param request The change request to describe.
  * @param serviceNames `{ code: display_name }` so the service reads friendly.
+ * @param catalog The tenant's user-type catalog, for the "who" clause.
  * @returns A one-line sentence suitable as the card's primary text.
  */
 function describeRequest(
   request: ConfigChangeRequest,
   serviceNames?: Record<string, string>,
+  catalog?: UserTypeCatalog | null,
 ): string {
   const payload = request.payload;
   let sentence = `${OPERATION_VERB[request.operation]} ${configTypeLabel(
@@ -99,7 +99,7 @@ function describeRequest(
   if (serviceCode) {
     sentence += ` for ${serviceLabel(serviceCode, serviceNames)} service`;
   }
-  sentence += `, for ${userTypeLabel(payload.user_type)}`;
+  sentence += `, for ${whoClause(payload.user_type, catalog)}`;
   if (payload.currency) sentence += ` (${String(payload.currency)})`;
   return sentence;
 }
@@ -122,6 +122,7 @@ export function OpenRequestCard({
   currentAdminId,
   editAction,
   serviceNames,
+  catalog,
 }: {
   request: ConfigChangeRequest;
   tenantId: string;
@@ -130,6 +131,8 @@ export function OpenRequestCard({
   editAction?: React.ReactNode;
   /** `{ code: display_name }` so a service code renders as its friendly name. */
   serviceNames?: Record<string, string>;
+  /** The tenant's user-type catalog, so the "who" clause reads by name. */
+  catalog?: UserTypeCatalog | null;
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = React.useState(false);
@@ -190,7 +193,7 @@ export function OpenRequestCard({
       <div className="flex items-start gap-2">
         {/* Primary text: a plain-English sentence describing the proposal. */}
         <p className="flex-1 text-sm font-medium text-foreground">
-          {describeRequest(request, serviceNames)}
+          {describeRequest(request, serviceNames, catalog)}
         </p>
         <div className="flex shrink-0 items-center gap-1">
           <Tooltip content="View details">

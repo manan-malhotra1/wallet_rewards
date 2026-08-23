@@ -308,7 +308,12 @@ export function DashboardClient({ initial, initialRange, initialGranularity }: P
                 emptyMessage="No users yet."
                 onRetry={retry}
               >
-                {data.usersByType ? <UserTypeChart data={data.usersByType} /> : null}
+                {data.usersByType ? (
+                  <UserTypeChart
+                    data={data.usersByType}
+                    catalog={data.userTypeCatalog}
+                  />
+                ) : null}
               </PanelState>
             </Panel>
           </div>

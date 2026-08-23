@@ -14,6 +14,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateApiKeyDialog } from "@/app/(authenticated)/api-keys/_components/create-api-key-dialog";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 const createApiKeyAction = vi.fn();
 const resolveMerchantAction = vi.fn();
@@ -41,6 +42,7 @@ async function openDialog() {
   render(
     <CreateApiKeyDialog
       tenantId="tenant-1"
+      catalog={SEED_USER_TYPE_CATALOG}
       trigger={<button type="button">New API key</button>}
     />,
   );

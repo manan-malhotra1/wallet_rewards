@@ -9,11 +9,22 @@
  */
 import { formatCount, sharePercent } from "@/lib/analytics-format";
 import { seriesColor } from "@/lib/chart-colors";
-import { userTypeLabel } from "@/lib/user-operation-label";
-import type { UserTypeSlice } from "@/lib/api-types";
+import { userTypeLabel } from "@/lib/user-type-catalog";
+import type { UserTypeCatalog, UserTypeSlice } from "@/lib/api-types";
 import { ShareBar } from "./indicators";
 
-export function UserTypeChart({ data }: { data: UserTypeSlice[] }) {
+/**
+ * @param data One slice per user type, as returned by the analytics endpoint.
+ * @param catalog The tenant's user-type catalog, so each row reads by the name
+ *   the operator gave the type rather than by its raw code.
+ */
+export function UserTypeChart({
+  data,
+  catalog,
+}: {
+  data: UserTypeSlice[];
+  catalog: UserTypeCatalog | null;
+}) {
   const slices = [...data].filter((slice) => slice.count > 0).sort((a, b) => b.count - a.count);
   const total = slices.reduce((sum, slice) => sum + slice.count, 0);
   if (total === 0) return null;
@@ -25,7 +36,7 @@ export function UserTypeChart({ data }: { data: UserTypeSlice[] }) {
         <div key={slice.user_type} className="flex flex-col gap-[7px]">
           <div className="flex items-baseline gap-2.5">
             <span className="mr-auto text-xs text-foreground">
-              {userTypeLabel(slice.user_type)}
+              {userTypeLabel(catalog, slice.user_type)}
             </span>
             <span className="text-[12.5px] font-semibold text-foreground tabular-nums">
               {formatCount(slice.count)}

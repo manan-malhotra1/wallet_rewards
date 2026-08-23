@@ -26,6 +26,7 @@ import {
   getConfigRequestCounts,
   getMoneyOperationCounts,
   getUserOperationCounts,
+  getUserTypeCatalog,
   listConfigRequests,
   listMoneyOperations,
   listServices,
@@ -49,6 +50,7 @@ import type {
   QueueCounts,
   Service,
   UserOperation,
+  UserTypeCatalog,
 } from "@/lib/api-types";
 
 import { GitPullRequest } from "lucide-react";
@@ -139,6 +141,9 @@ export default async function ApprovalsPage({
   let moneyOperations: MoneyOperation[] = [];
   let userOperations: UserOperation[] = [];
   let serviceNames: Record<string, string> = {};
+  // The Users queue renders proposed user types; types are runtime data, so the
+  // labels come from the catalog. Null degrades to showing the raw code.
+  let userTypeCatalog: UserTypeCatalog | null = null;
   const counts: Partial<Record<TabKey, QueueCounts>> = {};
   let activeTab: TabKey = visibleTabs[0].key;
   // The counts driving the active tab's segments and pager. Equal to the
@@ -207,6 +212,7 @@ export default async function ApprovalsPage({
         q,
       );
     } else {
+      userTypeCatalog = await getUserTypeCatalog(activeTenantId);
       userOperations = await listUserOperations(
         activeTenantId,
         statusFilter,
@@ -255,6 +261,7 @@ export default async function ApprovalsPage({
             currentAdminId={currentAdminId}
             canApprove={canApproveActive}
             serviceNames={serviceNames}
+            userTypeCatalog={userTypeCatalog}
             configRequests={configRequests}
             moneyOperations={moneyOperations}
             userOperations={userOperations}

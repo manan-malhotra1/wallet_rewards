@@ -9,7 +9,12 @@
 
 import { OpenRequestCard } from "@/app/(authenticated)/_components/open-request-card";
 import { Button } from "@/components/ui/button";
-import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
+import type {
+  ConfigChangeRequest,
+  Instrument,
+  Service,
+  UserTypeCatalog,
+} from "@/lib/api-types";
 
 import { CreateCommissionDialog } from "./create-commission-dialog";
 
@@ -19,12 +24,15 @@ export function CommissionChangesRequested({
   currentAdminId,
   services,
   instruments,
+  catalog,
 }: {
   requests: ConfigChangeRequest[];
   tenantId: string;
   currentAdminId: string;
   services: Service[];
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
 }) {
   if (requests.length === 0) return null;
   // code → display_name so the card's Service field reads friendly, not raw.
@@ -50,12 +58,14 @@ export function CommissionChangesRequested({
             tenantId={tenantId}
             currentAdminId={currentAdminId}
             serviceNames={serviceNames}
+            catalog={catalog}
             editAction={
               canEdit ? (
                 <CreateCommissionDialog
                   tenantId={tenantId}
                   services={services}
                   instruments={instruments}
+                  catalog={catalog}
                   reviseRequest={req}
                   trigger={
                     <Button variant="outline" size="sm">

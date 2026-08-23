@@ -246,6 +246,15 @@ from app.shared.models.user_operations import (
     UserOperationRequest,
     UserOperationReview,
 )
+from app.shared.models.user_types import (
+    CATEGORY_BUSINESS,
+    CATEGORY_CONSUMER,
+    CATEGORY_RETAIL,
+    USER_TYPE_STATUS_ACTIVE,
+    USER_TYPE_STATUS_RETIRED,
+    UserTypeCategory,
+    UserTypeDef,
+)
 from app.shared.models.users import (
     MERCHANT_USER_TYPES,
     PARENT_TYPE_BY_CHILD,
@@ -305,6 +314,9 @@ __all__ = [
     "BUDGET_WINDOW_LIFETIME",
     "BUDGET_WINDOW_ROLLING_7D",
     "BUDGET_WINDOW_ROLLING_24H",
+    "CATEGORY_BUSINESS",
+    "CATEGORY_CONSUMER",
+    "CATEGORY_RETAIL",
     "CONFIG_OPERATIONS",
     "CONFIG_OP_CREATE",
     "CONFIG_OP_DELETE",
@@ -439,6 +451,8 @@ __all__ = [
     "USER_TYPE_CONSUMER",
     "USER_TYPE_HEAD_MERCHANT",
     "USER_TYPE_MERCHANT",
+    "USER_TYPE_STATUS_ACTIVE",
+    "USER_TYPE_STATUS_RETIRED",
     "USER_TYPE_SUPER_AGENT",
     # Accounts
     "Account",
@@ -520,5 +534,8 @@ __all__ = [
     "UserRole",
     "UserRuleProgress",
     "UserSegment",
+    # User-type catalog (configurable user types)
+    "UserTypeCategory",
+    "UserTypeDef",
     "WalletLimitConfig",
 ]

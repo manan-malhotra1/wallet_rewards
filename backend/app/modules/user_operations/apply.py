@@ -66,6 +66,10 @@ async def apply_user_operation(
                 identifiers=create_payload.identifiers,
                 profile=create_payload.profile,
                 user_type=create_payload.user_type,
+                # Re-resolved and re-validated by create_user against the type
+                # row's `parent_type_code` — an approval that silently dropped
+                # the supervisor would misdirect that person's commission.
+                parent_identifier=create_payload.parent_identifier,
             ),
             admin=admin,
             ip_address=ip_address,

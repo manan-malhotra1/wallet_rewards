@@ -8,6 +8,7 @@
  */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { UserTypeSelect } from "@/components/user-type-select";
@@ -84,5 +85,34 @@ describe("UserTypeSelect", () => {
 
     await pick(user, /category/i, "Consumers");
     expect(onChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("keeps the new category when the parent clears the type in response", async () => {
+    // Changing the category reports onChange(null); a parent that stores the
+    // type feeds that back as `value`. The picker must not read its own reset
+    // as "narrow to nothing" and disable the type list it just populated.
+    function Host() {
+      const [value, setValue] = React.useState<string | null>("consumer");
+      return <UserTypeSelect catalog={catalog} value={value} onChange={setValue} />;
+    }
+    const user = userEvent.setup();
+    render(<Host />);
+
+    await pick(user, /category/i, "Retail");
+    const typeSelect = screen.getByRole("combobox", { name: /user type/i });
+    expect(typeSelect).toBeEnabled();
+
+    await user.click(typeSelect);
+    const listbox = await screen.findByRole("listbox");
+    expect(within(listbox).getByRole("option", { name: "Agent" })).toBeInTheDocument();
+  });
+
+  it("offers no 'Any' escape hatch when a type is required", () => {
+    // Assigning a type to a PERSON has no "all customers" case.
+    render(
+      <UserTypeSelect catalog={catalog} value={null} onChange={vi.fn()} allowAny={false} />,
+    );
+    expect(screen.getByRole("combobox", { name: /user type/i })).toBeDisabled();
+    expect(screen.queryByText("All customers")).not.toBeInTheDocument();
   });
 });

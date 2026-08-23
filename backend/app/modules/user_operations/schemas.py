@@ -14,7 +14,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.identity.schemas import IdentifierIn, UserProfileIn, UserType
+from app.modules.identity.schemas import (
+    IdentifierIn,
+    ParentIdentifierIn,
+    UserProfileIn,
+    UserType,
+)
 
 # -----------------------------------------------------------------------------
 # Per-operation payloads
@@ -27,11 +32,20 @@ class CreateUserPayload(BaseModel):
     At least one identifier is required and it MUST include an email or phone
     (the primary contact identifiers). `tenant_id` is NOT part of the payload —
     it comes from the request's tenant scope, resolved at apply time.
+
+    `parent_identifier` names the supervisor by one of their registered
+    identifiers rather than by id, so the identity service RE-RESOLVES and
+    RE-VALIDATES the person at apply time. That matters here more than on the
+    direct path: a proposal can sit in the queue for days, and the supervisor
+    could be retired or have changed type in the meantime. Storing an id would
+    freeze a decision made at propose time; storing the identifier re-checks it
+    at the moment it takes effect.
     """
 
     identifiers: list[IdentifierIn] = Field(min_length=1)
     user_type: UserType = "consumer"
     profile: UserProfileIn | None = None
+    parent_identifier: ParentIdentifierIn | None = None
 
     @model_validator(mode="after")
     def _require_email_or_phone(self) -> Self:

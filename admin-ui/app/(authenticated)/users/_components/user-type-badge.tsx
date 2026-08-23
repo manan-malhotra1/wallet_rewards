@@ -3,29 +3,20 @@
  *
  * `<UserTypeBadge>` renders the coloured pill on the user detail card. It
  * takes the runtime catalog so the label is whatever the tenant named the
- * type; only the tone is a fixed per-category map. The exported constants
- * drive the parent-visibility logic in the create-user and change-type
- * dialogs. No client interactivity here, so both server and client components
- * can import it.
+ * type; only the tone is a fixed per-category map.
+ *
+ * There are deliberately NO exported lists of type codes here. Types are
+ * runtime data: which types exist, which need a supervisor, and which need a
+ * merchant profile are all read off the catalog rows (`parent_type_code`,
+ * `requires_merchant_profile`). A hardcoded list is what stopped an operator
+ * assigning a type they had just created.
+ *
+ * No client interactivity here, so both server and client components can
+ * import it.
  */
 import { Badge } from "@/components/ui/badge";
 import type { UserType, UserTypeCatalog } from "@/lib/api-types";
 import { userTypeLabel } from "@/lib/user-type-catalog";
-
-/** Human labels for each type, in hierarchy order. */
-export const USER_TYPE_OPTIONS: { value: UserType; label: string }[] = [
-  { value: "consumer", label: "Consumer" },
-  { value: "agent", label: "Agent" },
-  { value: "super_agent", label: "Super agent" },
-  { value: "merchant", label: "Merchant" },
-  { value: "head_merchant", label: "Head merchant" },
-];
-
-/** Types that may hang under a parent (Decision D4). */
-export const PARENT_REQUIRED_TYPES: UserType[] = ["agent", "merchant"];
-
-/** Types that get a merchant_profiles row + collection account (Epic 17). */
-export const MERCHANT_TYPES: UserType[] = ["merchant", "head_merchant"];
 
 /**
  * Badge tone per category. Colour tracks the CATEGORY, not the type, because

@@ -12,6 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EditUserDrawer } from "@/app/(authenticated)/users/_components/edit-user-drawer";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 import type { UserIdentifier } from "@/lib/api-types";
 
 const proposeUpdateUserAction = vi.fn();
@@ -48,6 +49,7 @@ function renderDrawer(openUpdate: { id: string; status: string } | null = null) 
       current={current}
       identifiers={identifiers}
       openUpdate={openUpdate}
+      catalog={SEED_USER_TYPE_CATALOG}
     />,
   );
 }

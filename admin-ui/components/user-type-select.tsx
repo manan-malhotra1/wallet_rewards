@@ -40,6 +40,9 @@ const ANY_TYPE = "__any__";
  * @param disabled Locks both dropdowns (scope-locked edit / revise).
  * @param idPrefix Disambiguates the two labels' `htmlFor` when more than one
  *   picker is on a page.
+ * @param allowAny Whether "All customers" / "Any" are offered. True when the
+ *   picker scopes a CONFIG (a null type means "everyone"); false when it
+ *   assigns a type to a PERSON, where there is no such thing as "any type".
  */
 export function UserTypeSelect({
   catalog,
@@ -47,25 +50,35 @@ export function UserTypeSelect({
   onChange,
   disabled = false,
   idPrefix = "user-type",
+  allowAny = true,
 }: {
   catalog: UserTypeCatalog;
   value: string | null;
   onChange: (code: string | null) => void;
   disabled?: boolean;
   idPrefix?: string;
+  allowAny?: boolean;
 }) {
   const groups = React.useMemo(() => groupTypesByCategory(catalog), [catalog]);
+  // Radix shows the placeholder for an empty value, which is what "nothing
+  // chosen yet" looks like once the "All customers" escape hatch is gone.
+  const noCategory = allowAny ? ANY_CATEGORY : "";
   const derivedCategory =
-    catalog.types.find((t) => t.code === value)?.category_code ?? ANY_CATEGORY;
+    catalog.types.find((t) => t.code === value)?.category_code ?? noCategory;
   const [category, setCategory] = React.useState(derivedCategory);
 
   // Keep the category in step when the parent swaps `value` (e.g. editing a
   // different row without remounting). Adjusted during render rather than in
   // an effect: an effect would paint one frame with the old category first.
-  const [lastDerived, setLastDerived] = React.useState(derivedCategory);
-  if (derivedCategory !== lastDerived) {
-    setLastDerived(derivedCategory);
-    setCategory(derivedCategory);
+  //
+  // Only a NON-NULL value re-narrows. Changing the category itself reports
+  // `onChange(null)`, so a parent that stores the type would otherwise feed
+  // back "no type" and this guard would immediately undo the category the
+  // operator just picked — leaving the type dropdown permanently disabled.
+  const [lastValue, setLastValue] = React.useState(value);
+  if (value !== lastValue) {
+    setLastValue(value);
+    if (value !== null) setCategory(derivedCategory);
   }
 
   const typesInCategory =
@@ -88,10 +101,10 @@ export function UserTypeSelect({
           }}
         >
           <SelectTrigger id={categoryId} aria-label="Category">
-            <SelectValue />
+            <SelectValue placeholder="Select a category" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY_CATEGORY}>All customers</SelectItem>
+            {allowAny && <SelectItem value={ANY_CATEGORY}>All customers</SelectItem>}
             {groups.map((g) => (
               <SelectItem key={g.category.code} value={g.category.code}>
                 {g.category.label}
@@ -104,15 +117,15 @@ export function UserTypeSelect({
       <div>
         <Label htmlFor={typeId}>User type</Label>
         <Select
-          value={value ?? ANY_TYPE}
-          disabled={disabled || category === ANY_CATEGORY}
+          value={value ?? (allowAny ? ANY_TYPE : "")}
+          disabled={disabled || category === noCategory}
           onValueChange={(next) => onChange(next === ANY_TYPE ? null : next)}
         >
           <SelectTrigger id={typeId} aria-label="User type">
-            <SelectValue />
+            <SelectValue placeholder="Select a type" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY_TYPE}>Any</SelectItem>
+            {allowAny && <SelectItem value={ANY_TYPE}>Any</SelectItem>}
             {typesInCategory.map((t) => (
               <SelectItem key={t.code} value={t.code}>
                 {/* Children sit under their parent; the indent is the

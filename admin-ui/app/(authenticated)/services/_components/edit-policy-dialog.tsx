@@ -29,7 +29,11 @@ import {
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
-import { SERVICE_CHANNELS, USER_TYPES, type Service } from "@/lib/api-types";
+import {
+  SERVICE_CHANNELS,
+  type Service,
+  type UserTypeCatalog,
+} from "@/lib/api-types";
 import type { UpdateServicePayload } from "@/lib/api-endpoints";
 
 import { ChipGroup } from "./policy-controls";
@@ -61,10 +65,13 @@ export function EditServicePolicyDialog({
   service,
   tenantId,
   trigger,
+  catalog,
 }: {
   service: Service;
   tenantId: string;
   trigger: React.ReactNode;
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
 }) {
   const [open, setOpen] = React.useState(false);
   const [utRestricted, setUtRestricted] = React.useState(false);
@@ -74,6 +81,13 @@ export function EditServicePolicyDialog({
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
+
+  // Every active type is selectable; the allow-list is a subset of the catalog
+  // rather than a fixed enum, so a tenant's own type can be granted access.
+  const userTypeOptions = React.useMemo(
+    () => catalog.types.filter((t) => t.status === "active").map((t) => t.code),
+    [catalog],
+  );
 
   // Seed the controls from the row each time the dialog opens so edits always
   // start from the persisted policy, never a stale draft.
@@ -142,7 +156,8 @@ export function EditServicePolicyDialog({
               <>
                 <ChipGroup
                   ariaLabel="Who can initiate"
-                  options={USER_TYPES}
+                  options={userTypeOptions}
+                  catalog={catalog}
                   selected={userTypes}
                   onToggle={(v) => setUserTypes((cur) => toggleValue(cur, v))}
                   disabled={submitting}

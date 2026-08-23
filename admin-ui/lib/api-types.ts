@@ -9,13 +9,40 @@
 
 export type BusinessType = "wallet" | "rewards" | "both";
 
-/** The five first-class user types (Epic 12). */
-export type UserType =
-  | "consumer"
-  | "agent"
-  | "super_agent"
-  | "merchant"
-  | "head_merchant";
+/**
+ * A user type code. Types are configurable at runtime, so this is a plain
+ * string — the valid set comes from `GET /api/v1/user-types`, not the type
+ * system. Never hardcode a list of these again.
+ */
+export type UserType = string;
+
+/** One user type as returned by the catalog endpoint. */
+export interface UserTypeOption {
+  id?: string;
+  tenant_id?: string;
+  code: string;
+  label: string;
+  category_code: string;
+  parent_type_code: string | null;
+  is_system: boolean;
+  status: "active" | "retired";
+  requires_merchant_profile: boolean;
+  created_at?: string;
+}
+
+/** One category. `supports_hierarchy` is false for Consumers. */
+export interface UserTypeCategoryOption {
+  code: string;
+  label: string;
+  display_order: number;
+  supports_hierarchy: boolean;
+}
+
+/** The catalog endpoint's payload — both halves in one round trip. */
+export interface UserTypeCatalog {
+  categories: UserTypeCategoryOption[];
+  types: UserTypeOption[];
+}
 
 /**
  * The channels a transaction can be initiated from. Mirrors the backend
@@ -28,19 +55,6 @@ export type ServiceChannel =
   | "ussd"
   | "admin"
   | "system";
-
-/**
- * Canonical, ordered list of the five user types. Rendered by the Services
- * access-policy editor so the UI never hardcodes the enum inline. Kept in
- * sync with the `UserType` union above and the backend allow-list.
- */
-export const USER_TYPES: readonly UserType[] = [
-  "consumer",
-  "agent",
-  "super_agent",
-  "merchant",
-  "head_merchant",
-];
 
 /**
  * Canonical, ordered list of the six initiation channels. Rendered by the

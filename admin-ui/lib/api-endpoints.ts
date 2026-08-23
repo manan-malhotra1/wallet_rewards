@@ -77,6 +77,7 @@ import type {
   UserOperation,
   UserOperationStatus,
   UserType,
+  UserTypeCatalog,
   UserTypeSlice,
   UsersTimeseries,
   WalletLimitConfig,
@@ -182,6 +183,23 @@ export const updateService = (
 
 export const deleteService = (service_id: string, tenant_id: string) =>
   apiDelete<Service>(`/api/v1/services/${service_id}`, { query: { tenant_id } });
+
+// ---- User-type catalog ---------------------------------------------------
+
+/**
+ * Fetch the user-type catalog for a tenant (categories + visible types).
+ *
+ * Types come back already ordered by the category's `display_order`, then
+ * label — callers render them in the order given.
+ *
+ * @param tenant_id - Tenant whose catalog to read.
+ * @param include_retired - Include retired types (the `/user-types` admin page
+ *   wants them; pickers do not).
+ */
+export const getUserTypeCatalog = (tenant_id: string, include_retired = false) =>
+  apiGet<UserTypeCatalog>("/api/v1/user-types", {
+    query: include_retired ? { tenant_id, include_retired: "true" } : { tenant_id },
+  });
 
 // ---- Instruments catalog (Phase 3) --------------------------------------
 

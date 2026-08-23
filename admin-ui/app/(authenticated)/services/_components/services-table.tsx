@@ -41,14 +41,17 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { groupServices } from "@/lib/service-catalog";
 import { cn } from "@/lib/utils";
-import type { Service } from "@/lib/api-types";
+import type { Service, UserTypeCatalog } from "@/lib/api-types";
 
 export function ServicesTable({
   services,
   tenantId,
+  catalog,
 }: {
   services: Service[];
   tenantId: string;
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
 }) {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editName, setEditName] = React.useState("");
@@ -175,7 +178,7 @@ export function ServicesTable({
                 {svc.description ?? "—"}
               </TableCell>
               <TableCell>
-                <PolicySummary values={svc.allowed_user_types} />
+                <PolicySummary values={svc.allowed_user_types} catalog={catalog} />
               </TableCell>
               <TableCell>
                 <PolicySummary values={svc.allowed_channels} />
@@ -229,6 +232,7 @@ export function ServicesTable({
                     <EditServicePolicyDialog
                       service={svc}
                       tenantId={tenantId}
+                      catalog={catalog}
                       trigger={
                         <Button
                           size="icon-xs"

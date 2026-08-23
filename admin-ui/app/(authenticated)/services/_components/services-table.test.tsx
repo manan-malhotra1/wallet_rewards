@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ServicesTable } from "@/app/(authenticated)/services/_components/services-table";
 import type { Service } from "@/lib/api-types";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 vi.mock("@/app/(authenticated)/services/_actions", () => ({
   deleteServiceAction: vi.fn(),
@@ -62,7 +63,11 @@ const ATM = makeService({
 
 describe("Services table", () => {
   it("Verify a platform base offers no delete, while a derived service does", () => {
-    render(<ServicesTable services={[P2P, DIASPORA]} tenantId="tenant-1" />);
+    render(<ServicesTable
+        services={[P2P, DIASPORA]}
+        tenantId="tenant-1"
+        catalog={SEED_USER_TYPE_CATALOG}
+      />);
 
     // One delete button in total — the derived row's, not the base's.
     expect(screen.getAllByRole("button", { name: "Delete service" })).toHaveLength(1);

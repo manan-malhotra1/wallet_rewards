@@ -13,16 +13,8 @@ import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { ServiceChannel, UserType } from "@/lib/api-types";
-
-/** Human-readable labels for the five user types. */
-const USER_TYPE_LABELS: Record<UserType, string> = {
-  consumer: "Consumer",
-  agent: "Agent",
-  super_agent: "Super agent",
-  merchant: "Merchant",
-  head_merchant: "Head merchant",
-};
+import type { ServiceChannel, UserTypeCatalog } from "@/lib/api-types";
+import { userTypeLabel } from "@/lib/user-type-catalog";
 
 /** Human-readable labels for the six initiation channels. */
 const CHANNEL_LABELS: Record<ServiceChannel, string> = {
@@ -35,15 +27,24 @@ const CHANNEL_LABELS: Record<ServiceChannel, string> = {
 };
 
 /**
- * Resolve a display label for any policy value, falling back to the raw code
- * so an unknown value the backend adds later still renders legibly.
+ * Resolve a display label for any policy value.
+ *
+ * User types are runtime data, so their labels come from the catalog rather
+ * than a hardcoded map — without it a tenant's own type would render as its
+ * raw code. Channels stay a fixed enum. Falls back to the raw value so an
+ * unknown code (a retired type still named by an old policy) still reads.
+ *
+ * @param value A user-type code or a channel code.
+ * @param catalog The tenant's user-type catalog, when the caller has one.
+ * @returns The display label, or `value` itself as a last resort.
  */
-export function policyLabel(value: string): string {
-  return (
-    USER_TYPE_LABELS[value as UserType] ??
-    CHANNEL_LABELS[value as ServiceChannel] ??
-    value
-  );
+export function policyLabel(
+  value: string,
+  catalog?: UserTypeCatalog | null,
+): string {
+  const known = catalog?.types.some((t) => t.code === value) ?? false;
+  if (known) return userTypeLabel(catalog, value);
+  return CHANNEL_LABELS[value as ServiceChannel] ?? value;
 }
 
 /**
@@ -54,6 +55,7 @@ export function policyLabel(value: string): string {
  * @param options The full set of selectable values, in display order.
  * @param selected The currently-selected values.
  * @param onToggle Called with a value when its chip is clicked.
+ * @param catalog User-type catalog, when the options are user types.
  */
 export function ChipGroup({
   options,
@@ -61,12 +63,15 @@ export function ChipGroup({
   onToggle,
   disabled,
   ariaLabel,
+  catalog,
 }: {
   options: readonly string[];
   selected: string[];
   onToggle: (value: string) => void;
   disabled?: boolean;
   ariaLabel: string;
+  /** Supplied when the options are user types, so chips carry real labels. */
+  catalog?: UserTypeCatalog | null;
 }) {
   const selectedSet = new Set(selected);
   return (
@@ -89,7 +94,7 @@ export function ChipGroup({
                 : "border-[--color-border] bg-[--color-surface-1] text-[--color-text-2] hover:bg-[--color-surface-2]",
             )}
           >
-            {policyLabel(value)}
+            {policyLabel(value, catalog)}
           </button>
         );
       })}
@@ -105,9 +110,12 @@ export function ChipGroup({
 export function PolicySummary({
   values,
   max = 3,
+  catalog,
 }: {
   values: string[] | null;
   max?: number;
+  /** Supplied when the values are user types, so badges carry real labels. */
+  catalog?: UserTypeCatalog | null;
 }) {
   if (values === null) {
     return (
@@ -129,7 +137,7 @@ export function PolicySummary({
     <div className="flex flex-wrap items-center gap-1">
       {shown.map((value) => (
         <Badge key={value} variant="outline" className="text-[11px]">
-          {policyLabel(value)}
+          {policyLabel(value, catalog)}
         </Badge>
       ))}
       {extra > 0 && (

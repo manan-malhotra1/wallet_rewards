@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EditServicePolicyDialog } from "@/app/(authenticated)/services/_components/edit-policy-dialog";
 import type { Service } from "@/lib/api-types";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 const updateServiceAction = vi.fn().mockResolvedValue({ ok: true });
 vi.mock("@/app/(authenticated)/services/_actions", () => ({
@@ -48,6 +49,7 @@ async function openDialog(service: Service) {
     <EditServicePolicyDialog
       service={service}
       tenantId="tenant-1"
+      catalog={SEED_USER_TYPE_CATALOG}
       trigger={<button type="button">Edit policy</button>}
     />,
   );

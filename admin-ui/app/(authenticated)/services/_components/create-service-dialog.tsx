@@ -38,7 +38,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { SERVICE_CHANNELS, USER_TYPES, type Service } from "@/lib/api-types";
+import {
+  SERVICE_CHANNELS,
+  type Service,
+  type UserTypeCatalog,
+} from "@/lib/api-types";
 import {
   allowedOptions,
   derivableBases,
@@ -60,10 +64,13 @@ export function CreateServiceDialog({
   tenantId,
   services,
   trigger,
+  catalog,
 }: {
   tenantId: string;
   services: Service[];
   trigger: React.ReactNode;
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
 }) {
   const [open, setOpen] = React.useState(false);
   const [baseCode, setBaseCode] = React.useState("");
@@ -79,9 +86,15 @@ export function CreateServiceDialog({
   const bases = React.useMemo(() => derivableBases(services), [services]);
   const base = bases.find((b) => b.code === baseCode) ?? null;
 
+  // The widest legal audience is every active type in the catalog, narrowed
+  // further by whatever the base already restricts itself to.
+  const allUserTypes = React.useMemo(
+    () => catalog.types.filter((t) => t.status === "active").map((t) => t.code),
+    [catalog],
+  );
   const userTypeOptions = allowedOptions(
     base?.allowed_user_types ?? null,
-    USER_TYPES,
+    allUserTypes,
   );
   const channelOptions = allowedOptions(base?.allowed_channels ?? null, SERVICE_CHANNELS);
 
@@ -228,6 +241,7 @@ export function CreateServiceDialog({
             <ChipGroup
               ariaLabel="Who can initiate"
               options={userTypeOptions}
+              catalog={catalog}
               selected={userTypes}
               onToggle={(v) => setUserTypes((cur) => toggleValue(cur, v))}
               disabled={submitting || !baseCode}

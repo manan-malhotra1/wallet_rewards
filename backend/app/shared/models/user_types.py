@@ -96,7 +96,7 @@ class UserTypeDef(Base):
     code: Mapped[str] = mapped_column(String(30), nullable=False)
     label: Mapped[str] = mapped_column(String(60), nullable=False)
     category_code: Mapped[str] = mapped_column(
-        String(30), ForeignKey("user_type_categories.code"), nullable=False
+        String(30), ForeignKey("user_type_categories.code"), nullable=False, index=True
     )
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     status: Mapped[str] = mapped_column(

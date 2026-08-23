@@ -154,3 +154,24 @@ async def test_system_code_is_reserved(db_session: AsyncSession, test_tenant: Te
         )
         == "user_type_code_reserved"
     )
+
+
+@pytest.mark.asyncio
+async def test_unknown_category_points_at_the_category_field(
+    db_session: AsyncSession, test_tenant: Tenant
+) -> None:
+    """Verify a nonexistent category reports itself, not a bad user type.
+
+    This used to raise `unknown_user_type` ("That user type is not available for
+    this tenant"), sending the operator to inspect the type field when the
+    category is what does not exist.
+    """
+    assert (
+        await _err(
+            db_session,
+            test_tenant,
+            code="diaspora_sender",
+            category_code="nonexistent",
+        )
+        == "unknown_user_type_category"
+    )

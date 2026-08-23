@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principals import AdminPrincipal
@@ -31,7 +32,9 @@ from app.shared.exceptions import (
     ParentTypeNotFound,
     ParentTypeNotTopLevel,
     ParentTypeWrongCategory,
-    UnknownUserType,
+    UnknownUserTypeCategory,
+    UserTypeCategoryImmutable,
+    UserTypeCodeAlreadyExists,
     UserTypeCodeReserved,
     UserTypeHasActiveChildren,
 )
@@ -41,6 +44,22 @@ from app.shared.models import (
     UserTypeCategory,
     UserTypeDef,
 )
+
+
+def _visible_to_tenant(tenant_id: UUID) -> ColumnElement[bool]:
+    """Build the visibility predicate: platform-wide system types plus a tenant's own.
+
+    The single definition of what a tenant may see. A system type has
+    `tenant_id IS NULL` and belongs to everyone; anything else belongs to
+    exactly one tenant and must never leak across the boundary (NFR-0220).
+
+    Args:
+        tenant_id: The acting tenant.
+
+    Returns:
+        A SQLAlchemy boolean expression for a `WHERE` clause over `user_types`.
+    """
+    return or_(UserTypeDef.tenant_id.is_(None), UserTypeDef.tenant_id == tenant_id)
 
 
 async def list_user_types(
@@ -56,14 +75,21 @@ async def list_user_types(
             label rather than a raw code.
 
     Returns:
-        System types plus the tenant's own, ordered by category then label.
+        System types plus the tenant's own, grouped into category sections in
+        the categories' `display_order` (Consumers, Retail, Business) and
+        alphabetical by label within each section.
     """
-    stmt = select(UserTypeDef).where(
-        or_(UserTypeDef.tenant_id.is_(None), UserTypeDef.tenant_id == tenant_id)
+    # Ordering by `category_code` would sort the sections alphabetically
+    # (business, consumer, retail). Spec §9 wants them in the operator-facing
+    # `display_order`, so the caller renders the list as-is without re-sorting.
+    stmt = (
+        select(UserTypeDef)
+        .join(UserTypeCategory, UserTypeCategory.code == UserTypeDef.category_code)
+        .where(_visible_to_tenant(tenant_id))
     )
     if not include_retired:
         stmt = stmt.where(UserTypeDef.status == USER_TYPE_STATUS_ACTIVE)
-    stmt = stmt.order_by(UserTypeDef.category_code, UserTypeDef.label)
+    stmt = stmt.order_by(UserTypeCategory.display_order, UserTypeDef.label)
     return list((await session.execute(stmt)).scalars().all())
 
 
@@ -86,10 +112,7 @@ async def get_user_type(session: AsyncSession, tenant_id: UUID, code: str) -> Us
     """
     stmt = (
         select(UserTypeDef)
-        .where(
-            UserTypeDef.code == code,
-            or_(UserTypeDef.tenant_id.is_(None), UserTypeDef.tenant_id == tenant_id),
-        )
+        .where(UserTypeDef.code == code, _visible_to_tenant(tenant_id))
         # A tenant row sorts before the system row (NULLs last), so a tenant
         # override wins if one somehow exists.
         .order_by(UserTypeDef.tenant_id.is_(None))
@@ -136,7 +159,7 @@ async def _assert_hierarchy_valid(
         parent_type_code: The parent type, or None for a top-level type.
 
     Raises:
-        UnknownUserType: the category code does not exist.
+        UnknownUserTypeCategory: the category code does not exist.
         CategoryDoesNotSupportHierarchy: a parent was given for a flat category.
         ParentTypeNotFound: the parent does not resolve, or is retired.
         ParentTypeWrongCategory: the parent is in a different category.
@@ -148,7 +171,7 @@ async def _assert_hierarchy_valid(
         )
     ).scalar_one_or_none()
     if category is None:
-        raise UnknownUserType()
+        raise UnknownUserTypeCategory()
 
     if parent_type_code is None:
         return
@@ -190,7 +213,7 @@ async def assert_type_definition_valid(
 
     Raises:
         UserTypeCodeReserved: the code belongs to a system type.
-        UnknownUserType: the category code does not exist.
+        UnknownUserTypeCategory: the category code does not exist.
         CategoryDoesNotSupportHierarchy: a parent was given for a flat category.
         ParentTypeNotFound: the parent does not resolve, or is retired.
         ParentTypeWrongCategory: the parent is in a different category.
@@ -246,9 +269,10 @@ async def create_user_type(
         The persisted `UserTypeDef` row.
 
     Raises:
-        UserTypeCodeReserved, UnknownUserType, ParentTypeNotFound,
+        UserTypeCodeReserved, UnknownUserTypeCategory, ParentTypeNotFound,
         ParentTypeWrongCategory, ParentTypeNotTopLevel,
         CategoryDoesNotSupportHierarchy: see spec §5.
+        UserTypeCodeAlreadyExists: this tenant already owns the code.
 
     Side effects:
         Inserts a `user_types` row and one `user_type.created` audit row, then
@@ -275,7 +299,16 @@ async def create_user_type(
         parent_type_code=request.parent_type_code,
     )
     session.add(row)
-    await session.flush()
+    # `_assert_code_available` only guards platform-wide system codes, so a
+    # tenant reusing its OWN code reaches `uq_user_types_tenant_code`. Left
+    # unhandled the IntegrityError is a 500 AND poisons the session, rolling
+    # back the approval this call was staged inside and stranding the request
+    # on PENDING. Catching it here turns that into the 409 spec §12 requires.
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise UserTypeCodeAlreadyExists(request.code) from exc
 
     if admin is not None:
         record_audit_for_admin(
@@ -345,7 +378,10 @@ async def _assert_no_active_children(
                 select(UserTypeDef.code).where(
                     UserTypeDef.parent_type_code == parent_code,
                     UserTypeDef.status == USER_TYPE_STATUS_ACTIVE,
-                    or_(UserTypeDef.tenant_id.is_(None), UserTypeDef.tenant_id == tenant_id),
+                    # Includes system rows, which is unreachable and harmless:
+                    # only a tenant row can be retired, and no system type can
+                    # name a tenant type as its parent.
+                    _visible_to_tenant(tenant_id),
                 )
             )
         )
@@ -385,10 +421,11 @@ async def replace_user_type_for_scope(
     Raises:
         AppHTTPException 403: the target is a system type.
         AppHTTPException 404: no such type for this tenant.
+        UserTypeCategoryImmutable: the payload names a different category.
         UserTypeHasActiveChildren: retiring a parent that still has active children.
-        UnknownUserType, CategoryDoesNotSupportHierarchy, ParentTypeNotFound,
-        ParentTypeWrongCategory, ParentTypeNotTopLevel: re-parenting broke a
-            hierarchy rule (spec §5).
+        UnknownUserTypeCategory, CategoryDoesNotSupportHierarchy, ParentTypeNotFound,
+        ParentTypeWrongCategory, ParentTypeNotTopLevel: re-parenting or
+            reactivating broke a hierarchy rule (spec §5).
 
     Side effects:
         Updates one `user_types` row and appends one `user_type.updated` audit
@@ -401,17 +438,35 @@ async def replace_user_type_for_scope(
     row = await _load_mutable_type(session, tenant_id=first.tenant_id, code=first.code)
     before = _type_state(row)
 
+    # The write block below never assigns `category_code` — it is immutable, like
+    # `code`. Refuse a payload that disagrees rather than ignoring the field: an
+    # approved maker-checker request that silently does nothing is its own bug,
+    # and validating the hierarchy against a category the row will never adopt is
+    # how a Business parent used to land on a Retail row.
+    if first.category_code != row.category_code:
+        raise UserTypeCategoryImmutable()
+
     retiring = first.status == USER_TYPE_STATUS_RETIRED and row.status != USER_TYPE_STATUS_RETIRED
     if retiring:
         await _assert_no_active_children(session, tenant_id=first.tenant_id, parent_code=row.code)
 
-    if first.parent_type_code != row.parent_type_code:
+    reparenting = first.parent_type_code != row.parent_type_code
+    # A status-only reactivation must re-check the hierarchy too. Retiring a
+    # child, then its now-childless parent, then reactivating the child is four
+    # individually legal steps that compose into the active-child-under-a-
+    # retired-parent state rule 4 exists to prevent. D4 makes reactivate a
+    # first-class operation, so this path is live, not hypothetical.
+    reactivating = (
+        first.status == USER_TYPE_STATUS_ACTIVE and row.status == USER_TYPE_STATUS_RETIRED
+    )
+    if reparenting or reactivating:
         # Only the hierarchy half of the rule set: the row keeps its own
-        # (immutable) code, so the collision check would trip on itself.
+        # (immutable) code, so the collision check would trip on itself. The
+        # category comes off the ROW, never the payload.
         await _assert_hierarchy_valid(
             session,
             tenant_id=first.tenant_id,
-            category_code=first.category_code,
+            category_code=row.category_code,
             parent_type_code=first.parent_type_code,
         )
 

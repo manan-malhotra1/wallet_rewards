@@ -73,3 +73,25 @@ async def test_get_user_type_is_tenant_isolated(
     await _add(db_session, other_tenant, "franchisee")
     assert (await get_user_type(db_session, test_tenant.id, "franchisee")) is None
     assert (await get_user_type(db_session, other_tenant.id, "franchisee")) is not None
+
+
+@pytest.mark.asyncio
+async def test_list_orders_category_sections_by_display_order(
+    db_session: AsyncSession, test_tenant: Tenant
+) -> None:
+    """Verify category sections come back in `display_order`, labels sorted within.
+
+    Ordering by `category_code` would sort the sections alphabetically —
+    business, consumer, retail. Spec §9 wants the operator-facing order, so the
+    admin page can render the list without re-sorting it.
+    """
+    types = await list_user_types(db_session, test_tenant.id)
+
+    sections: list[str] = []
+    for t in types:
+        if t.category_code not in sections:
+            sections.append(t.category_code)
+    assert sections == ["consumer", "retail", "business"]
+
+    retail = [t.label for t in types if t.category_code == "retail"]
+    assert retail == sorted(retail), "labels sort alphabetically within a section"

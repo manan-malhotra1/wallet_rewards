@@ -1468,6 +1468,59 @@ class UserTypeCodeReserved(AppHTTPException):
         )
 
 
+class UserTypeCodeAlreadyExists(AppHTTPException):
+    """409 — this tenant already owns a type with this code.
+
+    Distinct from `UserTypeCodeReserved`, which is about a *platform-wide*
+    system code. This one is the tenant's own collision, caught off the partial
+    UNIQUE index `uq_user_types_tenant_code` rather than pre-checked, so a
+    concurrent insert cannot slip between the check and the write.
+
+    Args:
+        code: The colliding type code, echoed back so the UI can mark the field.
+    """
+
+    def __init__(self, code: str) -> None:
+        super().__init__(
+            409,
+            "user_type_code_already_exists",
+            f"A user type with code '{code}' already exists for this tenant.",
+        )
+
+
+class UserTypeCategoryImmutable(AppHTTPException):
+    """422 — an update named a different category from the one the row carries.
+
+    A type's category is fixed at creation, like its code (spec D5): only
+    `label`, `status`, `requires_merchant_profile` and `parent_type_code` are
+    mutable. Refusing the payload outright — rather than ignoring the field —
+    keeps an approved maker-checker request from meaning something other than
+    what the checker read.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "user_type_category_immutable",
+            "A user type's category cannot be changed after it is created.",
+        )
+
+
+class UnknownUserTypeCategory(AppHTTPException):
+    """422 — the named category code does not exist.
+
+    Separate from `UnknownUserType` so the message points the operator at the
+    category field rather than at the type field.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "unknown_user_type_category",
+            "That user type category does not exist.",
+        )
+
+
 class ParentTypeNotFound(AppHTTPException):
     """422 — the named parent type does not resolve, or is retired."""
 

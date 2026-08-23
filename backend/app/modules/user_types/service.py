@@ -13,7 +13,15 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.models import USER_TYPE_STATUS_ACTIVE, UserTypeDef
+from app.shared.exceptions import (
+    CategoryDoesNotSupportHierarchy,
+    ParentTypeNotFound,
+    ParentTypeNotTopLevel,
+    ParentTypeWrongCategory,
+    UnknownUserType,
+    UserTypeCodeReserved,
+)
+from app.shared.models import USER_TYPE_STATUS_ACTIVE, UserTypeCategory, UserTypeDef
 
 
 async def list_user_types(
@@ -68,3 +76,61 @@ async def get_user_type(session: AsyncSession, tenant_id: UUID, code: str) -> Us
         .order_by(UserTypeDef.tenant_id.is_(None))
     )
     return (await session.execute(stmt)).scalars().first()
+
+
+async def assert_type_definition_valid(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    code: str,
+    category_code: str,
+    parent_type_code: str | None = None,
+) -> None:
+    """Enforce the code-collision and four hierarchy rules from spec §5.
+
+    Args:
+        session: Async DB session.
+        tenant_id: The tenant proposing the type.
+        code: The proposed code.
+        category_code: The category the type sits in.
+        parent_type_code: The parent type, or None for a top-level type.
+
+    Raises:
+        UserTypeCodeReserved: the code belongs to a system type.
+        UnknownUserType: the category code does not exist.
+        CategoryDoesNotSupportHierarchy: a parent was given for a flat category.
+        ParentTypeNotFound: the parent does not resolve, or is retired.
+        ParentTypeWrongCategory: the parent is in a different category.
+        ParentTypeNotTopLevel: the parent is itself a child (two-level cap).
+    """
+    system = (
+        await session.execute(
+            select(UserTypeDef).where(UserTypeDef.code == code, UserTypeDef.tenant_id.is_(None))
+        )
+    ).scalar_one_or_none()
+    if system is not None:
+        raise UserTypeCodeReserved()
+
+    category = (
+        await session.execute(
+            select(UserTypeCategory).where(UserTypeCategory.code == category_code)
+        )
+    ).scalar_one_or_none()
+    if category is None:
+        raise UnknownUserType()
+
+    if parent_type_code is None:
+        return
+
+    if not category.supports_hierarchy:
+        raise CategoryDoesNotSupportHierarchy()
+
+    parent = await get_user_type(session, tenant_id, parent_type_code)
+    if parent is None or parent.status != USER_TYPE_STATUS_ACTIVE:
+        raise ParentTypeNotFound()
+    if parent.category_code != category_code:
+        raise ParentTypeWrongCategory()
+    # THE two-level guarantee: a parent must itself be top-level. No depth
+    # counter, no recursion — this single check caps the tree.
+    if parent.parent_type_code is not None:
+        raise ParentTypeNotTopLevel()

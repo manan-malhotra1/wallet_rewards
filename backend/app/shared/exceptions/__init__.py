@@ -1452,3 +1452,87 @@ class InvalidAnalyticsParameter(AppHTTPException):
 
     def __init__(self, message: str) -> None:
         super().__init__(422, "invalid_parameter", message)
+
+
+# --- User types (configurable user-type catalog, spec §5) -------------------
+
+
+class UserTypeCodeReserved(AppHTTPException):
+    """409 — the code is taken by a platform-wide system type."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "user_type_code_reserved",
+            "That code is reserved by a system user type.",
+        )
+
+
+class ParentTypeNotFound(AppHTTPException):
+    """422 — the named parent type does not resolve, or is retired."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "parent_type_not_found",
+            "The parent user type was not found or is retired.",
+        )
+
+
+class ParentTypeWrongCategory(AppHTTPException):
+    """422 — the parent sits in a different category from the child."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "parent_type_wrong_category",
+            "The parent user type must be in the same category.",
+        )
+
+
+class ParentTypeNotTopLevel(AppHTTPException):
+    """422 — the named parent is itself a child. Caps the hierarchy at two levels."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "parent_type_not_toplevel",
+            "The parent user type must itself be a top-level type.",
+        )
+
+
+class CategoryDoesNotSupportHierarchy(AppHTTPException):
+    """422 — a parent was supplied for a type in a flat category."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "category_does_not_support_hierarchy",
+            "This category does not support a type hierarchy.",
+        )
+
+
+class UserTypeHasActiveChildren(AppHTTPException):
+    """409 — a parent type with active children cannot be retired.
+
+    Args:
+        children: Codes of the active child types blocking the retirement.
+    """
+
+    def __init__(self, children: list[str]) -> None:
+        super().__init__(
+            409,
+            "user_type_has_active_children",
+            f"Retire these child types first: {', '.join(children)}.",
+        )
+
+
+class UnknownUserType(AppHTTPException):
+    """422 — a user or config references a type that does not resolve."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "unknown_user_type",
+            "That user type is not available for this tenant.",
+        )

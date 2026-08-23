@@ -22,6 +22,7 @@ from app.modules.admin_profiles import record_admin
 from app.modules.audit.service import record_audit_for_admin
 from app.modules.config_requests.apply import (
     apply_config_request,
+    assert_delete_supported,
     config_scope,
     load_config_target,
     load_live_scope_as_bands,
@@ -331,7 +332,8 @@ async def propose_config_change(
             delete's target is NOT checked at propose — its scope is resolved
             from the live row at apply time, which 404s with the same code.
         AppHTTPException (422): a create/update without a payload, an
-            update/delete without a target, or a payload that fails its schema.
+            update/delete without a target, a payload that fails its schema, or
+            a delete of a config type that only supports retirement.
     """
     await _assert_tenant_exists(session, tenant_id)
 
@@ -370,6 +372,9 @@ async def propose_config_change(
             target_config_id = request_data.target_config_id
         new_scope: tuple[object, ...] | None = config_scope(request_data.config_type, bands[0])
     else:  # delete
+        # Not every config type CAN be deleted (user_type is retired instead,
+        # spec D3). Refuse here so the maker hears it, not the checker.
+        assert_delete_supported(request_data.config_type)
         if request_data.target_config_id is None:
             raise AppHTTPException(
                 422,

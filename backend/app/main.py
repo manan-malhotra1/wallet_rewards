@@ -53,6 +53,7 @@ from app.modules.taxes import router as taxes_router
 from app.modules.tenants import router as tenants_router
 from app.modules.treasury import router as treasury_router
 from app.modules.user_operations import router as user_operations_router
+from app.modules.user_types import router as user_types_router
 from app.shared.exceptions import AppHTTPException
 
 # Tag descriptions surfaced in /docs and the exported partner spec (Epic 14 S6).
@@ -154,5 +155,7 @@ app.include_router(multipliers_router)
 app.include_router(services_router)
 # Phase 3 — instruments catalog
 app.include_router(instruments_router)
+# Configurable user types — read-only catalog; writes go via /config-requests
+app.include_router(user_types_router)
 # Analytics — read-only KPI dashboard
 app.include_router(analytics_router)

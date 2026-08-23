@@ -1,10 +1,16 @@
-"""Validation tests for the four hierarchy rules and code collisions (spec §5)."""
+"""Validation tests for the hierarchy rules, code collisions and code length (spec §5)."""
 
+from collections.abc import Callable
 from typing import Any
+from uuid import uuid4
 
 import pytest
+from httpx import AsyncClient
+from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.user_types.schemas import UserTypeCreateRequest
 from app.modules.user_types.service import assert_type_definition_valid
 from app.shared.exceptions import AppHTTPException
 from app.shared.models import Tenant, UserTypeDef
@@ -175,3 +181,86 @@ async def test_unknown_category_points_at_the_category_field(
         )
         == "unknown_user_type_category"
     )
+
+
+# -----------------------------------------------------------------------------
+# Code length — must fit `users.user_type` (String(20))
+# -----------------------------------------------------------------------------
+
+
+def test_code_longer_than_the_users_column_is_refused_by_the_schema() -> None:
+    """Verify a 21-character code never gets past Pydantic.
+
+    `users.user_type` is String(20). A longer code would be accepted here,
+    stored on `user_types.code`, and then blow up as a raw `DataError` (500) the
+    moment a user was created with it. The cap belongs at the schema boundary:
+    `code` is a machine identifier, the human-readable name lives in `label`.
+    """
+    with pytest.raises(ValidationError):
+        UserTypeCreateRequest(
+            tenant_id=uuid4(),
+            code="a" * 21,
+            label="Too long",
+            category_code="retail",
+        )
+
+
+def test_code_of_exactly_twenty_characters_is_accepted() -> None:
+    """Verify the cap is 20, not 19 — the boundary value still validates."""
+    request = UserTypeCreateRequest(
+        tenant_id=uuid4(),
+        code="a" * 20,
+        label="Exactly twenty",
+        category_code="retail",
+    )
+    assert len(request.code) == 20
+
+
+def test_parent_type_code_is_capped_like_code() -> None:
+    """Verify `parent_type_code` holds a `code`, so it carries the same cap.
+
+    A 21-character parent could never resolve to a real type once codes are
+    capped at 20, so accepting one only defers the failure.
+    """
+    with pytest.raises(ValidationError):
+        UserTypeCreateRequest(
+            tenant_id=uuid4(),
+            code="junior_agent",
+            label="Junior agent",
+            category_code="retail",
+            parent_type_code="a" * 21,
+        )
+
+
+@pytest.mark.asyncio
+async def test_over_long_code_is_refused_at_propose_time(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    make_admin_token: Callable[..., str],
+) -> None:
+    """Verify an over-long code 422s at the API boundary and writes nothing.
+
+    The maker-checker propose endpoint validates the payload against the create
+    schema, so the request is refused before any row — request or type — exists.
+    """
+    code = "a" * 21
+    token = make_admin_token(roles=["platform-admin"])
+    response = await async_client.post(
+        f"/api/v1/config-requests?tenant_id={test_tenant.id}",
+        json={
+            "config_type": "user_type",
+            "operation": "create",
+            "payload": {
+                "tenant_id": str(test_tenant.id),
+                "code": code,
+                "label": "Too long",
+                "category_code": "retail",
+            },
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422, response.text
+    assert (
+        await db_session.execute(select(UserTypeDef).where(UserTypeDef.code == code))
+    ).scalar_one_or_none() is None

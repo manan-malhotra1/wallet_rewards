@@ -22,14 +22,23 @@ class UserTypeCreateRequest(BaseModel):
     `code` is constrained to a lowercase snake_case identifier because it is the
     join key written verbatim into `users.user_type` and every config row, with
     no foreign key to normalise it later (spec D5: codes are immutable).
+
+    The 20-character cap is the width of `users.user_type` and of the `user_type`
+    column on every config table. A longer code would validate here and then
+    fail as a raw `DataError` (500) the first time a user was created with it.
+    Widening `users` — a large hot table — for ten extra characters is not worth
+    it: `code` is a machine identifier, the operator-facing name is `label`,
+    which has 60.
     """
 
     tenant_id: UUID
-    code: str = Field(min_length=2, max_length=30, pattern=r"^[a-z][a-z0-9_]*$")
+    code: str = Field(min_length=2, max_length=20, pattern=r"^[a-z][a-z0-9_]*$")
     label: str = Field(min_length=1, max_length=60)
     category_code: str = Field(min_length=1, max_length=30)
     requires_merchant_profile: bool = False
-    parent_type_code: str | None = Field(default=None, max_length=30)
+    # Holds another type's `code`, so it carries the same cap — a longer value
+    # could never resolve to a real type.
+    parent_type_code: str | None = Field(default=None, max_length=20)
     status: str = USER_TYPE_STATUS_ACTIVE
 
 

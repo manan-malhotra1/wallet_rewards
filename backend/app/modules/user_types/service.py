@@ -156,6 +156,33 @@ async def assert_user_type_valid(
     return row
 
 
+async def assert_optional_user_type_valid(
+    session: AsyncSession, *, tenant_id: UUID, code: str | None
+) -> None:
+    """Validate the `user_type` on a config row, treating None as "everyone".
+
+    The config-write half of spec §6. Every limit / wallet-limit / pricing /
+    commission create and update calls this, because config resolution matches
+    `user_type` as a bare string: a row written against a typo'd or nonexistent
+    type never matches anything, and the transaction silently falls through to
+    the `user_type IS NULL` default row (spec §11). The operator is left staring
+    at a saved config that does nothing.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: The tenant the config belongs to.
+        code: The type the config is scoped to, or None for the default row that
+            applies to every type — which is always valid and skips the lookup.
+
+    Raises:
+        UnknownUserType: 422 — a code was given but does not resolve to an
+            active type for this tenant.
+    """
+    if code is None:
+        return
+    await assert_user_type_valid(session, tenant_id=tenant_id, code=code)
+
+
 async def _assert_code_available(session: AsyncSession, *, code: str) -> None:
     """Refuse a code already owned by a platform-wide system type.
 

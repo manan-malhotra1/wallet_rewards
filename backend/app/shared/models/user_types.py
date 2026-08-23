@@ -93,7 +93,11 @@ class UserTypeDef(Base):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True
     )
-    code: Mapped[str] = mapped_column(String(30), nullable=False)
+    # String(20), not 30: this value is copied verbatim into `users.user_type`
+    # and into the `user_type` column of every config table, all String(20). A
+    # wider column here would let a 21-character code be created and then fail
+    # as a raw DataError the first time it was assigned to a user.
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
     label: Mapped[str] = mapped_column(String(60), nullable=False)
     category_code: Mapped[str] = mapped_column(
         String(30), ForeignKey("user_type_categories.code"), nullable=False, index=True
@@ -108,6 +112,7 @@ class UserTypeDef(Base):
     requires_merchant_profile: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
-    parent_type_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Holds another row's `code`, so it matches `code`'s width exactly.
+    parent_type_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at = created_at_col()
     updated_at = updated_at_col()

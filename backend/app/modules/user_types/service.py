@@ -32,6 +32,7 @@ from app.shared.exceptions import (
     ParentTypeNotFound,
     ParentTypeNotTopLevel,
     ParentTypeWrongCategory,
+    UnknownUserType,
     UnknownUserTypeCategory,
     UserTypeCategoryImmutable,
     UserTypeCodeAlreadyExists,
@@ -118,6 +119,41 @@ async def get_user_type(session: AsyncSession, tenant_id: UUID, code: str) -> Us
         .order_by(UserTypeDef.tenant_id.is_(None))
     )
     return (await session.execute(stmt)).scalars().first()
+
+
+async def assert_user_type_valid(
+    session: AsyncSession, *, tenant_id: UUID, code: str
+) -> UserTypeDef:
+    """Refuse a type that cannot be WRITTEN onto a user or a config row (spec §6).
+
+    This is the application-level replacement for the dropped
+    `ck_users_user_type` CHECK. It must run on every path that writes or changes
+    a `user_type`, because nothing at the database level stops a bogus string
+    reaching the `users` table any more. A user carrying an unresolvable type
+    would fall through to the `user_type IS NULL` default config row and quietly
+    get default pricing and limits instead of being refused (spec §11).
+
+    Stricter than `get_user_type`: a RETIRED type still resolves for reads (an
+    existing user must keep working) but may not be assigned to anything new.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: The acting tenant. Another tenant's custom type is refused
+            identically to a nonexistent one — no existence leak.
+        code: The proposed type code.
+
+    Returns:
+        The resolved, active `UserTypeDef` row, so the caller can read
+        `parent_type_code` / `requires_merchant_profile` without a second query.
+
+    Raises:
+        UnknownUserType: 422 — the code does not resolve for this tenant, or it
+            resolves to a retired type.
+    """
+    row = await get_user_type(session, tenant_id, code)
+    if row is None or row.status != USER_TYPE_STATUS_ACTIVE:
+        raise UnknownUserType()
+    return row
 
 
 async def _assert_code_available(session: AsyncSession, *, code: str) -> None:

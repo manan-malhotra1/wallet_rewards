@@ -17,7 +17,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.shared.utils.normalize import normalize_phone
 
 IdentifierType = Literal["phone", "email", "account_number", "card_number"]
-UserType = Literal["consumer", "agent", "super_agent", "merchant", "head_merchant"]
+# User types are configurable at runtime (user-types catalog, 2026-08-23), so
+# this cannot be a Literal. Validity is enforced in the service against the
+# tenant's own resolved list — see `user_types.service.assert_user_type_valid`.
+UserType = str
 
 
 class IdentifierIn(BaseModel):

@@ -102,8 +102,9 @@ class UserTypeDef(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=USER_TYPE_STATUS_ACTIVE
     )
-    # Replaces the MERCHANT_USER_TYPES tuple — drives merchant-profile and
-    # collection-account provisioning (Epic 17).
+    # Replaces the hardcoded merchant-type tuple — drives merchant-profile and
+    # collection-account provisioning (Epic 17), and gates merchant-bound API
+    # keys, so a tenant's own Business type qualifies like `merchant` does.
     requires_merchant_profile: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )

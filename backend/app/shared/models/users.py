@@ -47,8 +47,13 @@ USER_STATUSES = (
     USER_STATUS_TXN_LOCKED,
 )
 
-# User type constants (user-types foundation, Epic 12) — keep in sync with the
-# CHECK constraint on `users.user_type` below and migration 0021.
+# The five seeded system user types (Epic 12). Since the configurable
+# user-types catalog (2026-08-23) these are seed identifiers only — NOT the
+# allowed set. Types are rows in `user_types`, `users.user_type` carries no
+# CHECK, and validity is decided at runtime by
+# `user_types.service.assert_user_type_valid`. Which types back a merchant
+# profile, and which type a child hangs under, are columns on those rows
+# (`requires_merchant_profile`, `parent_type_code`), not constants here.
 USER_TYPE_CONSUMER = "consumer"
 USER_TYPE_AGENT = "agent"
 USER_TYPE_SUPER_AGENT = "super_agent"
@@ -62,17 +67,6 @@ USER_TYPES = (
     USER_TYPE_MERCHANT,
     USER_TYPE_HEAD_MERCHANT,
 )
-
-# Types backed by a merchant_profiles row + collection account (Epic 17).
-MERCHANT_USER_TYPES = (USER_TYPE_MERCHANT, USER_TYPE_HEAD_MERCHANT)
-
-# Parent-type compatibility (Decision D4): a child type maps to the single
-# parent type it may hang under. Types absent from this map must have a NULL
-# parent. Enforced in the identity service (cross-row rule, not a CHECK).
-PARENT_TYPE_BY_CHILD = {
-    USER_TYPE_AGENT: USER_TYPE_SUPER_AGENT,
-    USER_TYPE_MERCHANT: USER_TYPE_HEAD_MERCHANT,
-}
 
 
 class User(Base):
@@ -91,10 +85,6 @@ class User(Base):
             "status IN ('active', 'suspended', 'closed', 'txn_locked')",
             name="ck_users_status",
         ),
-        CheckConstraint(
-            "user_type IN ('consumer', 'agent', 'super_agent', 'merchant', 'head_merchant')",
-            name="ck_users_user_type",
-        ),
         Index("ix_users_tenant_user_type", "tenant_id", "user_type"),
     )
 
@@ -107,15 +97,18 @@ class User(Base):
     )
     # bcrypt hash; never the plain PIN. NULL until user sets PIN (Phase 2).
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # First-class user type (Epic 12). VARCHAR + CHECK per repo DB conventions
-    # (native PG enums avoided — see .claude/rules/database.md). Existing rows
-    # backfill to 'consumer' via the server_default.
+    # First-class user type (Epic 12). A `user_types.code`, stored as a plain
+    # string with NO foreign key so the money-path config lookups keep matching
+    # on strings. Migration 0061 dropped `ck_users_user_type` — the allowed set
+    # is runtime data now, enforced by `assert_user_type_valid` in the service
+    # layer on every write.
     user_type: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=USER_TYPE_CONSUMER
     )
-    # Nullable self-link for the agent/merchant hierarchy (Decision D4). Type
-    # compatibility (agent->super_agent, merchant->head_merchant, same tenant)
-    # is enforced in the identity service — it's a cross-row rule, not a CHECK.
+    # Nullable self-link for the supervisor hierarchy (Decision D4). The parent
+    # must carry the child type row's declared `parent_type_code` and live in
+    # the same tenant; enforced in the identity service — a cross-row rule, not
+    # a CHECK.
     parent_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
     )

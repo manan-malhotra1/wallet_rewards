@@ -368,7 +368,7 @@ def upgrade() -> None:
         sa.CheckConstraint("parent_type_code IS NULL OR parent_type_code <> code",
                            name="ck_user_types_no_self_parent"),
     )
-    op.create_index("ix_user_types_tenant", "user_types", ["tenant_id"])
+    op.create_index("ix_user_types_tenant_id", "user_types", ["tenant_id"])
     # Two partial indexes, not one composite: a system code must be globally
     # unique, which a composite on (tenant_id, code) cannot express when
     # tenant_id is NULL.
@@ -426,7 +426,7 @@ def downgrade() -> None:
     )
     op.drop_index("uq_user_types_tenant_code", table_name="user_types")
     op.drop_index("uq_user_types_system_code", table_name="user_types")
-    op.drop_index("ix_user_types_tenant", table_name="user_types")
+    op.drop_index("ix_user_types_tenant_id", table_name="user_types")
     op.drop_table("user_types")
     op.drop_table("user_type_categories")
 ```

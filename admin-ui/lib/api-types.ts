@@ -808,7 +808,8 @@ export type ConfigType =
   | "commission"
   | "tax"
   | "step_up"
-  | "conversion_rate";
+  | "conversion_rate"
+  | "user_type";
 
 /**
  * The mutation a change request proposes. An `update` re-proposes a live

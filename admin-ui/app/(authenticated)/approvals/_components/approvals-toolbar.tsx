@@ -105,6 +105,7 @@ const CONFIG_TYPES: ConfigType[] = [
   "wallet_limit",
   "step_up",
   "conversion_rate",
+  "user_type",
 ];
 
 const CONFIG_TYPE_OPTIONS: FilterOption[] = CONFIG_TYPES.map((value) => ({

@@ -63,6 +63,14 @@ const STATUS_MAP: Record<
     bg: "bg-red-500/10 dark:bg-red-500/15",
     text: "text-red-700 dark:text-red-400",
   },
+  // A user type that is no longer assignable but still referenced by existing
+  // users and config rows — retired, never deleted (spec D3).
+  RETIRED: {
+    label: "Retired",
+    dot: "bg-slate-400",
+    bg: "bg-muted",
+    text: "text-muted-foreground",
+  },
   DRAFT: {
     label: "Draft",
     dot: "bg-slate-400",

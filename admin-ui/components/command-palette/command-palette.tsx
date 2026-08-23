@@ -22,6 +22,7 @@ import {
   Tag,
   Ticket,
   Users,
+  Users2,
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -54,6 +55,7 @@ const NAV: NavItem[] = [
   { label: "Go to Redemption", href: "/redemption", icon: CreditCard },
   { label: "Go to Services", href: "/services", icon: Tag },
   { label: "Go to Instruments", href: "/instruments", icon: Ticket },
+  { label: "Go to User types", href: "/user-types", icon: Users2 },
   { label: "Go to Tenants", href: "/tenants", icon: Settings2 },
   { label: "Go to Audit log", href: "/audit", icon: ShieldCheck },
   { label: "Go to Events", href: "/events", icon: Receipt },

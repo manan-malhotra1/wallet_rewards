@@ -53,10 +53,6 @@ class PricingConfig(Base):
             "variable_fee_pct >= 0 AND variable_fee_pct < 1",
             name="ck_pricing_configs_variable_fee_pct_range",
         ),
-        CheckConstraint(
-            "user_type IN ('consumer', 'agent', 'super_agent', 'merchant', 'head_merchant')",
-            name="ck_pricing_configs_user_type",
-        ),
         # A band is a half-open interval [amount_from, amount_to); the upper
         # bound must exceed the lower when both are set.
         CheckConstraint(

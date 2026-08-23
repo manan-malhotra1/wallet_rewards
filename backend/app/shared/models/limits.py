@@ -19,7 +19,6 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    CheckConstraint,
     ForeignKey,
     Integer,
     Numeric,
@@ -47,10 +46,6 @@ class LimitConfig(Base):
             "user_type",
             name="uq_limit_configs_scope",
             postgresql_nulls_not_distinct=True,
-        ),
-        CheckConstraint(
-            "user_type IN ('consumer', 'agent', 'super_agent', 'merchant', 'head_merchant')",
-            name="ck_limit_configs_user_type",
         ),
     )
 
@@ -104,10 +99,6 @@ class WalletLimitConfig(Base):
             "user_type",
             name="uq_wallet_limit_configs_scope",
             postgresql_nulls_not_distinct=True,
-        ),
-        CheckConstraint(
-            "user_type IN ('consumer', 'agent', 'super_agent', 'merchant', 'head_merchant')",
-            name="ck_wallet_limit_configs_user_type",
         ),
     )
 

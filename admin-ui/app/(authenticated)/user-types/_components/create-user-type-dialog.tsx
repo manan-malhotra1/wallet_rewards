@@ -2,9 +2,16 @@
  * <CreateUserTypeDialog> — propose a new user type, or edit a live one.
  *
  * Every mutation is a maker-checker proposal (config_type "user_type"); there
- * is no direct write endpoint. In EDIT mode the code and the category lock —
- * both are immutable join keys on the backend — and submitting proposes an
- * `update` against the live row instead of a `create`.
+ * is no direct write endpoint. In EDIT mode the category locks — it is an
+ * immutable join key on the backend — and submitting proposes an `update`
+ * against the live row instead of a `create`.
+ *
+ * The operator never sees the `code`. It is a machine identifier — the join key
+ * on `users.user_type` and the maker-checker scope key — so it is derived from
+ * the Label by `deriveUserTypeCode` at submit time and sent in the payload
+ * exactly as a typed one used to be. On the EDIT path it is NOT re-derived: a
+ * code is immutable once created (spec D5), and re-deriving it on a relabel
+ * would orphan every config row scoped to the old one.
  *
  * The parent dropdown is populated from `topLevelTypes`, which never offers a
  * child type, so a third level cannot be constructed here even before the
@@ -45,20 +52,9 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import type { UserTypeCatalog, UserTypeOption } from "@/lib/api-types";
-import { topLevelTypes } from "@/lib/user-type-catalog";
-
-/**
- * The backend caps `code` at 20 characters — the width of `users.user_type`
- * and of the `user_type` column on every config table. A longer code is
- * rejected there, and the code is immutable once created, so it is validated
- * hard here rather than surfaced as a 422 after the operator has moved on.
- */
-const CODE_MAX_LENGTH = 20;
-const CODE_MIN_LENGTH = 2;
-const CODE_PATTERN = /^[a-z][a-z0-9_]*$/;
+import { deriveUserTypeCode, topLevelTypes } from "@/lib/user-type-catalog";
 
 interface FormState {
-  code: string;
   label: string;
   categoryCode: string;
   hasParent: boolean;
@@ -69,7 +65,6 @@ interface FormState {
 function initialForm(editType?: UserTypeOption): FormState {
   if (editType) {
     return {
-      code: editType.code,
       label: editType.label,
       categoryCode: editType.category_code,
       hasParent: editType.parent_type_code !== null,
@@ -77,7 +72,6 @@ function initialForm(editType?: UserTypeOption): FormState {
     };
   }
   return {
-    code: "",
     label: "",
     categoryCode: "",
     hasParent: false,
@@ -89,8 +83,9 @@ function initialForm(editType?: UserTypeOption): FormState {
  * Propose a new user type, or an edit to an existing one.
  *
  * @param tenantId The active tenant — the catalog is tenant-scoped.
- * @param catalog The tenant's user-type catalog (retired types included, so an
- *   operator can see what a code collides with).
+ * @param catalog The tenant's user-type catalog. Retired types are included:
+ *   their codes are still taken, so code derivation must de-duplicate against
+ *   them too.
  * @param editType A live type to edit in place; omit for the create path.
  * @param trigger Trigger element; omit when driving via `open`/`onOpenChange`.
  * @param open Controlled open state (the per-row Edit affordance drives this).
@@ -141,9 +136,9 @@ export function CreateUserTypeDialog({
     () =>
       topLevelTypes(catalog, form.categoryCode).filter(
         // A type can never be its own parent.
-        (t) => t.code !== form.code,
+        (t) => t.code !== editType?.code,
       ),
-    [catalog, form.categoryCode, form.code],
+    [catalog, form.categoryCode, editType?.code],
   );
 
   const onCategoryChange = (next: string) => {
@@ -158,23 +153,6 @@ export function CreateUserTypeDialog({
 
   const onSubmit = async () => {
     setErrorBanner(null);
-    const code = form.code.trim().toLowerCase();
-    if (code.length < CODE_MIN_LENGTH) {
-      setErrorBanner("Enter a code of at least 2 characters.");
-      return;
-    }
-    if (code.length > CODE_MAX_LENGTH) {
-      setErrorBanner(
-        `The code must be ${CODE_MAX_LENGTH} characters or fewer — it is stored on every user and config row, and cannot be changed later.`,
-      );
-      return;
-    }
-    if (!CODE_PATTERN.test(code)) {
-      setErrorBanner(
-        "The code must start with a lowercase letter and use only lowercase letters, digits and underscores.",
-      );
-      return;
-    }
     const label = form.label.trim();
     if (!label) {
       setErrorBanner("Enter a label — this is the name operators will see.");
@@ -189,6 +167,9 @@ export function CreateUserTypeDialog({
       return;
     }
 
+    // An existing row keeps the code it was created with, always. Only a brand
+    // new type gets one derived from its label.
+    const code = editType ? editType.code : deriveUserTypeCode(label, catalog);
     const payload = {
       tenant_id: tenantId,
       code,
@@ -212,7 +193,7 @@ export function CreateUserTypeDialog({
     }
     toast({
       title: "Change proposed — pending approval",
-      description: `${label} (${code})`,
+      description: label,
     });
     setOpen(false);
   };
@@ -225,29 +206,12 @@ export function CreateUserTypeDialog({
           <DialogTitle>{editMode ? "Edit user type" : "New user type"}</DialogTitle>
           <DialogDescription>
             {editMode
-              ? "The code and category are permanent — they are written onto every user and config row. Goes live after a second admin approves."
+              ? "The category is permanent — it is written onto every user and config row. Goes live after a second admin approves."
               : "A new kind of customer, priced and capped like any other. Goes live after a second admin approves."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <div>
-            <Label htmlFor="user-type-code">Code</Label>
-            <Input
-              id="user-type-code"
-              value={form.code}
-              maxLength={CODE_MAX_LENGTH}
-              disabled={editMode}
-              onChange={(e) => update("code", e.target.value)}
-              placeholder="junior_agent"
-              className="mt-1 font-mono"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Lowercase letters, digits and underscores, {CODE_MAX_LENGTH} characters
-              max. Permanent once approved.
-            </p>
-          </div>
-
           <div>
             <Label htmlFor="user-type-label">Label</Label>
             <Input

@@ -172,7 +172,13 @@ function EditTypeButton({
   );
 }
 
-/** One catalog row: label, code, status, badges and (tenant types only) actions. */
+/**
+ * One catalog row: label, status, badges and (tenant types only) actions.
+ *
+ * The `code` is deliberately not shown. It is a machine identifier derived from
+ * the label — the join key on `users.user_type` — and an administrator has no
+ * decision to make about it.
+ */
 function TypeRow({
   type,
   tenantId,
@@ -194,9 +200,6 @@ function TypeRow({
           <span className="text-sm font-medium">{type.label}</span>
           {type.is_system && <Badge tone="neutral">System</Badge>}
         </div>
-      </TableCell>
-      <TableCell className="font-mono text-xs text-muted-foreground">
-        <code>{type.code}</code>
       </TableCell>
       <TableCell>
         <StatusPill status={type.status.toUpperCase()} />
@@ -265,14 +268,13 @@ export function UserTypesBoard({
                 <TableHead>
                   <TableRow>
                     <TableHeaderCell>Type</TableHeaderCell>
-                    <TableHeaderCell>Code</TableHeaderCell>
                     <TableHeaderCell>Status</TableHeaderCell>
                     <TableHeaderCell className="w-[180px] text-right"> </TableHeaderCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {types.length === 0 && (
-                    <TableEmpty message="No types in this category yet." colSpan={4} />
+                    <TableEmpty message="No types in this category yet." colSpan={3} />
                   )}
                   {parents.map((parent) => (
                     <React.Fragment key={parent.code}>

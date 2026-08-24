@@ -3,9 +3,10 @@
  *
  * What matters here is the shape of what reaches the maker-checker pipeline:
  * a flat category never offers a tier choice, the parent dropdown never offers
- * a child type (so a third level cannot be built), and the 20-character code
- * cap — which the backend rejects and which is immutable afterwards — is
- * refused before a proposal is ever sent.
+ * a child type (so a third level cannot be built), and the `code` — which the
+ * operator no longer types — is derived from the Label on the create path and
+ * carried through UNCHANGED on the edit path, because it is the immutable join
+ * key every config row is scoped to.
  *
  * The repo has no native `<select>`, so the dropdowns are Radix comboboxes:
  * open by accessible name, then click the option.
@@ -71,7 +72,6 @@ describe("CreateUserTypeDialog", () => {
     const user = userEvent.setup();
     render(<CreateUserTypeDialog tenantId="t1" catalog={catalog} open />);
 
-    await user.type(screen.getByLabelText("Code"), "junior_agent");
     await user.type(screen.getByLabelText("Label"), "Junior agent");
     await pick(user, /category/i, "Retail");
     await user.click(screen.getByLabelText(/sits under a parent/i));
@@ -88,38 +88,74 @@ describe("CreateUserTypeDialog", () => {
     });
   });
 
-  it("refuses a code longer than 20 characters instead of proposing it", async () => {
-    // The backend caps the column at 20 and the code can never be changed
-    // afterwards, so this has to fail here, not after an approval round-trip.
+  it("asks for no code at all — it is derived from the label", async () => {
+    // Replaces "rejects a code that is not lowercase snake_case". The operator
+    // no longer types an identifier, so there is nothing left to reject: the
+    // derived code is legal by construction.
     const user = userEvent.setup();
     render(<CreateUserTypeDialog tenantId="t1" catalog={catalog} open />);
 
-    const codeField = screen.getByLabelText("Code");
-    await user.type(codeField, "a_very_long_type_code_indeed");
-    await user.type(screen.getByLabelText("Label"), "Too long");
+    expect(screen.queryByLabelText("Code")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Label"), "Junior Agent");
     await pick(user, /category/i, "Consumers");
     await user.click(screen.getByRole("button", { name: "Propose change" }));
 
-    // The input itself refuses the 21st character, so nothing over the cap can
-    // even be typed — and what was typed is still a legal proposal.
-    expect((codeField as HTMLInputElement).value).toHaveLength(20);
-    expect(proposeUserTypeChangeAction).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(proposeUserTypeChangeAction).toHaveBeenCalledTimes(1));
     expect(proposeUserTypeChangeAction.mock.calls[0][0]).toMatchObject({
-      code: "a_very_long_type_cod",
+      code: "junior_agent",
+      label: "Junior Agent",
     });
   });
 
-  it("rejects a code that is not lowercase snake_case", async () => {
+  it("derives a code inside the 20-character cap from an overlong label", async () => {
+    // Replaces "refuses a code longer than 20 characters instead of proposing
+    // it". The cap is now honoured by derivation, so a long label proposes a
+    // short code instead of erroring.
     const user = userEvent.setup();
     render(<CreateUserTypeDialog tenantId="t1" catalog={catalog} open />);
 
-    await user.type(screen.getByLabelText("Code"), "9lives");
-    await user.type(screen.getByLabelText("Label"), "Nine lives");
+    await user.type(
+      screen.getByLabelText("Label"),
+      "Regional Distribution Partner",
+    );
     await pick(user, /category/i, "Consumers");
     await user.click(screen.getByRole("button", { name: "Propose change" }));
 
-    expect(await screen.findByText(/must start with a lowercase letter/i)).toBeInTheDocument();
-    expect(proposeUserTypeChangeAction).not.toHaveBeenCalled();
+    await waitFor(() => expect(proposeUserTypeChangeAction).toHaveBeenCalledTimes(1));
+    const { code } = proposeUserTypeChangeAction.mock.calls[0][0] as { code: string };
+    expect(code).toBe("regional");
+    expect(code.length).toBeLessThanOrEqual(20);
+  });
+
+  it("derives a legal code from a label the backend pattern would refuse", async () => {
+    const user = userEvent.setup();
+    render(<CreateUserTypeDialog tenantId="t1" catalog={catalog} open />);
+
+    await user.type(screen.getByLabelText("Label"), "9 Lives");
+    await pick(user, /category/i, "Consumers");
+    await user.click(screen.getByRole("button", { name: "Propose change" }));
+
+    await waitFor(() => expect(proposeUserTypeChangeAction).toHaveBeenCalledTimes(1));
+    expect(proposeUserTypeChangeAction.mock.calls[0][0]).toMatchObject({
+      code: "type_9_lives",
+    });
+  });
+
+  it("side-steps a code already taken in the catalog", async () => {
+    // 'agent' is a seeded system type; the derived code must not collide with
+    // it, because the backend rejects a duplicate outright.
+    const user = userEvent.setup();
+    render(<CreateUserTypeDialog tenantId="t1" catalog={catalog} open />);
+
+    await user.type(screen.getByLabelText("Label"), "Agent");
+    await pick(user, /category/i, "Consumers");
+    await user.click(screen.getByRole("button", { name: "Propose change" }));
+
+    await waitFor(() => expect(proposeUserTypeChangeAction).toHaveBeenCalledTimes(1));
+    expect(proposeUserTypeChangeAction.mock.calls[0][0]).toMatchObject({
+      code: "agent_2",
+    });
   });
 
   it("carries merchant capability on the category, with no separate checkbox", async () => {
@@ -130,7 +166,6 @@ describe("CreateUserTypeDialog", () => {
     const user = userEvent.setup();
     render(<CreateUserTypeDialog tenantId="t1" catalog={catalog} open />);
 
-    await user.type(screen.getByLabelText("Code"), "franchise_store");
     await user.type(screen.getByLabelText("Label"), "Franchise store");
     await pick(user, /category/i, "Business");
 
@@ -166,8 +201,8 @@ describe("CreateUserTypeDialog", () => {
       />,
     );
 
-    // The code is the join key and never changes — the field is locked.
-    expect(screen.getByLabelText("Code")).toBeDisabled();
+    // The code is the join key and never changes — there is no field for it.
+    expect(screen.queryByLabelText("Code")).not.toBeInTheDocument();
     await user.clear(screen.getByLabelText("Label"));
     await user.type(screen.getByLabelText("Label"), "Junior field agent");
     await user.click(screen.getByRole("button", { name: "Propose change" }));
@@ -183,5 +218,32 @@ describe("CreateUserTypeDialog", () => {
       parent_type_code: "super_agent",
       status: "active",
     });
+  });
+
+  it("never re-derives the code when a live type is relabelled", async () => {
+    // The highest-risk regression in deriving codes: if a relabel recomputed
+    // the code, every config row scoped to the old code would be orphaned and
+    // every user carrying it would fall out of its own type. The new label
+    // would slug to 'bureau_de_change' — the payload must still say 'agent_x'.
+    const user = userEvent.setup();
+    const editType = {
+      ...catalog.types[1],
+      id: "row-9",
+      is_system: false,
+      code: "agent_x",
+      label: "Agent X",
+    };
+    render(
+      <CreateUserTypeDialog tenantId="t1" catalog={catalog} editType={editType} open />,
+    );
+
+    await user.clear(screen.getByLabelText("Label"));
+    await user.type(screen.getByLabelText("Label"), "Bureau de change");
+    await user.click(screen.getByRole("button", { name: "Propose change" }));
+
+    await waitFor(() => expect(proposeUserTypeUpdateAction).toHaveBeenCalledTimes(1));
+    const payload = proposeUserTypeUpdateAction.mock.calls[0][2];
+    expect(payload).toMatchObject({ code: "agent_x", label: "Bureau de change" });
+    expect(proposeUserTypeChangeAction).not.toHaveBeenCalled();
   });
 });

@@ -235,3 +235,34 @@ async def test_a_tenant_without_defaults_still_allows_user_creation(
     await db_session.commit()
 
     assert await has_permission(db_session, user.id, "p2p") is False
+
+
+async def test_assigning_the_default_role_twice_is_a_no_op(
+    db_session: AsyncSession,
+) -> None:
+    """Verify a repeat call is idempotent, not a unique-constraint crash.
+
+    `scripts/seed.py` calls this for every user in USERS_TO_SEED, including ones
+    it found already present, so a second seed run hits this path. Its sibling
+    `assign_role_to_user` has always been idempotent; this one was not, which is
+    what made the seed non-idempotent despite its docstring.
+    """
+    tenant = await _fresh_tenant(db_session)
+    user = User(tenant_id=tenant.id, user_type="consumer")
+    db_session.add(user)
+    await db_session.flush()
+
+    from app.modules.roles.service import assign_default_role
+
+    await assign_default_role(db_session, user)
+    await db_session.commit()
+    await assign_default_role(db_session, user)
+    await db_session.commit()
+
+    assigned = (
+        (await db_session.execute(select(UserRole).where(UserRole.user_id == user.id)))
+        .scalars()
+        .all()
+    )
+    assert len(assigned) == 1
+    assert await has_permission(db_session, user.id, "p2p") is True

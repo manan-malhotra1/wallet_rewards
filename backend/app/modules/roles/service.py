@@ -431,8 +431,15 @@ async def assign_default_role(session: AsyncSession, user: User) -> None:
     before this shipped): a missing default must not break user creation, and
     the readiness signal on the Services page already surfaces the gap.
 
+    Idempotent, like its sibling `assign_role_to_user`: a repeat call on a user
+    who already holds the role is a no-op rather than a `uq_user_roles_pair`
+    violation. `scripts/seed.py` calls this for every user in USERS_TO_SEED —
+    including ones it found already present — so a second seed run reaches this
+    path, and without the guard the whole script died mid-way.
+
     Side effects:
-        Inserts one `user_roles` row. Does NOT commit — the caller does.
+        Inserts one `user_roles` row, or none when the user already holds the
+        role. Does NOT commit — the caller does.
     """
     from app.modules.tenants.service import DEFAULT_ROLE_BY_USER_TYPE
 
@@ -452,6 +459,15 @@ async def assign_default_role(session: AsyncSession, user: User) -> None:
             user_type=user.user_type,
             role_name=role_name,
         )
+        return
+
+    # Check for existing assignment — idempotent, matching assign_role_to_user.
+    already_held = (
+        await session.execute(
+            select(UserRole).where(UserRole.user_id == user.id, UserRole.role_id == role.id)
+        )
+    ).scalar_one_or_none()
+    if already_held is not None:
         return
 
     session.add(UserRole(user_id=user.id, role_id=role.id))

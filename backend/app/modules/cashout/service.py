@@ -52,6 +52,7 @@ from app.modules.pricing.service import (
 from app.modules.rewards.outbox import issue_immediate_points
 from app.modules.roles.service import require_permission
 from app.modules.taxes.service import calculate_tax
+from app.modules.user_types.service import get_user_type
 from app.shared.exceptions import (
     AccountNotFound,
     InsufficientFunds,
@@ -61,10 +62,9 @@ from app.shared.exceptions import (
 )
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
+    CATEGORY_RETAIL,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
-    USER_TYPE_AGENT,
-    USER_TYPE_SUPER_AGENT,
     Account,
     LedgerEntry,
     Tenant,
@@ -73,9 +73,6 @@ from app.shared.models import (
 )
 
 CASH_OUT_SERVICE_CODE = "cashout"
-
-# The user types eligible to RECEIVE a cash-out (mirror of who may cash-in).
-_AGENT_USER_TYPES = (USER_TYPE_AGENT, USER_TYPE_SUPER_AGENT)
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -106,16 +103,39 @@ async def _find_user_wallet(
 async def _assert_recipient_is_agent(
     session: AsyncSession, *, tenant_id: UUID, user_id: UUID
 ) -> None:
-    """Reject when the resolved cash-out recipient is not an agent.
+    """Reject when the resolved cash-out recipient is not an agent-category type.
 
-    A subscriber may only cash out TO an agent / super-agent (the mirror of who
-    is permitted to cash-in). A non-agent recipient is a 422 `recipient_not_agent`.
+    A subscriber may only cash out TO an agent (the mirror of who is permitted
+    to cash-in). Eligibility is read off the RETAIL CATEGORY of the recipient's
+    type in the tenant's catalog, not off a hardcoded pair of codes: user types
+    are runtime data now, and `retail` is precisely the category that means
+    "agent-shaped tier" (`consumer` is the subscriber paying in, `business` is
+    merchant collection). A tenant's own tiered-agent type is therefore eligible
+    the moment it is created, with no second list to keep in step.
+
+    A recipient whose type does not resolve at all is refused too, rather than
+    treated as eligible — fail closed.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope — a recipient in another tenant never resolves.
+        user_id: The already-resolved recipient.
+
+    Raises:
+        RecipientNotAgent: 422 — the recipient's type is missing, unresolvable,
+            or sits outside the Retail category.
     """
     result = await session.execute(
         select(User.user_type).where(User.id == user_id, User.tenant_id == tenant_id)
     )
     user_type = result.scalar_one_or_none()
-    if user_type not in _AGENT_USER_TYPES:
+    if user_type is None:
+        raise RecipientNotAgent()
+    # Retired types resolve here on purpose: an agent onboarded under a type the
+    # operator has since retired must keep being able to take cash-outs, exactly
+    # as `get_user_type` keeps existing users working (spec §11).
+    type_row = await get_user_type(session, tenant_id, user_type)
+    if type_row is None or type_row.category_code != CATEGORY_RETAIL:
         raise RecipientNotAgent()
 
 

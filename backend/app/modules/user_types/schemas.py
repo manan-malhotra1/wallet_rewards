@@ -9,6 +9,7 @@ an update is expressed as the full desired row.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,7 +40,13 @@ class UserTypeCreateRequest(BaseModel):
     # Holds another type's `code`, so it carries the same cap — a longer value
     # could never resolve to a real type.
     parent_type_code: str | None = Field(default=None, max_length=20)
-    status: str = USER_TYPE_STATUS_ACTIVE
+    # Constrained to the two values `ck_user_types_status` allows. As a bare
+    # `str` anything proposed cleanly and only failed at APPROVE time, as an
+    # `IntegrityError` from that CHECK — which `create_user_type` catches and
+    # re-raises as `UserTypeCodeAlreadyExists`, telling the operator their code
+    # collided when it did not. Refusing at propose time is both the honest
+    # error and the one that leaves no stranded PENDING request behind.
+    status: Literal["active", "retired"] = USER_TYPE_STATUS_ACTIVE
 
 
 class UserTypeOut(BaseModel):

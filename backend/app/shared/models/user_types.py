@@ -12,6 +12,7 @@ service: a type named as a parent must itself have a NULL `parent_type_code`.
 """
 
 import uuid
+from typing import Final
 
 from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -19,8 +20,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.models.base import Base, created_at_col, updated_at_col, uuid_pk
 
-USER_TYPE_STATUS_ACTIVE = "active"
-USER_TYPE_STATUS_RETIRED = "retired"
+# `Final` (with no explicit annotation) narrows these to their literal types, so
+# they can be used as defaults for a `Literal["active", "retired"]` field without
+# widening it back to `str`. The status set is closed — `ck_user_types_status`
+# says so at the database — and the schema layer relies on that.
+USER_TYPE_STATUS_ACTIVE: Final = "active"
+USER_TYPE_STATUS_RETIRED: Final = "retired"
 
 CATEGORY_CONSUMER = "consumer"
 CATEGORY_RETAIL = "retail"

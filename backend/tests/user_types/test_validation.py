@@ -1,4 +1,4 @@
-"""Validation tests for the hierarchy rules, code collisions and code length (spec §5)."""
+"""Validation tests for the hierarchy rules, code collisions, code length and status (spec §5)."""
 
 from collections.abc import Callable
 from typing import Any
@@ -13,7 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.user_types.schemas import UserTypeCreateRequest
 from app.modules.user_types.service import assert_type_definition_valid
 from app.shared.exceptions import AppHTTPException
-from app.shared.models import Tenant, UserTypeDef
+from app.shared.models import (
+    USER_TYPE_STATUS_ACTIVE,
+    USER_TYPE_STATUS_RETIRED,
+    Tenant,
+    UserTypeDef,
+)
 
 
 async def _add(session: AsyncSession, tenant: Tenant, code: str, **kw: Any) -> UserTypeDef:
@@ -264,3 +269,74 @@ async def test_over_long_code_is_refused_at_propose_time(
     assert (
         await db_session.execute(select(UserTypeDef).where(UserTypeDef.code == code))
     ).scalar_one_or_none() is None
+
+
+# -----------------------------------------------------------------------------
+# Status — must be one of the two values `ck_user_types_status` allows
+# -----------------------------------------------------------------------------
+
+
+def test_unknown_status_is_refused_by_the_schema() -> None:
+    """Verify a status outside {active, retired} never gets past Pydantic.
+
+    `status` used to be a bare `str`. A value like "banana" proposed cleanly and
+    only failed at APPROVE time, against `ck_user_types_status` — as an
+    `IntegrityError`, which `create_user_type` catches and re-raises as
+    `UserTypeCodeAlreadyExists` (409). The operator was told their code
+    collided when it did not, and the request was left stranded.
+    """
+    with pytest.raises(ValidationError):
+        UserTypeCreateRequest(
+            tenant_id=uuid4(),
+            code="distributor",
+            label="Distributor",
+            category_code="retail",
+            status="banana",
+        )
+
+
+@pytest.mark.asyncio
+async def test_unknown_status_is_refused_at_propose_time(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    make_admin_token: Callable[..., str],
+) -> None:
+    """Verify a bogus status 422s at propose and writes nothing.
+
+    The failure has to land here, at the boundary, and not survive to approval
+    where the CHECK violation is mistranslated into a duplicate-code 409.
+    """
+    token = make_admin_token(roles=["platform-admin"])
+    response = await async_client.post(
+        f"/api/v1/config-requests?tenant_id={test_tenant.id}",
+        json={
+            "config_type": "user_type",
+            "operation": "create",
+            "payload": {
+                "tenant_id": str(test_tenant.id),
+                "code": "distributor",
+                "label": "Distributor",
+                "category_code": "retail",
+                "status": "banana",
+            },
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422, response.text
+    assert (
+        await db_session.execute(select(UserTypeDef).where(UserTypeDef.code == "distributor"))
+    ).scalar_one_or_none() is None
+
+
+def test_both_real_statuses_are_accepted() -> None:
+    """Verify the constraint admits exactly the two values the CHECK allows."""
+    for status in (USER_TYPE_STATUS_ACTIVE, USER_TYPE_STATUS_RETIRED):
+        request = UserTypeCreateRequest(
+            tenant_id=uuid4(),
+            code="distributor",
+            label="Distributor",
+            category_code="retail",
+            status=status,
+        )
+        assert request.status == status

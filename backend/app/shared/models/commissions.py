@@ -53,10 +53,6 @@ class CommissionConfig(Base):
             name="ck_commission_configs_variable_pct_range",
         ),
         CheckConstraint(
-            "user_type IN ('consumer', 'agent', 'super_agent', 'merchant', 'head_merchant')",
-            name="ck_commission_configs_user_type",
-        ),
-        CheckConstraint(
             "amount_from IS NULL OR amount_to IS NULL OR amount_to > amount_from",
             name="ck_commission_configs_amount_band",
         ),

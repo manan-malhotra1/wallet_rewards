@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateLimitDialog } from "@/app/(authenticated)/limits/_components/create-limit-dialog";
 import type { Instrument, Service } from "@/lib/api-types";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 const proposeLimitCreateAction = vi.fn().mockResolvedValue({ ok: true });
 const proposeLimitUpdateAction = vi.fn().mockResolvedValue({ ok: true });
@@ -72,6 +73,7 @@ async function openDialog() {
       tenantId="tenant-1"
       services={services}
       instruments={instruments}
+      catalog={SEED_USER_TYPE_CATALOG}
       trigger={<button type="button">New limit</button>}
     />,
   );

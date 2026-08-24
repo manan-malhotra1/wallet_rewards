@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.principals import AdminPrincipal
 from app.modules.audit.service import record_audit_for_admin
 from app.modules.commissions.schemas import CommissionConfigCreateRequest
+from app.modules.user_types.service import assert_optional_user_type_valid
 from app.shared.exceptions import (
     AppHTTPException,
     TenantNotFound,
@@ -200,8 +201,20 @@ async def create_commission_config(
     admin: AdminPrincipal | None = None,
     ip_address: str | None = None,
 ) -> CommissionConfig:
-    """Persist a new commission config. 409 on unique-index collision."""
+    """Persist a new commission config.
+
+    Raises:
+        TenantNotFound: 404 — unknown tenant.
+        UnknownUserType: 422 — the row is scoped to a type that does not resolve
+            for this tenant (spec §6). Such a row would never match at payout
+            time and the agent would silently fall through to the
+            `user_type IS NULL` default band.
+        AppHTTPException 409: unique-index collision.
+    """
     await _assert_tenant_exists(session, request.tenant_id)
+    await assert_optional_user_type_valid(
+        session, tenant_id=request.tenant_id, code=request.user_type
+    )
     config = _new_commission_config(request)
     session.add(config)
     try:
@@ -251,11 +264,18 @@ async def replace_commission_config_for_scope(
         requests: The validated new band set (one element for a single band).
         target_config_id: The live row the maker edited (audit traceability).
 
+    Raises:
+        UnknownUserType: 422 — the new scope names a type that does not resolve
+            for this tenant (spec §6). Checked BEFORE the deletes, so a bad
+            payload never wipes the live band set. One check covers the whole
+            set: every band shares the scope's `user_type`.
+
     Side effects:
         Deletes + inserts commission_configs rows; appends one
         `commission_config.updated` audit row. Commits once.
     """
     first = requests[0]
+    await assert_optional_user_type_valid(session, tenant_id=first.tenant_id, code=first.user_type)
     scope = _commission_scope_filter(
         tenant_id=first.tenant_id,
         transaction_type=first.transaction_type,

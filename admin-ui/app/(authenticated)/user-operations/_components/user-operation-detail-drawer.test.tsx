@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { UserOperationDetailDrawer } from "@/app/(authenticated)/user-operations/_components/user-operation-detail-drawer";
 import type { UserOperation } from "@/lib/api-types";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 // Mock the user-operation review verbs; each resolves to the updated operation.
 const approveUserOperationAction = vi.fn();
@@ -68,6 +69,7 @@ function renderDrawer(
     <UserOperationDetailDrawer
       operation={operation}
       tenantId="tenant-1"
+      catalog={SEED_USER_TYPE_CATALOG}
       canApprove={canApprove}
       currentAdminId={currentAdminId}
       open

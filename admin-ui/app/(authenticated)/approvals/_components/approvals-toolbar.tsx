@@ -29,6 +29,7 @@ import type {
   ConfigType,
   MoneyOperation,
   UserOperation,
+  UserTypeCatalog,
 } from "@/lib/api-types";
 import {
   applyFilters,
@@ -104,6 +105,7 @@ const CONFIG_TYPES: ConfigType[] = [
   "wallet_limit",
   "step_up",
   "conversion_rate",
+  "user_type",
 ];
 
 const CONFIG_TYPE_OPTIONS: FilterOption[] = CONFIG_TYPES.map((value) => ({
@@ -213,6 +215,12 @@ export interface ApprovalsToolbarProps {
   currentAdminId: string;
   canApprove: boolean;
   serviceNames: Record<string, string>;
+  /**
+   * The tenant's user-type catalog. The Users queue renders proposed types, and
+   * types are runtime data, so their labels come from here rather than a
+   * hardcoded map. Null when the catalog could not be loaded.
+   */
+  userTypeCatalog: UserTypeCatalog | null;
   configRequests: ConfigChangeRequest[];
   moneyOperations: MoneyOperation[];
   userOperations: UserOperation[];
@@ -596,6 +604,7 @@ function ActiveTable({
   currentAdminId,
   canApprove,
   serviceNames,
+  userTypeCatalog,
   configRequests,
   moneyOperations,
   userOperations,
@@ -628,6 +637,7 @@ function ActiveTable({
       tenantId={tenantId}
       canApprove={canApprove}
       currentAdminId={currentAdminId}
+      catalog={userTypeCatalog}
     />
   );
 }

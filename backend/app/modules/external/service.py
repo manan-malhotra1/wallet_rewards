@@ -131,9 +131,12 @@ async def external_create_user(
       the existing user (that leaked identifier existence, S4).
     - A new key with a free identifier creates the user and records the mapping.
 
-    Privilege/trust-relevant fields are forced server-side (S7 H1): a partner
-    always gets a `consumer` with no parent and cannot assert identifier
-    verification.
+    Privilege/trust-relevant fields are still forced server-side (S7 H1): a
+    partner cannot assert identifier verification and cannot name a supervisor
+    by raw id. `user_type` and `parent_identifier` ARE honoured (spec §7.3) but
+    are not trusted from the body — `create_user` resolves both against THIS
+    key's tenant, so an unknown or retired type is refused and a supervisor in
+    another tenant is indistinguishable from a missing one.
 
     Args:
         session: Async DB session (committed here).
@@ -147,6 +150,9 @@ async def external_create_user(
 
     Raises:
         IdentifierAlreadyInUse (409): a NEW key collided with a taken identifier.
+        UnknownUserType (422): `user_type` does not resolve for the key's tenant.
+        ParentNotFound (422): `parent_identifier` resolves to nobody in it.
+        InvalidUserTypeParent (422): the resolved supervisor is the wrong type.
 
     Side effects:
         Inserts a `users` row (via identity.create_user), an
@@ -160,8 +166,10 @@ async def external_create_user(
     if replay is not None:
         return replay, False
 
-    # Force privilege/trust-relevant fields server-side (S7 H1): a consumer with
-    # no parent, and no partner-asserted identifier verification.
+    # Force privilege/trust-relevant fields server-side (S7 H1): no
+    # partner-asserted identifier verification, and no supervisor named by raw
+    # id. `user_type` / `parent_identifier` pass through to `create_user`, which
+    # validates both against THIS tenant — never the body.
     create_req = CreateUserRequest(
         tenant_id=tenant_id,
         identifiers=[
@@ -173,8 +181,9 @@ async def external_create_user(
             for i in payload.identifiers
         ],
         profile=payload.profile,
-        user_type="consumer",
+        user_type=payload.user_type,
         parent_user_id=None,
+        parent_identifier=payload.parent_identifier,
     )
     try:
         user = await create_user(session, create_req)

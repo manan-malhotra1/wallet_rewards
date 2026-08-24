@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateWalletLimitDialog } from "@/app/(authenticated)/limits/_components/create-wallet-limit-dialog";
 import type { Instrument } from "@/lib/api-types";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 const proposeWalletLimitCreateAction = vi.fn().mockResolvedValue({ ok: true });
 const proposeWalletLimitUpdateAction = vi.fn().mockResolvedValue({ ok: true });
@@ -53,6 +54,7 @@ async function openDialog() {
     <CreateWalletLimitDialog
       tenantId="tenant-1"
       instruments={instruments}
+      catalog={SEED_USER_TYPE_CATALOG}
       trigger={<button type="button">New wallet limit</button>}
     />,
   );

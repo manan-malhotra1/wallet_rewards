@@ -17,10 +17,10 @@ from app.auth.principals import AdminPrincipal
 from app.auth.secret_box import encrypt_secret
 from app.modules.api_keys.schemas import ApiKeyCreateRequest
 from app.modules.audit.service import record_audit_for_admin
+from app.modules.user_types.service import get_user_type
 from app.shared.exceptions import ApiKeyNotFound, MerchantUserRequired, TenantNotFound
 from app.shared.models import (
     API_KEY_STATUS_REVOKED,
-    MERCHANT_USER_TYPES,
     ApiKey,
     Tenant,
     User,
@@ -40,19 +40,30 @@ async def _assert_merchant_user(
     """Validate that merchant_user_id is a merchant-type user in this tenant.
 
     A merchant-bound key authorises merchant-cashin, so the referenced user must
-    exist in the same tenant AND carry a merchant user type. Unknown-user and
-    wrong-type both collapse to one 422 so key creation never leaks user
-    existence across the admin boundary.
+    exist in the same tenant AND carry a type flagged `requires_merchant_profile`
+    — the type row's own flag, not a hardcoded tuple, so a tenant's custom
+    Business type qualifies exactly like the seeded `merchant` does. A type that
+    no longer resolves fails closed here. Unknown-user and wrong-type both
+    collapse to one 422 so key creation never leaks user existence across the
+    admin boundary.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: The tenant minting the key; the user must belong to it.
+        merchant_user_id: The user the key will transact as.
 
     Raises:
-        MerchantUserRequired: the id is unknown in this tenant, or the user is
-            not a merchant/head-merchant.
+        MerchantUserRequired: the id is unknown in this tenant, or the user's
+            type is not backed by a merchant profile.
     """
     result = await session.execute(
         select(User).where(User.id == merchant_user_id, User.tenant_id == tenant_id)
     )
     user = result.scalar_one_or_none()
-    if user is None or user.user_type not in MERCHANT_USER_TYPES:
+    if user is None:
+        raise MerchantUserRequired()
+    user_type = await get_user_type(session, tenant_id, user.user_type)
+    if user_type is None or not user_type.requires_merchant_profile:
         raise MerchantUserRequired()
 
 

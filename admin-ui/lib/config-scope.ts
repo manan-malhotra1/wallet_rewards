@@ -13,6 +13,7 @@
  *   tax              → (currency)
  *   step_up          → (transaction_type, currency)
  *   conversion_rate  → (currency)
+ *   user_type        → (code)
  */
 import type { ConfigChangeRequest, ConfigType } from "@/lib/api-types";
 
@@ -68,6 +69,10 @@ export function configScopeKey(configType: ConfigType, obj: object): string {
       return `tax|${currency}`;
     case "conversion_rate":
       return `conversion_rate|${currency}`;
+    // A user type is keyed by its immutable `code`, never by a currency or a
+    // transaction type — it IS the thing other configs are scoped BY.
+    case "user_type":
+      return `user_type|${normField(src.code)}`;
     case "step_up":
       return `step_up|${normField(src.transaction_type)}|${currency}`;
     case "wallet_limit":

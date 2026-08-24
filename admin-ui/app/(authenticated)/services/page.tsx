@@ -9,7 +9,8 @@ import { Plus, Tag } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import { getActiveTenantId } from "@/lib/active-tenant";
-import { listServices } from "@/lib/api-endpoints";
+import { getUserTypeCatalog, listServices } from "@/lib/api-endpoints";
+import type { UserTypeCatalog } from "@/lib/api-types";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -35,9 +36,15 @@ export default async function ServicesPage() {
   }
 
   let services: Awaited<ReturnType<typeof listServices>> = [];
+  // The access policy is an allow-list of user-type codes, so the editor needs
+  // the runtime catalog to offer options and to label the stored codes.
+  let catalog: UserTypeCatalog = { categories: [], types: [] };
   let error: ApiError | null = null;
   try {
-    services = await listServices(activeTenantId);
+    [services, catalog] = await Promise.all([
+      listServices(activeTenantId),
+      getUserTypeCatalog(activeTenantId),
+    ]);
   } catch (err) {
     if (err instanceof ApiError) error = err;
     else throw err;
@@ -52,6 +59,7 @@ export default async function ServicesPage() {
           <CreateServiceDialog
             tenantId={activeTenantId}
             services={services}
+            catalog={catalog}
             trigger={
               <button
                 type="button"
@@ -78,7 +86,11 @@ export default async function ServicesPage() {
             description="The platform base services are provisioned with the tenant, so an empty catalog means provisioning hasn't run for this tenant yet."
           />
         ) : (
-          <ServicesTable services={services} tenantId={activeTenantId} />
+          <ServicesTable
+            services={services}
+            tenantId={activeTenantId}
+            catalog={catalog}
+          />
         )}
       </div>
     </div>

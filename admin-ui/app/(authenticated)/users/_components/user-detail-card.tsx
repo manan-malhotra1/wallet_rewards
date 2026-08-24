@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { accountTypeLabel } from "@/lib/account-type-label";
-import type { UserDetail, UserType } from "@/lib/api-types";
+import type { UserDetail, UserType, UserTypeCatalog } from "@/lib/api-types";
 import type { UserTransaction } from "@/lib/api-endpoints";
 import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
@@ -92,6 +92,8 @@ export interface UserDetailCardProps {
   openUpdate: OpenUpdateRequest | null;
   /** True for platform-admins — gates the Unlock affordance (backend also 403s). */
   canManageLockout: boolean;
+  /** The tenant's user-type catalog; null when it could not be loaded. */
+  catalog: UserTypeCatalog | null;
 }
 
 export function UserDetailCard({
@@ -102,6 +104,7 @@ export function UserDetailCard({
   resolvedIdentifierType,
   openUpdate,
   canManageLockout,
+  catalog,
 }: UserDetailCardProps) {
   const name = fullName(detail);
   const primaryIdentifier =
@@ -138,7 +141,7 @@ export function UserDetailCard({
                 {name ?? primaryIdentifier ?? "Unnamed user"}
               </h2>
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                <UserTypeBadge type={detail.user_type} />
+                <UserTypeBadge type={detail.user_type} catalog={catalog} />
                 <StatusPill status={detail.status.toUpperCase()} variant="full" />
                 {detail.is_locked && (
                   <LockoutBadge unlocksInSeconds={detail.unlocks_in_seconds} />
@@ -162,6 +165,7 @@ export function UserDetailCard({
               }}
               identifiers={detail.identifiers}
               openUpdate={openUpdate}
+              catalog={catalog}
             />
             <ResetPinButton userId={detail.id} tenantId={detail.tenant_id} />
             {detail.is_locked && canManageLockout && (

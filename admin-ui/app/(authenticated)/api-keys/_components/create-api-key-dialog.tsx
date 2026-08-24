@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import type { TreasuryIdentifierType } from "@/lib/api-endpoints";
-import type { ApiKeyCreated, UserType } from "@/lib/api-types";
+import type { ApiKeyCreated, UserType, UserTypeCatalog } from "@/lib/api-types";
 
 const IDENTIFIER_PLACEHOLDER: Record<TreasuryIdentifierType, string> = {
   phone: "+27 82 555 0001",
@@ -39,9 +39,6 @@ const IDENTIFIER_PLACEHOLDER: Record<TreasuryIdentifierType, string> = {
   card_number: "5234 5678 9012 3456",
 };
 
-/** The two user types the backend accepts for a merchant-cash-in key. */
-const MERCHANT_TYPES: readonly UserType[] = ["merchant", "head_merchant"];
-
 /** A merchant confirmed by identifier lookup, ready to bind by user_id. */
 interface ResolvedMerchant {
   user_id: string;
@@ -49,13 +46,26 @@ interface ResolvedMerchant {
   user_type: UserType;
 }
 
-/** <CreateApiKeyDialog> — mint a partner or merchant-cash-in key for a tenant. */
+/**
+ * <CreateApiKeyDialog> — mint a partner or merchant-cash-in key for a tenant.
+ *
+ * Binding a merchant is what turns an ordinary partner key into a cash-in key,
+ * so the resolved user must be a merchant-capable type. Which types those are
+ * is runtime data (`requires_merchant_profile` on the catalog row), never a
+ * hardcoded pair — a tenant's own merchant type must qualify too.
+ *
+ * @param tenantId The tenant the key belongs to.
+ * @param trigger The element that opens the dialog.
+ * @param catalog The tenant's user-type catalog, fetched server-side.
+ */
 export function CreateApiKeyDialog({
   tenantId,
   trigger,
+  catalog,
 }: {
   tenantId: string;
   trigger: React.ReactNode;
+  catalog: UserTypeCatalog;
 }) {
   const [open, setOpen] = React.useState(false);
   const [label, setLabel] = React.useState("");
@@ -119,7 +129,14 @@ export function CreateApiKeyDialog({
   };
 
   const hasIdentifier = identifierValue.trim().length > 0;
-  const isMerchant = resolved !== null && MERCHANT_TYPES.includes(resolved.user_type);
+  const merchantTypes = React.useMemo(
+    () =>
+      new Set(
+        catalog.types.filter((t) => t.requires_merchant_profile).map((t) => t.code),
+      ),
+    [catalog],
+  );
+  const isMerchant = resolved !== null && merchantTypes.has(resolved.user_type);
   // Block submit while a typed identifier is unresolved or resolves to a
   // non-merchant — we must send a validated merchant user_id, never a raw value.
   const bindingBlocked = hasIdentifier && (resolved === null || !isMerchant);

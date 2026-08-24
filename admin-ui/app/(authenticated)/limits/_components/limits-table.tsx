@@ -26,7 +26,12 @@ import {
 } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import type { Instrument, LimitConfig, Service } from "@/lib/api-types";
+import type {
+  Instrument,
+  LimitConfig,
+  Service,
+  UserTypeCatalog,
+} from "@/lib/api-types";
 import { serviceLabel } from "@/lib/service-label";
 import { formatCap } from "@/lib/utils";
 
@@ -47,6 +52,7 @@ function EditLimitButton({
   pointsAvailable,
   services,
   instruments,
+  catalog,
   changeProposed,
 }: {
   cfg: LimitConfig;
@@ -55,6 +61,8 @@ function EditLimitButton({
   pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
   /** Open request on this scope → disable Edit; the maker resolves it first. */
   changeProposed: boolean;
 }) {
@@ -90,6 +98,7 @@ function EditLimitButton({
         tenantId={tenantId}
         services={services}
         instruments={instruments}
+        catalog={catalog}
         editConfig={cfg}
         open={open}
         onOpenChange={setOpen}
@@ -104,6 +113,7 @@ export function LimitsTable({
   pointsAvailable,
   services,
   instruments,
+  catalog,
   canPropose,
   serviceNames,
   changeProposedKeys,
@@ -114,6 +124,8 @@ export function LimitsTable({
   pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
   /** platform-admin gate — hides the Edit affordance for other admins. */
   canPropose: boolean;
   /** `{ code: display_name }` forwarded to the View drawer. */
@@ -180,7 +192,7 @@ export function LimitsTable({
               <TableCell className="font-mono text-xs">{cfg.currency}</TableCell>
               <TableCell>
                 {cfg.user_type ? (
-                  <UserTypeBadge type={cfg.user_type} />
+                  <UserTypeBadge type={cfg.user_type} catalog={catalog} />
                 ) : (
                   <span className="text-xs text-muted-foreground">All types</span>
                 )}
@@ -231,6 +243,7 @@ export function LimitsTable({
                       pointsAvailable={pointsAvailable}
                       services={services}
                       instruments={instruments}
+                      catalog={catalog}
                       changeProposed={changeProposed}
                     />
                   )}

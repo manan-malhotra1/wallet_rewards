@@ -35,9 +35,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { UserIdentifier, UserType } from "@/lib/api-types";
-
-import { USER_TYPE_OPTIONS } from "./user-type-badge";
+import { UserTypeSelect } from "@/components/user-type-select";
+import type { UserIdentifier, UserType, UserTypeCatalog } from "@/lib/api-types";
 
 /** An open update request already awaiting review for this user. */
 export interface OpenUpdateRequest {
@@ -52,18 +51,32 @@ interface Current {
   userType: UserType;
 }
 
+/**
+ * The inline "Edit user" drawer.
+ *
+ * @param userId The user being edited.
+ * @param tenantId The active tenant.
+ * @param current The user's current editable values, used to reset the form
+ *   and to send only what actually changed.
+ * @param identifiers Shown read-only — identifiers are not editable here.
+ * @param openUpdate An update already awaiting review, which blocks a second.
+ * @param catalog The tenant's user-type catalog; null when it failed to load,
+ *   in which case the type is left alone rather than offered as a blank list.
+ */
 export function EditUserDrawer({
   userId,
   tenantId,
   current,
   identifiers,
   openUpdate,
+  catalog,
 }: {
   userId: string;
   tenantId: string;
   current: Current;
   identifiers: UserIdentifier[];
   openUpdate: OpenUpdateRequest | null;
+  catalog: UserTypeCatalog | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -71,7 +84,7 @@ export function EditUserDrawer({
   const [firstName, setFirstName] = React.useState(current.firstName);
   const [lastName, setLastName] = React.useState(current.lastName);
   const [status, setStatus] = React.useState<"active" | "suspended">(current.status);
-  const [userType, setUserType] = React.useState<UserType>(current.userType);
+  const [userType, setUserType] = React.useState<UserType | null>(current.userType);
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
 
@@ -98,7 +111,7 @@ export function EditUserDrawer({
     if (firstName.trim() !== current.firstName) changes.first_name = firstName.trim();
     if (lastName.trim() !== current.lastName) changes.last_name = lastName.trim();
     if (status !== current.status) changes.status = status;
-    if (userType !== current.userType) changes.user_type = userType;
+    if (userType && userType !== current.userType) changes.user_type = userType;
 
     if (Object.keys(changes).length === 0) {
       setErrorBanner("Change at least one field before submitting.");
@@ -174,7 +187,7 @@ export function EditUserDrawer({
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
+                  <div className="col-span-2">
                     <Label htmlFor="edit-status">Status</Label>
                     <Select
                       value={status}
@@ -189,25 +202,16 @@ export function EditUserDrawer({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label htmlFor="edit-type">User type</Label>
-                    <Select
-                      value={userType}
-                      onValueChange={(v) => setUserType(v as UserType)}
-                    >
-                      <SelectTrigger id="edit-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {USER_TYPE_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
+                {catalog && (
+                  <UserTypeSelect
+                    catalog={catalog}
+                    value={userType}
+                    onChange={setUserType}
+                    allowAny={false}
+                    idPrefix="edit-user"
+                  />
+                )}
                 <div>
                   <Label>Identifiers (read-only)</Label>
                   <ul className="mt-1 space-y-1">

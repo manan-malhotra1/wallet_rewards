@@ -45,12 +45,14 @@ from app.modules.identity.schemas import (
     OtpSendResponse,
     OtpVerifyRequest,
     OtpVerifyResponse,
+    ParentIdentifierIn,
     PinAuthRequest,
     PinSetRequest,
     SessionTokenResponse,
     UserProfileIn,
 )
 from app.modules.roles.service import assign_default_role
+from app.modules.user_types.service import assert_user_type_valid
 from app.shared.exceptions import (
     AccountLocked,
     AccountSuspended,
@@ -63,6 +65,8 @@ from app.shared.exceptions import (
     InvalidRegistrationToken,
     InvalidUserTypeParent,
     OtpRateLimited,
+    ParentNotFound,
+    ParentReferenceAmbiguous,
     PinAlreadySet,
     PinNotSet,
     SelfReferralNotAllowed,
@@ -71,7 +75,6 @@ from app.shared.exceptions import (
     UserNotFound,
 )
 from app.shared.models import (
-    PARENT_TYPE_BY_CHILD,
     REFERRAL_STATUS_PENDING,
     SERVICE_STATUS_ACTIVE,
     USER_STATUS_ACTIVE,
@@ -157,6 +160,46 @@ async def assert_user_can_transact(
         raise TransactionsBlocked()
 
 
+async def _resolve_parent_user_id(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    parent_user_id: UUID | None,
+    parent_identifier: ParentIdentifierIn | None,
+) -> UUID | None:
+    """Collapse the two supervisor reference forms into one user id (spec §7.2).
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Resolution is tenant-scoped; a supervisor in another tenant
+            is indistinguishable from a missing one.
+        parent_user_id: Direct reference, or None.
+        parent_identifier: Identifier reference, or None.
+
+    Returns:
+        The supervisor's user id, or None when neither form was supplied —
+        which is valid and the normal case.
+
+    Raises:
+        ParentReferenceAmbiguous: 422 — both forms supplied.
+        ParentNotFound: 422 — the identifier does not resolve in this tenant.
+    """
+    if parent_user_id is not None and parent_identifier is not None:
+        raise ParentReferenceAmbiguous()
+    if parent_identifier is None:
+        return parent_user_id
+
+    # Normalise first: the stored value is canonical, so "+27 82 555 2100" and
+    # "+27825552100" must hit the same row rather than one silently missing.
+    canonical = normalize_identifier(
+        parent_identifier.identifier_type, parent_identifier.identifier_value
+    )
+    row = await _find_identifier(session, tenant_id, parent_identifier.identifier_type, canonical)
+    if row is None:
+        raise ParentNotFound()
+    return row.user_id
+
+
 async def _validate_type_hierarchy(
     session: AsyncSession,
     *,
@@ -164,27 +207,35 @@ async def _validate_type_hierarchy(
     user_type: str,
     parent_user_id: UUID | None,
 ) -> None:
-    """Enforce user-type <-> parent compatibility (Decision D4, Epic 12).
+    """Validate the type itself, then its parent compatibility (spec §5, §6).
 
-    Rules (spec §3.1):
-      - consumer / super_agent / head_merchant must have a NULL parent.
-      - agent's parent, when supplied, must be a super_agent in the same tenant.
-      - merchant's parent, when supplied, must be a head_merchant in the same
-        tenant.
-      - The parent is optional for agent / merchant.
+    Two jobs, in this order, on EVERY path that writes or changes a user's type:
+
+    1. The type must resolve and be active for this tenant. The
+       `ck_users_user_type` CHECK was dropped when types became runtime data
+       (migration 0061), so this is the only thing standing between a typo and a
+       `users` row whose type no config can resolve — which would silently fall
+       through to the `user_type IS NULL` default pricing and limits instead of
+       being refused (spec §11).
+    2. The supervisor requirement, read off the child type row's
+       `parent_type_code` rather than a hardcoded map, so custom types get the
+       same enforcement as the five seeded ones.
 
     Args:
         session: Async DB session (read-only).
         tenant_id: Tenant the child user belongs to; the parent must share it.
-        user_type: The child's type — already validated against the enum by the
-            Pydantic layer.
+        user_type: The child's type code, unvalidated — Pydantic no longer
+            constrains it because the catalog is runtime data.
         parent_user_id: The proposed parent, or None.
 
     Raises:
+        UnknownUserType: 422 when the type does not resolve for this tenant or
+            has been retired.
         InvalidUserTypeParent: 422 when a parent is set on a type that forbids
             one, or the parent's tenant/type does not match the requirement.
     """
-    expected_parent_type = PARENT_TYPE_BY_CHILD.get(user_type)
+    child_type = await assert_user_type_valid(session, tenant_id=tenant_id, code=user_type)
+    expected_parent_type = child_type.parent_type_code
 
     # Types with no slot in the hierarchy must never carry a parent.
     if expected_parent_type is None:
@@ -192,7 +243,7 @@ async def _validate_type_hierarchy(
             raise InvalidUserTypeParent()
         return
 
-    # agent / merchant: parent is optional, but when present it must be the
+    # Child types: the parent stays OPTIONAL, but when present it must be the
     # right type AND live in the same tenant (no cross-tenant hierarchies).
     if parent_user_id is None:
         return
@@ -347,6 +398,12 @@ async def create_user(
     Raises:
         TenantNotFound: 404 when request.tenant_id is unknown.
         IdentifierAlreadyInUse: 409 when an identifier collides in this tenant.
+        ParentReferenceAmbiguous: 422 when both `parent_user_id` and
+            `parent_identifier` are supplied.
+        ParentNotFound: 422 when `parent_identifier` resolves to nobody in this
+            tenant. Cross-tenant and nonexistent are indistinguishable.
+        UnknownUserType: 422 when `user_type` does not resolve for this tenant
+            or has been retired.
         InvalidUserTypeParent: 422 when user_type / parent_user_id are
             incompatible (Decision D4).
         InvalidReferralCode: 422 (self-registration only) — the quoted code does
@@ -355,22 +412,30 @@ async def create_user(
             user's own.
 
     Note:
-        Merchant types (`merchant`, `head_merchant`) are accepted here, but the
+        Types flagged `requires_merchant_profile` are accepted here, but the
         `merchant_profiles` row + collection account they need are provisioned
         in Epic 17 — this endpoint does not yet require a profile payload.
     """
     await _assert_tenant_exists(session, request.tenant_id)
+    # Collapse the two supervisor reference forms BEFORE validating, so the
+    # identifier path gets exactly the same type check as a raw UUID (§7.2).
+    parent_user_id = await _resolve_parent_user_id(
+        session,
+        tenant_id=request.tenant_id,
+        parent_user_id=request.parent_user_id,
+        parent_identifier=request.parent_identifier,
+    )
     await _validate_type_hierarchy(
         session,
         tenant_id=request.tenant_id,
         user_type=request.user_type,
-        parent_user_id=request.parent_user_id,
+        parent_user_id=parent_user_id,
     )
 
     user = User(
         tenant_id=request.tenant_id,
         user_type=request.user_type,
-        parent_user_id=request.parent_user_id,
+        parent_user_id=parent_user_id,
     )
     session.add(user)
     # Flush to populate user.id before we insert identifiers that reference it.
@@ -633,6 +698,8 @@ async def change_user_type(
 
     Raises:
         UserNotFound: 404 — unknown user or a user in another tenant.
+        UnknownUserType: 422 — `new_type` does not resolve for this tenant or
+            has been retired.
         InvalidUserTypeParent: 422 — parent incompatible with new_type (D4),
             or the user was set as its own parent.
 
@@ -711,8 +778,8 @@ async def admin_update_user(
     Editable fields: profile first/last name, account status, and user_type.
     Identifiers are NOT editable here (out of scope). Any argument left None is
     left unchanged — the caller (the user-operation apply path) passes only the
-    fields the maker proposed. A user_type change re-validates the D4 hierarchy
-    against the user's EXISTING parent.
+    fields the maker proposed. A user_type change re-validates the type itself
+    and the D4 hierarchy against the user's EXISTING parent.
 
     Tenant-scoped: a user in another tenant returns 404 (no existence leak).
     Does NOT use its own commit boundary lightly — it commits once, together
@@ -734,6 +801,8 @@ async def admin_update_user(
 
     Raises:
         UserNotFound: 404 — unknown user or a user in another tenant.
+        UnknownUserType: 422 — `user_type` does not resolve for this tenant or
+            has been retired.
         InvalidUserTypeParent: 422 — new user_type incompatible with the user's
             existing parent (Decision D4).
 

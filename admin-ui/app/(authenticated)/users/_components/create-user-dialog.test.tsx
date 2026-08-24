@@ -12,11 +12,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateUserDialog } from "@/app/(authenticated)/users/_components/create-user-dialog";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 // Maker-checker propose action — unit-tested for the payload, not the pipeline.
 const proposeCreateUserAction = vi.fn();
+const lookupUserAction = vi.fn();
 vi.mock("@/app/(authenticated)/users/_actions", () => ({
   proposeCreateUserAction: (...args: unknown[]) => proposeCreateUserAction(...args),
+  lookupUserAction: (...args: unknown[]) => lookupUserAction(...args),
 }));
 
 const push = vi.fn();
@@ -32,13 +35,33 @@ vi.mock("@/components/ui/toast", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   proposeCreateUserAction.mockResolvedValue({ ok: true, operationId: "op-1" });
+  lookupUserAction.mockResolvedValue({
+    ok: true,
+    user: {
+      id: "boss-1",
+      full_name: "Thabo Nkosi",
+      user_type: "super_agent",
+      masked_phone: "+2782 *** 0100",
+    },
+  });
 });
+
+/** Open a dropdown by its accessible name and pick the named option. */
+async function pick(
+  user: ReturnType<typeof userEvent.setup>,
+  combobox: string | RegExp,
+  option: string | RegExp,
+) {
+  await user.click(screen.getByRole("combobox", { name: combobox }));
+  await user.click(await screen.findByRole("option", { name: option }));
+}
 
 /** Open the dialog and return its content node. */
 async function openDialog(user: ReturnType<typeof userEvent.setup>) {
   render(
     <CreateUserDialog
       tenantId="tenant-1"
+      catalog={SEED_USER_TYPE_CATALOG}
       trigger={<button type="button">Register user</button>}
     />,
   );
@@ -99,5 +122,61 @@ describe("Managing customers — registering a customer", () => {
     ).toBeInTheDocument();
     // Not navigated away — the admin can correct and retry.
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("Verify a supervisor is only offered for a type that has a parent", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+
+    // Consumer is top-level: no supervisor slot exists at all.
+    expect(
+      within(dialog).queryByLabelText(/supervisor's phone/i),
+    ).not.toBeInTheDocument();
+
+    // Agent sits under a Super agent, so the block appears.
+    await pick(user, /category/i, "Retail");
+    await pick(user, /user type/i, "Agent");
+    expect(within(dialog).getByLabelText(/supervisor's phone/i)).toBeInTheDocument();
+  });
+
+  it("Verify a confirmed supervisor travels as an identifier, not an id", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+
+    await user.type(within(dialog).getByLabelText("Phone number"), "+27825550142");
+    await pick(user, /category/i, "Retail");
+    await pick(user, /user type/i, "Agent");
+    await user.type(
+      within(dialog).getByLabelText(/supervisor's phone/i),
+      "+27825550100",
+    );
+    await user.click(within(dialog).getByRole("button", { name: /look up/i }));
+    await within(dialog).findByText("Thabo Nkosi");
+
+    await user.click(within(dialog).getByRole("button", { name: "Submit for approval" }));
+
+    await waitFor(() => expect(proposeCreateUserAction).toHaveBeenCalledTimes(1));
+    expect(proposeCreateUserAction.mock.calls[0][0]).toMatchObject({
+      user_type: "agent",
+      parent_identifier: {
+        identifier_type: "phone",
+        identifier_value: "+27825550100",
+      },
+    });
+  });
+
+  it("Verify the supervisor key is omitted entirely when none is attached", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+
+    await user.type(within(dialog).getByLabelText("Phone number"), "+27825550143");
+    await pick(user, /category/i, "Retail");
+    await pick(user, /user type/i, "Agent");
+    await user.click(within(dialog).getByRole("button", { name: "Submit for approval" }));
+
+    await waitFor(() => expect(proposeCreateUserAction).toHaveBeenCalledTimes(1));
+    expect(proposeCreateUserAction.mock.calls[0][0]).not.toHaveProperty(
+      "parent_identifier",
+    );
   });
 });

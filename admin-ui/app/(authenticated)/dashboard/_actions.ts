@@ -16,6 +16,7 @@ import {
   getTransactionsByService,
   getTransactionsByStatus,
   getTransactionsTimeseries,
+  getUserTypeCatalog,
   getUsersByType,
   getUsersTimeseries,
 } from "@/lib/api-endpoints";
@@ -44,6 +45,7 @@ export async function loadDashboardData(
     liquidity,
     netFlow,
     usersByType,
+    userTypeCatalog,
     currencies,
   ] = await Promise.allSettled([
     getAnalyticsSummary(tenantId, range),
@@ -57,6 +59,9 @@ export async function loadDashboardData(
     getLiquidity(tenantId),
     getNetFlow(tenantId, range, granularity),
     getUsersByType(tenantId),
+    // The by-type chart labels its rows from the catalog: types are runtime
+    // data, so a tenant's own type must read by name, not by raw code.
+    getUserTypeCatalog(tenantId),
     getCurrencies(tenantId),
   ]);
 
@@ -75,6 +80,7 @@ export async function loadDashboardData(
     liquidity: val(liquidity),
     netFlow: val(netFlow),
     usersByType: val(usersByType),
+    userTypeCatalog: val(userTypeCatalog),
     // Default to [] (not null) so the currency toggle always gets an array.
     currencies: val(currencies) ?? [],
   };

@@ -12,13 +12,19 @@ import { ApiError } from "@/lib/api";
 import {
   listConfigRequests,
   listInstruments,
+  getUserTypeCatalog,
   listLimitConfigs,
   listServices,
   listWalletLimitConfigs,
 } from "@/lib/api-endpoints";
 import { getActiveTenant } from "@/lib/active-tenant";
 import { tenantHasRewards } from "@/lib/tenant-mode";
-import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
+import type {
+  ConfigChangeRequest,
+  Instrument,
+  Service,
+  UserTypeCatalog,
+} from "@/lib/api-types";
 import { changeProposedScopeKeys } from "@/lib/config-scope";
 
 import { EmptyState } from "@/components/ui/empty-state";
@@ -63,17 +69,28 @@ export default async function LimitsPage() {
   let walletConfigs: Awaited<ReturnType<typeof listWalletLimitConfigs>> = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
+  // User types are runtime data, so the scope pickers and the type badges read
+  // them from the catalog rather than a hardcoded list.
+  let catalog: UserTypeCatalog = { categories: [], types: [] };
   let openRequests: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
     let limitRequests: ConfigChangeRequest[] = [];
     let walletRequests: ConfigChangeRequest[] = [];
-    [configs, walletConfigs, services, instruments, limitRequests, walletRequests] =
-      await Promise.all([
+    [
+      configs,
+      walletConfigs,
+      services,
+      instruments,
+      catalog,
+      limitRequests,
+      walletRequests,
+    ] = await Promise.all([
         listLimitConfigs(activeTenantId),
         listWalletLimitConfigs(activeTenantId),
         listServices(activeTenantId, "active"),
         listInstruments(activeTenantId, "active"),
+        getUserTypeCatalog(activeTenantId),
         // All in-flight limit + wallet-limit proposals (both open statuses) so
         // anyone can see a change is under approval; card actions are maker-gated.
         listConfigRequests(activeTenantId, undefined, "limit"),
@@ -104,6 +121,7 @@ export default async function LimitsPage() {
               tenantId={activeTenantId}
               services={services}
               instruments={instruments}
+              catalog={catalog}
               trigger={
                 <button type="button" className={NEW_BUTTON_CLASS}>
                   <Plus className="h-3.5 w-3.5" />
@@ -130,6 +148,7 @@ export default async function LimitsPage() {
             currentAdminId={currentAdminId}
             services={services}
             instruments={instruments}
+            catalog={catalog}
           />
         )}
 
@@ -151,6 +170,7 @@ export default async function LimitsPage() {
               tenantId={activeTenantId}
               services={services}
               instruments={instruments}
+              catalog={catalog}
               canPropose={canPropose}
               serviceNames={Object.fromEntries(
                 services.map((s) => [s.code, s.display_name]),
@@ -174,6 +194,7 @@ export default async function LimitsPage() {
               <CreateWalletLimitDialog
                 tenantId={activeTenantId}
                 instruments={financialInstruments}
+                catalog={catalog}
                 trigger={
                   <button type="button" className={NEW_BUTTON_CLASS}>
                     <Plus className="h-3.5 w-3.5" />
@@ -194,6 +215,7 @@ export default async function LimitsPage() {
               configs={walletConfigs}
               tenantId={activeTenantId}
               instruments={financialInstruments}
+              catalog={catalog}
               canPropose={canPropose}
               changeProposedKeys={changeProposedScopeKeys(
                 "wallet_limit",

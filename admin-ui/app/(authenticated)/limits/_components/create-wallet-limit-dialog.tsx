@@ -22,7 +22,6 @@ import {
   proposeWalletLimitCreateAction,
   proposeWalletLimitUpdateAction,
 } from "@/app/(authenticated)/limits/_actions";
-import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -44,11 +43,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { UserTypeSelect } from "@/components/user-type-select";
 import type { CreateWalletLimitConfigPayload } from "@/lib/api-endpoints";
 import type {
   ConfigChangeRequest,
   Instrument,
-  UserType,
+  UserTypeCatalog,
   WalletLimitConfig,
 } from "@/lib/api-types";
 
@@ -100,6 +100,7 @@ function initialForm(
 export function CreateWalletLimitDialog({
   tenantId,
   instruments,
+  catalog,
   trigger,
   reviseRequest,
   editConfig,
@@ -108,6 +109,11 @@ export function CreateWalletLimitDialog({
 }: {
   tenantId: string;
   instruments: Instrument[];
+  /**
+   * The tenant's user-type catalog, fetched by the page's server component.
+   * Types are runtime data, so the scope picker reads them from here.
+   */
+  catalog: UserTypeCatalog;
   /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
   trigger?: React.ReactNode;
   reviseRequest?: ConfigChangeRequest;
@@ -153,7 +159,7 @@ export function CreateWalletLimitDialog({
     const payload: CreateWalletLimitConfigPayload = {
       tenant_id: tenantId,
       currency: form.currency.toUpperCase(),
-      user_type: form.user_type === "all" ? null : (form.user_type as UserType),
+      user_type: form.user_type === "all" ? null : form.user_type,
       max_balance: form.max_balance.trim() || undefined,
     };
     for (const [key, , isCount] of CAP_FIELDS) {
@@ -234,28 +240,13 @@ export function CreateWalletLimitDialog({
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="wlc-utype">User type</Label>
-              <Select
-                value={form.user_type}
-                onValueChange={(v) => update("user_type", v)}
-                disabled={scopeLocked}
-              >
-                <SelectTrigger id="wlc-utype">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types (default)</SelectItem>
-                  {USER_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <UserTypeSelect
+            idPrefix="wlc-user-type"
+            catalog={catalog}
+            value={form.user_type === "all" ? null : form.user_type}
+            onChange={(code) => update("user_type", code ?? "all")}
+            disabled={scopeLocked}
+          />
           <div className="grid grid-cols-2 gap-3">
             {CAP_FIELDS.map(([key, label, isCount]) => (
               <div key={key}>

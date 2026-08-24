@@ -72,9 +72,9 @@ class IdentifierNotManuallyVerifiable(AppHTTPException):
 class InvalidUserTypeParent(AppHTTPException):
     """The parent_user_id is incompatible with the user's type (Decision D4, Epic 12).
 
-    Raised when a consumer/super_agent/head_merchant is given a parent, or an
-    agent/merchant's supplied parent is missing, in another tenant, or not the
-    required parent type (super_agent for agent, head_merchant for merchant).
+    Raised when a type whose row declares no `parent_type_code` is given a
+    parent, or when a child type's supplied parent is missing, in another
+    tenant, or not the type its row names as the supervisor.
     """
 
     def __init__(self) -> None:
@@ -82,6 +82,37 @@ class InvalidUserTypeParent(AppHTTPException):
             422,
             "user_type_invalid_parent",
             "The parent user is not compatible with this user type.",
+        )
+
+
+class ParentReferenceAmbiguous(AppHTTPException):
+    """422 — both parent_user_id and parent_identifier were supplied (spec §7.2).
+
+    Refused rather than picking one, because the two could name different
+    people and silently attaching the wrong supervisor is a commercially
+    meaningful mistake.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "parent_reference_ambiguous",
+            "Supply either parent_user_id or parent_identifier, not both.",
+        )
+
+
+class ParentNotFound(AppHTTPException):
+    """422 — the supervisor identifier does not resolve in this tenant.
+
+    Deliberately does not distinguish "no such user" from "user in another
+    tenant" — that difference would be an existence leak.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "parent_not_found",
+            "No user in this tenant matches that identifier.",
         )
 
 
@@ -1452,3 +1483,163 @@ class InvalidAnalyticsParameter(AppHTTPException):
 
     def __init__(self, message: str) -> None:
         super().__init__(422, "invalid_parameter", message)
+
+
+# --- User types (configurable user-type catalog, spec §5) -------------------
+
+
+class UserTypeCodeReserved(AppHTTPException):
+    """409 — the code is taken by a platform-wide system type."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "user_type_code_reserved",
+            "That code is reserved by a system user type.",
+        )
+
+
+class UserTypeCodeAlreadyExists(AppHTTPException):
+    """409 — this tenant already owns a type with this code.
+
+    Distinct from `UserTypeCodeReserved`, which is about a *platform-wide*
+    system code. This one is the tenant's own collision, caught off the partial
+    UNIQUE index `uq_user_types_tenant_code` rather than pre-checked, so a
+    concurrent insert cannot slip between the check and the write.
+
+    Args:
+        code: The colliding type code, echoed back so the UI can mark the field.
+    """
+
+    def __init__(self, code: str) -> None:
+        super().__init__(
+            409,
+            "user_type_code_already_exists",
+            f"A user type with code '{code}' already exists for this tenant.",
+        )
+
+
+class UserTypeCategoryImmutable(AppHTTPException):
+    """422 — an update named a different category from the one the row carries.
+
+    A type's category is fixed at creation, like its code (spec D5): only
+    `label`, `status`, `requires_merchant_profile` and `parent_type_code` are
+    mutable. Refusing the payload outright — rather than ignoring the field —
+    keeps an approved maker-checker request from meaning something other than
+    what the checker read.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "user_type_category_immutable",
+            "A user type's category cannot be changed after it is created.",
+        )
+
+
+class UnknownUserTypeCategory(AppHTTPException):
+    """422 — the named category code does not exist.
+
+    Separate from `UnknownUserType` so the message points the operator at the
+    category field rather than at the type field.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "unknown_user_type_category",
+            "That user type category does not exist.",
+        )
+
+
+class ParentTypeNotFound(AppHTTPException):
+    """422 — the named parent type does not resolve, or is retired."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "parent_type_not_found",
+            "The parent user type was not found or is retired.",
+        )
+
+
+class ParentTypeWrongCategory(AppHTTPException):
+    """422 — the parent sits in a different category from the child."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "parent_type_wrong_category",
+            "The parent user type must be in the same category.",
+        )
+
+
+class ParentTypeNotTopLevel(AppHTTPException):
+    """422 — the named parent is itself a child. Caps the hierarchy at two levels."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "parent_type_not_toplevel",
+            "The parent user type must itself be a top-level type.",
+        )
+
+
+class CategoryDoesNotSupportHierarchy(AppHTTPException):
+    """422 — a parent was supplied for a type in a flat category."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "category_does_not_support_hierarchy",
+            "This category does not support a type hierarchy.",
+        )
+
+
+class UserTypeHasActiveChildren(AppHTTPException):
+    """409 — a parent type with active children cannot be retired.
+
+    Args:
+        children: Codes of the active child types blocking the retirement.
+    """
+
+    def __init__(self, children: list[str]) -> None:
+        super().__init__(
+            409,
+            "user_type_has_active_children",
+            f"Retire these child types first: {', '.join(children)}.",
+        )
+
+
+class UserTypeHasChildren(AppHTTPException):
+    """409 — a type with children of its own cannot be moved under a parent.
+
+    Distinct from `UserTypeHasActiveChildren`, and deliberately stricter: that
+    one guards RETIRING and counts only active children, while this guards
+    RE-PARENTING and counts every child, retired included. A retired child can
+    be reactivated later (spec D4), so allowing the move while it is retired
+    would just defer the three-level chain rather than prevent it.
+
+    Args:
+        children: Codes of the child types blocking the move.
+    """
+
+    def __init__(self, children: list[str]) -> None:
+        super().__init__(
+            409,
+            "user_type_has_children",
+            "This type cannot be given a parent while it has child types of its "
+            f"own ({', '.join(children)}) — the hierarchy is capped at two levels. "
+            "Re-parent or retire those children first.",
+        )
+
+
+class UnknownUserType(AppHTTPException):
+    """422 — a user or config references a type that does not resolve."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "unknown_user_type",
+            "That user type is not available for this tenant.",
+        )

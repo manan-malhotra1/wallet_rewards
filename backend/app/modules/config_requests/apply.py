@@ -71,6 +71,8 @@ from app.modules.taxes.service import (
     delete_tax_config_for_scope,
     replace_tax_config_for_scope,
 )
+from app.modules.user_types.schemas import UserTypeCreateRequest
+from app.modules.user_types.service import create_user_type, replace_user_type_for_scope
 from app.shared.exceptions import AppHTTPException, ConfigRequestTargetNotFound
 from app.shared.models import (
     CONFIG_OP_CREATE,
@@ -81,6 +83,7 @@ from app.shared.models import (
     CONFIG_TYPE_PRICING,
     CONFIG_TYPE_STEP_UP,
     CONFIG_TYPE_TAX,
+    CONFIG_TYPE_USER_TYPE,
     CONFIG_TYPE_WALLET_LIMIT,
     CommissionConfig,
     ConfigChangeRequest,
@@ -89,6 +92,7 @@ from app.shared.models import (
     PricingConfig,
     StepUpPolicy,
     TaxConfig,
+    UserTypeDef,
     WalletLimitConfig,
 )
 from app.shared.tenant_mode import assert_points_scope_allowed
@@ -111,6 +115,7 @@ _DISPATCH: dict[str, tuple[type[BaseModel], _CreateFn]] = {
     CONFIG_TYPE_TAX: (TaxConfigCreateRequest, create_tax_config),
     CONFIG_TYPE_STEP_UP: (StepUpPolicyCreateRequest, create_policy),
     CONFIG_TYPE_CONVERSION_RATE: (ConversionRateCreateRequest, create_conversion_rate_config),
+    CONFIG_TYPE_USER_TYPE: (UserTypeCreateRequest, create_user_type),
 }
 
 # config_type -> the atomic-replace helper an `update` dispatches to.
@@ -122,6 +127,9 @@ _REPLACE_DISPATCH: dict[str, _ReplaceFn] = {
     CONFIG_TYPE_TAX: replace_tax_config_for_scope,
     CONFIG_TYPE_STEP_UP: replace_step_up_policy_for_scope,
     CONFIG_TYPE_CONVERSION_RATE: replace_conversion_rate_config_for_scope,
+    # Edits the row in place rather than delete-and-reinsert — see the
+    # service docstring: D3 forbids deleting a user type at all.
+    CONFIG_TYPE_USER_TYPE: replace_user_type_for_scope,
 }
 
 # config_type -> the scope-delete helper a `delete` dispatches to. Each removes
@@ -137,6 +145,30 @@ _DELETE_SCOPE_DISPATCH: dict[str, _DeleteScopeFn] = {
     CONFIG_TYPE_CONVERSION_RATE: delete_conversion_rate_config_for_scope,
 }
 
+
+def assert_delete_supported(config_type: str) -> None:
+    """Refuse a delete for a config type that has no scope-delete helper.
+
+    `user_type` is deliberately absent from `_DELETE_SCOPE_DISPATCH`: spec D3
+    retires a user type, never deletes it, because `users.user_type` and every
+    config row reference the code as a plain string with no foreign key. Reading
+    that omission through this guard turns it into a clean 422 the MAKER sees at
+    propose time, instead of a KeyError 500 the checker discovers at approve.
+
+    Args:
+        config_type: The proposal's config type.
+
+    Raises:
+        AppHTTPException (422): the type cannot be deleted, only retired.
+    """
+    if config_type not in _DELETE_SCOPE_DISPATCH:
+        raise AppHTTPException(
+            422,
+            "config_delete_not_supported",
+            "This config type cannot be deleted; retire it instead.",
+        )
+
+
 # config_type -> its real config-table model (for the update/delete target
 # existence + scope check at propose time).
 _MODEL_BY_TYPE: dict[str, type[Any]] = {
@@ -147,6 +179,7 @@ _MODEL_BY_TYPE: dict[str, type[Any]] = {
     CONFIG_TYPE_TAX: TaxConfig,
     CONFIG_TYPE_STEP_UP: StepUpPolicy,
     CONFIG_TYPE_CONVERSION_RATE: PointsConversionRate,
+    CONFIG_TYPE_USER_TYPE: UserTypeDef,
 }
 
 # config_type -> the attributes that identify a config's SCOPE. An update must
@@ -162,6 +195,8 @@ _SCOPE_KEYS: dict[str, tuple[str, ...]] = {
     CONFIG_TYPE_TAX: ("currency",),
     CONFIG_TYPE_STEP_UP: ("transaction_type", "currency"),
     CONFIG_TYPE_CONVERSION_RATE: ("currency",),
+    # A user type's scope is its immutable code; one row per (tenant, code).
+    CONFIG_TYPE_USER_TYPE: ("code",),
 }
 
 
@@ -416,6 +451,7 @@ async def apply_config_request(
         # id is guaranteed set by the propose validation) and 404 uniformly if
         # it is gone; the per-type helper then deletes every row of that row's
         # scope + writes one `.deleted` audit in a single commit.
+        assert_delete_supported(request.config_type)
         assert request.target_config_id is not None
         target = await load_config_target(
             session, request.config_type, request.target_config_id, request.tenant_id

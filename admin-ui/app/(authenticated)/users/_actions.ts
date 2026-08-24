@@ -8,9 +8,11 @@ import { revalidatePath } from "next/cache";
 import { ApiError } from "@/lib/api";
 import {
   addUserIdentifier,
+  getUserDetail,
   listUserTransactions,
   adminResetPin,
   proposeUserOperation,
+  resolveIdentifier,
   setUserAccess,
   unlockUser,
   verifyUserIdentifier,
@@ -21,6 +23,7 @@ import type {
   AddableIdentifierType,
   SettableAccessLevel,
 } from "@/lib/api-types";
+import { maskPhone } from "@/lib/masking";
 
 export type PinResetActionResult =
   | { ok: true; deliveredVia: "inline" | "sms"; newPin: string | null }
@@ -182,6 +185,82 @@ export async function verifyIdentifierAction(
   }
 }
 
+/** The minimum an operator needs to recognise a person, and nothing more. */
+export interface LookedUpUser {
+  id: string;
+  /** Profile name, or null when the user has no profile recorded. */
+  full_name: string | null;
+  user_type: string;
+  /** Already masked — the raw number never crosses into the browser. */
+  masked_phone: string;
+}
+
+export type LookupUserActionResult =
+  | { ok: true; user: LookedUpUser }
+  | { ok: false; errorCode: string; message: string };
+
+/**
+ * Resolve a phone number to the person behind it, for confirmation before the
+ * operator attaches them to something (spec §7.4).
+ *
+ * Returns a MASKED phone (NFR-0240): the operator typed the number, so this
+ * confirms which registered identifier matched without shipping the stored
+ * value back out. Phone numbers are stored canonically, so separators are
+ * stripped here exactly as the Users lookup form does — otherwise a pasted
+ * "+27 82 555 0142" would read as "not found".
+ *
+ * @param tenantId - Resolution is tenant-scoped.
+ * @param phone - The phone number as typed, in any format.
+ * @returns The resolved person, or the backend's error code and message.
+ */
+export async function lookupUserAction(
+  tenantId: string,
+  phone: string,
+): Promise<LookupUserActionResult> {
+  const canonical = phone.trim().replace(/[\s\-().]/g, "");
+  if (!canonical) {
+    return {
+      ok: false,
+      errorCode: "identifier_required",
+      message: "Enter a phone number to look up.",
+    };
+  }
+  try {
+    const resolved = await resolveIdentifier(tenantId, "phone", canonical);
+    const detail = await getUserDetail(tenantId, resolved.user_id);
+    const name = [detail.profile?.first_name, detail.profile?.last_name]
+      .filter(Boolean)
+      .join(" ");
+    // Prefer the STORED phone so the confirmation reflects the matched record,
+    // not just what was typed into the box.
+    const storedPhone =
+      detail.identifiers.find((i) => i.identifier_type === "phone")?.identifier_value ??
+      canonical;
+    return {
+      ok: true,
+      user: {
+        id: detail.id,
+        full_name: name || null,
+        user_type: detail.user_type,
+        masked_phone: maskPhone(storedPhone),
+      },
+    };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      const message =
+        err.errorCode === "user_not_found"
+          ? "No user is registered with that phone number."
+          : err.message;
+      return { ok: false, errorCode: err.errorCode, message };
+    }
+    return {
+      ok: false,
+      errorCode: "internal_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
 export type ProposeActionResult =
   | { ok: true; operationId: string }
   | { ok: false; errorCode: string; message: string };
@@ -198,6 +277,15 @@ export interface ProposeCreateUserInput {
     first_name?: string;
     last_name?: string;
     date_of_birth?: string;
+  };
+  /**
+   * The supervisor, named by one of their identifiers rather than by id, so
+   * the backend re-resolves and re-validates them when the proposal is
+   * approved. Omit the key entirely when no supervisor is attached.
+   */
+  parent_identifier?: {
+    identifier_type: "phone" | "email" | "account_number" | "card_number";
+    identifier_value: string;
   };
 }
 

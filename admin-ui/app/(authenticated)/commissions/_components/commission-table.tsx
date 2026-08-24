@@ -32,6 +32,7 @@ import type {
   CommissionConfigGroup,
   Instrument,
   Service,
+  UserTypeCatalog,
 } from "@/lib/api-types";
 import { serviceLabel } from "@/lib/service-label";
 import { formatAmount } from "@/lib/utils";
@@ -56,6 +57,7 @@ export function CommissionTable({
   tenantId,
   services,
   instruments,
+  catalog,
   canPropose,
   serviceNames,
   changeProposedKeys,
@@ -64,6 +66,8 @@ export function CommissionTable({
   tenantId: string;
   services: Service[];
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
   /** platform-admin gate — hides the Edit affordance for other admins. */
   canPropose: boolean;
   /** `{ code: display_name }` forwarded to the View drawer. */
@@ -136,7 +140,7 @@ export function CommissionTable({
                 </TableCell>
                 <TableCell>
                   {group.user_type ? (
-                    <UserTypeBadge type={group.user_type} />
+                    <UserTypeBadge type={group.user_type} catalog={catalog} />
                   ) : (
                     <span className="text-xs text-muted-foreground">
                       All types
@@ -177,6 +181,7 @@ export function CommissionTable({
                         tenantId={tenantId}
                         services={services}
                         instruments={instruments}
+                        catalog={catalog}
                         changeProposed={changeProposed}
                       />
                     )}
@@ -223,12 +228,15 @@ function EditCommissionButton({
   tenantId,
   services,
   instruments,
+  catalog,
   changeProposed,
 }: {
   group: CommissionConfigGroup;
   tenantId: string;
   services: Service[];
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
   /** Open request on this scope → disable Edit; the maker resolves it first. */
   changeProposed: boolean;
 }) {
@@ -263,6 +271,7 @@ function EditCommissionButton({
         tenantId={tenantId}
         services={services}
         instruments={instruments}
+        catalog={catalog}
         editGroup={group}
         open={open}
         onOpenChange={setOpen}

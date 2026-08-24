@@ -64,6 +64,7 @@ from app.shared.models import (  # noqa: E402
     REFERRAL_TRIGGER_SIGNUP,
     USER_TYPE_AGENT,
     USER_TYPE_MERCHANT,
+    USER_TYPES,
     Account,
     ApiKey,
     CommissionConfig,
@@ -83,6 +84,7 @@ from app.shared.models import (  # noqa: E402
     User,
     UserIdentifier,
     UserProfile,
+    UserTypeDef,
 )
 
 TENANT_NAME = "Sasai-ZA"
@@ -206,6 +208,36 @@ async def _ensure_referral_code(session: AsyncSession, user: User) -> None:
     code = await _create_unique_referral_code(session, tenant_id=user.tenant_id, user_id=user.id)
     await session.commit()
     print(f"    + Referral code {code.code} for user {user.id}")
+
+
+async def _assert_user_type_catalog_seeded(session: AsyncSession) -> None:
+    """Fail loudly when the system user-type catalog is missing.
+
+    Every seeded user carries a `user_type` code (`consumer`, `agent`,
+    `merchant`, ...) that must exist as a system row in `user_types` — the
+    catalog seeded by the configurable-user-types migration. Without it the
+    seed would still insert users (there is no FK on `users.user_type`) and
+    then fail much later with a confusing validation error the first time the
+    admin UI or a money path resolved the type. Checking here turns "the
+    database missed a migration" into one clear message.
+
+    Args:
+        session: Async DB session; read-only here.
+
+    Raises:
+        SystemExit: One or more of the five system types is absent.
+    """
+    existing = (
+        (await session.execute(select(UserTypeDef.code).where(UserTypeDef.tenant_id.is_(None))))
+        .scalars()
+        .all()
+    )
+    missing = set(USER_TYPES) - set(existing)
+    if missing:
+        raise SystemExit(
+            f"User-type catalog not seeded (missing: {sorted(missing)}). "
+            "Run `alembic upgrade head` first."
+        )
 
 
 async def _get_or_create_user(
@@ -1518,7 +1550,10 @@ async def seed() -> None:
         # it must be topped up first or the first fund would 409 `insufficient_float`.
         await _prefund_operator_float(session, tenant)
 
-        # Users + their wallets + opening balances.
+        # Users + their wallets + opening balances. The type codes below are
+        # rows in the `user_types` catalog now, so check they are there before
+        # writing users that reference them.
+        await _assert_user_type_catalog_seeded(session)
         for spec in USERS_TO_SEED:
             user = await _get_or_create_user(
                 session,

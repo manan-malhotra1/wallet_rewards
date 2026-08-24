@@ -77,6 +77,7 @@ from app.shared.models.config_requests import (
     CONFIG_TYPE_PRICING,
     CONFIG_TYPE_STEP_UP,
     CONFIG_TYPE_TAX,
+    CONFIG_TYPE_USER_TYPE,
     CONFIG_TYPE_WALLET_LIMIT,
     CONFIG_TYPES,
     REVIEW_ACTION_APPROVED,
@@ -246,9 +247,16 @@ from app.shared.models.user_operations import (
     UserOperationRequest,
     UserOperationReview,
 )
+from app.shared.models.user_types import (
+    CATEGORY_BUSINESS,
+    CATEGORY_CONSUMER,
+    CATEGORY_RETAIL,
+    USER_TYPE_STATUS_ACTIVE,
+    USER_TYPE_STATUS_RETIRED,
+    UserTypeCategory,
+    UserTypeDef,
+)
 from app.shared.models.users import (
-    MERCHANT_USER_TYPES,
-    PARENT_TYPE_BY_CHILD,
     USER_STATUS_ACTIVE,
     USER_STATUS_CLOSED,
     USER_STATUS_SUSPENDED,
@@ -305,6 +313,9 @@ __all__ = [
     "BUDGET_WINDOW_LIFETIME",
     "BUDGET_WINDOW_ROLLING_7D",
     "BUDGET_WINDOW_ROLLING_24H",
+    "CATEGORY_BUSINESS",
+    "CATEGORY_CONSUMER",
+    "CATEGORY_RETAIL",
     "CONFIG_OPERATIONS",
     "CONFIG_OP_CREATE",
     "CONFIG_OP_DELETE",
@@ -322,6 +333,7 @@ __all__ = [
     "CONFIG_TYPE_PRICING",
     "CONFIG_TYPE_STEP_UP",
     "CONFIG_TYPE_TAX",
+    "CONFIG_TYPE_USER_TYPE",
     "CONFIG_TYPE_WALLET_LIMIT",
     "ENTRY_CREDIT",
     "ENTRY_DEBIT",
@@ -341,7 +353,6 @@ __all__ = [
     "MERCHANT_PROFILE_STATUSES",
     "MERCHANT_PROFILE_STATUS_ACTIVE",
     "MERCHANT_PROFILE_STATUS_INACTIVE",
-    "MERCHANT_USER_TYPES",
     "MONEY_OPERATIONS",
     "MONEY_OP_ADJUST_SYSTEM",
     "MONEY_OP_CREATE_BANK_MIRROR",
@@ -363,7 +374,6 @@ __all__ = [
     "MONEY_REVIEW_ACTION_WITHDRAWN",
     "MONEY_REVIEW_ROLE_CHECKER",
     "MONEY_REVIEW_ROLE_MAKER",
-    "PARENT_TYPE_BY_CHILD",
     "PIN_CHANGE_STATUS_COMPLETED",
     "PROGRESS_STATUS_ACTIVE",
     "PROGRESS_STATUS_COMPLETED",
@@ -439,6 +449,8 @@ __all__ = [
     "USER_TYPE_CONSUMER",
     "USER_TYPE_HEAD_MERCHANT",
     "USER_TYPE_MERCHANT",
+    "USER_TYPE_STATUS_ACTIVE",
+    "USER_TYPE_STATUS_RETIRED",
     "USER_TYPE_SUPER_AGENT",
     # Accounts
     "Account",
@@ -520,5 +532,8 @@ __all__ = [
     "UserRole",
     "UserRuleProgress",
     "UserSegment",
+    # User-type catalog (configurable user types)
+    "UserTypeCategory",
+    "UserTypeDef",
     "WalletLimitConfig",
 ]

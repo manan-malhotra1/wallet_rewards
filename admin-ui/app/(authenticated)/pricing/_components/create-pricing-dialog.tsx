@@ -31,7 +31,6 @@ import {
   validateBands,
   type BandRow,
 } from "@/app/(authenticated)/_components/bands";
-import { USER_TYPE_OPTIONS } from "@/app/(authenticated)/users/_components/user-type-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -54,12 +53,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { UserTypeSelect } from "@/components/user-type-select";
 import type {
   ConfigChangeRequest,
   Instrument,
   PricingConfigGroup,
   Service,
-  UserType,
+  UserTypeCatalog,
 } from "@/lib/api-types";
 
 interface Scope {
@@ -152,6 +152,7 @@ export function CreatePricingDialog({
   pointsAvailable,
   services,
   instruments,
+  catalog,
   trigger,
   reviseRequest,
   editGroup,
@@ -168,6 +169,11 @@ export function CreatePricingDialog({
   pointsAvailable: boolean;
   services: Service[];
   instruments: Instrument[];
+  /**
+   * The tenant's user-type catalog, fetched by the page's server component.
+   * Types are runtime data, so the scope picker reads them from here.
+   */
+  catalog: UserTypeCatalog;
   /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
   trigger?: React.ReactNode;
   reviseRequest?: ConfigChangeRequest;
@@ -228,7 +234,7 @@ export function CreatePricingDialog({
       transaction_type: scope.transaction_type,
       account_type: scope.account_type,
       currency: scope.currency.toUpperCase(),
-      user_type: scope.user_type === "all" ? null : (scope.user_type as UserType),
+      user_type: scope.user_type === "all" ? null : scope.user_type,
       amount_from: orNull(b.amount_from),
       amount_to: orNull(b.amount_to),
       fixed_fee: b.fixed.trim() || "0",
@@ -342,25 +348,14 @@ export function CreatePricingDialog({
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="utype">User type</Label>
-              <Select
-                value={scope.user_type}
-                onValueChange={(v) => updateScope("user_type", v)}
+            <div className="col-span-2">
+              <UserTypeSelect
+                idPrefix="pricing-user-type"
+                catalog={catalog}
+                value={scope.user_type === "all" ? null : scope.user_type}
+                onChange={(code) => updateScope("user_type", code ?? "all")}
                 disabled={scopeLocked}
-              >
-                <SelectTrigger id="utype">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types (default)</SelectItem>
-                  {USER_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
             <div className="flex items-end pb-1">
               <Checkbox

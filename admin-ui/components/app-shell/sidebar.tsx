@@ -26,6 +26,7 @@ import {
   Tag,
   Ticket,
   Users,
+  Users2,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -89,6 +90,7 @@ const CONFIG: NavEntry[] = [
   { label: "Points rates", href: "/redemption-rates", icon: Repeat },
   { label: "Services", href: "/services", icon: Tag },
   { label: "Instruments", href: "/instruments", icon: Ticket },
+  { label: "User types", href: "/user-types", icon: Users2 },
   { label: "Tenants", href: "/tenants", icon: Settings2 },
   { label: "API keys", href: "/api-keys", icon: KeyRound },
 ];

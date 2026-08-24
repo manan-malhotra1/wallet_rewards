@@ -21,7 +21,6 @@ from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, computed_field
 
-from app.shared.models import USER_TYPES
 from app.shared.services_registry import DERIVABLE_BASE_CODES
 
 ServiceStatus = Literal["active", "disabled"]
@@ -29,20 +28,6 @@ ServiceStatus = Literal["active", "disabled"]
 # Canonical channel set for the `allowed_channels` allow-list. Single source of
 # truth for the values documented on the `Service.allowed_channels` column.
 SERVICE_CHANNELS: tuple[str, ...] = ("web", "api", "mobile", "ussd", "admin", "system")
-
-
-def _validate_user_types(value: list[str] | None) -> list[str] | None:
-    """Reject any user_type not in the canonical set (empty/None pass through).
-
-    Raises:
-        ValueError: at least one element is not a known user type (→ 422).
-    """
-    if value is None:
-        return value
-    unknown = [v for v in value if v not in USER_TYPES]
-    if unknown:
-        raise ValueError(f"unknown user_type(s) {unknown}; allowed: {list(USER_TYPES)}")
-    return value
 
 
 def _validate_channels(value: list[str] | None) -> list[str] | None:
@@ -59,8 +44,20 @@ def _validate_channels(value: list[str] | None) -> list[str] | None:
     return value
 
 
-# Reusable validated field types — keep create + update DRY and consistent.
-AllowedUserTypes = Annotated[list[str] | None, AfterValidator(_validate_user_types)]
+# Reusable field types — keep create + update DRY and consistent.
+#
+# `allowed_user_types` is deliberately UNVALIDATED here. User types became
+# runtime, per-tenant catalog data on this branch, so the legal set is a DB
+# lookup scoped to the payload's tenant — something a sync Pydantic validator
+# has neither a session nor a tenant for. Validating it against the old
+# five-element `USER_TYPES` tuple made every tenant-defined type a 422 and, via
+# the `allowed_user_types` membership gate in `identity.list_my_services` /
+# `services.assert_service_allowed`, locked custom-type users out of every
+# restricted service with no way to add them. The check now lives in
+# `services.service._assert_allowed_user_types_valid`, which resolves each code
+# against the tenant's catalog — the same move migration 0064 made for the four
+# config tables. Channels stay here: that set really is a fixed constant.
+AllowedUserTypes = list[str] | None
 AllowedChannels = Annotated[list[str] | None, AfterValidator(_validate_channels)]
 
 

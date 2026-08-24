@@ -35,6 +35,7 @@ from jose import jwt as jose_jwt
 from jose.utils import long_to_base64
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -63,7 +64,25 @@ from app.shared.models import (
     User,
     UserIdentifier,
     UserRole,
+    UserTypeCategory,
+    UserTypeDef,
 )
+
+# Mirrors the seed in `alembic/versions/20260823_0061_configurable_user_types.py`.
+# (code, label, display_order, supports_hierarchy)
+SEED_USER_TYPE_CATEGORIES = [
+    ("consumer", "Consumers", 1, False),
+    ("retail", "Retail", 2, True),
+    ("business", "Business", 3, True),
+]
+# (code, label, category_code, requires_merchant_profile, parent_type_code)
+SEED_USER_TYPES = [
+    ("consumer", "Consumer", "consumer", False, None),
+    ("super_agent", "Super agent", "retail", False, None),
+    ("agent", "Agent", "retail", False, "super_agent"),
+    ("head_merchant", "Head merchant", "business", True, None),
+    ("merchant", "Merchant", "business", True, "head_merchant"),
+]
 
 # -----------------------------------------------------------------------------
 # Engine + schema lifecycle
@@ -94,7 +113,7 @@ async def _prepare_schema() -> AsyncIterator[None]:
 
 
 async def _truncate_all_tables() -> None:
-    """Wipe every domain table before a test.
+    """Wipe every domain table before a test, then restore the system seeds.
 
     Uses TRUNCATE ... CASCADE so foreign keys don't block. Order doesn't
     matter because CASCADE handles dependents, but we exclude the Alembic
@@ -105,6 +124,53 @@ async def _truncate_all_tables() -> None:
         if table_names:
             joined = ", ".join(f'"{name}"' for name in table_names)
             await conn.execute(text(f"TRUNCATE TABLE {joined} RESTART IDENTITY CASCADE"))
+        await _seed_user_type_catalog(conn)
+
+
+async def _seed_user_type_catalog(conn: AsyncConnection) -> None:
+    """Re-seed the fixed user-type categories and the five system types.
+
+    The harness builds its schema with `Base.metadata.create_all`, so it never
+    runs migration 0061 and never gets that migration's seed. TRUNCATE would
+    wipe it anyway. Re-seeding here after every wipe gives each test the same
+    catalog a freshly migrated production database has (spec §4.3).
+
+    Kept deliberately in step with `alembic/versions/20260823_0061_*.py`: the
+    migration owns the historical seed and must not import from app code, so
+    the two lists are duplicated on purpose, not by oversight.
+
+    Args:
+        conn: An open `AsyncConnection` inside the truncate transaction.
+    """
+    await conn.execute(
+        UserTypeCategory.__table__.insert(),
+        [
+            {
+                "code": code,
+                "label": label,
+                "display_order": order,
+                "supports_hierarchy": hierarchy,
+                "is_system": True,
+            }
+            for code, label, order, hierarchy in SEED_USER_TYPE_CATEGORIES
+        ],
+    )
+    await conn.execute(
+        UserTypeDef.__table__.insert(),
+        [
+            {
+                "tenant_id": None,
+                "code": code,
+                "label": label,
+                "category_code": category,
+                "is_system": True,
+                "status": "active",
+                "requires_merchant_profile": merchant_profile,
+                "parent_type_code": parent,
+            }
+            for code, label, category, merchant_profile, parent in SEED_USER_TYPES
+        ],
+    )
 
 
 # -----------------------------------------------------------------------------

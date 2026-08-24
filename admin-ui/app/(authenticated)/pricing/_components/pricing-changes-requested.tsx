@@ -9,7 +9,12 @@
 
 import { OpenRequestCard } from "@/app/(authenticated)/_components/open-request-card";
 import { Button } from "@/components/ui/button";
-import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
+import type {
+  ConfigChangeRequest,
+  Instrument,
+  Service,
+  UserTypeCatalog,
+} from "@/lib/api-types";
 
 import { CreatePricingDialog } from "./create-pricing-dialog";
 
@@ -20,6 +25,7 @@ export function PricingChangesRequested({
   currentAdminId,
   services,
   instruments,
+  catalog,
 }: {
   requests: ConfigChangeRequest[];
   tenantId: string;
@@ -28,6 +34,8 @@ export function PricingChangesRequested({
   currentAdminId: string;
   services: Service[];
   instruments: Instrument[];
+  /** The tenant's user-type catalog, fetched by the page's server component. */
+  catalog: UserTypeCatalog;
 }) {
   if (requests.length === 0) return null;
   // code → display_name so the card's Service field reads friendly, not raw.
@@ -53,6 +61,7 @@ export function PricingChangesRequested({
             tenantId={tenantId}
             currentAdminId={currentAdminId}
             serviceNames={serviceNames}
+            catalog={catalog}
             editAction={
               canEdit ? (
                 <CreatePricingDialog
@@ -60,6 +69,7 @@ export function PricingChangesRequested({
                   tenantId={tenantId}
                   services={services}
                   instruments={instruments}
+                  catalog={catalog}
                   reviseRequest={req}
                   trigger={
                     <Button variant="outline" size="sm">

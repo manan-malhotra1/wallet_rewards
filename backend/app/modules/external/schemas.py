@@ -1,11 +1,17 @@
 """Request schemas for the external partner API (Epic 14).
 
 Deliberately a RESTRICTED shape (Epic 14 S7 / mass-assignment hardening,
-finding H1): a partner CANNOT set `user_type`, `parent_user_id`, or an
-identifier's `verified` flag — those are privilege/trust-relevant and are
-forced server-side in the router. Reusing the admin `CreateUserRequest` /
-`IdentifierIn` shapes for an untrusted caller would let a partner pick its own
-limit/pricing tier or assert unverified contact details as verified.
+finding H1): a partner CANNOT set `parent_user_id` or an identifier's
+`verified` flag — those are privilege/trust-relevant and are forced
+server-side. Reusing the admin `CreateUserRequest` / `IdentifierIn` shapes for
+an untrusted caller would let a partner graft the tenant hierarchy by raw id or
+assert unverified contact details as verified.
+
+`user_type` and `parent_identifier` ARE accepted since the user-types catalog
+(spec §7.3) — without them a partner could not onboard an agent or a merchant
+at all. Neither is trusted from the body: the type is resolved against the API
+key's OWN tenant catalog, and the supervisor identifier resolves only within
+that same tenant.
 """
 
 from __future__ import annotations
@@ -16,7 +22,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.identity.schemas import IdentifierType, UserProfileIn
+from app.modules.identity.schemas import IdentifierType, ParentIdentifierIn, UserProfileIn
 
 # Identifier types a partner-created end-user can be reached on.
 _CONTACTABLE = {"email", "phone"}
@@ -36,14 +42,21 @@ class ExternalIdentifierIn(BaseModel):
 class ExternalCreateUserRequest(BaseModel):
     """Partner-facing create-user payload.
 
-    No `tenant_id` (derived from the API key), and no `user_type` /
-    `parent_user_id` — the endpoint forces `consumer` with no parent so a
-    partner can't self-assign a limit/pricing tier or graft the tenant
-    hierarchy (S7 H1).
+    No `tenant_id` (derived from the API key) and no `parent_user_id` — a
+    partner never grafts the hierarchy by raw id (S7 H1).
+
+    `user_type` and `parent_identifier` are optional and both default to the
+    pre-catalog behaviour, so existing partners are unaffected. Widening this
+    deliberately narrow endpoint is safe only because neither field is trusted
+    from the body: the type is validated against the key tenant's own resolved
+    catalog and the supervisor identifier resolves within that tenant only
+    (spec §7.3).
     """
 
     identifiers: list[ExternalIdentifierIn] = Field(min_length=1, max_length=10)
     profile: UserProfileIn | None = None
+    user_type: str = "consumer"
+    parent_identifier: ParentIdentifierIn | None = None
 
     @model_validator(mode="after")
     def _require_email_or_phone(self) -> Self:

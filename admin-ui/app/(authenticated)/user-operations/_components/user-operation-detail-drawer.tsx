@@ -37,8 +37,9 @@ import { Label } from "@/components/ui/label";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
-import type { UserOperation } from "@/lib/api-types";
-import { userOperationLabel, userTypeLabel } from "@/lib/user-operation-label";
+import type { UserOperation, UserTypeCatalog } from "@/lib/api-types";
+import { userOperationLabel } from "@/lib/user-operation-label";
+import { userTypeLabel } from "@/lib/user-type-catalog";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
 /** Non-terminal statuses can still be withdrawn / acted on. */
@@ -91,7 +92,13 @@ function str(payload: Record<string, unknown>, key: string): string | null {
 }
 
 /** Render the identifiers + profile + type of a proposed create_user. */
-function CreatePayload({ operation }: { operation: UserOperation }) {
+function CreatePayload({
+  operation,
+  catalog,
+}: {
+  operation: UserOperation;
+  catalog: UserTypeCatalog | null;
+}) {
   const p = operation.payload;
   const idents = Array.isArray(p.identifiers)
     ? (p.identifiers as { identifier_type?: string; identifier_value?: string }[])
@@ -104,7 +111,7 @@ function CreatePayload({ operation }: { operation: UserOperation }) {
   return (
     <dl className="grid grid-cols-[minmax(120px,auto)_1fr] gap-x-4 gap-y-2 text-sm">
       <Row label="User type">
-        <Badge variant="secondary">{userTypeLabel(userType)}</Badge>
+        <Badge variant="secondary">{userTypeLabel(catalog, userType)}</Badge>
       </Row>
       {name && <Row label="Name">{name}</Row>}
       {profile.date_of_birth ? (
@@ -131,7 +138,13 @@ function CreatePayload({ operation }: { operation: UserOperation }) {
 }
 
 /** Render the target + the changed editable fields of a proposed update_user. */
-function UpdatePayload({ operation }: { operation: UserOperation }) {
+function UpdatePayload({
+  operation,
+  catalog,
+}: {
+  operation: UserOperation;
+  catalog: UserTypeCatalog | null;
+}) {
   const p = operation.payload;
   const targetId = str(p, "target_user_id");
   const fields: { label: string; key: string; badge?: boolean }[] = [
@@ -167,7 +180,7 @@ function UpdatePayload({ operation }: { operation: UserOperation }) {
         changed.map((f) => (
           <Row key={f.key} label={f.label}>
             {f.key === "user_type" ? (
-              userTypeLabel(str(p, f.key) ?? "")
+              userTypeLabel(catalog, str(p, f.key) ?? "")
             ) : f.badge ? (
               <StatusPill status={(str(p, f.key) ?? "").toUpperCase()} variant="dense" />
             ) : (
@@ -181,12 +194,18 @@ function UpdatePayload({ operation }: { operation: UserOperation }) {
 }
 
 /** A readable view of the proposed operation's payload, per operation type. */
-function ProposedOperation({ operation }: { operation: UserOperation }) {
+function ProposedOperation({
+  operation,
+  catalog,
+}: {
+  operation: UserOperation;
+  catalog: UserTypeCatalog | null;
+}) {
   if (operation.operation === "create_user") {
-    return <CreatePayload operation={operation} />;
+    return <CreatePayload operation={operation} catalog={catalog} />;
   }
   if (operation.operation === "update_user") {
-    return <UpdatePayload operation={operation} />;
+    return <UpdatePayload operation={operation} catalog={catalog} />;
   }
   return <p className="text-sm text-muted-foreground">Unknown operation.</p>;
 }
@@ -230,6 +249,7 @@ export function UserOperationDetailDrawer({
   tenantId,
   canApprove,
   currentAdminId,
+  catalog,
   open,
   onOpenChange,
   onUpdated,
@@ -238,6 +258,8 @@ export function UserOperationDetailDrawer({
   tenantId: string;
   canApprove: boolean;
   currentAdminId: string;
+  /** The tenant's user-type catalog, so a type reads by name, not by code. */
+  catalog: UserTypeCatalog | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdated: (operation: UserOperation) => void;
@@ -340,7 +362,7 @@ export function UserOperationDetailDrawer({
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Proposed operation
             </h3>
-            <ProposedOperation operation={operation} />
+            <ProposedOperation operation={operation} catalog={catalog} />
           </section>
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

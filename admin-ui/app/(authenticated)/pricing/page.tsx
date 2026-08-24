@@ -7,6 +7,7 @@ import { Coins, Plus } from "lucide-react";
 import { auth } from "@/auth";
 import { ApiError } from "@/lib/api";
 import {
+  getUserTypeCatalog,
   listConfigRequests,
   listInstruments,
   listPricingConfigs,
@@ -14,7 +15,12 @@ import {
 } from "@/lib/api-endpoints";
 import { getActiveTenant } from "@/lib/active-tenant";
 import { tenantHasRewards } from "@/lib/tenant-mode";
-import type { ConfigChangeRequest, Instrument, Service } from "@/lib/api-types";
+import type {
+  ConfigChangeRequest,
+  Instrument,
+  Service,
+  UserTypeCatalog,
+} from "@/lib/api-types";
 import { groupPricingConfigs } from "@/lib/config-groups";
 import { changeProposedScopeKeys } from "@/lib/config-scope";
 
@@ -54,14 +60,18 @@ export default async function PricingPage() {
   let configs: Awaited<ReturnType<typeof listPricingConfigs>> = [];
   let services: Service[] = [];
   let instruments: Instrument[] = [];
+  // User types are runtime data, so the scope pickers and the type badges read
+  // them from the catalog rather than a hardcoded list.
+  let catalog: UserTypeCatalog = { categories: [], types: [] };
   let openRequests: ConfigChangeRequest[] = [];
   let error: ApiError | null = null;
   try {
     let requests: ConfigChangeRequest[] = [];
-    [configs, services, instruments, requests] = await Promise.all([
+    [configs, services, instruments, catalog, requests] = await Promise.all([
       listPricingConfigs(activeTenantId),
       listServices(activeTenantId, "active"),
       listInstruments(activeTenantId, "active"),
+      getUserTypeCatalog(activeTenantId),
       // All in-flight pricing proposals (both open statuses) so anyone can see
       // a change is under approval; actions on the card are maker-gated.
       listConfigRequests(activeTenantId, undefined, "pricing"),
@@ -86,6 +96,7 @@ export default async function PricingPage() {
               tenantId={activeTenantId}
               services={services}
               instruments={instruments}
+              catalog={catalog}
               trigger={
                 <button
                   type="button"
@@ -114,6 +125,7 @@ export default async function PricingPage() {
             currentAdminId={currentAdminId}
             services={services}
             instruments={instruments}
+            catalog={catalog}
           />
         )}
         {!error && configs.length === 0 ? (
@@ -129,6 +141,7 @@ export default async function PricingPage() {
             tenantId={activeTenantId}
             services={services}
             instruments={instruments}
+            catalog={catalog}
             canPropose={canPropose}
             serviceNames={Object.fromEntries(
               services.map((s) => [s.code, s.display_name]),

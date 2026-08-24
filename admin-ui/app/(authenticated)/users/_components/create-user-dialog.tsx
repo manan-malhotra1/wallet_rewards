@@ -3,8 +3,14 @@
  *
  * Epic 3: this no longer creates the user directly. It PROPOSES a create_user
  * operation (N-eyes maker-checker) — on submit a PENDING request is created and
- * the maker is told it's awaiting approval. Same form fields as before:
- * one identifier (email or phone), an optional profile, and a user_type.
+ * the maker is told it's awaiting approval. One identifier (email or phone), an
+ * optional profile, a user type, and — when that type is a child type — an
+ * optional supervisor.
+ *
+ * The type list is the tenant's runtime catalog, not a hardcoded set, so a type
+ * an operator created on /user-types is assignable here the moment it is
+ * approved. Whether a supervisor block appears is read off the chosen type's
+ * `parent_type_code` for the same reason.
  */
 "use client";
 
@@ -33,17 +39,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { UserType } from "@/lib/api-types";
+import { UserTypeSelect } from "@/components/user-type-select";
+import type { UserType, UserTypeCatalog } from "@/lib/api-types";
+import { userTypeLabel } from "@/lib/user-type-catalog";
 
-import { MERCHANT_TYPES, USER_TYPE_OPTIONS } from "./user-type-badge";
+import { SupervisorPicker } from "./supervisor-picker";
 
 interface FormState {
   identifierType: "phone" | "email";
   identifierValue: string;
-  userType: UserType;
+  userType: UserType | null;
   firstName: string;
   lastName: string;
   dateOfBirth: string;
+  /** The supervisor's phone number, or null when none is attached. */
+  supervisorPhone: string | null;
 }
 
 const EMPTY_FORM: FormState = {
@@ -53,13 +63,24 @@ const EMPTY_FORM: FormState = {
   firstName: "",
   lastName: "",
   dateOfBirth: "",
+  supervisorPhone: null,
 };
 
+/**
+ * Propose a new customer for approval.
+ *
+ * @param tenantId The active tenant the user is registered under.
+ * @param catalog The tenant's user-type catalog — the assignable types, and
+ *   the source of each type's supervisor requirement.
+ * @param trigger The element that opens the dialog.
+ */
 export function CreateUserDialog({
   tenantId,
+  catalog,
   trigger,
 }: {
   tenantId: string;
+  catalog: UserTypeCatalog;
   trigger: React.ReactNode;
 }) {
   const router = useRouter();
@@ -79,13 +100,21 @@ export function CreateUserDialog({
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  const isMerchant = MERCHANT_TYPES.includes(form.userType);
+  const selectedType = catalog.types.find((t) => t.code === form.userType) ?? null;
+  const isMerchant = selectedType?.requires_merchant_profile ?? false;
+  // A type with a parent_type_code sits under a supervisor of that type; every
+  // other type has no supervisor slot at all, so the block is absent.
+  const supervisorType = selectedType?.parent_type_code ?? null;
 
   const onSubmit = async () => {
     setErrorBanner(null);
     const identifierValue = form.identifierValue.trim();
     if (!identifierValue) {
       setErrorBanner("Enter a phone number or email address.");
+      return;
+    }
+    if (!form.userType) {
+      setErrorBanner("Pick a user type.");
       return;
     }
 
@@ -107,6 +136,16 @@ export function CreateUserDialog({
       ],
       user_type: form.userType,
       profile,
+      // Omit the key entirely when no supervisor is attached — the backend
+      // treats an absent parent and a null one differently on some paths.
+      ...(supervisorType && form.supervisorPhone
+        ? {
+            parent_identifier: {
+              identifier_type: "phone" as const,
+              identifier_value: form.supervisorPhone,
+            },
+          }
+        : {}),
     });
     setSubmitting(false);
 
@@ -168,29 +207,43 @@ export function CreateUserDialog({
             </div>
           </div>
 
-          <div>
-            <Label htmlFor="utype">User type</Label>
-            <Select
-              value={form.userType}
-              onValueChange={(v) => update("userType", v as UserType)}
-            >
-              <SelectTrigger id="utype">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {USER_TYPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <UserTypeSelect
+            catalog={catalog}
+            value={form.userType}
+            onChange={(code) =>
+              setForm((prev) => ({
+                ...prev,
+                userType: code,
+                // A supervisor confirmed for the old type cannot be assumed
+                // valid for the new one — make the operator re-confirm.
+                supervisorPhone: null,
+              }))
+            }
+            allowAny={false}
+            idPrefix="create-user"
+          />
+
+          {supervisorType && (
+            <div>
+              <Label htmlFor="supervisor-phone">Supervisor (optional)</Label>
+              <div className="mt-1">
+                <SupervisorPicker
+                  key={supervisorType}
+                  tenantId={tenantId}
+                  catalog={catalog}
+                  requiredType={supervisorType}
+                  value={form.supervisorPhone}
+                  onChange={(phone) => update("supervisorPhone", phone)}
+                />
+              </div>
+            </div>
+          )}
 
           {isMerchant && (
             <p className="text-[11px] text-muted-foreground">
-              Merchant profile (business name, category, provider config) is added
-              in Epic 17 — the user is created without one for now.
+              {userTypeLabel(catalog, form.userType)} requires a merchant profile
+              (business name, category, provider config) — that is added in Epic
+              17, so the user is created without one for now.
             </p>
           )}
 

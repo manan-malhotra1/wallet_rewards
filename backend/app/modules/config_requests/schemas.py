@@ -16,6 +16,7 @@ ConfigType = Literal[
     "tax",
     "step_up",
     "conversion_rate",
+    "user_type",
 ]
 ConfigOperation = Literal["create", "update", "delete"]
 

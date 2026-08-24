@@ -31,6 +31,7 @@ from app.modules.limits.schemas import (
     LimitConfigCreateRequest,
     WalletLimitConfigCreateRequest,
 )
+from app.modules.user_types.service import assert_optional_user_type_valid
 from app.shared.exceptions import (
     AmountAboveMax,
     AmountBelowMin,
@@ -801,10 +802,19 @@ async def create_limit_config(
 ) -> LimitConfig:
     """Create a new limit config row.
 
-    Raises 409 on unique-index collision (one config per
-    `(tenant, transaction_type, account_type, currency)`).
+    Raises:
+        TenantNotFound: 404 — unknown tenant.
+        UnknownUserType: 422 — the row is scoped to a type that does not resolve
+            for this tenant (spec §6). Such a row would never match at
+            enforcement time and the transaction would silently fall through to
+            the `user_type IS NULL` default.
+        AppHTTPException 409: unique-index collision (one config per
+            `(tenant, transaction_type, account_type, currency, user_type)`).
     """
     await _assert_tenant_exists(session, request.tenant_id)
+    await assert_optional_user_type_valid(
+        session, tenant_id=request.tenant_id, code=request.user_type
+    )
     config = _new_limit_config(request)
     session.add(config)
     try:
@@ -855,11 +865,17 @@ async def replace_limit_config_for_scope(
         requests: A one-element list holding the validated new config.
         target_config_id: The live row the maker edited (audit traceability).
 
+    Raises:
+        UnknownUserType: 422 — the new scope names a type that does not resolve
+            for this tenant (spec §6). Checked BEFORE the delete, so a bad
+            payload never wipes the live config.
+
     Side effects:
         Deletes + inserts a limit_configs row; appends one
         `limit_config.updated` audit row. Commits once.
     """
     first = requests[0]
+    await assert_optional_user_type_valid(session, tenant_id=first.tenant_id, code=first.user_type)
     scope = _limit_scope_filter(
         tenant_id=first.tenant_id,
         transaction_type=first.transaction_type,
@@ -1023,9 +1039,17 @@ async def create_wallet_limit_config(
 ) -> WalletLimitConfig:
     """Create a per-(tenant, currency) wallet limit config.
 
-    Raises 409 on unique-index collision (one config per (tenant, currency)).
+    Raises:
+        TenantNotFound: 404 — unknown tenant.
+        UnknownUserType: 422 — the row is scoped to a type that does not resolve
+            for this tenant (spec §6); it would never match at enforcement time.
+        AppHTTPException 409: unique-index collision (one config per
+            `(tenant, currency, user_type)`).
     """
     await _assert_tenant_exists(session, request.tenant_id)
+    await assert_optional_user_type_valid(
+        session, tenant_id=request.tenant_id, code=request.user_type
+    )
     config = _new_wallet_limit_config(request)
     session.add(config)
     try:
@@ -1074,11 +1098,17 @@ async def replace_wallet_limit_config_for_scope(
         requests: A one-element list holding the validated new config.
         target_config_id: The live row the maker edited (audit traceability).
 
+    Raises:
+        UnknownUserType: 422 — the new scope names a type that does not resolve
+            for this tenant (spec §6). Checked BEFORE the delete, so a bad
+            payload never wipes the live config.
+
     Side effects:
         Deletes + inserts a wallet_limit_configs row; appends one
         `wallet_limit_config.updated` audit row. Commits once.
     """
     first = requests[0]
+    await assert_optional_user_type_valid(session, tenant_id=first.tenant_id, code=first.user_type)
     scope = _wallet_limit_scope_filter(
         tenant_id=first.tenant_id, currency=first.currency, user_type=first.user_type
     )

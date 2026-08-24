@@ -11,13 +11,14 @@ import { auth } from "@/auth";
 import { getActiveTenantId } from "@/lib/active-tenant";
 import {
   getUserDetail,
+  getUserTypeCatalog,
   listUserOperations,
   listUserTransactions,
   resolveIdentifier,
   type UserTransaction,
 } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
-import type { UserOperation } from "@/lib/api-types";
+import type { UserOperation, UserTypeCatalog } from "@/lib/api-types";
 
 import type { OpenUpdateRequest } from "./_components/edit-user-drawer";
 
@@ -90,6 +91,16 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
     );
   }
 
+  // The assignable user types. Best-effort: a catalog hiccup degrades the type
+  // affordances rather than taking the whole page down, since lookup — the
+  // reason an operator is here — does not depend on it.
+  let catalog: UserTypeCatalog | null = null;
+  try {
+    catalog = await getUserTypeCatalog(activeTenantId);
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+  }
+
   let detail: Awaited<ReturnType<typeof getUserDetail>> | null = null;
   let transactions: UserTransaction[] = [];
   let transactionsTotal = 0;
@@ -126,6 +137,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         actions={
           <CreateUserDialog
             tenantId={activeTenantId}
+            catalog={catalog ?? { categories: [], types: [] }}
             trigger={
               <Button variant="outline">
                 <UserPlus className="h-3.5 w-3.5" />
@@ -155,6 +167,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
             resolvedIdentifierType={params.type ?? "phone"}
             openUpdate={openUpdate}
             canManageLockout={canManageLockout}
+            catalog={catalog}
           />
         )}
         {!detail && !error && !params.value && (

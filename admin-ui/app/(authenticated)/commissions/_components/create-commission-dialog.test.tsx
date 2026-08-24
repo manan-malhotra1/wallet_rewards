@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateCommissionDialog } from "@/app/(authenticated)/commissions/_components/create-commission-dialog";
 import type { Instrument, Service } from "@/lib/api-types";
+import { SEED_USER_TYPE_CATALOG } from "@/lib/__fixtures__/user-type-catalog";
 
 const proposeCommissionBandsAction = vi.fn().mockResolvedValue({ ok: true });
 const proposeCommissionUpdateAction = vi.fn().mockResolvedValue({ ok: true });
@@ -73,6 +74,7 @@ async function openDialog() {
       tenantId="tenant-1"
       services={services}
       instruments={instruments}
+      catalog={SEED_USER_TYPE_CATALOG}
       trigger={<button type="button">New commission</button>}
     />,
   );

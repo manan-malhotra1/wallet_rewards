@@ -35,9 +35,15 @@ CATEGORY_BUSINESS = "business"
 class UserTypeCategory(Base):
     """A fixed super-group of user types — Consumers, Retail or Business.
 
-    Grouping only: a category organises the admin picker and nothing else. No
-    config resolves against a category (spec D1). `supports_hierarchy` is false
-    for Consumers, so every type in that category must have a NULL parent.
+    No *config* resolves against a category (spec D1) — pricing, limits and
+    commissions all key off the type `code`. Capability does: Retail means
+    "can take a cash-out" (`cashout/service.py`) and Business means "can carry a
+    merchant-bound API key" (`api_keys/service.py`). That is what the three
+    categories mean, so a tenant's own type inherits the capability from the
+    category it was filed under rather than from a separate flag.
+
+    `supports_hierarchy` is false for Consumers, so every type in that category
+    must have a NULL parent.
     """
 
     __tablename__ = "user_type_categories"
@@ -110,12 +116,6 @@ class UserTypeDef(Base):
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=USER_TYPE_STATUS_ACTIVE
-    )
-    # Replaces the hardcoded merchant-type tuple — drives merchant-profile and
-    # collection-account provisioning (Epic 17), and gates merchant-bound API
-    # keys, so a tenant's own Business type qualifies like `merchant` does.
-    requires_merchant_profile: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
     )
     # Holds another row's `code`, so it matches `code`'s width exactly.
     parent_type_code: Mapped[str | None] = mapped_column(String(20), nullable=True)

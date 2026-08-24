@@ -145,7 +145,7 @@ async def assert_user_type_valid(
 
     Returns:
         The resolved, active `UserTypeDef` row, so the caller can read
-        `parent_type_code` / `requires_merchant_profile` without a second query.
+        `parent_type_code` / `category_code` without a second query.
 
     Raises:
         UnknownUserType: 422 — the code does not resolve for this tenant, or it
@@ -313,7 +313,6 @@ def _type_state(row: UserTypeDef) -> dict[str, object]:
         "code": row.code,
         "label": row.label,
         "status": row.status,
-        "requires_merchant_profile": row.requires_merchant_profile,
         "parent_type_code": row.parent_type_code,
     }
 
@@ -367,7 +366,6 @@ async def create_user_type(
         category_code=request.category_code,
         is_system=False,
         status=request.status,
-        requires_merchant_profile=request.requires_merchant_profile,
         parent_type_code=request.parent_type_code,
     )
     session.add(row)
@@ -520,9 +518,8 @@ async def replace_user_type_for_scope(
     Unlike every other config type, this does NOT delete-and-reinsert. Spec D3
     forbids deleting a user type, and a delete+insert would churn the row id and
     lose `created_at` for a record that `users.user_type` and every config table
-    reference by code string with no foreign key. Only `label`, `status`,
-    `requires_merchant_profile` and `parent_type_code` are mutable; `code` is the
-    join key and never changes.
+    reference by code string with no foreign key. Only `label`, `status` and
+    `parent_type_code` are mutable; `code` is the join key and never changes.
 
     Args:
         session: Async DB session.
@@ -595,7 +592,6 @@ async def replace_user_type_for_scope(
 
     row.label = first.label
     row.status = first.status
-    row.requires_merchant_profile = first.requires_merchant_profile
     row.parent_type_code = first.parent_type_code
     await session.flush()
 

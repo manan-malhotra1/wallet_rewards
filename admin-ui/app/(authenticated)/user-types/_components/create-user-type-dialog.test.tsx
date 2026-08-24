@@ -85,7 +85,6 @@ describe("CreateUserTypeDialog", () => {
       label: "Junior agent",
       category_code: "retail",
       parent_type_code: "super_agent",
-      requires_merchant_profile: false,
     });
   });
 
@@ -123,15 +122,30 @@ describe("CreateUserTypeDialog", () => {
     expect(proposeUserTypeChangeAction).not.toHaveBeenCalled();
   });
 
-  it("defaults the merchant-profile flag on for Business", async () => {
+  it("carries merchant capability on the category, with no separate checkbox", async () => {
+    // Replaces "defaults the merchant-profile flag on for Business". The flag
+    // is gone; Business membership IS the capability, so the proposal must
+    // carry the category and the dialog must not offer a second control that
+    // could disagree with it.
     const user = userEvent.setup();
     render(<CreateUserTypeDialog tenantId="t1" catalog={catalog} open />);
 
+    await user.type(screen.getByLabelText("Code"), "franchise_store");
+    await user.type(screen.getByLabelText("Label"), "Franchise store");
     await pick(user, /category/i, "Business");
-    expect(screen.getByLabelText(/requires a merchant profile/i)).toBeChecked();
 
-    await pick(user, /category/i, "Retail");
-    expect(screen.getByLabelText(/requires a merchant profile/i)).not.toBeChecked();
+    expect(screen.queryByLabelText(/merchant profile/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Propose change" }));
+
+    await waitFor(() => expect(proposeUserTypeChangeAction).toHaveBeenCalledTimes(1));
+    expect(proposeUserTypeChangeAction.mock.calls[0][0]).toMatchObject({
+      code: "franchise_store",
+      category_code: "business",
+    });
+    expect(proposeUserTypeChangeAction.mock.calls[0][0]).not.toHaveProperty(
+      "requires_merchant_profile",
+    );
   });
 
   it("proposes an update against the live row when editing", async () => {

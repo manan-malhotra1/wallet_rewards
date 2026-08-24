@@ -21,9 +21,9 @@ const catalog: UserTypeCatalog = {
   ],
   types: [
     { code: "consumer", label: "Consumer", category_code: "consumer", parent_type_code: null,
-      is_system: true, status: "active", requires_merchant_profile: false },
+      is_system: true, status: "active" },
     { code: "agent", label: "Agent", category_code: "retail", parent_type_code: "super_agent",
-      is_system: true, status: "active", requires_merchant_profile: false },
+      is_system: true, status: "active" },
   ],
 };
 

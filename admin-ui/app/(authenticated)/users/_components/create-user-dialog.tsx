@@ -56,6 +56,9 @@ interface FormState {
   supervisorPhone: string | null;
 }
 
+/** The category whose types are merchants (backend: CATEGORY_BUSINESS). */
+const MERCHANT_CATEGORY_CODE = "business";
+
 const EMPTY_FORM: FormState = {
   identifierType: "phone",
   identifierValue: "",
@@ -101,7 +104,10 @@ export function CreateUserDialog({
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const selectedType = catalog.types.find((t) => t.code === form.userType) ?? null;
-  const isMerchant = selectedType?.requires_merchant_profile ?? false;
+  // Business IS the merchant category — the same rule the backend applies when
+  // it decides whether a user may be bound to a merchant API key. Drives the
+  // Epic-17 note below and nothing else.
+  const isMerchant = selectedType?.category_code === MERCHANT_CATEGORY_CODE;
   // A type with a parent_type_code sits under a supervisor of that type; every
   // other type has no supervisor slot at all, so the block is absent.
   const supervisorType = selectedType?.parent_type_code ?? null;
@@ -241,9 +247,10 @@ export function CreateUserDialog({
 
           {isMerchant && (
             <p className="text-[11px] text-muted-foreground">
-              {userTypeLabel(catalog, form.userType)} requires a merchant profile
-              (business name, category, provider config) — that is added in Epic
-              17, so the user is created without one for now.
+              {userTypeLabel(catalog, form.userType)} is a Business type, so it
+              will need a merchant profile (business name, category, provider
+              config). Nothing provisions one yet — that lands in Epic 17 — so
+              the user is created without one for now.
             </p>
           )}
 

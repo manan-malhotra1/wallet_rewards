@@ -36,7 +36,6 @@ class UserTypeCreateRequest(BaseModel):
     code: str = Field(min_length=2, max_length=20, pattern=r"^[a-z][a-z0-9_]*$")
     label: str = Field(min_length=1, max_length=60)
     category_code: str = Field(min_length=1, max_length=30)
-    requires_merchant_profile: bool = False
     # Holds another type's `code`, so it carries the same cap — a longer value
     # could never resolve to a real type.
     parent_type_code: str | None = Field(default=None, max_length=20)
@@ -61,7 +60,6 @@ class UserTypeOut(BaseModel):
     category_code: str
     is_system: bool
     status: str
-    requires_merchant_profile: bool
     parent_type_code: str | None
     created_at: datetime
 

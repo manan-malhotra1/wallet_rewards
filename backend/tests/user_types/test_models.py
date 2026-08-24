@@ -26,8 +26,16 @@ async def test_seeded_categories_and_system_types_exist(db_session: AsyncSession
     assert by_code["agent"].parent_type_code == "super_agent"
     assert by_code["merchant"].parent_type_code == "head_merchant"
     assert by_code["super_agent"].parent_type_code is None
-    assert by_code["merchant"].requires_merchant_profile is True
-    assert by_code["consumer"].requires_merchant_profile is False
+    # Merchant capability is no longer a column — it is Business membership, so
+    # the seed must file the two merchant types under that category and nothing
+    # else under it. Same assertion, moved to where the meaning now lives.
+    assert by_code["merchant"].category_code == "business"
+    assert by_code["head_merchant"].category_code == "business"
+    assert by_code["consumer"].category_code == "consumer"
+    assert {c for c, t in by_code.items() if t.category_code == "business"} == {
+        "merchant",
+        "head_merchant",
+    }
     assert all(t.is_system for t in types)
 
 

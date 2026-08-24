@@ -6,10 +6,10 @@
  * type; only the tone is a fixed per-category map.
  *
  * There are deliberately NO exported lists of type codes here. Types are
- * runtime data: which types exist, which need a supervisor, and which need a
- * merchant profile are all read off the catalog rows (`parent_type_code`,
- * `requires_merchant_profile`). A hardcoded list is what stopped an operator
- * assigning a type they had just created.
+ * runtime data: which types exist and which need a supervisor are read off the
+ * catalog rows (`parent_type_code`), and what a type may do follows from its
+ * `category_code`. A hardcoded list is what stopped an operator assigning a
+ * type they had just created.
  *
  * No client interactivity here, so both server and client components can
  * import it.

@@ -36,9 +36,9 @@ export default async function ApiKeysPage() {
   }
 
   let keys: ApiKey[] = [];
-  // Which types may back a cash-in key is runtime data
-  // (`requires_merchant_profile`), so the dialog needs the catalog to judge a
-  // resolved user rather than matching against a hardcoded pair of codes.
+  // Which types may back a cash-in key is runtime data (every type in the
+  // Business category), so the dialog needs the catalog to judge a resolved
+  // user rather than matching against a hardcoded pair of codes.
   let catalog: UserTypeCatalog = { categories: [], types: [] };
   let error: ApiError | null = null;
   try {

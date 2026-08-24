@@ -9,6 +9,10 @@
  * The parent dropdown is populated from `topLevelTypes`, which never offers a
  * child type, so a third level cannot be constructed here even before the
  * service refuses it.
+ *
+ * There is no merchant-capability control: the category IS the capability. A
+ * type filed under Business may carry a merchant-bound API key, one under
+ * Retail may take cash-outs, and the backend reads that off `category_code`.
  */
 "use client";
 
@@ -59,7 +63,6 @@ interface FormState {
   categoryCode: string;
   hasParent: boolean;
   parentTypeCode: string;
-  requiresMerchantProfile: boolean;
 }
 
 /** The blank create form, or the live row's current state in edit mode. */
@@ -71,7 +74,6 @@ function initialForm(editType?: UserTypeOption): FormState {
       categoryCode: editType.category_code,
       hasParent: editType.parent_type_code !== null,
       parentTypeCode: editType.parent_type_code ?? "",
-      requiresMerchantProfile: editType.requires_merchant_profile,
     };
   }
   return {
@@ -80,7 +82,6 @@ function initialForm(editType?: UserTypeOption): FormState {
     categoryCode: "",
     hasParent: false,
     parentTypeCode: "",
-    requiresMerchantProfile: false,
   };
 }
 
@@ -116,9 +117,6 @@ export function CreateUserTypeDialog({
   const editMode = Boolean(editType);
 
   const [form, setForm] = React.useState<FormState>(() => initialForm(editType));
-  // Once the operator touches the merchant flag we stop steering it from the
-  // category, so a deliberate "no" on a Business type is not undone.
-  const [merchantTouched, setMerchantTouched] = React.useState(editMode);
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
   const { toast } = useToast();
@@ -126,7 +124,6 @@ export function CreateUserTypeDialog({
   React.useEffect(() => {
     if (!open) {
       setForm(initialForm(editType));
-      setMerchantTouched(Boolean(editType));
       setErrorBanner(null);
     }
   }, [open, editType]);
@@ -156,11 +153,6 @@ export function CreateUserTypeDialog({
       // A parent from the old category cannot be legal under the new one.
       hasParent: false,
       parentTypeCode: "",
-      // Business types get a merchant profile + collection account by default;
-      // the other categories do not.
-      requiresMerchantProfile: merchantTouched
-        ? prev.requiresMerchantProfile
-        : next === "business",
     }));
   };
 
@@ -204,7 +196,6 @@ export function CreateUserTypeDialog({
       category_code: form.categoryCode,
       parent_type_code:
         supportsHierarchy && form.hasParent ? form.parentTypeCode : null,
-      requires_merchant_profile: form.requiresMerchantProfile,
       ...(editType ? { status: editType.status } : {}),
     };
 
@@ -331,16 +322,6 @@ export function CreateUserTypeDialog({
               )}
             </div>
           )}
-
-          <Checkbox
-            id="user-type-merchant"
-            checked={form.requiresMerchantProfile}
-            onChange={(e) => {
-              setMerchantTouched(true);
-              update("requiresMerchantProfile", e.target.checked);
-            }}
-            label="Requires a merchant profile"
-          />
 
           {errorBanner && (
             <ErrorBanner title="Couldn't propose" description={errorBanner} />

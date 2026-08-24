@@ -51,9 +51,9 @@ USER_STATUSES = (
 # user-types catalog (2026-08-23) these are seed identifiers only — NOT the
 # allowed set. Types are rows in `user_types`, `users.user_type` carries no
 # CHECK, and validity is decided at runtime by
-# `user_types.service.assert_user_type_valid`. Which types back a merchant
-# profile, and which type a child hangs under, are columns on those rows
-# (`requires_merchant_profile`, `parent_type_code`), not constants here.
+# `user_types.service.assert_user_type_valid`. Which type a child hangs under is
+# a column on those rows (`parent_type_code`), and what a type may do follows
+# from its `category_code`, not from constants here.
 USER_TYPE_CONSUMER = "consumer"
 USER_TYPE_AGENT = "agent"
 USER_TYPE_SUPER_AGENT = "super_agent"

@@ -21,6 +21,7 @@ from app.modules.user_types.service import get_user_type
 from app.shared.exceptions import ApiKeyNotFound, MerchantUserRequired, TenantNotFound
 from app.shared.models import (
     API_KEY_STATUS_REVOKED,
+    CATEGORY_BUSINESS,
     ApiKey,
     Tenant,
     User,
@@ -37,15 +38,16 @@ async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
 async def _assert_merchant_user(
     session: AsyncSession, tenant_id: UUID, merchant_user_id: UUID
 ) -> None:
-    """Validate that merchant_user_id is a merchant-type user in this tenant.
+    """Validate that merchant_user_id is a Business-category user in this tenant.
 
     A merchant-bound key authorises merchant-cashin, so the referenced user must
-    exist in the same tenant AND carry a type flagged `requires_merchant_profile`
-    — the type row's own flag, not a hardcoded tuple, so a tenant's custom
-    Business type qualifies exactly like the seeded `merchant` does. A type that
-    no longer resolves fails closed here. Unknown-user and wrong-type both
-    collapse to one 422 so key creation never leaks user existence across the
-    admin boundary.
+    exist in the same tenant AND carry a type sitting in the Business category —
+    that IS what Business means in the catalog, so a tenant's own Business type
+    qualifies exactly like the seeded `merchant` does, with no separate flag to
+    remember to tick. Mirrors how cash-out eligibility reads the Retail category
+    (`cashout/service.py`). A type that no longer resolves fails closed here.
+    Unknown-user and wrong-type both collapse to one 422 so key creation never
+    leaks user existence across the admin boundary.
 
     Args:
         session: Async DB session (read-only).
@@ -54,7 +56,7 @@ async def _assert_merchant_user(
 
     Raises:
         MerchantUserRequired: the id is unknown in this tenant, or the user's
-            type is not backed by a merchant profile.
+            type is missing, unresolvable, or outside the Business category.
     """
     result = await session.execute(
         select(User).where(User.id == merchant_user_id, User.tenant_id == tenant_id)
@@ -63,7 +65,7 @@ async def _assert_merchant_user(
     if user is None:
         raise MerchantUserRequired()
     user_type = await get_user_type(session, tenant_id, user.user_type)
-    if user_type is None or not user_type.requires_merchant_profile:
+    if user_type is None or user_type.category_code != CATEGORY_BUSINESS:
         raise MerchantUserRequired()
 
 

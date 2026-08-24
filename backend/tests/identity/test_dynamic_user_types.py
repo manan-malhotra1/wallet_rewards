@@ -174,10 +174,17 @@ async def test_admin_update_refuses_an_unknown_type(
 
 
 @pytest.mark.asyncio
-async def test_merchant_binding_follows_the_requires_merchant_profile_flag(
+async def test_merchant_binding_follows_the_business_category(
     db_session: AsyncSession, test_tenant: Tenant, default_user_role: Role
 ) -> None:
-    """Verify the merchant flag on the type row replaces the MERCHANT_USER_TYPES tuple."""
+    """Verify Business-category membership, not a flag, gates a merchant API key.
+
+    Replaces the `requires_merchant_profile` boolean that this test previously
+    encoded: the column is gone, and merchant capability is now derived from
+    `category_code == CATEGORY_BUSINESS`, exactly as cash-out eligibility is
+    derived from the Retail category. A tenant's own Business type therefore
+    qualifies the moment it is created, with no second flag to remember.
+    """
     from app.modules.api_keys.schemas import ApiKeyCreateRequest
     from app.modules.api_keys.service import create_api_key
 
@@ -188,11 +195,20 @@ async def test_merchant_binding_follows_the_requires_merchant_profile_flag(
             code="franchise_store",
             label="Franchise store",
             category_code="business",
-            requires_merchant_profile=True,
+        ),
+    )
+    await create_user_type(
+        db_session,
+        UserTypeCreateRequest(
+            tenant_id=test_tenant.id,
+            code="kiosk",
+            label="Kiosk",
+            category_code="retail",
         ),
     )
     store = await _user(db_session, test_tenant, "+27825550020", "franchise_store")
     plain = await _user(db_session, test_tenant, "+27825550021", "consumer")
+    kiosk = await _user(db_session, test_tenant, "+27825550022", "kiosk")
 
     key, _secret = await create_api_key(
         db_session,
@@ -201,10 +217,13 @@ async def test_merchant_binding_follows_the_requires_merchant_profile_flag(
     )
     assert key.merchant_user_id == store.id
 
-    with pytest.raises(AppHTTPException) as exc:
-        await create_api_key(
-            db_session,
-            ApiKeyCreateRequest(tenant_id=test_tenant.id, merchant_user_id=plain.id),
-            admin=_ADMIN,
-        )
-    assert exc.value.error_code == "merchant_user_required"
+    # Consumers and Retail sit outside the Business category, so neither may
+    # carry a merchant-bound key however the type was created.
+    for outsider in (plain, kiosk):
+        with pytest.raises(AppHTTPException) as exc:
+            await create_api_key(
+                db_session,
+                ApiKeyCreateRequest(tenant_id=test_tenant.id, merchant_user_id=outsider.id),
+                admin=_ADMIN,
+            )
+        assert exc.value.error_code == "merchant_user_required"

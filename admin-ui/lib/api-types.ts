@@ -16,7 +16,13 @@ export type BusinessType = "wallet" | "rewards" | "both";
  */
 export type UserType = string;
 
-/** One user type as returned by the catalog endpoint. */
+/**
+ * One user type as returned by the catalog endpoint.
+ *
+ * `category_code` is not just a grouping label — it carries capability. A type
+ * under `business` may be bound to a merchant API key; one under `retail` may
+ * take cash-outs. There is no separate capability flag.
+ */
 export interface UserTypeOption {
   id?: string;
   tenant_id?: string;
@@ -26,7 +32,6 @@ export interface UserTypeOption {
   parent_type_code: string | null;
   is_system: boolean;
   status: "active" | "retired";
-  requires_merchant_profile: boolean;
   created_at?: string;
 }
 

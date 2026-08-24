@@ -33,7 +33,7 @@ USER_TYPE_HEAD_MERCHANT = "head_merchant"
 | `resolve_user_type()` (`shared/utils/user_types.py`) | user_id → type string, one indexed lookup |
 | `limit_configs.user_type`, `wallet_limit_configs.user_type` | Nullable `String(20)`; exact type beats the `NULL` default row |
 | `pricing_configs.user_type`, `commission_configs.user_type` | Same precedence pattern |
-| `MERCHANT_USER_TYPES` (`users.py:67`) | Drives merchant-profile + collection-account provisioning (Epic 17) |
+| `MERCHANT_USER_TYPES` (`users.py:67`) | Gates which users a merchant-bound API key may attach to. It provisions nothing — merchant-profile + collection-account provisioning is Epic 17 and does not exist yet |
 | `PARENT_TYPE_BY_CHILD` (`users.py:73`) | agent→super_agent, merchant→head_merchant; enforced in the identity service |
 | `admin-ui/lib/api-types.ts:18,37` | A TypeScript literal union plus a `USER_TYPES` array |
 | Four more admin-ui files | Duplicated label maps (`user-type-badge.tsx`, `user-operation-label.ts`, `policy-controls.tsx`, `create-api-key-dialog.tsx`) |
@@ -46,7 +46,7 @@ this change small — and it is also the thing that can silently break (§11).
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | A category is **grouping only** — it organises the picker and nothing else | Config still resolves per user *type* exactly as today, so no money path changes and the fail-closed precedence logic is untouched |
+| D1 | No **config** resolves against a category — it organises the picker, and it carries capability (§5) | Config still resolves per user *type* exactly as today, so no money path changes and the fail-closed precedence logic is untouched. Capability is a different axis: Retail means "can take a cash-out", Business means "can carry a merchant API key" |
 | D2 | **Platform-wide system types + per-tenant additions** | The five base types stay global and immutable; anything an operator creates is tenant-scoped, so one client's bespoke type never appears in another's dropdowns |
 | D3 | **Deactivate only, never delete** | A retired type disappears from new-config pickers but existing config rows and existing users keep resolving unchanged. Nothing silently reprices |
 | D4 | **Every change is maker-checker** — create, relabel, retire, reactivate | Consistent with pricing, limits, commission, tax and conversion rates. "All configuration is four-eyes" stays true with no exceptions to explain |
@@ -81,7 +81,6 @@ Seeded with exactly three rows, all `is_system = true`.
 | `category_code` | `String(30)` FK → `user_type_categories.code` | |
 | `is_system` | `Boolean` | System types cannot be relabelled, retired or reparented |
 | `status` | `String(20)` | `active` \| `retired` |
-| `requires_merchant_profile` | `Boolean` default false | §5 |
 | `parent_type_code` | `String(30)` NULL | NULL = a **parent (top-level) type**. Set = a **child type** hanging under that parent. §5 |
 | `created_at`, `updated_at` | timestamptz | |
 
@@ -116,20 +115,33 @@ The remaining hierarchy rules are cross-row and live in the service (§5).
 | Business | true | `head_merchant` | `merchant` |
 
 All five are `is_system = true`, `tenant_id = NULL`, `status = active`.
-`merchant` and `head_merchant` seed with `requires_merchant_profile = true`.
+`merchant` and `head_merchant` are the two Business-category types, which is
+what makes them merchant-capable (§5).
 `agent` seeds with `parent_type_code = 'super_agent'` and `merchant` with
 `head_merchant` — reproducing today's `PARENT_TYPE_BY_CHILD` exactly. `consumer`,
 `super_agent` and `head_merchant` seed with a NULL parent.
 
-## 5. The two behavioural flags
+## 5. Behaviour: one column, one derived rule
 
-Without these, a custom type would appear in dropdowns and then misbehave. They
-generalise two constants that are hardcoded today.
+Without these, a custom type would appear in dropdowns and then misbehave.
 
-**`requires_merchant_profile`** replaces the `MERCHANT_USER_TYPES` tuple. A user
-created with a type carrying this flag gets a `merchant_profiles` row and a
-collection account provisioned (Epic 17). Without it, a new Business-category
-type would transact into nowhere.
+**Merchant capability is derived from the category, not stored.** A user may be
+bound to a merchant API key when their type sits in the **Business** category
+(`category_code = CATEGORY_BUSINESS`, checked in `api_keys/service.py`). This
+replaces the `MERCHANT_USER_TYPES` tuple and the short-lived
+`requires_merchant_profile` boolean, which was dropped in migration `0065`. It
+mirrors cash-out eligibility, which reads `CATEGORY_RETAIL` the same way in
+`cashout/service.py`. Consumers / Retail / Business are exactly what the three
+categories mean, and the two seeded Business types (`merchant`,
+`head_merchant`) were precisely the two the flag had marked — so a tenant's own
+Business type is merchant-capable the moment it is created, with no second
+field to keep in step and no way for the two to disagree.
+
+To be plain about what the old flag's name promised and never delivered:
+**nothing in `backend/app/` provisions a `merchant_profiles` row or a
+collection account today.** No code constructs a `MerchantProfile` at all. That
+provisioning is Epic 17 work and does not exist yet; when it lands it will key
+off the Business category like everything else.
 
 **`parent_type_code`** replaces the `PARENT_TYPE_BY_CHILD` map and carries the
 two-level hierarchy (D7). It is the single field that expresses tier — there is
@@ -326,7 +338,7 @@ filtered to that category. Replaces the flat list in:
 - `taxes/_components/create-tax-dialog.tsx`
 - `services/_components/policy-controls.tsx`
 - `api-keys/_components/create-api-key-dialog.tsx` (filtered to
-  `requires_merchant_profile` types, replacing the hardcoded `MERCHANT_TYPES`)
+  Business-category types, replacing the hardcoded `MERCHANT_TYPES`)
 
 **Type changes.** `UserType` in `lib/api-types.ts` stops being a literal union
 and becomes `string`, with a `UserTypeOption { code, label, category_code }`
@@ -376,7 +388,7 @@ config rows. A test covers this explicitly.
 | Code collision | Tenant creating code `consumer` → 409 `user_type_code_reserved`; duplicate tenant code → 409 |
 | Validation | User creation with an unknown or retired type → 422 `unknown_user_type` |
 | Retired resolution | A retired type is absent from the picker list but still resolves for an existing user and an existing config row |
-| Behavioural flags | A custom type with `requires_merchant_profile` provisions a merchant profile + collection account; a custom child type enforces its `parent_type_code` |
+| Derived behaviour | A custom Business type may be bound to a merchant API key and a custom Consumers/Retail type may not; a custom child type enforces its `parent_type_code` |
 | Hierarchy — happy path | A new parent type under Retail, then a new child under it; a user of the child type must hang under a parent user of that parent type |
 | Hierarchy — depth cap | Creating a child whose parent is itself a child → 422 `parent_type_not_toplevel`. This is the two-level guarantee |
 | Hierarchy — cross-category | A Retail child naming a Business parent → 422 `parent_type_wrong_category` |

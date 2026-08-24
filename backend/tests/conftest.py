@@ -75,13 +75,13 @@ SEED_USER_TYPE_CATEGORIES = [
     ("retail", "Retail", 2, True),
     ("business", "Business", 3, True),
 ]
-# (code, label, category_code, requires_merchant_profile, parent_type_code)
+# (code, label, category_code, parent_type_code)
 SEED_USER_TYPES = [
-    ("consumer", "Consumer", "consumer", False, None),
-    ("super_agent", "Super agent", "retail", False, None),
-    ("agent", "Agent", "retail", False, "super_agent"),
-    ("head_merchant", "Head merchant", "business", True, None),
-    ("merchant", "Merchant", "business", True, "head_merchant"),
+    ("consumer", "Consumer", "consumer", None),
+    ("super_agent", "Super agent", "retail", None),
+    ("agent", "Agent", "retail", "super_agent"),
+    ("head_merchant", "Head merchant", "business", None),
+    ("merchant", "Merchant", "business", "head_merchant"),
 ]
 
 # -----------------------------------------------------------------------------
@@ -165,10 +165,9 @@ async def _seed_user_type_catalog(conn: AsyncConnection) -> None:
                 "category_code": category,
                 "is_system": True,
                 "status": "active",
-                "requires_merchant_profile": merchant_profile,
                 "parent_type_code": parent,
             }
-            for code, label, category, merchant_profile, parent in SEED_USER_TYPES
+            for code, label, category, parent in SEED_USER_TYPES
         ],
     )
 

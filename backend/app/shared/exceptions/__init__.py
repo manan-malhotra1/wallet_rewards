@@ -1523,8 +1523,10 @@ class UserTypeCategoryImmutable(AppHTTPException):
     """422 — an update named a different category from the one the row carries.
 
     A type's category is fixed at creation, like its code (spec D5): only
-    `label`, `status`, `requires_merchant_profile` and `parent_type_code` are
-    mutable. Refusing the payload outright — rather than ignoring the field —
+    `label`, `status` and `parent_type_code` are mutable. Changing the category
+    would silently change what the type is allowed to do — a Business type may
+    carry a merchant API key and a Retail one may take cash-outs — so it is
+    fixed. Refusing the payload outright — rather than ignoring the field —
     keeps an approved maker-checker request from meaning something other than
     what the checker read.
     """

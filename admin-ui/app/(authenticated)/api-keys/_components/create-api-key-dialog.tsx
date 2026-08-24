@@ -32,6 +32,9 @@ import { useToast } from "@/components/ui/toast";
 import type { TreasuryIdentifierType } from "@/lib/api-endpoints";
 import type { ApiKeyCreated, UserType, UserTypeCatalog } from "@/lib/api-types";
 
+/** The category whose types may be bound to a merchant key (backend: CATEGORY_BUSINESS). */
+const MERCHANT_CATEGORY_CODE = "business";
+
 const IDENTIFIER_PLACEHOLDER: Record<TreasuryIdentifierType, string> = {
   phone: "+27 82 555 0001",
   email: "merchant@example.com",
@@ -51,8 +54,9 @@ interface ResolvedMerchant {
  *
  * Binding a merchant is what turns an ordinary partner key into a cash-in key,
  * so the resolved user must be a merchant-capable type. Which types those are
- * is runtime data (`requires_merchant_profile` on the catalog row), never a
- * hardcoded pair — a tenant's own merchant type must qualify too.
+ * is runtime data — every type in the Business category — never a hardcoded
+ * pair, so a tenant's own Business type qualifies too. Mirrors the backend
+ * check in `api_keys/service.py`, which reads the same category.
  *
  * @param tenantId The tenant the key belongs to.
  * @param trigger The element that opens the dialog.
@@ -132,7 +136,9 @@ export function CreateApiKeyDialog({
   const merchantTypes = React.useMemo(
     () =>
       new Set(
-        catalog.types.filter((t) => t.requires_merchant_profile).map((t) => t.code),
+        catalog.types
+          .filter((t) => t.category_code === MERCHANT_CATEGORY_CODE)
+          .map((t) => t.code),
       ),
     [catalog],
   );

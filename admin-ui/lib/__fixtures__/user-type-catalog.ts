@@ -22,7 +22,6 @@ export const SEED_USER_TYPE_CATALOG: UserTypeCatalog = {
       parent_type_code: null,
       is_system: true,
       status: "active",
-      requires_merchant_profile: false,
     },
     {
       code: "super_agent",
@@ -31,7 +30,6 @@ export const SEED_USER_TYPE_CATALOG: UserTypeCatalog = {
       parent_type_code: null,
       is_system: true,
       status: "active",
-      requires_merchant_profile: false,
     },
     {
       code: "agent",
@@ -40,7 +38,6 @@ export const SEED_USER_TYPE_CATALOG: UserTypeCatalog = {
       parent_type_code: "super_agent",
       is_system: true,
       status: "active",
-      requires_merchant_profile: false,
     },
     {
       code: "head_merchant",
@@ -49,7 +46,6 @@ export const SEED_USER_TYPE_CATALOG: UserTypeCatalog = {
       parent_type_code: null,
       is_system: true,
       status: "active",
-      requires_merchant_profile: true,
     },
     {
       code: "merchant",
@@ -58,7 +54,6 @@ export const SEED_USER_TYPE_CATALOG: UserTypeCatalog = {
       parent_type_code: "head_merchant",
       is_system: true,
       status: "active",
-      requires_merchant_profile: true,
     },
   ],
 };

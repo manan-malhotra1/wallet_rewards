@@ -36,7 +36,6 @@ export interface ProposeUserTypeInput {
   category_code: string;
   /** The top-level type this one hangs under, or null for a top-level type. */
   parent_type_code: string | null;
-  requires_merchant_profile: boolean;
   /** Omitted on create (the backend defaults to active); set to retire/reactivate. */
   status?: "active" | "retired";
 }

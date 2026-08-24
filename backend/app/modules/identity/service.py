@@ -412,9 +412,9 @@ async def create_user(
             user's own.
 
     Note:
-        Types flagged `requires_merchant_profile` are accepted here, but the
-        `merchant_profiles` row + collection account they need are provisioned
-        in Epic 17 — this endpoint does not yet require a profile payload.
+        Business-category types are accepted here, but no `merchant_profiles`
+        row or collection account is provisioned anywhere today — that lands in
+        Epic 17, so this endpoint does not require a profile payload.
     """
     await _assert_tenant_exists(session, request.tenant_id)
     # Collapse the two supervisor reference forms BEFORE validating, so the

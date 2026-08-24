@@ -475,10 +475,12 @@ and cap keeps resolving exactly as before.*
   with it); Consumers is flat. Four rules are enforced on every write: no self-parent, parent and
   child in the same category, a parent must itself be top-level (depth cap), and a type with
   active children cannot be retired. **Shipped**
-- **Behaviour moved onto the rows** — `MERCHANT_USER_TYPES` and `PARENT_TYPE_BY_CHILD` are gone;
-  merchant-profile / collection-account provisioning now keys off `requires_merchant_profile`, and
-  the supervisor's expected type off `parent_type_code`, so a tenant's own Business type qualifies
-  exactly as `merchant` does. **Shipped**
+- **Behaviour moved onto the rows** — `MERCHANT_USER_TYPES` and `PARENT_TYPE_BY_CHILD` are gone.
+  Merchant capability (which users a merchant-bound API key may attach to) is derived from
+  `category_code = 'business'`, the same way cash-out eligibility is derived from `'retail'`; the
+  supervisor's expected type comes off `parent_type_code`. A tenant's own Business type therefore
+  qualifies exactly as `merchant` does, with no separate flag to tick. Note that nothing
+  provisions a merchant profile or collection account today — that is still Epic 17. **Shipped**
 - **Maker-checker governance** — `user_type` is a sixth config type in the config-request
   registry: create and update land in the Configuration tab of `/approvals` and need a distinct
   approver. There is no delete — a type is **retired**, never removed, because `users.user_type`

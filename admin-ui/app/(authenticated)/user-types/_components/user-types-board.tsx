@@ -57,7 +57,6 @@ function statusChangePayload(
     label: type.label,
     category_code: type.category_code,
     parent_type_code: type.parent_type_code,
-    requires_merchant_profile: type.requires_merchant_profile,
     status,
   };
 }
@@ -194,7 +193,6 @@ function TypeRow({
         <div className={cn("flex items-center gap-2", indented && "pl-6")}>
           <span className="text-sm font-medium">{type.label}</span>
           {type.is_system && <Badge tone="neutral">System</Badge>}
-          {type.requires_merchant_profile && <Badge tone="accent">Merchant profile</Badge>}
         </div>
       </TableCell>
       <TableCell className="font-mono text-xs text-muted-foreground">

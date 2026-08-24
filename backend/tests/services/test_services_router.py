@@ -313,10 +313,19 @@ async def test_create_service_without_policy_is_unrestricted(
 @pytest.mark.asyncio
 async def test_create_service_rejects_unknown_user_type(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     test_tenant: Tenant,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify a service cannot be restricted to a user type that does not exist"""
+    """Verify a service cannot be restricted to a user type that does not exist
+
+    The payload is otherwise valid (a live base to derive from) so the 422 can
+    only come from the access policy. The refusal now carries the catalog's
+    `unknown_user_type` code rather than a Pydantic field error: user types are
+    per-tenant runtime rows, so the check moved to the service layer where the
+    session and tenant exist (see tests/services/test_custom_type_service_policy).
+    """
+    await _seed_service(db_session, str(test_tenant.id), "cashout")
     resp = await async_client.post(
         "/api/v1/services",
         headers=admin_auth_header,
@@ -324,10 +333,12 @@ async def test_create_service_rejects_unknown_user_type(
             "tenant_id": str(test_tenant.id),
             "code": "bad_policy",
             "display_name": "Bad Policy",
+            "base_service_code": "cashout",
             "allowed_user_types": ["wizard"],
         },
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "unknown_user_type"
 
 
 @pytest.mark.asyncio

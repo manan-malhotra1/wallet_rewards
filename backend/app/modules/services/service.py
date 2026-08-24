@@ -19,6 +19,7 @@ from app.modules.services.schemas import (
     ServiceCreateRequest,
     ServiceUpdateRequest,
 )
+from app.modules.user_types.service import assert_user_type_valid
 from app.shared.exceptions import (
     AppHTTPException,
     ServiceCodeAlreadyExists,
@@ -65,6 +66,45 @@ def _is_narrower_or_equal(derived: list[str] | None, base: list[str] | None) -> 
     if not derived:
         return False
     return set(derived) <= set(base)
+
+
+async def _assert_allowed_user_types_valid(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    codes: list[str] | None,
+) -> None:
+    """Refuse an access policy naming a type the tenant's catalog does not have.
+
+    The `services` half of spec §6, and the service-layer replacement for the
+    static `USER_TYPES` tuple check that used to sit on the Pydantic schema.
+    User types are runtime data now, so the only correct allowlist is the
+    tenant's resolved catalog: the platform-wide system types plus its own.
+
+    This has to run BEFORE the write and not at the database — `services` has no
+    CHECK on `allowed_user_types` (migration 0049 added the column
+    unconstrained), and a code that resolves nowhere would silently exclude
+    every caller rather than error, because both access gates
+    (`identity.list_my_services`, `assert_service_allowed`) treat a non-empty
+    array as a strict allow-list.
+
+    `None` (unrestricted) and `[]` (restrict-to-none) both carry no codes and
+    pass straight through — neither names a type to validate.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: The tenant that owns the service. Another tenant's custom
+            type is refused exactly like a nonexistent one (NFR-0220).
+        codes: The proposed `allowed_user_types` allow-list.
+
+    Raises:
+        UnknownUserType: 422 — a code does not resolve to an ACTIVE type for
+            this tenant. Retired types are refused too: they still resolve for
+            reads so existing rows keep rendering, but may not be written onto
+            anything new (spec §11).
+    """
+    for code in codes or ():
+        await assert_user_type_valid(session, tenant_id=tenant_id, code=code)
 
 
 async def _assert_valid_derived_payload(
@@ -536,12 +576,17 @@ async def create_service(
     Raises:
         AppHTTPException: 422 `service_code_reserved`, `invalid_base_service`,
             or `policy_wider_than_base` (from `_assert_valid_derived_payload`).
+        UnknownUserType: 422 — `allowed_user_types` names a type outside this
+            tenant's catalog.
         ServiceCodeAlreadyExists: another live row with the same code exists.
 
     Side effects:
         Writes a `service.created` audit_log row, committed atomically with the
         insert (NFR-0250).
     """
+    await _assert_allowed_user_types_valid(
+        session, tenant_id=payload.tenant_id, codes=payload.allowed_user_types
+    )
     await _assert_valid_derived_payload(session, payload)
     service = Service(
         tenant_id=payload.tenant_id,
@@ -604,10 +649,19 @@ async def update_service(
 
     Code is intentionally immutable here — see schemas.ServiceUpdateRequest.
 
+    Raises:
+        ServiceNotFound: 404 — no live row for `(tenant_id, service_id)`.
+        UnknownUserType: 422 — `allowed_user_types` names a type outside this
+            tenant's catalog. Checked before anything is assigned, so a refused
+            patch leaves the row exactly as it was.
+
     Side effects:
         Writes a `service.updated` audit_log row (before/after snapshot),
         committed atomically with the change (NFR-0250).
     """
+    await _assert_allowed_user_types_valid(
+        session, tenant_id=tenant_id, codes=payload.allowed_user_types
+    )
     service = await get_service_by_id(session, tenant_id, service_id)
     before = {
         "display_name": service.display_name,

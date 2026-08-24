@@ -167,6 +167,143 @@ async def test_system_type_cannot_be_modified(
 
 
 @pytest.mark.asyncio
+async def test_reparenting_a_type_that_has_children_is_refused(
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Verify a three-level chain cannot be assembled by re-parenting a parent.
+
+    `_assert_hierarchy_valid` checks the NAMED PARENT is top-level, which caps
+    depth when a leaf is created or moved. It says nothing about the row being
+    moved, so three legal steps used to compose into a three-level chain:
+    create two top-level types, hang a child off one, then re-parent that one
+    under the other. Nothing walks a tree anywhere in the platform (spec D7), so
+    the resulting `C -> P -> Q` would be silently mis-resolved rather than
+    caught downstream.
+    """
+    await create_user_type(db_session, _req(test_tenant, "wholesaler"))  # Q, top-level
+    await create_user_type(db_session, _req(test_tenant, "distributor"))  # P, top-level
+    await create_user_type(  # C, child of P
+        db_session, _req(test_tenant, "sub_distributor", parent_type_code="distributor")
+    )
+
+    with pytest.raises(AppHTTPException) as exc:
+        await replace_user_type_for_scope(
+            db_session,
+            [_req(test_tenant, "distributor", parent_type_code="wholesaler")],
+        )
+    assert exc.value.error_code == "user_type_has_children"
+    assert exc.value.status_code == 409
+
+    # The guard raises before the row is touched — P is still top-level.
+    parent = await _committed(session_factory, test_tenant.id, "distributor")
+    assert parent is not None
+    assert parent.parent_type_code is None
+
+
+@pytest.mark.asyncio
+async def test_a_retired_child_still_blocks_reparenting(
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Verify retiring the child first does not unlock the re-parent.
+
+    Deliberately stricter than the retire guard, which only counts ACTIVE
+    children: retirement is reversible (D4 makes reactivate first-class), so
+    retire-child / re-parent-parent / reactivate-child would otherwise be three
+    legal steps landing on the same three-level chain.
+    """
+    await create_user_type(db_session, _req(test_tenant, "wholesaler"))
+    await create_user_type(db_session, _req(test_tenant, "distributor"))
+    await create_user_type(
+        db_session, _req(test_tenant, "sub_distributor", parent_type_code="distributor")
+    )
+    await replace_user_type_for_scope(
+        db_session,
+        [
+            _req(
+                test_tenant,
+                "sub_distributor",
+                parent_type_code="distributor",
+                status=USER_TYPE_STATUS_RETIRED,
+            )
+        ],
+    )
+
+    with pytest.raises(AppHTTPException) as exc:
+        await replace_user_type_for_scope(
+            db_session,
+            [_req(test_tenant, "distributor", parent_type_code="wholesaler")],
+        )
+    assert exc.value.error_code == "user_type_has_children"
+
+    parent = await _committed(session_factory, test_tenant.id, "distributor")
+    assert parent is not None
+    assert parent.parent_type_code is None
+
+
+@pytest.mark.asyncio
+async def test_reparenting_a_childless_type_still_works(
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Verify the guard does not block the supported case: moving a leaf.
+
+    Re-parenting stays a supported operation (spec §13) — the new guard narrows
+    it to types without children, which is exactly the set that cannot deepen
+    the tree.
+    """
+    await create_user_type(db_session, _req(test_tenant, "wholesaler"))
+    await create_user_type(db_session, _req(test_tenant, "distributor"))
+    await create_user_type(
+        db_session, _req(test_tenant, "sub_distributor", parent_type_code="distributor")
+    )
+
+    await replace_user_type_for_scope(
+        db_session,
+        [_req(test_tenant, "sub_distributor", parent_type_code="wholesaler")],
+    )
+
+    moved = await _committed(session_factory, test_tenant.id, "sub_distributor")
+    assert moved is not None
+    assert moved.parent_type_code == "wholesaler"
+
+
+@pytest.mark.asyncio
+async def test_a_parent_can_still_be_promoted_to_top_level(
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Verify clearing a parent is never blocked, even when the row has children.
+
+    Only a MOVE UNDER a parent can add a level. Detaching removes one, so it is
+    the repair path out of any chain that predates the guard — blocking it would
+    strand that data with no legal way back.
+    """
+    await create_user_type(db_session, _req(test_tenant, "wholesaler"))
+    await create_user_type(
+        db_session, _req(test_tenant, "distributor", parent_type_code="wholesaler")
+    )
+    # Force the pre-guard state directly: a child that itself has a child.
+    child = await create_user_type(db_session, _req(test_tenant, "sub_distributor"))
+    child.parent_type_code = "distributor"
+    await db_session.commit()
+
+    await replace_user_type_for_scope(
+        db_session,
+        [_req(test_tenant, "distributor", parent_type_code=None)],
+    )
+
+    promoted = await _committed(session_factory, test_tenant.id, "distributor")
+    assert promoted is not None
+    assert promoted.parent_type_code is None
+
+
+@pytest.mark.asyncio
 async def test_reparent_cannot_smuggle_a_category_change(
     db_session: AsyncSession,
     test_tenant: Tenant,

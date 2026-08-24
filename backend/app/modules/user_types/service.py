@@ -38,6 +38,7 @@ from app.shared.exceptions import (
     UserTypeCodeAlreadyExists,
     UserTypeCodeReserved,
     UserTypeHasActiveChildren,
+    UserTypeHasChildren,
 )
 from app.shared.models import (
     USER_TYPE_STATUS_ACTIVE,
@@ -213,7 +214,12 @@ async def _assert_hierarchy_valid(
     category_code: str,
     parent_type_code: str | None,
 ) -> None:
-    """Enforce the four cross-row hierarchy rules from spec §5.
+    """Enforce the cross-row hierarchy rules that look at the NAMED PARENT (spec §5).
+
+    Half of the two-level cap. This end of the edge asks "is the parent I am
+    being attached to a valid, top-level, same-category type?". The other end —
+    "is the row being attached itself a parent?" — is `_assert_has_no_children`,
+    which only the re-parent path needs (a freshly created type has no children).
 
     Args:
         session: Async DB session (read-only).
@@ -247,8 +253,9 @@ async def _assert_hierarchy_valid(
         raise ParentTypeNotFound()
     if parent.category_code != category_code:
         raise ParentTypeWrongCategory()
-    # THE two-level guarantee: a parent must itself be top-level. No depth
-    # counter, no recursion — this single check caps the tree.
+    # Half the two-level guarantee: a parent must itself be top-level. No depth
+    # counter, no recursion. The other half is `_assert_has_no_children`, without
+    # which a parent could simply be moved under another parent instead.
     if parent.parent_type_code is not None:
         raise ParentTypeNotTopLevel()
 
@@ -261,11 +268,13 @@ async def assert_type_definition_valid(
     category_code: str,
     parent_type_code: str | None = None,
 ) -> None:
-    """Enforce the code-collision and four hierarchy rules from spec §5.
+    """Enforce the code-collision and named-parent hierarchy rules from spec §5.
 
-    The full rule set, for a NEW type. An update calls `_assert_hierarchy_valid`
-    on its own instead, because an existing row's code is immutable (spec D5)
-    and re-checking it here would trip the collision rule on the row itself.
+    The full rule set that applies to a NEW type. An update calls
+    `_assert_hierarchy_valid` on its own instead, because an existing row's code
+    is immutable (spec D5) and re-checking it here would trip the collision rule
+    on the row itself; it also adds `_assert_has_no_children`, which is
+    vacuously true for a row that does not exist yet.
 
     Args:
         session: Async DB session.
@@ -455,6 +464,47 @@ async def _assert_no_active_children(
         raise UserTypeHasActiveChildren(list(children))
 
 
+async def _assert_has_no_children(
+    session: AsyncSession, *, tenant_id: UUID, parent_code: str
+) -> None:
+    """Refuse giving a parent to a type that is already a parent itself.
+
+    The other half of the two-level cap (spec §5 / D7). `_assert_hierarchy_valid`
+    only inspects the NAMED PARENT, so it catches "you may not hang a leaf off a
+    child" but not "you may not turn a parent into a child": create Q and P
+    top-level, hang C off P, then move P under Q, and `C -> P -> Q` exists with
+    every individual step legal. Nothing in provisioning or identity validation
+    walks a tree, so that chain resolves wrongly rather than erroring.
+
+    Sibling of `_assert_no_active_children`, with a deliberately different rule:
+    that guard blocks a RETIRE and counts only ACTIVE children, this one blocks a
+    RE-PARENT and counts ANY child. A retired child is reactivatable (D4), so
+    letting the move through while it is retired only defers the same chain.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: The tenant whose types are considered, alongside system ones.
+        parent_code: The code of the type being moved under a parent.
+
+    Raises:
+        UserTypeHasChildren: at least one type, of any status, points at it.
+    """
+    children = (
+        (
+            await session.execute(
+                select(UserTypeDef.code).where(
+                    UserTypeDef.parent_type_code == parent_code,
+                    _visible_to_tenant(tenant_id),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if children:
+        raise UserTypeHasChildren(list(children))
+
+
 async def replace_user_type_for_scope(
     session: AsyncSession,
     requests: list[UserTypeCreateRequest],
@@ -486,6 +536,8 @@ async def replace_user_type_for_scope(
         AppHTTPException 404: no such type for this tenant.
         UserTypeCategoryImmutable: the payload names a different category.
         UserTypeHasActiveChildren: retiring a parent that still has active children.
+        UserTypeHasChildren: giving a parent to a type that has children of its
+            own, which would make the tree three levels deep.
         UnknownUserTypeCategory, CategoryDoesNotSupportHierarchy, ParentTypeNotFound,
         ParentTypeWrongCategory, ParentTypeNotTopLevel: re-parenting or
             reactivating broke a hierarchy rule (spec §5).
@@ -523,6 +575,14 @@ async def replace_user_type_for_scope(
         first.status == USER_TYPE_STATUS_ACTIVE and row.status == USER_TYPE_STATUS_RETIRED
     )
     if reparenting or reactivating:
+        # Guard the OTHER end of the edge. `_assert_hierarchy_valid` below only
+        # asks whether the named parent is top-level; this asks whether the row
+        # being moved is a parent itself, which is the half that lets a
+        # three-level chain be assembled one legal step at a time. Only a move
+        # UNDER a parent can add a level — clearing the parent removes one, so
+        # it is left open as the repair path for any chain that predates this.
+        if first.parent_type_code is not None:
+            await _assert_has_no_children(session, tenant_id=first.tenant_id, parent_code=row.code)
         # Only the hierarchy half of the rule set: the row keeps its own
         # (immutable) code, so the collision check would trip on itself. The
         # category comes off the ROW, never the payload.

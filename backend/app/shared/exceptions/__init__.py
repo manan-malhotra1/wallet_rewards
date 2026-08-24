@@ -1611,6 +1611,29 @@ class UserTypeHasActiveChildren(AppHTTPException):
         )
 
 
+class UserTypeHasChildren(AppHTTPException):
+    """409 — a type with children of its own cannot be moved under a parent.
+
+    Distinct from `UserTypeHasActiveChildren`, and deliberately stricter: that
+    one guards RETIRING and counts only active children, while this guards
+    RE-PARENTING and counts every child, retired included. A retired child can
+    be reactivated later (spec D4), so allowing the move while it is retired
+    would just defer the three-level chain rather than prevent it.
+
+    Args:
+        children: Codes of the child types blocking the move.
+    """
+
+    def __init__(self, children: list[str]) -> None:
+        super().__init__(
+            409,
+            "user_type_has_children",
+            "This type cannot be given a parent while it has child types of its "
+            f"own ({', '.join(children)}) — the hierarchy is capped at two levels. "
+            "Re-parent or retire those children first.",
+        )
+
+
 class UnknownUserType(AppHTTPException):
     """422 — a user or config references a type that does not resolve."""
 

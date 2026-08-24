@@ -141,18 +141,26 @@ disagree:
 - `parent_type_code` set → a **child type** hanging under the named parent.
   `agent`, `merchant`.
 
-Four rules, all enforced in the service because all are cross-row:
+Five rules, all enforced in the service because all are cross-row:
 
 1. The named parent must exist, be **active**, and sit in the **same category**.
    A Retail child cannot hang under a Business parent.
-2. **The named parent must itself have a NULL `parent_type_code`.** This one rule
-   is what caps the tree at two levels — there is no depth counter to maintain
-   and no recursion anywhere.
+2. **The named parent must itself have a NULL `parent_type_code`.** Together with
+   rule 5 this caps the tree at two levels — there is no depth counter to
+   maintain and no recursion anywhere.
 3. A type in a category with `supports_hierarchy = false` must have a NULL
    parent. Consumers stays flat.
 4. A parent type with **active children cannot be retired**. Retiring it would
    leave children pointing at an inactive parent, and D3 forbids deletion as a
    way out. Refused with the list of blocking children; retire them first.
+5. **A type that has children of its own cannot be given a parent.** Rule 2 looks
+   only at the far end of the edge, so without this the cap is bypassable one
+   legal step at a time: create Q and P top-level, hang C under P, then move P
+   under Q and `C -> P -> Q` exists. Refused with 409 `user_type_has_children`.
+   Unlike rule 4 this counts **every** child, retired included — retirement is
+   reversible (D4), so allowing the move while a child is retired only defers
+   the same chain. *Clearing* a parent is never blocked: it removes a level
+   rather than adding one, and is the repair path for any pre-existing chain.
 
 At the *user* level this is unchanged from today: a user of a child type must
 hang under a parent user whose type is the declared `parent_type_code`, enforced
@@ -380,6 +388,7 @@ config rows. A test covers this explicitly.
 | Parent attach — cross-tenant | A phone belonging to another tenant's super-agent → 422 `parent_not_found`, with no existence leak |
 | Parent attach — partner API | A partner can onboard an agent with a supervisor; an unknown or retired `user_type` is still refused |
 | Hierarchy — retire guard | Retiring a parent with active children → 409 `user_type_has_active_children`; succeeds once the children are retired |
+| Hierarchy — re-parent guard | Q + P top-level, C under P, then moving P under Q → 409 `user_type_has_children`, retired C included; moving a childless type still succeeds, and clearing a parent is never blocked |
 | Maker-checker | Create requires approval; the same admin cannot approve their own proposal; an approved proposal makes the type selectable |
 | Regression | The five seeded types resolve identically to the pre-migration constants across limits, pricing, commission and tax |
 
@@ -393,8 +402,10 @@ config rows. A test covers this explicitly.
 - Hierarchies deeper than two levels (D7). A third tier would require walking a
   tree in provisioning and identity validation, both of which are flat lookups
   today.
-- Re-parenting an existing child type. Create the correctly-parented type and
-  retire the old one; moving a type between parents while users hang off it is a
-  bulk data migration, which this section already excludes.
+- Re-parenting a type that **has children of its own** (§5 rule 5). Re-parenting
+  a *childless* type IS supported — the edit dialog exposes it and the guard
+  makes it safe. Moving a type that is itself a parent would deepen the tree past
+  the two-level cap; create the correctly-parented type and retire the old one
+  instead.
 - Mobile app changes. No mobile surface displays or selects user types.
 - Renaming existing type codes (D5).

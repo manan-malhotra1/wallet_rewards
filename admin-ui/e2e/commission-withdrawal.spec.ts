@@ -17,8 +17,13 @@ import { STORAGE_STATE } from "../playwright.config";
 
 test.use({ storageState: STORAGE_STATE.maker });
 
-/** The seeded agent — `make seed` gives them an accrued commission balance. */
-const AGENT_PHONE = "+27825550003";
+// These specs do a full maker upload AND open a second browser context for the
+// checker. On a cold dev server each new route compiles on first hit, so the
+// default 150s budget is not enough for the two-context flows.
+test.describe.configure({ timeout: 300_000 });
+
+/** The seeded agent (scripts/seed.py) — holds R500 of accrued commission. */
+const AGENT_PHONE = "+27825558001";
 
 /** A distinct small amount so concurrent re-runs never collide. */
 function uniqueAmount(): string {
@@ -58,6 +63,9 @@ test("a clawback needs a destination, then applies once approved", async ({
   await dialog.getByRole("button", { name: "Done" }).click();
 
   await page.getByRole("link", { name: fileName }).click();
+  // Wait for the detail route before reading the URL — click() returns before
+  // the client-side navigation settles, so a bare page.url() yields the LIST.
+  await page.waitForURL(/\/commission-(disbursement|withdrawal)\/[0-9a-f-]{36}/);
   const batchUrl = page.url();
   await expect(page.getByTestId("batch-status")).toContainText(
     "Awaiting approval",
@@ -69,7 +77,7 @@ test("a clawback needs a destination, then applies once approved", async ({
   const checkerPage = await checkerContext.newPage();
   try {
     await checkerPage.goto(batchUrl);
-    await checkerPage.getByRole("button", { name: "Approve" }).click();
+    await checkerPage.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(checkerPage.getByTestId("batch-status")).toContainText(
       "Applied",
     );

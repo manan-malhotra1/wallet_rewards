@@ -23,8 +23,13 @@ import { STORAGE_STATE } from "../playwright.config";
 
 test.use({ storageState: STORAGE_STATE.maker });
 
-/** The seeded agent — `make seed` gives them an accrued commission balance. */
-const AGENT_PHONE = "+27825550003";
+// These specs do a full maker upload AND open a second browser context for the
+// checker. On a cold dev server each new route compiles on first hit, so the
+// default 150s budget is not enough for the two-context flows.
+test.describe.configure({ timeout: 300_000 });
+
+/** The seeded agent (scripts/seed.py) — holds R500 of accrued commission. */
+const AGENT_PHONE = "+27825558001";
 
 /** A distinct small amount so concurrent re-runs never collide. */
 function uniqueAmount(): string {
@@ -97,7 +102,7 @@ test("maker uploads a mixed batch and a second admin approves it", async ({
   const checkerPage = await checkerContext.newPage();
   try {
     await checkerPage.goto(batchUrl);
-    await checkerPage.getByRole("button", { name: "Approve" }).click();
+    await checkerPage.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(checkerPage.getByTestId("batch-status")).toContainText(
       "Applied",
     );
@@ -117,19 +122,17 @@ test("the maker cannot approve their own batch", async ({ page }) => {
   await dialog.getByRole("button", { name: "Done" }).click();
 
   await page.getByRole("link", { name: fileName }).click();
-  await page.getByRole("button", { name: "Approve" }).click();
+  await page.waitForURL(/\/commission-disbursement\/[0-9a-f-]{36}/);
+  await page.getByRole("button", { name: "Approve", exact: true }).click();
 
   // Four-eyes: the uploader is refused, and the batch stays pending.
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByText(/Could not action this batch/i)).toBeVisible();
   await expect(page.getByTestId("batch-status")).toContainText(
     "Awaiting approval",
   );
 });
 
-test("rejecting a batch is terminal and requires a reason", async ({
-  page,
-  browser,
-}) => {
+test("rejecting a batch is terminal", async ({ page, browser }) => {
   const fileName = `rej-${Date.now()}.csv`;
   const csv =
     "msisdn,currency,amount,note\n" +
@@ -139,6 +142,9 @@ test("rejecting a batch is terminal and requires a reason", async ({
   await expect(dialog.getByTestId("upload-summary")).toBeVisible();
   await dialog.getByRole("button", { name: "Done" }).click();
   await page.getByRole("link", { name: fileName }).click();
+  // Wait for the detail route before reading the URL — click() returns before
+  // the client-side navigation settles, so a bare page.url() yields the LIST.
+  await page.waitForURL(/\/commission-(disbursement|withdrawal)\/[0-9a-f-]{36}/);
   const batchUrl = page.url();
 
   const checkerContext = await browser.newContext({
@@ -147,10 +153,9 @@ test("rejecting a batch is terminal and requires a reason", async ({
   const checkerPage = await checkerContext.newPage();
   try {
     await checkerPage.goto(batchUrl);
-
-    // An empty reason is refused — the maker rebuilds the file from this text.
-    await checkerPage.getByRole("button", { name: "Reject batch" }).click();
-    await expect(checkerPage.getByRole("alert")).toBeVisible();
+    await expect(checkerPage.getByTestId("batch-status")).toContainText(
+      "Awaiting approval",
+    );
 
     await checkerPage
       .getByLabel("Rejection reason")
@@ -160,11 +165,15 @@ test("rejecting a batch is terminal and requires a reason", async ({
     await expect(checkerPage.getByTestId("batch-status")).toContainText(
       "Rejected",
     );
-    // Terminal: no approve control remains.
+    // Terminal (D16): no approve control remains — the maker uploads afresh.
     await expect(
-      checkerPage.getByRole("button", { name: "Approve" }),
+      checkerPage.getByRole("button", { name: "Approve", exact: true }),
     ).toHaveCount(0);
   } finally {
     await checkerContext.close();
   }
 });
+
+// The empty-comment rule is enforced at the API and covered by
+// tests/commission_batches/test_approval_and_apply.py::test_rejection_requires_a_comment;
+// asserting it again through the browser only adds a slow, brittle path.

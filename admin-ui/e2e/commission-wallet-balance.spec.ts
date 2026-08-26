@@ -12,14 +12,18 @@ import { STORAGE_STATE } from "../playwright.config";
 
 test.use({ storageState: STORAGE_STATE.maker });
 
-/** The seeded agent, who holds both a main and a commission wallet. */
-const AGENT_PHONE = "+27825550003";
+/** The seeded agent (scripts/seed.py) — holds both a main and a commission wallet. */
+const AGENT_PHONE = "+27825558001";
 const AGENT_LOOKUP = `/users?type=phone&value=${encodeURIComponent(AGENT_PHONE)}`;
 
 test("an agent's commission wallet is listed separately from their main wallet", async ({
   page,
 }) => {
   await page.goto(AGENT_LOOKUP);
+
+  // Wallets live behind their own tab on the user drawer — the default tab is
+  // Personal & KYC.
+  await page.getByRole("tab", { name: "Accounts & balances" }).click();
 
   // Both wallets appear, under labels that cannot be confused with each other
   // or with the tenant-level commission funding pool.

@@ -151,6 +151,9 @@ class UserAccountOut(BaseModel):
     balance: str
     reserved_balance: str
     available_balance: str
+    # False for a commission wallet: real money the user holds but cannot
+    # transact against until a disbursement run moves it (spec §5, §10).
+    spendable: bool = True
 
 
 class UserProfileOut(BaseModel):
@@ -188,6 +191,10 @@ class UserDetailOut(BaseModel):
     identifiers: list[IdentifierOut]
     profile: UserProfileOut | None
     accounts: list[UserAccountOut]
+    # Per-currency spendable balance — main wallets only, EXCLUDING accrued
+    # commission (spec §10). Values are decimal strings, matching the account
+    # balance fields. Keyed by currency code.
+    spendable_total: dict[str, str] = {}
     # PIN-lockout state (Redis-backed, NFR-0190) — lets the UI show a "Locked"
     # pill + countdown and offer an Unlock action. `unlocks_in_seconds` is the
     # remaining lockout TTL, null when the user isn't locked.

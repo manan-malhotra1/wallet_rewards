@@ -51,6 +51,10 @@ class ChargeAccounts:
     commission_tax_account_id: UUID
     commission_pool_account_id: UUID
     agent_account_id: UUID
+    # The earner's PARENT wallet — the same KIND of wallet the child's rule
+    # names (spec 2026-08-26, D6). None when the parent leg does not pay: no
+    # parent, ineligible category, missing wallet or a zero rate (D10).
+    parent_account_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,10 @@ class ChargeAmounts:
     principal: Decimal
     fee: Decimal = _ZERO
     commission: Decimal = _ZERO
+    # `Cp` — the parent's commission, additive from the same pool as `C`.
+    parent_commission: Decimal = _ZERO
+    # `Tcp` — tax on the parent's commission, same axis as `Tc` (D11).
+    parent_commission_tax: Decimal = _ZERO
     fee_tax: Decimal = _ZERO
     commission_tax: Decimal = _ZERO
 
@@ -96,6 +104,7 @@ class AssembledCharges:
     entries: list[LedgerEntryRequest]
     fee_amount: Decimal
     commission_amount: Decimal
+    parent_commission_amount: Decimal
     tax_amount: Decimal
 
 
@@ -167,9 +176,35 @@ def assemble_charges(
     # Commission-tax lands in the COMMISSION tax collector (Epic 25 split).
     _append_if_positive(entries, accounts.commission_tax_account_id, ENTRY_CREDIT, tc)
 
+    # --- Parent commission + its tax (spec 2026-08-26 §7.3) ------------------
+    # Mirrors the child block exactly, funded from the SAME unguarded pool and
+    # split on the SAME inclusive/exclusive axis. Emitted only when a parent
+    # account resolved: `_append_if_positive` would drop a zero leg anyway, but
+    # the None check keeps a SKIPPED parent from being confused with a zero one,
+    # and keeps the reported totals honest below.
+    cp = amounts.parent_commission
+    tcp = amounts.parent_commission_tax
+
+    if accounts.parent_account_id is not None and cp > _ZERO:
+        parent_tax_on_top = _ZERO if flags.commission_tax_inclusive else tcp
+        parent_pool_debit = cp + parent_tax_on_top
+        parent_credit = cp - (tcp if flags.commission_tax_inclusive else _ZERO)
+
+        _append_if_positive(
+            entries, accounts.commission_pool_account_id, ENTRY_DEBIT, parent_pool_debit
+        )
+        _append_if_positive(entries, accounts.parent_account_id, ENTRY_CREDIT, parent_credit)
+        _append_if_positive(entries, accounts.commission_tax_account_id, ENTRY_CREDIT, tcp)
+    else:
+        # Reassigned so parent_commission_amount and tax_amount never report a
+        # leg that was not actually emitted.
+        cp = _ZERO
+        tcp = _ZERO
+
     return AssembledCharges(
         entries=entries,
         fee_amount=f,
         commission_amount=c,
-        tax_amount=tf + tc,
+        parent_commission_amount=cp,
+        tax_amount=tf + tc + tcp,
     )

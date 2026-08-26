@@ -68,6 +68,13 @@ class TenantCreate(BaseModel):
     business_type: BusinessType = Field(
         description="Which services are switched on for this tenant.",
     )
+    commission_wallet_enabled: bool = Field(
+        default=False,
+        description=(
+            "Give Retail and Business users a separate commission wallet. "
+            "CREATION-TIME ONLY — it can never be changed afterwards (spec D3)."
+        ),
+    )
     base_currency: str = Field(
         min_length=3,
         max_length=10,
@@ -120,6 +127,14 @@ class TenantUpdateRequest(BaseModel):
     business_type: BusinessType | None = Field(
         default=None,
         description="Which services are switched on for this tenant.",
+    )
+    # Present ONLY so an attempt to change it is refused explicitly rather than
+    # silently ignored. `update_tenant` raises CommissionFlagImmutable on any
+    # value that differs from the stored one; restating the current value is a
+    # no-op so idempotent PUTs keep working.
+    commission_wallet_enabled: bool | None = Field(
+        default=None,
+        description="Read-only after creation. Sending a different value is a 422.",
     )
 
 

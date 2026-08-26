@@ -69,6 +69,15 @@ class Tenant(Base):
     require_config_to_transact: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    # Commission wallets on/off for this tenant (spec 2026-08-26, D3).
+    # Chosen at tenant CREATION and IMMUTABLE thereafter — `update_tenant`
+    # refuses any change with 422 `commission_flag_immutable`. Immutability is
+    # deliberate: it removes backfill-on-flip, teardown of non-zero balances,
+    # and any `backfill_pending` intermediate state. The only retrofit path for
+    # an existing tenant is `scripts/backfill_commission_wallets.py`.
+    commission_wallet_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     # Per-tenant branding. These three fields drive the admin UI's per-tenant
     # theme and sidebar logo: `brand_accent_color` and `brand_light_color` are
     # the two anchor colours the UI interpolates into a derived palette, and

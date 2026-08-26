@@ -20,15 +20,18 @@ from app.modules.instruments.schemas import (
     InstrumentCreateRequest,
     InstrumentUpdateRequest,
 )
+from app.modules.user_types.service import is_commission_wallet_eligible
 from app.shared.exceptions import (
     InstrumentCodeAlreadyExists,
     InstrumentNotFound,
 )
 from app.shared.models import (
+    ACCOUNT_TYPE_COMMISSION_WALLET,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
     Account,
     Instrument,
+    Tenant,
     User,
 )
 from app.shared.tenant_mode import assert_points_scope_allowed
@@ -247,14 +250,60 @@ async def _backfill_user_accounts(
 ) -> int:
     """Create one account per tenant user that doesn't yet have one for this instrument.
 
-    Idempotent: pre-existing (user, account_type, currency) tuples are
-    skipped, so re-running the backfill doesn't duplicate rows.
+    Two passes for a FINANCIAL instrument (spec 2026-08-26 §6.2): the
+    instrument's own account_type for EVERY user, then a `commission_wallet`
+    for users whose type is in an eligible category, when the tenant flag is
+    on. A points instrument runs the first pass only — there is no commission
+    wallet for a points unit.
+
+    Idempotent: pre-existing (user, account_type, currency) tuples are skipped,
+    so re-running the backfill doesn't duplicate rows.
 
     Returns:
-        Number of new Account rows inserted.
+        Number of new Account rows inserted across both passes.
     """
-    # Find users who don't yet have an account of this (type, currency).
-    users_stmt = select(User.id).where(
+    added = await _backfill_one_type(session, tenant_id, account_type, currency)
+
+    if account_type != ACCOUNT_TYPE_FINANCIAL_WALLET:
+        return added
+
+    tenant = (
+        await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+    ).scalar_one_or_none()
+    if tenant is None or not tenant.commission_wallet_enabled:
+        return added
+
+    added += await _backfill_one_type(
+        session,
+        tenant_id,
+        ACCOUNT_TYPE_COMMISSION_WALLET,
+        currency,
+        eligible_only=True,
+    )
+    return added
+
+
+async def _backfill_one_type(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    account_type: str,
+    currency: str,
+    *,
+    eligible_only: bool = False,
+) -> int:
+    """Insert `account_type`/`currency` for every tenant user missing it.
+
+    Args:
+        eligible_only: When True, only users whose `user_type` resolves to the
+            Retail or Business category get a row (spec D4). The category
+            lookup is memoised per distinct `user_type` within this call — a
+            tenant has a handful of types and potentially many users, so the
+            naive per-user query would be one round trip per user.
+
+    Returns:
+        Number of new Account rows added (not committed).
+    """
+    users_stmt = select(User.id, User.user_type).where(
         User.tenant_id == tenant_id,
         ~User.id.in_(
             select(Account.user_id).where(
@@ -265,8 +314,18 @@ async def _backfill_user_accounts(
             )
         ),
     )
-    user_ids = (await session.execute(users_stmt)).scalars().all()
-    for user_id in user_ids:
+    rows = (await session.execute(users_stmt)).all()
+
+    eligibility: dict[str, bool] = {}
+    added = 0
+    for user_id, user_type in rows:
+        if eligible_only:
+            if user_type not in eligibility:
+                eligibility[user_type] = await is_commission_wallet_eligible(
+                    session, tenant_id, user_type
+                )
+            if not eligibility[user_type]:
+                continue
         session.add(
             Account(
                 tenant_id=tenant_id,
@@ -275,7 +334,8 @@ async def _backfill_user_accounts(
                 currency=currency,
             )
         )
-    return len(user_ids)
+        added += 1
+    return added
 
 
 async def update_instrument(

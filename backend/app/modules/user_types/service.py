@@ -41,6 +41,8 @@ from app.shared.exceptions import (
     UserTypeHasChildren,
 )
 from app.shared.models import (
+    CATEGORY_BUSINESS,
+    CATEGORY_RETAIL,
     USER_TYPE_STATUS_ACTIVE,
     USER_TYPE_STATUS_RETIRED,
     UserTypeCategory,
@@ -120,6 +122,34 @@ async def get_user_type(session: AsyncSession, tenant_id: UUID, code: str) -> Us
         .order_by(UserTypeDef.tenant_id.is_(None))
     )
     return (await session.execute(stmt)).scalars().first()
+
+
+async def is_commission_wallet_eligible(
+    session: AsyncSession, tenant_id: UUID, code: str
+) -> bool:
+    """Does a user of this type hold a commission wallet? (spec 2026-08-26, D4)
+
+    Eligibility is a CATEGORY question: Retail and Business hold commission
+    wallets, Consumers never do. Reading the category rather than a hardcoded
+    type list is what lets an operator-created Business type work with no code
+    change — the exact coupling the configurable-user-types edition removed.
+
+    A RETIRED type is still eligible: an agent onboarded under a type the
+    operator has since retired must keep accruing, exactly as `get_user_type`
+    keeps existing users working (user-types spec §11).
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: The acting tenant.
+        code: The user's `user_type`.
+
+    Returns:
+        True when the type resolves to the Retail or Business category. False —
+        never an exception — for a type that does not resolve, so provisioning
+        degrades to "no commission wallet" instead of failing with a 500.
+    """
+    row = await get_user_type(session, tenant_id, code)
+    return row is not None and row.category_code in (CATEGORY_RETAIL, CATEGORY_BUSINESS)
 
 
 async def assert_user_type_valid(

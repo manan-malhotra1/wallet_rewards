@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from decimal import Decimal
 from uuid import UUID
 
 import structlog
@@ -75,6 +76,7 @@ from app.shared.exceptions import (
     UserNotFound,
 )
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
     REFERRAL_STATUS_PENDING,
     SERVICE_STATUS_ACTIVE,
     USER_STATUS_ACTIVE,
@@ -516,6 +518,16 @@ async def create_user(
 
     await session.flush()
 
+    # Provision the user's wallets INSIDE this transaction (spec 2026-08-26,
+    # D12), so a failed create never leaves orphaned accounts. Every user gets
+    # a main wallet per active financial currency; Retail/Business users on a
+    # flag-on tenant also get a commission wallet. Local import: `provisioning`
+    # imports user_types, which reaches back into identity — a module-level
+    # import here would cycle.
+    from app.modules.accounts.provisioning import provision_user_accounts
+
+    await provision_user_accounts(session, tenant_id=request.tenant_id, user_id=user.id)
+
     # NFR-0250: admin-initiated user creation is an audit event. Self-registration
     # via the OTP flow does NOT call this function (it has its own audit hook
     # in /pin/set landing in a follow-up phase).
@@ -745,6 +757,15 @@ async def change_user_type(
         "parent_user_id": str(request.parent_user_id) if request.parent_user_id else None,
     }
 
+    # A promotion INTO Retail / Business earns a commission wallet (spec §6.3).
+    # Deliberately one-directional: a demotion RETAINS the wallet, because the
+    # ledger is append-only and its balance may be non-zero — it must stay
+    # disbursable. New accruals stop on their own once config no longer
+    # resolves for the new type.
+    from app.modules.accounts.provisioning import provision_user_accounts
+
+    await provision_user_accounts(session, tenant_id=tenant_id, user_id=user.id)
+
     record_audit_for_admin(
         session,
         admin,
@@ -911,8 +932,17 @@ async def get_user_detail(
     )
     accounts = list(accounts_q.scalars().all())
     account_payload = []
+    spendable_total: dict[str, Decimal] = {}
     for acct in accounts:
         balance, reserved = await derive_balance(session, acct.id)
+        # Spendable is an explicit account-TYPE test, not "has a balance": a
+        # commission wallet holds real money the user cannot transact against
+        # until a disbursement run moves it (spec 2026-08-26 §5, §10).
+        spendable = acct.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET
+        if spendable:
+            spendable_total[acct.currency] = spendable_total.get(
+                acct.currency, Decimal("0")
+            ) + (balance - reserved)
         account_payload.append(
             {
                 "id": acct.id,
@@ -922,6 +952,7 @@ async def get_user_detail(
                 "balance": str(balance),
                 "reserved_balance": str(reserved),
                 "available_balance": str(balance - reserved),
+                "spendable": spendable,
             }
         )
 
@@ -953,6 +984,7 @@ async def get_user_detail(
         "identifiers": user.identifiers,
         "profile": profile,
         "accounts": account_payload,
+        "spendable_total": {k: str(v) for k, v in spendable_total.items()},
         "is_locked": locked,
         "unlocks_in_seconds": unlocks_in,
     }

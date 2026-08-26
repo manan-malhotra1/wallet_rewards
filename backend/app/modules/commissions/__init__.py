@@ -7,6 +7,7 @@ agent from the `commission` system pool by the charge assembler (Epic 20).
 
 from app.modules.commissions.router import router
 from app.modules.commissions.service import (
+    CommissionOutcome,
     calculate_commission,
     create_commission_config,
     delete_commission_config_for_scope,
@@ -14,6 +15,7 @@ from app.modules.commissions.service import (
 )
 
 __all__ = [
+    "CommissionOutcome",
     "calculate_commission",
     "create_commission_config",
     "delete_commission_config_for_scope",

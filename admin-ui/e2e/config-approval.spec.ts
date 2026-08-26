@@ -33,13 +33,29 @@ test("maker proposes a ZAR tax-rate change; checker approves and it applies", as
   const rateDecimal = (bp / 10000).toFixed(4);
   const ratePct = `${(bp / 100).toFixed(2)}%`;
 
+  // The "Open requests" card's Withdraw uses a native window.confirm — accept.
+  page.on("dialog", (d) => void d.accept());
+
   // ---- Maker: propose the edit -------------------------------------------
   await page.goto("/taxes");
-  await expect(page.getByRole("heading", { name: "Taxes" })).toBeVisible();
+  // "Taxes" also names the empty-state heading — pin to the h1.
+  await expect(page.getByRole("heading", { name: "Taxes", level: 1 })).toBeVisible();
+
+  // Self-heal: an aborted earlier run can leave an open tax proposal, which
+  // disables the row's Edit (per-scope open-request guard). Withdraw any of
+  // ours from the "Open requests" card before proposing afresh.
+  const withdraw = page.getByRole("button", { name: "Withdraw" });
+  while ((await withdraw.count()) > 0) {
+    const before = await withdraw.count();
+    await withdraw.first().click();
+    await expect.poll(() => withdraw.count()).toBeLessThan(before);
+  }
 
   const zarRow = page.getByRole("row").filter({ hasText: "ZAR" });
   await expect(zarRow).toBeVisible();
-  await zarRow.getByRole("button", { name: "Edit tax config" }).click();
+  const editButton = zarRow.getByRole("button", { name: "Edit tax config" });
+  await expect(editButton).toBeEnabled();
+  await editButton.click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("Edit tax")).toBeVisible();
@@ -54,16 +70,22 @@ test("maker proposes a ZAR tax-rate change; checker approves and it applies", as
   });
   const checkerPage = await checkerContext.newPage();
   try {
-    await checkerPage.goto(
-      "/approvals?tab=configuration&status=pending&config_type=tax",
-    );
+    // Status values are the UPPERCASE StatusKeys (lib/approvals-filter.ts).
+    await checkerPage.goto("/approvals?tab=configuration&status=PENDING");
     await expect(
       checkerPage.getByRole("heading", { name: "Approvals" }),
     ).toBeVisible();
 
-    // Newest proposal for the tax scope — open its detail drawer and approve
-    // (config approve is a single-step action, no confirm).
-    await checkerPage.getByRole("button", { name: "View" }).first().click();
+    // Newest pending tax proposal — open its detail drawer and approve
+    // (config approve is a single-step action, no confirm). Scope View to the
+    // ROW — a page-level name match would also hit the toolbar's disabled
+    // "+ Save as view" button (role-name matching is substring).
+    await checkerPage
+      .getByRole("row")
+      .filter({ hasText: "Tax" })
+      .first()
+      .getByRole("button", { name: "View" })
+      .click();
 
     const drawer = checkerPage.getByRole("dialog");
     await drawer.getByRole("button", { name: "Approve" }).click();

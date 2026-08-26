@@ -83,3 +83,41 @@ Every ledger entry carries `currency CHAR(3)`. Cross-currency operations are out
 ## 10. Reversal naming convention
 
 When writing a reversal entry, the new entry's `transaction_id` should be the SAME as the original (so they group), but a new `id`. The reversal entry has the opposite `entry_type` and the same `amount`. Comments in the code must make clear which row is the original and which is the reversal.
+
+
+## The three guard shapes (amended 2026-08-26 — commission wallets)
+
+`post_transaction` enforces two INDEPENDENT axes at the choke point. They used
+to coincide, and one of them used to be inferred. Neither is true any more.
+
+| Account type | Floor (≥ 0) | Ceiling (`max_balance`) | Rolling caps |
+|---|---|---|---|
+| `financial_wallet` | yes (`InsufficientFunds`) | yes | yes |
+| `system_cash_inflow` | yes (`InsufficientFloat`) | no | no |
+| `cashback_provider_wallet` | yes (`InsufficientCashbackFunds`) | no | no |
+| `commission_wallet` | yes (`InsufficientCommissionBalance`) | **no** | **no** |
+
+**Why this needed an explicit set.** The ceiling branch previously read
+`account.user_id is not None`. That was correct only while `financial_wallet`
+was the sole *user-owned* guarded type — every other guarded account was a
+system account with a NULL `user_id`, so "has an owner" and "has a ceiling"
+happened to mean the same thing.
+
+`commission_wallet` breaks that coincidence: it is user-owned AND uncapped, by
+design (an agent may accrue any amount of commission). Had it simply been added
+to `_OVERDRAFT_GUARDED_ACCOUNT_TYPES`, the ownership test would have silently
+applied `max_balance` to commission accrual — a bug no commission test would
+catch, because it only fires once an agent's accrual crosses their configured
+cap in production.
+
+So the ceiling is now its own explicit membership set:
+
+```python
+_CEILING_GUARDED_ACCOUNT_TYPES = frozenset({ACCOUNT_TYPE_FINANCIAL_WALLET})
+```
+
+**Rule for any new account type:** decide its membership in BOTH
+`_OVERDRAFT_GUARDED_ACCOUNT_TYPES` and `_CEILING_GUARDED_ACCOUNT_TYPES`
+deliberately, and give it a DISTINCT floor exception so an operator can tell
+which account needs replenishing. Never let a type inherit a guard by accident
+of having (or not having) a `user_id`.

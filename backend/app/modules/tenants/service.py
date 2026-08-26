@@ -25,7 +25,11 @@ from app.modules.tenants.schemas import (
     TenantCreate,
     TenantUpdateRequest,
 )
-from app.shared.exceptions import TenantNameAlreadyExists, TenantNotFound
+from app.shared.exceptions import (
+    CommissionFlagImmutable,
+    TenantNameAlreadyExists,
+    TenantNotFound,
+)
 from app.shared.models import (
     ACCOUNT_TYPE_CASHBACK_PROVIDER,
     ACCOUNT_TYPE_COMMISSION,
@@ -491,6 +495,7 @@ async def create_tenant(session: AsyncSession, payload: TenantCreate) -> Tenant:
         name=payload.name,
         business_type=payload.business_type,
         base_currency=payload.base_currency,
+        commission_wallet_enabled=payload.commission_wallet_enabled,
         brand_accent_color=payload.brand_accent_color,
         brand_light_color=payload.brand_light_color,
         brand_icon_url=payload.brand_icon_url,
@@ -568,6 +573,16 @@ async def update_tenant(
         (tenants table is configuration, not a real-time domain event source).
     """
     tenant = await get_tenant_by_id(tenant_id, session)
+
+    # The commission-wallet flag is creation-time only (spec 2026-08-26, D3).
+    # Refused BEFORE any write so a rejected request leaves the row untouched.
+    # Compared against the stored value rather than rejecting any non-None, so
+    # an idempotent PUT that restates the current value still succeeds.
+    if (
+        payload.commission_wallet_enabled is not None
+        and payload.commission_wallet_enabled != tenant.commission_wallet_enabled
+    ):
+        raise CommissionFlagImmutable()
 
     # Snapshot before-state for both the audit row and the structured log.
     before = {

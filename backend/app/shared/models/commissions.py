@@ -56,6 +56,18 @@ class CommissionConfig(Base):
             "amount_from IS NULL OR amount_to IS NULL OR amount_to > amount_from",
             name="ck_commission_configs_amount_band",
         ),
+        CheckConstraint(
+            "payout_destination IN ('main_wallet', 'commission_wallet')",
+            name="ck_commission_configs_payout_destination",
+        ),
+        CheckConstraint(
+            "parent_fixed_commission >= 0",
+            name="ck_commission_configs_parent_fixed_nonneg",
+        ),
+        CheckConstraint(
+            "parent_variable_commission_pct >= 0 AND parent_variable_commission_pct < 1",
+            name="ck_commission_configs_parent_variable_pct_range",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -78,6 +90,27 @@ class CommissionConfig(Base):
         Numeric(8, 6), nullable=False, server_default="0"
     )
     commission_cap: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+
+    # Where the commission lands (spec 2026-08-26, D6). 'main_wallet'
+    # reproduces the pre-commission-wallet behaviour exactly, which is why it
+    # is the server default: migration 0067 backfills every existing row to it
+    # and nothing reprices on deploy (D18).
+    payout_destination: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="main_wallet"
+    )
+    # The earner's PARENT is paid from the SAME row, using the same amount band
+    # and precedence (spec D8). The rate is a percentage of the TRANSACTION
+    # AMOUNT, not of the child's commission — symmetric with the child terms,
+    # which is what lets both legs share one resolver and one band-replace.
+    parent_fixed_commission: Mapped[float] = mapped_column(
+        Numeric(20, 6), nullable=False, server_default="0"
+    )
+    parent_variable_commission_pct: Mapped[float] = mapped_column(
+        Numeric(8, 6), nullable=False, server_default="0"
+    )
+    parent_commission_cap: Mapped[float | None] = mapped_column(
+        Numeric(20, 6), nullable=True
+    )
 
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()

@@ -25,9 +25,10 @@ test("approvals page shows the queue tabs and status filter", async ({ page }) =
     page.locator('a[href*="tab=users"]').first(),
   ).toBeVisible();
 
-  // Shared status filter.
-  await expect(page.getByRole("link", { name: "Pending" })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Changes requested" }),
-  ).toBeVisible();
+  // Shared status filter — a segmented control of buttons whose accessible
+  // names carry the live counts (e.g. "Pending473"), so match by prefix.
+  const statusFilter = page.getByRole("group", { name: "Filter by status" });
+  await expect(statusFilter.getByRole("button", { name: /^Pending/ })).toBeVisible();
+  await expect(statusFilter.getByRole("button", { name: /^Changes req/ })).toBeVisible();
+  await expect(statusFilter.getByRole("button", { name: /^Applied/ })).toBeVisible();
 });

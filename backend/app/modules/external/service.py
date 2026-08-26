@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 from app.auth.api_key import ApiKeyPrincipal
 from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_system
+from app.modules.commissions.resolution import resolve_earner_target
 from app.modules.commissions.service import calculate_commission
 from app.modules.external.schemas import (
     ExternalCreateUserRequest,
@@ -60,6 +61,7 @@ from app.modules.treasury.service import (
 )
 from app.shared.exceptions import (
     AccountNotFound,
+    CommissionWalletMissing,
     DuplicateIdempotencyKey,
     FundingTemporarilyUnavailable,
     IdentifierAlreadyInUse,
@@ -736,7 +738,7 @@ async def merchant_cashin(
         currency=currency,
         amount=request.amount,
     )
-    commission = await calculate_commission(
+    outcome = await calculate_commission(
         session,
         tenant_id=tenant_id,
         agent_user_id=merchant_user_id,
@@ -749,8 +751,23 @@ async def merchant_cashin(
         tenant_id=tenant_id,
         currency=currency,
         fee=fee_quote.fee,
-        commission=commission,
+        commission=outcome.self_amount,
+        parent_commission=outcome.parent_amount,
     )
+
+    # Where the earner's own commission lands (spec 2026-08-26, D6). Fails
+    # CLOSED (§7.2): paying into the spendable wallet when the rule asked for a
+    # commission wallet would silently void the review hold.
+    earner_target = await resolve_earner_target(
+        session,
+        tenant_id=tenant_id,
+        earner_user_id=merchant_user_id,
+        destination=outcome.destination,
+        currency=currency,
+    )
+    if outcome.self_amount > 0 and earner_target.account_id is None:
+        raise CommissionWalletMissing()
+    commission_account_id = earner_target.account_id or merchant_wallet.id
 
     fee_account = await get_or_create_system_fee_account(
         session, tenant_id=tenant_id, currency=currency
@@ -772,14 +789,17 @@ async def merchant_cashin(
             service_tax_account_id=service_tax_account.id,
             commission_tax_account_id=commission_tax_account.id,
             commission_pool_account_id=commission_pool.id,
-            agent_account_id=merchant_wallet.id,  # any commission lands on the merchant
+            agent_account_id=commission_account_id,
+            parent_account_id=outcome.parent_account_id,
         ),
         ChargeAmounts(
             principal=request.amount,
             fee=fee_quote.fee,
-            commission=commission,
+            commission=outcome.self_amount,
             fee_tax=tax.fee_tax,
             commission_tax=tax.commission_tax,
+            parent_commission=outcome.parent_amount,
+            parent_commission_tax=tax.parent_commission_tax,
         ),
         ChargeFlags(
             fee_inclusive=fee_quote.fee_inclusive,
@@ -813,6 +833,7 @@ async def merchant_cashin(
             amount=request.amount,
             fee_amount=assembled.fee_amount,
             commission_amount=assembled.commission_amount,
+            parent_commission_amount=assembled.parent_commission_amount,
             tax_amount=assembled.tax_amount,
         ),
     )

@@ -28,6 +28,7 @@ from app.auth import UserPrincipal
 from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_user
 from app.modules.cashout.schemas import CashOutRequest
+from app.modules.commissions.resolution import resolve_earner_target
 from app.modules.commissions.service import calculate_commission
 from app.modules.identity.service import resolve_identifier
 from app.modules.ledger import (
@@ -55,6 +56,7 @@ from app.modules.taxes.service import calculate_tax
 from app.modules.user_types.service import get_user_type
 from app.shared.exceptions import (
     AccountNotFound,
+    CommissionWalletMissing,
     InsufficientFunds,
     RecipientNotAgent,
     SelfTransferNotAllowed,
@@ -328,7 +330,7 @@ async def cash_out(
         currency=currency,
         amount=request.amount,
     )
-    commission = await calculate_commission(
+    outcome = await calculate_commission(
         session,
         tenant_id=tenant_id,
         agent_user_id=agent_user_id,
@@ -341,8 +343,23 @@ async def cash_out(
         tenant_id=tenant_id,
         currency=currency,
         fee=fee_quote.fee,
-        commission=commission,
+        commission=outcome.self_amount,
+        parent_commission=outcome.parent_amount,
     )
+
+    # Where the earner's own commission lands (spec 2026-08-26, D6). Fails
+    # CLOSED (§7.2): paying into the spendable wallet when the rule asked for a
+    # commission wallet would silently void the review hold.
+    earner_target = await resolve_earner_target(
+        session,
+        tenant_id=tenant_id,
+        earner_user_id=agent_user_id,
+        destination=outcome.destination,
+        currency=currency,
+    )
+    if outcome.self_amount > 0 and earner_target.account_id is None:
+        raise CommissionWalletMissing()
+    commission_account_id = earner_target.account_id or agent_wallet.id
 
     # 6. Resolve the system wallets and assemble the balanced legs. Direction is
     # cash-in reversed: the SUBSCRIBER is the payer, the AGENT the beneficiary
@@ -367,14 +384,17 @@ async def cash_out(
             service_tax_account_id=service_tax_account.id,
             commission_tax_account_id=commission_tax_account.id,
             commission_pool_account_id=commission_pool.id,
-            agent_account_id=agent_wallet.id,  # commission lands on the agent's float
+            agent_account_id=commission_account_id,
+            parent_account_id=outcome.parent_account_id,
         ),
         ChargeAmounts(
             principal=request.amount,
             fee=fee_quote.fee,
-            commission=commission,
+            commission=outcome.self_amount,
             fee_tax=tax.fee_tax,
             commission_tax=tax.commission_tax,
+            parent_commission=outcome.parent_amount,
+            parent_commission_tax=tax.parent_commission_tax,
         ),
         ChargeFlags(
             fee_inclusive=fee_quote.fee_inclusive,
@@ -406,6 +426,7 @@ async def cash_out(
             amount=request.amount,
             fee_amount=assembled.fee_amount,
             commission_amount=assembled.commission_amount,
+            parent_commission_amount=assembled.parent_commission_amount,
             tax_amount=assembled.tax_amount,
             # The reward recipient is the withdrawing SUBSCRIBER (the debited
             # wallet holder / initiator) — the receiving agent earns commission,

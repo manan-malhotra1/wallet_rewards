@@ -23,6 +23,8 @@
 #   - docker    : compose stack in `sasai-wallet-infra/`
 #                 postgres (5432), kafka (9092), keycloak (8080), redis (6379), zookeeper (2181)
 #   - backend   : FastAPI on :8000 (project venv)
+#                 API docs: http://localhost:8000/docs (Swagger UI),
+#                 http://localhost:8000/redoc, http://localhost:8000/openapi.json
 #   - admin-ui  : Next.js dev on :3000 (npm)
 #   - sim       : Next.js mobile simulator on :3002 (npm) — dev-only harness
 #   - report    : static test report on :8377 (python http.server over test-reports/)
@@ -45,6 +47,12 @@ LOG_DIR="${RUN_DIR}/logs"
 
 REPORT_DIR="${ROOT_DIR}/test-reports"
 REPORT_PORT=8377
+
+# FastAPI serves these at its defaults (app/main.py sets no docs_url/root_path),
+# so they track the backend port and need no separate config.
+API_DOCS_URL="http://localhost:8000/docs"
+API_REDOC_URL="http://localhost:8000/redoc"
+API_OPENAPI_URL="http://localhost:8000/openapi.json"
 
 BACKEND_PID="${RUN_DIR}/backend.pid"
 UI_PID="${RUN_DIR}/admin-ui.pid"
@@ -352,6 +360,12 @@ cmd_status() {
   status_row "admin-ui" "3000" "curl -fs -o /dev/null -w '%{http_code}' http://localhost:3000 | grep -qE '^(2|3)..'"
   status_row "sim"      "3002" "curl -fs -o /dev/null -w '%{http_code}' http://localhost:3002 | grep -qE '^(2|3)..'" "dev-only"
   status_row "report"   "${REPORT_PORT}" "curl -fs -o /dev/null http://127.0.0.1:${REPORT_PORT}/" "test report"
+
+  echo
+  echo "${BOLD}API docs${RESET}"
+  echo "  Swagger UI   ${API_DOCS_URL}"
+  echo "  ReDoc        ${API_REDOC_URL}"
+  echo "  OpenAPI JSON ${API_OPENAPI_URL}"
 
   echo
   echo "${DIM}Logs:${RESET} scripts/dev.sh logs <backend|admin-ui|sim|report|postgres|keycloak|redis|kafka>"

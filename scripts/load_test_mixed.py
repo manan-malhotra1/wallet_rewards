@@ -112,6 +112,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--weights",
                    default="p2p=40,cashout=20,airtime=20,cash_in=15,merchant_cashin=5",
                    help="Comma-separated service=weight mix.")
+    p.add_argument("--no-fund", action="store_true",
+                   help="Never call treasury/fund-user — transact purely off existing "
+                        "balances. Insufficient balance then surfaces as a real "
+                        "`insufficient_funds` result instead of being papered over.")
     p.add_argument("--setup-concurrency", type=int, default=40)
     p.add_argument("--state-file", default="/tmp/sasai_load_test_state.json",
                    help="Consumer cache — shared with load_test_p2p.py.")
@@ -294,7 +298,8 @@ async def provision_actor(
     checker: L.AdminTokenProvider, tenant_id: str, phone: str, user_id: str,
     role_id: str | None, target_balance: int,
 ) -> Actor:
-    """Give a user a ZAR wallet, role, known PIN, live session and funding."""
+    """Give a user a ZAR wallet, role, known PIN, live session and (unless
+    --no-fund) funding up to `target_balance`."""
     await L.ensure_zar_wallet(client, args.api_url, tokens, tenant_id, user_id)
     if role_id:
         await L.assign_user_role(client, args.api_url, tokens, tenant_id, user_id, role_id)
@@ -302,9 +307,10 @@ async def provision_actor(
     # ignored, so we must authenticate with whatever comes back.
     pin = await L.set_known_pin(client, args.api_url, tokens, tenant_id, user_id, args.user_pin)
     token = await L.login_pin(client, args.api_url, tenant_id, phone, pin)
-    balance = await L.current_zar_balance(client, args.api_url, token)
-    await L.fund_user_to_target(client, args.api_url, tokens, tenant_id,
-                                phone, balance, target_balance, checker)
+    if not args.no_fund:
+        balance = await L.current_zar_balance(client, args.api_url, token)
+        await L.fund_user_to_target(client, args.api_url, tokens, tenant_id,
+                                    phone, balance, target_balance, checker)
     return Actor(phone=phone, user_id=user_id, session_token=token, pin=pin)
 
 
@@ -325,7 +331,7 @@ async def setup_consumers(
                 # Cheapest possible liveness probe on the cached session.
                 try:
                     balance = await L.current_zar_balance(client, args.api_url, entry["session_token"])
-                    if balance < args.fund_amount:
+                    if not args.no_fund and balance < args.fund_amount:
                         await L.fund_user_to_target(client, args.api_url, tokens, tenant_id,
                                                     phone, balance, args.fund_amount, checker)
                     return Actor(phone=phone, user_id=entry["user_id"],
@@ -359,8 +365,15 @@ async def setup_agents(
 ) -> list[Actor]:
     """Provision one super_agent parent plus the agent pool.
 
-    Agents both PAY (cash_in debits their float) and RECEIVE (cashout credits
-    them), so they are funded well above the consumer target.
+    Agents both PAY (cash_in debits their own float) and RECEIVE (cashout credits
+    them), so they are funded above the consumer target.
+
+    Batched + checkpointed + cache-reusing, like the consumer pool, because agent
+    provisioning is the most expensive setup there is: each new agent costs two
+    bcrypt rounds (PIN reset hashes, PIN login verifies) on a CPU-bound single
+    process, plus a fund + approve money-op pair. At pool sizes in the hundreds
+    that is minutes of work, so losing it all to one late failure — or redoing it
+    on every re-run — is what makes a large-pool test impractical.
     """
     agent_role = await ensure_role(client, args, tokens, tenant_id, "load-test-agent",
                                    "Role used by load_test_mixed.py — grants cash_in.",
@@ -370,24 +383,51 @@ async def setup_agents(
                                        super_phone, "SuperAgent", "super_agent")
     print(f"  + super_agent ready ({super_id[:8]}…)")
 
+    agent_cache = cache.setdefault("agents", {})
     sem = asyncio.Semaphore(args.setup_concurrency)
+    provisioned = 0
 
     async def one(idx: int) -> Actor:
+        nonlocal provisioned
         async with sem:
             phone = f"{args.agent_prefix} {idx:05d}"
+            entry = agent_cache.get(phone)
+            if entry and "session_token" in entry:
+                # A live cached session skips both bcrypt rounds — the whole point
+                # of the cache. Top up only if the float has drained below target.
+                try:
+                    balance = await L.current_zar_balance(client, args.api_url,
+                                                          entry["session_token"])
+                    if not args.no_fund and balance < args.agent_fund_amount:
+                        await L.fund_user_to_target(
+                            client, args.api_url, tokens, tenant_id, phone,
+                            balance, args.agent_fund_amount, checker)
+                    return Actor(phone=phone, user_id=entry["user_id"],
+                                 session_token=entry["session_token"],
+                                 pin=entry.get("pin", args.user_pin))
+                except httpx.HTTPStatusError:
+                    pass  # Session expired — fall through to a full re-provision.
+
             user_id = await ensure_typed_user(client, args, tokens, tenant_id, phone,
                                               f"Agent{idx}", "agent", parent_user_id=super_id)
             actor = await provision_actor(client, args, tokens, checker, tenant_id, phone,
                                           user_id, agent_role, args.agent_fund_amount)
-            cache.setdefault("agents", {})[phone] = {
+            agent_cache[phone] = {
                 "user_id": actor.user_id, "session_token": actor.session_token, "pin": actor.pin
             }
+            provisioned += 1
             return actor
 
-    agents = await asyncio.gather(*(one(i + 1) for i in range(args.agents)))
-    save_json(args.mixed_state_file, cache)
-    print(f"  + {len(agents)} agents provisioned + funded")
-    return list(agents)
+    agents: list[Actor] = []
+    tasks = [one(i + 1) for i in range(args.agents)]
+    batch = 100
+    for start in range(0, len(tasks), batch):
+        agents.extend(await asyncio.gather(*tasks[start:start + batch]))
+        # Checkpoint every batch so a late failure doesn't discard the bcrypt work.
+        save_json(args.mixed_state_file, cache)
+        print(f"  agents: {min(start + batch, len(tasks)):>5}/{args.agents} "
+              f"(newly provisioned: {provisioned}, cache checkpointed)", flush=True)
+    return agents
 
 
 async def setup_merchant(
@@ -688,14 +728,33 @@ async def main() -> None:
         print(f"  + consumer role ready ({consumer_role[:8]}…) "
               f"granting p2p, cashout, airtime_recharge")
 
+        if args.no_fund:
+            print("  ! --no-fund: transacting off existing balances only; a short "
+                  "wallet will surface as a real `insufficient_funds` result.")
+
+        # Provision only what the requested mix actually uses. Agents and the
+        # merchant each cost real setup (two bcrypt rounds per actor, API-key
+        # minting), so a p2p-only or cash_in-only run should not pay for pools it
+        # never touches — and should not mutate state it never exercises.
+        needs_agents = bool({"cash_in", "cashout"} & weights.keys())
+        needs_merchant = "merchant_cashin" in weights
+
         print(f"== CONSUMERS ({args.users}) ==")
         consumers = await setup_consumers(client, args, tokens, checker,
                                           tenant_id, consumer_role, consumer_cache)
-        print(f"== AGENTS ({args.agents}) ==")
-        agents = await setup_agents(client, args, tokens, checker, tenant_id, mixed_cache)
-        print("== MERCHANT + API KEYS ==")
-        merchant, keys = await setup_merchant(client, args, tokens, checker,
-                                              tenant_id, mixed_cache)
+        if needs_agents:
+            print(f"== AGENTS ({args.agents}) ==")
+            agents = await setup_agents(client, args, tokens, checker, tenant_id, mixed_cache)
+        else:
+            agents = []
+            print("== AGENTS == skipped (mix has no cash_in/cashout)")
+        if needs_merchant:
+            print("== MERCHANT + API KEYS ==")
+            merchant, keys = await setup_merchant(client, args, tokens, checker,
+                                                  tenant_id, mixed_cache)
+        else:
+            merchant, keys = None, []
+            print("== MERCHANT == skipped (mix has no merchant_cashin)")
 
         if args.phase == "setup":
             print("setup-only mode: stopping before the load phase.")

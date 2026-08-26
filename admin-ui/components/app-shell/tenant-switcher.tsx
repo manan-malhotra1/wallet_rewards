@@ -42,6 +42,7 @@ export function TenantSwitcher({ tenants, activeTenantId }: TenantSwitcherProps)
             readability against a glass container; see input.tsx. */}
         <button
           type="button"
+          aria-label="Switch tenant"
           className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           <Building2 className="h-3.5 w-3.5 text-muted-foreground" />

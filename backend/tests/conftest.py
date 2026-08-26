@@ -48,6 +48,7 @@ from app.auth.keycloak import keycloak_client
 TEST_KID = "test-key-1"
 
 from app.config import settings
+from app.auth.principals import AdminPrincipal
 from app.database import get_async_session
 from app.main import app
 from app.shared.models import (
@@ -398,6 +399,30 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
     await prefund_float(db_session, tenant.id, currency="ZAR")
     await prefund_cashback_wallet(db_session, tenant.id, currency="ZAR")
     return tenant
+
+
+@pytest.fixture
+def admin_principal() -> AdminPrincipal:
+    """A maker admin for service-level calls that take an audit actor.
+
+    Module-level `_ADMIN` constants are the older convention; the commission
+    work needs an admin in ~10 files, so it lives here per the DRY rule.
+    """
+    return AdminPrincipal(
+        id="00000000-0000-4000-8000-00000000ma01", username="maker", roles=frozenset()
+    )
+
+
+@pytest.fixture
+def checker_principal() -> AdminPrincipal:
+    """A SECOND admin, distinct from `admin_principal`.
+
+    Must differ: every maker-checker flow refuses self-approval, so a shared
+    principal would trip SelfApprovalForbidden in every approval test.
+    """
+    return AdminPrincipal(
+        id="00000000-0000-4000-8000-00000000ch01", username="checker", roles=frozenset()
+    )
 
 
 @pytest_asyncio.fixture

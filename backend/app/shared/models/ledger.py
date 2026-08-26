@@ -143,6 +143,11 @@ class Transaction(Base):
     commission_amount: Mapped[float] = mapped_column(
         Numeric(20, 6), nullable=False, server_default="0"
     )
+    # Commission paid to the earner's PARENT (spec 2026-08-26 §4.4).
+    # Display-only, like commission_amount — the money itself is in the legs.
+    parent_commission_amount: Mapped[float] = mapped_column(
+        Numeric(20, 6), nullable=False, server_default="0"
+    )
     tax_amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False, server_default="0")
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)

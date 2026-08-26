@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sasai Wallet &amp; Rewards, functional architecture</title>
+<style>
+:root{
+  --navy:#144989; --navy-d:#0E3465; --teal:#48C2CF; --teal-d:#1E8FA0;
+  --gold:#B87D18; --gold-l:#D9A03A; --purple:#7150A6; --purple-l:#9277C2;
+  --ink:#0E2338; --body:#3A4E63; --muted:#6B7F92;
+  --line:#DFE6ED; --bg:#F1F4F7; --card:#FFFFFF;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--body);
+  font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;
+  font-size:14px;line-height:1.55;padding:0 0 56px}
+.wrap{max-width:1360px;margin:0 auto;padding:0 28px}
+svg.ic{width:20px;height:20px;flex:0 0 20px;stroke-width:1.7;fill:none;
+  stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- header ---------- */
+header{background:linear-gradient(120deg,#0C2F5C 0%,var(--navy) 52%,#1B6E9E 100%);
+  color:#fff;padding:26px 0 30px;margin-bottom:26px;position:relative;overflow:hidden}
+header::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.13) 1px, transparent 1px);
+  background-size:22px 22px;opacity:.5}
+.hdr{display:flex;align-items:center;justify-content:space-between;gap:34px;flex-wrap:wrap;
+  position:relative;z-index:1}
+.hero{flex:0 0 372px;max-width:372px;margin-top:4px}
+.hero svg{width:100%;height:auto;display:block}
+.logo{background:#fff;border-radius:9px;padding:9px 14px;display:inline-block;line-height:0}
+.logo img{height:30px;width:auto;display:block}
+h1{font-size:27px;line-height:1.2;margin:16px 0 7px;font-weight:600;letter-spacing:-.2px}
+.sub{font-size:17.5px;color:#B4D8F2;max-width:1000px;margin:0;font-weight:400;letter-spacing:-.1px;line-height:1.4}
+.hdr-meta{text-align:right;font-size:12px;color:#A9C8E4;letter-spacing:.06em;
+  text-transform:uppercase;padding-top:8px;white-space:nowrap}
+
+/* ---------- figures ---------- */
+.figs{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:-46px 0 26px;
+  position:relative;z-index:2}
+.fig{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px 16px 15px;
+  box-shadow:0 3px 12px rgba(14,35,56,.07);display:flex;align-items:center;gap:0;overflow:hidden}
+.fig .n{font-size:44px;font-weight:700;color:var(--navy);line-height:.92;letter-spacing:-2px;
+  flex:0 0 auto;position:relative;z-index:0}
+.fig .l{font-size:12.9px;color:var(--ink);line-height:1.3;font-weight:600;
+  margin-left:9px;position:relative;z-index:1;min-width:0}
+.fig .l em{font-style:normal;display:block;color:var(--muted);font-weight:400;font-size:12.1px;
+  margin-top:1px}
+
+/* ---------- section ---------- */
+section{margin-bottom:26px}
+.sh{display:flex;align-items:baseline;gap:11px;margin:0 0 13px;padding-left:12px;
+  position:relative}
+.sh::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:4px;border-radius:3px;
+  background:linear-gradient(180deg,var(--teal),var(--navy))}
+.sh h2{font-size:16.5px;color:var(--ink);margin:0;font-weight:650;letter-spacing:-.1px}
+.sh p{font-size:13px;color:var(--muted);margin:0}
+
+/* ---------- icon badges ---------- */
+.bdg{width:42px;height:42px;border-radius:12px;display:inline-flex;align-items:center;
+  justify-content:center;flex:0 0 42px}
+.bdg svg.ic{width:22px;height:22px;flex-basis:22px;stroke-width:1.6}
+.bdg.n{background:#E7F0FA;color:var(--navy)} .bdg.g{background:#FBF2E0;color:var(--gold)}
+.bdg.p{background:#F1EBFA;color:var(--purple)} .bdg.t{background:#E4F6F8;color:var(--teal-d)}
+.sqb{width:29px;height:29px;border-radius:8px;display:inline-flex;align-items:center;
+  justify-content:center;flex:0 0 29px;margin-top:1px}
+.sqb svg.ic{width:16px;height:16px;flex-basis:16px}
+.sqb.n{background:#E7F0FA;color:var(--navy)} .sqb.g{background:#FBF2E0;color:var(--gold)}
+.sqb.p{background:#F1EBFA;color:var(--purple)} .sqb.t{background:#E4F6F8;color:var(--teal-d)}
+.crc{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;
+  justify-content:center;flex:0 0 32px;background:#E4F6F8;color:var(--teal-d)}
+.crc svg.ic{width:17px;height:17px;flex-basis:17px}
+
+/* ---------- packaging ---------- */
+.pack{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.pk{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:17px 18px;
+  border-top:4px solid var(--navy);box-shadow:0 2px 7px rgba(14,35,56,.05)}
+.pk.g{border-top-color:var(--gold-l)} .pk.p{border-top-color:var(--purple-l)}
+.pk h3{margin:0 0 8px;font-size:15.6px;color:var(--ink);display:flex;align-items:center;gap:11px;font-weight:650}
+.pk p{margin:0;font-size:13.2px;color:var(--body)}
+.pk .tag{display:inline-block;margin-top:10px;font-size:11px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--muted);background:#F3F6F9;border:1px solid var(--line);
+  border-radius:5px;padding:3px 8px}
+
+/* ---------- map ---------- */
+.map{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:20px;
+  box-shadow:0 2px 9px rgba(14,35,56,.05)}
+.band{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  font-weight:640;margin:0 0 9px;display:flex;align-items:center;gap:9px}
+.band::after{content:"";flex:1;height:1px;background:var(--line)}
+.chan{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:20px}
+.ch{border:1px solid var(--line);background:#F7F9FB;border-radius:9px;padding:11px 13px;
+  display:flex;gap:11px;align-items:flex-start}
+.ch b{display:block;font-size:13.2px;color:var(--ink);font-weight:620;margin-bottom:2px}
+.ch span{font-size:12.4px;color:var(--muted);line-height:1.42}
+
+.cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start}
+.dom{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:#fff}
+.dom > .dh{padding:11px 14px;color:#fff;display:flex;align-items:center;gap:9px}
+.dh b{font-size:13.4px;font-weight:640;letter-spacing:.01em}
+.dh em{font-style:normal;font-size:11.8px;opacity:.82;margin-left:auto;white-space:nowrap}
+.dh .hb{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.2);
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px}
+.dh .hb svg.ic{width:16px;height:16px;flex-basis:16px}
+.dom.w .dh{background:var(--navy)} .dom.b .dh{background:var(--purple)}
+.dom.r .dh{background:var(--gold)} .dom.s .dh{background:var(--teal-d)}
+.blk{padding:12px 14px;border-top:1px solid #EDF1F5;display:flex;gap:11px;align-items:flex-start}
+.blk:first-of-type{border-top:none}
+.blk b{display:block;font-size:13.4px;color:var(--ink);font-weight:620;margin-bottom:2px}
+.blk span{font-size:12.7px;color:var(--body);line-height:1.45}
+.dom.s{margin-top:14px}
+.dom.s .row{display:grid;grid-template-columns:repeat(3,1fr)}
+.dom.s .row .blk{border-top:none;border-left:1px solid #EDF1F5}
+.dom.s .row .blk:first-child{border-left:none}
+
+/* ---------- flows ---------- */
+.flows{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fl{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:15px 17px;
+  box-shadow:0 2px 7px rgba(14,35,56,.05)}
+.fl h3{margin:0 0 12px;font-size:14.4px;color:var(--ink);font-weight:645;
+  display:flex;align-items:center;gap:10px}
+.steps{display:flex;align-items:center;flex-wrap:wrap;gap:5px}
+.st{font-size:11.9px;padding:4px 9px;border-radius:16px;background:#F3F6F9;
+  border:1px solid var(--line);color:var(--body);white-space:nowrap}
+.st.w{background:#EAF1F9;border-color:#C9DCEE;color:var(--navy-d)}
+.st.r{background:#FBF3E3;border-color:#EBDBB6;color:#8A5D0C}
+.st.b{background:#F2EDFA;border-color:#DCD1EE;color:#553B85}
+.st.s{background:#E8F7F9;border-color:#C0E6EB;color:#146B79}
+.arw{color:#AFC0CE;font-size:13px;line-height:1}
+
+/* ---------- controls ---------- */
+.ctrl{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media (max-width:1180px){.lg,.ops{grid-template-columns:repeat(2,1fr)}.op.wide{grid-column:span 2}
+  .hero{flex-basis:100%;max-width:420px}.lbtop{flex-wrap:wrap}.lbill{flex-basis:100%;max-width:300px}}
+.ct{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--teal);
+  border-radius:9px;padding:14px 16px}
+.ct{display:flex;gap:11px;align-items:flex-start}
+.ct .txt b{display:block;font-size:13.4px;color:var(--ink);margin-bottom:3px;font-weight:645}
+.ct span{font-size:12.6px;color:var(--body);line-height:1.45}
+
+/* ---------- ledger band ---------- */
+.lb{background:linear-gradient(115deg,#0E3465 0%,var(--navy) 60%,#1A6591 100%);border-radius:13px;
+  padding:20px 22px;color:#DCE9F5;box-shadow:0 3px 12px rgba(14,35,56,.12);position:relative;
+  overflow:hidden}
+.lb::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.10) 1px, transparent 1px);background-size:20px 20px}
+.lbtop{display:flex;gap:26px;align-items:center;position:relative;z-index:1}
+.lbill{flex:0 0 250px;max-width:250px}
+.lbill svg{width:100%;height:auto;display:block}
+.lg{position:relative;z-index:1}
+.lb .lead{font-size:15.4px;color:#fff;margin:0 0 15px;max-width:1040px;line-height:1.5;font-weight:520}
+.lb .lead b{color:#8FE0EA;font-weight:640}
+.lg{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}
+.lg .li{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.17);
+  border-radius:9px;padding:13px 14px}
+.lg .li b{display:flex;align-items:center;gap:8px;font-size:13.2px;color:#fff;
+  font-weight:620;margin-bottom:4px}
+.lg .li b .lic{width:26px;height:26px;border-radius:7px;background:rgba(143,224,234,.20);
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px;color:#8FE0EA}
+.lg .li b .lic svg.ic{width:15px;height:15px;flex-basis:15px}
+.lg .li span{font-size:12.5px;color:#C3D8EC;line-height:1.45;display:block}
+
+/* ---------- open points ---------- */
+.ops{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}
+.op{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 15px;
+  border-left:3px solid var(--gold-l);position:relative}
+.op .idx{font-size:11.5px;font-weight:700;color:#fff;background:var(--gold-l);width:24px;height:24px;
+  border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px;
+  letter-spacing:0}
+.op b{display:block;font-size:13.3px;color:var(--ink);font-weight:640;margin-bottom:3px}
+.op span{font-size:12.5px;color:var(--body);line-height:1.45}
+.op.wide{grid-column:span 2}
+
+/* ---------- footer ---------- */
+.foot{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:16px 20px;
+  display:flex;gap:26px;flex-wrap:wrap;align-items:center}
+.foot .fi{font-size:12.7px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.foot .fi .sqb{margin-top:0}
+.foot .fi b{color:var(--ink);font-weight:620}
+
+@media print{
+  body{background:#fff;padding:0} header{margin-bottom:18px}
+  .figs{margin-top:-40px}
+  section,.map,.fl,.fig,.pk,.ct,.foot{box-shadow:none;break-inside:avoid}
+}
+@media (max-width:1180px){
+  .figs{grid-template-columns:repeat(3,1fr)} .cols{grid-template-columns:1fr}
+  .flows,.pack{grid-template-columns:1fr} .ctrl,.chan{grid-template-columns:repeat(2,1fr)}
+  .dom.s .row{grid-template-columns:1fr}
+  .dom.s .row .blk{border-left:none;border-top:1px solid #EDF1F5}
+}
+</style>
+</head>
+<body>
+
+<svg style="display:none" aria-hidden="true">
+<defs>
+<g id="i-phone"><rect x="6" y="2" width="12" height="20" rx="2.5"/><line x1="10.5" y1="18.5" x2="13.5" y2="18.5"/></g>
+<g id="i-sliders"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="15" cy="7" r="2.2"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="17" r="2.2"/></g>
+<g id="i-plug"><path d="M9 3v6M15 3v6"/><path d="M6 9h12v3a6 6 0 0 1-12 0z"/><path d="M12 18v3"/></g>
+<g id="i-feed"><path d="M4 12a8 8 0 0 1 8 8"/><path d="M4 6a14 14 0 0 1 14 14"/><circle cx="4.6" cy="19.4" r="1.5"/></g>
+<g id="i-ledger"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v18H5.5A1.5 1.5 0 0 1 4 19.5z"/><line x1="8" y1="8" x2="15" y2="8"/><line x1="8" y1="12" x2="15" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></g>
+<g id="i-move"><path d="M3 8h13l-3-3M21 16H8l3 3"/></g>
+<g id="i-gauge"><path d="M4 18a8 8 0 1 1 16 0"/><line x1="12" y1="18" x2="16" y2="11"/><circle cx="12" cy="18" r="1.4"/></g>
+<g id="i-swap"><path d="M5 9h11l-3-3.5M19 15H8l3 3.5"/><circle cx="12" cy="12" r="9.2" stroke-dasharray="2 3"/></g>
+<g id="i-gift"><rect x="3" y="8" width="18" height="13" rx="1.5"/><line x1="12" y1="8" x2="12" y2="21"/><path d="M12 8C10.5 4 7 3 6.2 4.6 5.4 6.2 8.5 8 12 8zM12 8c1.5-4 5-5 5.8-3.4.8 1.6-2.3 3.4-5.8 3.4z"/></g>
+<g id="i-bolt"><path d="M13.5 2 5 13.5h5.5L10 22l8.5-11.5H13z"/></g>
+<g id="i-coins"><ellipse cx="12" cy="6.5" rx="7.5" ry="3.2"/><path d="M4.5 6.5v5c0 1.8 3.4 3.2 7.5 3.2s7.5-1.4 7.5-3.2v-5"/><path d="M4.5 11.5v5c0 1.8 3.4 3.2 7.5 3.2s7.5-1.4 7.5-3.2v-5"/></g>
+<g id="i-star"><path d="M12 3l2.7 5.6 6.1.8-4.4 4.3 1.1 6.1L12 17l-5.5 2.8 1.1-6.1L3.2 9.4l6.1-.8z"/></g>
+<g id="i-user"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></g>
+<g id="i-building"><path d="M4 21V6l8-3 8 3v15"/><line x1="9" y1="10" x2="9" y2="10.1"/><line x1="15" y1="10" x2="15" y2="10.1"/><line x1="9" y1="14" x2="9" y2="14.1"/><line x1="15" y1="14" x2="15" y2="14.1"/><path d="M10 21v-4h4v4"/></g>
+<g id="i-shield"><path d="M12 2.5 20 5.5v6c0 5-3.4 8.7-8 10.5-4.6-1.8-8-5.5-8-10.5v-6z"/><path d="M8.8 12l2.3 2.3 4.1-4.6"/></g>
+<g id="i-check2"><path d="M2.5 12.5l4 4 8-9M10.5 16.5l1 1 8-9"/></g>
+<g id="i-wallet"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18"/><circle cx="16.5" cy="14.5" r="1.3"/></g>
+<g id="i-both"><circle cx="9.2" cy="12" r="6.2"/><circle cx="14.8" cy="12" r="6.2"/></g>
+<g id="i-lock"><rect x="5" y="10.5" width="14" height="10.5" rx="2"/><path d="M8.2 10.5V7.8a3.8 3.8 0 0 1 7.6 0v2.7"/></g>
+<g id="i-budget"><path d="M12 3v18"/><path d="M4 8h11a3 3 0 0 1 0 6H4"/><path d="M4 14h11a3 3 0 0 1 0 6H4" stroke-opacity=".35"/></g>
+<g id="i-shrink"><path d="M3 6h18"/><path d="M6 12h12"/><path d="M9 18h6"/></g>
+<g id="i-stop"><circle cx="12" cy="12" r="9"/><line x1="6" y1="18" x2="18" y2="6"/></g>
+<g id="i-send"><path d="M21 3 10.5 13.5M21 3l-7 18-3.5-7.5L3 10z"/></g>
+<g id="i-db"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></g>
+<g id="i-clock"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.5l4 2"/></g>
+<g id="i-globe"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3.2 3 14.8 0 18-3-3.2-3-14.8 0-18z"/></g>
+</defs>
+</svg>
+
+<header>
+  <div class="wrap hdr">
+    <div>
+      <div class="logo"><img src="data:image/png;base64,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" alt="Sasai"></div>
+      <h1>Wallet &amp; Rewards, functional architecture</h1>
+      <p class="sub">Wallets deployed in weeks, configured not coded, with rewards and re-engagement built in.</p>
+    </div>
+    <div class="hero">
+      <svg viewBox="0 0 372 236" role="img" aria-label="Wallet and rewards loop">
+        <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="186" cy="118" r="108" stroke="rgba(255,255,255,.13)" stroke-width="1"/>
+          <circle cx="186" cy="118" r="84" stroke="rgba(255,255,255,.10)" stroke-width="1" stroke-dasharray="3 6"/>
+          <!-- re-engagement loop -->
+          <path d="M186 20 a98 98 0 0 1 84 148" stroke="#7FD7E6" stroke-width="2.2" stroke-dasharray="7 7" opacity=".85"/>
+          <path d="M262 160 l10 10 l-13 4" stroke="#7FD7E6" stroke-width="2.2"/>
+          <path d="M186 216 a98 98 0 0 1 -84 -148" stroke="#7FD7E6" stroke-width="2.2" stroke-dasharray="7 7" opacity=".55"/>
+          <path d="M110 76 l-10 -10 l13 -4" stroke="#7FD7E6" stroke-width="2.2" opacity=".55"/>
+          <!-- phone -->
+          <rect x="148" y="46" width="78" height="144" rx="13" fill="rgba(255,255,255,.10)" stroke="#CFE6F7" stroke-width="2"/>
+          <line x1="177" y1="57" x2="197" y2="57" stroke="#CFE6F7" stroke-width="2.4"/>
+          <rect x="159" y="72" width="56" height="35" rx="6" fill="rgba(72,194,207,.30)" stroke="#8FE0EA" stroke-width="1.8"/>
+          <line x1="159" y1="84" x2="215" y2="84" stroke="#8FE0EA" stroke-width="1.6"/>
+          <circle cx="206" cy="98" r="3.4" fill="#8FE0EA"/>
+          <line x1="159" y1="121" x2="205" y2="121" stroke="rgba(255,255,255,.55)" stroke-width="2.6"/>
+          <line x1="159" y1="133" x2="192" y2="133" stroke="rgba(255,255,255,.34)" stroke-width="2.6"/>
+          <line x1="159" y1="145" x2="199" y2="145" stroke="rgba(255,255,255,.34)" stroke-width="2.6"/>
+          <path d="M187 158 l3.4 7 7.6 1-5.5 5.3 1.4 7.6-6.9-3.6-6.9 3.6 1.4-7.6-5.5-5.3 7.6-1z" fill="rgba(255,206,110,.9)" stroke="none"/>
+          <!-- coin stack, money side -->
+          <ellipse cx="58" cy="96" rx="30" ry="12" fill="rgba(255,255,255,.13)" stroke="#CFE6F7" stroke-width="1.9"/>
+          <path d="M28 96v13c0 6.6 13.4 12 30 12s30-5.4 30-12V96" stroke="#CFE6F7" stroke-width="1.9"/>
+          <ellipse cx="58" cy="126" rx="30" ry="12" fill="rgba(255,255,255,.09)" stroke="#CFE6F7" stroke-width="1.9"/>
+          <path d="M28 126v13c0 6.6 13.4 12 30 12s30-5.4 30-12v-13" stroke="#CFE6F7" stroke-width="1.9"/>
+          <text x="58" y="101" text-anchor="middle" font-size="13" font-weight="700" fill="#CFE6F7" stroke="none" font-family="Segoe UI,Arial,sans-serif">$</text>
+          <!-- reward gift, points side -->
+          <rect x="278" y="104" width="62" height="46" rx="5" fill="rgba(255,255,255,.11)" stroke="#FFD98A" stroke-width="2"/>
+          <line x1="309" y1="104" x2="309" y2="150" stroke="#FFD98A" stroke-width="2"/>
+          <line x1="278" y1="118" x2="340" y2="118" stroke="#FFD98A" stroke-width="2"/>
+          <path d="M309 104c-5-12-15-15-17-11s7 11 17 11zm0 0c5-12 15-15 17-11s-7 11-17 11z" stroke="#FFD98A" stroke-width="2"/>
+          <!-- sparkles -->
+          <path d="M258 62v11M252.5 67.5h11" stroke="#FFD98A" stroke-width="2"/>
+          <path d="M104 172v9M99.5 176.5h9" stroke="#8FE0EA" stroke-width="2"/>
+          <circle cx="290" cy="76" r="2.6" fill="#8FE0EA" stroke="none"/>
+          <circle cx="80" cy="52" r="2.6" fill="#FFD98A" stroke="none"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="figs">
+    <div class="fig"><div class="n">8</div><div class="l">core journeys<em>live end to end today</em></div></div>
+    <div class="fig"><div class="n">3</div><div class="l">ways to package it<em>wallet, rewards, or both</em></div></div>
+    <div class="fig"><div class="n">7</div><div class="l">reward mechanics<em>marketing configures these</em></div></div>
+    <div class="fig"><div class="n">1</div><div class="l">ledger<em>all value flows through it</em></div></div>
+  </div>
+
+  <section>
+    <div class="sh"><h2>What we offer</h2><p>The same deployment, provisioned three different ways</p></div>
+    <div class="pack">
+      <div class="pk">
+        <h3><span class="bdg n"><svg class="ic"><use href="#i-wallet"/></svg></span> Wallet only</h3>
+        <p>A licensed money product: send, receive, cash in and out through agents, airtime and card
+        top-up, treasury and float for the operator, plus fund and withdraw over an external API and
+        merchant cash-in, where a merchant's own wallet funds another customer.</p>
+        <span class="tag">Strong fit for external integration</span>
+      </div>
+      <div class="pk g">
+        <h3><span class="bdg g"><svg class="ic"><use href="#i-star"/></svg></span> Rewards only</h3>
+        <p>A loyalty product that sits on top of someone else's transactions: partner systems send us activity,
+        our rules decide the reward, customers redeem with partners.</p>
+        <span class="tag">Never touches the money core</span>
+      </div>
+      <div class="pk p">
+        <h3><span class="bdg p"><svg class="ic"><use href="#i-both"/></svg></span> Wallet and rewards</h3>
+        <p>The full proposition: customers earn on wallet activity and turn points into spendable money
+        or cashback inside the same app. This is where the bridge switches on.</p>
+        <span class="tag">Highest engagement, highest value</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh"><h2>Capability map</h2><p>Colour shows which half of the platform owns the capability</p></div>
+    <div class="map">
+
+      <p class="band">How customers, staff and partners reach us</p>
+      <div class="chan">
+        <div class="ch"><span class="sqb n"><svg class="ic"><use href="#i-phone"/></svg></span><div><b>Mobile app</b><span>One app for consumers and agents: pay, top up, earn and redeem.</span></div></div>
+        <div class="ch"><span class="sqb n"><svg class="ic"><use href="#i-sliders"/></svg></span><div><b>Admin console</b><span>Campaigns, pricing, limits, treasury and approvals in one place.</span></div></div>
+        <div class="ch"><span class="sqb n"><svg class="ic"><use href="#i-plug"/></svg></span><div><b>Partner API</b><span>Partners fund, withdraw and take merchant cash-in securely.</span></div></div>
+        <div class="ch"><span class="sqb n"><svg class="ic"><use href="#i-feed"/></svg></span><div><b>Partner activity feeds</b><span>Registered systems send us verified activity to reward on.</span></div></div>
+      </div>
+
+      <p class="band">Platform capabilities</p>
+      <div class="cols">
+
+        <div class="dom w">
+          <div class="dh"><span class="hb"><svg class="ic"><use href="#i-wallet"/></svg></span><b>WALLET</b><em>Real money</em></div>
+          <div class="blk"><span class="sqb n"><svg class="ic"><use href="#i-ledger"/></svg></span><div><b>Ledger and money core</b><span>Every movement of value passes through one auditable ledger. Balances are calculated, never overwritten.</span></div></div>
+          <div class="blk"><span class="sqb n"><svg class="ic"><use href="#i-move"/></svg></span><div><b>Money movement</b><span>Customer payments, agent cash in and out, airtime and card top-up, plus operator treasury and float.</span></div></div>
+          <div class="blk"><span class="sqb n"><svg class="ic"><use href="#i-gauge"/></svg></span><div><b>Limits, pricing and revenue</b><span>Fees, agent commission and tax, with daily and monthly caps set per service, customer type and currency.</span></div></div>
+          <div class="blk"><span class="sqb n"><svg class="ic"><use href="#i-plug"/></svg></span><div><b>External integration</b><span>Partners fund and withdraw over API. Merchant cash-in lets a merchant's own wallet fund another customer, which opens up payout and disbursement use cases.</span></div></div>
+        </div>
+
+        <div class="dom b">
+          <div class="dh"><span class="hb"><svg class="ic"><use href="#i-swap"/></svg></span><b>BRIDGE</b><em>Both-mode tenants only</em></div>
+          <div class="blk"><span class="sqb p"><svg class="ic"><use href="#i-swap"/></svg></span><div><b>Points into money</b><span>An approved conversion rate turns points into spendable balance, with caps that stop any single customer draining the pool.</span></div></div>
+          <div class="blk"><span class="sqb p"><svg class="ic"><use href="#i-gift"/></svg></span><div><b>Money-funded rewards</b><span>Cashback and pay-with-points, paid from a dedicated promotions wallet so campaign cost never touches customer money.</span></div></div>
+          <div class="blk"><span class="sqb p"><svg class="ic"><use href="#i-check2"/></svg></span><div><b>Traceable crossings</b><span>Both sides of every crossing are linked and the rate is recorded, so finance can trace any payout back to the points that funded it.</span></div></div>
+        </div>
+
+        <div class="dom r">
+          <div class="dh"><span class="hb"><svg class="ic"><use href="#i-star"/></svg></span><b>REWARDS</b><em>Loyalty points</em></div>
+          <div class="blk"><span class="sqb g"><svg class="ic"><use href="#i-bolt"/></svg></span><div><b>Activity and rules</b><span>Activity from our wallet or a verified partner feed is matched against the rules that decide what the customer earns.</span></div></div>
+          <div class="blk"><span class="sqb g"><svg class="ic"><use href="#i-coins"/></svg></span><div><b>Issuance and campaigns</b><span>Points issued once per event, inside a budget, with multipliers and audience segments marketing controls itself.</span></div></div>
+          <div class="blk"><span class="sqb g"><svg class="ic"><use href="#i-star"/></svg></span><div><b>Customer rewards journey</b><span>Balance, earning history, progress toward the next reward, referral codes, and redemption with partners.</span></div></div>
+        </div>
+      </div>
+
+      <div class="dom s">
+        <div class="dh"><span class="hb"><svg class="ic"><use href="#i-shield"/></svg></span><b>SHARED FOUNDATION</b><em>Present in every tenant, whichever halves are switched on</em></div>
+        <div class="row">
+          <div class="blk"><span class="sqb t"><svg class="ic"><use href="#i-user"/></svg></span><div><b>Identity and access</b><span>One customer record with PIN and OTP security, and staff permissions granted role by role.</span></div></div>
+          <div class="blk"><span class="sqb t"><svg class="ic"><use href="#i-building"/></svg></span><div><b>Tenancy and approvals</b><span>Each tenant is switched on only for what they bought, and any change to pricing or limits needs a second approver.</span></div></div>
+          <div class="blk"><span class="sqb t"><svg class="ic"><use href="#i-shield"/></svg></span><div><b>Audit and notifications</b><span>Every change and every state transition is logged permanently, and customers are notified.</span></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh"><h2>How the money is kept</h2><p>The design decision everything else rests on</p></div>
+    <div class="lb">
+      <div class="lbtop">
+        <p class="lead">The platform is <b>ledger based</b>. No balance is stored anywhere. A balance is the
+        sum of that account's ledger entries, calculated at the moment it is asked for, which means the
+        books can always be proved from the entries themselves.</p>
+        <div class="lbill">
+          <svg viewBox="0 0 250 132" role="img" aria-label="Ledger entries summed into a balance">
+            <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="6" width="128" height="104" rx="8" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.35)" stroke-width="1.6"/>
+              <line x1="68" y1="14" x2="68" y2="102" stroke="rgba(255,255,255,.22)" stroke-width="1.4" stroke-dasharray="3 4"/>
+              <g stroke="#8FE0EA" stroke-width="4.6">
+                <line x1="14" y1="26" x2="52" y2="26"/><line x1="84" y1="26" x2="122" y2="26"/>
+                <line x1="14" y1="46" x2="44" y2="46"/><line x1="84" y1="46" x2="114" y2="46"/>
+              </g>
+              <g stroke="rgba(255,255,255,.5)" stroke-width="4.6">
+                <line x1="14" y1="66" x2="58" y2="66"/><line x1="84" y1="66" x2="128" y2="66"/>
+                <line x1="14" y1="86" x2="38" y2="86"/><line x1="84" y1="86" x2="108" y2="86"/>
+              </g>
+              <path d="M140 58h34" stroke="#8FE0EA" stroke-width="2"/>
+              <path d="M168 52l7 6-7 6" stroke="#8FE0EA" stroke-width="2"/>
+              <text x="150" y="40" font-size="15" font-weight="700" fill="#8FE0EA" stroke="none" font-family="Segoe UI,Arial,sans-serif">&#8721;</text>
+              <rect x="182" y="34" width="62" height="48" rx="9" fill="rgba(143,224,234,.20)" stroke="#8FE0EA" stroke-width="1.8"/>
+              <text x="213" y="58" text-anchor="middle" font-size="11" font-weight="700" fill="#DFF4F8" stroke="none" font-family="Segoe UI,Arial,sans-serif">BALANCE</text>
+              <text x="213" y="72" text-anchor="middle" font-size="10" fill="#9EC9E4" stroke="none" font-family="Segoe UI,Arial,sans-serif">calculated</text>
+              <rect x="199" y="94" width="28" height="20" rx="4" fill="rgba(255,255,255,.12)" stroke="#CFE6F7" stroke-width="1.6"/>
+              <path d="M206 94v-5a7 7 0 0 1 14 0v5" stroke="#CFE6F7" stroke-width="1.6"/>
+              <text x="66" y="126" text-anchor="middle" font-size="9.5" fill="#9EC9E4" stroke="none" letter-spacing="1.4" font-family="Segoe UI,Arial,sans-serif">MATCHED ENTRIES</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+      <div class="lg">
+        <div class="li"><b><span class="lic"><svg class="ic"><use href="#i-ledger"/></svg></span> No stored balances</b><span>Nothing is overwritten, so a balance can never silently drift away from the transactions behind it.</span></div>
+        <div class="li"><b><span class="lic"><svg class="ic"><use href="#i-check2"/></svg></span> One posting path</b><span>Money and points both move as matched pairs of entries through a single posting function, whatever started the transaction.</span></div>
+        <div class="li"><b><span class="lic"><svg class="ic"><use href="#i-lock"/></svg></span> A lock per account</b><span>Transactions hitting the same account are handled one after another under an account lock, so two cannot pass the same check at once.</span></div>
+        <div class="li"><b><span class="lic"><svg class="ic"><use href="#i-shield"/></svg></span> Checks inside the lock</b><span>Overdraft and underdraft floors, credit ceilings and the customer's own limits are all evaluated while the lock is held.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh"><h2>How value flows</h2><p>Four journeys that show the halves working together</p></div>
+    <div class="flows">
+      <div class="fl">
+        <h3><span class="crc" style="background:#E7F0FA;color:var(--navy)"><svg class="ic"><use href="#i-send"/></svg></span> Customer sends money</h3>
+        <div class="steps">
+          <span class="st s">Permission check</span><span class="arw">&#9656;</span>
+          <span class="st w">Limits and fee applied</span><span class="arw">&#9656;</span>
+          <span class="st w">Ledger posts both sides</span><span class="arw">&#9656;</span>
+          <span class="st w">Recipient credited</span><span class="arw">&#9656;</span>
+          <span class="st b">Reward event raised</span>
+        </div>
+      </div>
+      <div class="fl">
+        <h3><span class="crc" style="background:#FBF2E0;color:var(--gold)"><svg class="ic"><use href="#i-bolt"/></svg></span> Customer earns points</h3>
+        <div class="steps">
+          <span class="st r">Activity arrives</span><span class="arw">&#9656;</span>
+          <span class="st r">Rule matched</span><span class="arw">&#9656;</span>
+          <span class="st r">Campaign budget checked</span><span class="arw">&#9656;</span>
+          <span class="st r">Points credited once</span>
+        </div>
+      </div>
+      <div class="fl">
+        <h3><span class="crc" style="background:#F1EBFA;color:var(--purple)"><svg class="ic"><use href="#i-swap"/></svg></span> Customer turns points into money</h3>
+        <div class="steps">
+          <span class="st r">Points balance</span><span class="arw">&#9656;</span>
+          <span class="st b">Approved rate applied</span><span class="arw">&#9656;</span>
+          <span class="st b">Drain caps enforced</span><span class="arw">&#9656;</span>
+          <span class="st w">Spendable balance in wallet</span>
+        </div>
+      </div>
+      <div class="fl">
+        <h3><span class="crc" style="background:#F1EBFA;color:var(--purple)"><svg class="ic"><use href="#i-gift"/></svg></span> Customer earns cashback</h3>
+        <div class="steps">
+          <span class="st r">Rule fires as cashback</span><span class="arw">&#9656;</span>
+          <span class="st r">Promo budget checked</span><span class="arw">&#9656;</span>
+          <span class="st b">Paid from promotions wallet</span><span class="arw">&#9656;</span>
+          <span class="st w">Real money in wallet</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh"><h2>Controls that protect the business</h2><p>Built into the platform, not bolted on later</p></div>
+    <div class="ctrl">
+      <div class="ct"><span class="crc"><svg class="ic"><use href="#i-check2"/></svg></span><div class="txt"><b>Two-person approval</b><span>No one person can move operator money or change pricing, limits or conversion rates on their own.</span></div></div>
+      <div class="ct"><span class="crc"><svg class="ic"><use href="#i-budget"/></svg></span><div class="txt"><b>Campaign budgets</b><span>Every campaign has a ceiling, checked before a single point or cent is issued. Marketing cannot overspend.</span></div></div>
+      <div class="ct"><span class="crc"><svg class="ic"><use href="#i-shrink"/></svg></span><div class="txt"><b>Anti-drain limits</b><span>Redemption is capped per transaction and as a share of balance, so no account can empty the pool at once.</span></div></div>
+      <div class="ct"><span class="crc"><svg class="ic"><use href="#i-stop"/></svg></span><div class="txt"><b>Fails closed</b><span>A missing price or limit stops the transaction. Nothing runs on an unconfigured default.</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh"><h2>Open points</h2><p>Known and tracked, not discovered late</p></div>
+    <div class="ops">
+      <div class="op"><span class="idx">01</span><b>Architectural audit</b><span>Independent review of the design and the code before we scale up.</span></div>
+      <div class="op"><span class="idx">02</span><b>Role management interface</b><span>Admin screens to create and edit roles, rather than configuring permissions behind the scenes.</span></div>
+      <div class="op"><span class="idx">03</span><b>New tenant testing</b><span>Full end-to-end run of provisioning a fresh tenant in each of the three modes.</span></div>
+      <div class="op"><span class="idx">04</span><b>Load and stress testing</b><span>Establish the throughput ceiling and confirm how the platform behaves at it.</span></div>
+      <div class="op"><span class="idx">05</span><b>VAPT</b><span>External vulnerability assessment and penetration test.</span></div>
+      <div class="op"><span class="idx">06</span><b>Long-running query audit</b><span>Find and tune the queries that will slow down as transaction volume grows.</span></div>
+      <div class="op wide"><span class="idx">07</span><b>Wallet balance snapshot</b><span>Today a balance is summed across the whole ledger. A periodic snapshot, for example monthly, would mean a balance is the snapshot plus only one month of entries per customer, which keeps reads fast as history grows.</span></div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <div class="fi"><span class="sqb t"><svg class="ic"><use href="#i-db"/></svg></span><span><b>Runs on</b> PostgreSQL (system of record), Kafka (event bus), Redis and Celery (sessions, rate limits, background sweeps), Keycloak (admin identity).</span></div>
+    <div class="fi"><span class="sqb t"><svg class="ic"><use href="#i-globe"/></svg></span><span><b>Multi-currency</b> pricing, limits and conversion rates.</span></div>
+    <div class="fi"><span class="sqb t"><svg class="ic"><use href="#i-lock"/></svg></span><span><b>Points and money keep separate statements,</b> cross-referenced so either side resolves to the other.</span></div>
+  </div>
+
+</div>
+</body>
+</html>

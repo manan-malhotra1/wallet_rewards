@@ -28,6 +28,7 @@ from app.shared.exceptions import (
     AccountNotFound,
     DuplicateIdempotencyKey,
     InsufficientCashbackFunds,
+    InsufficientCommissionBalance,
     InsufficientFloat,
     InsufficientFunds,
     MaxBalanceExceeded,
@@ -36,6 +37,7 @@ from app.shared.exceptions import (
 )
 from app.shared.models import (
     ACCOUNT_TYPE_CASHBACK_PROVIDER,
+    ACCOUNT_TYPE_COMMISSION_WALLET,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ENTRY_CREDIT,
@@ -64,8 +66,22 @@ _OVERDRAFT_GUARDED_ACCOUNT_TYPES = frozenset(
         ACCOUNT_TYPE_FINANCIAL_WALLET,
         ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
         ACCOUNT_TYPE_CASHBACK_PROVIDER,
+        ACCOUNT_TYPE_COMMISSION_WALLET,
     }
 )
+
+# --- Guard axis 2: the max_balance CEILING ---------------------------------
+# Account types whose net CREDIT is gated by the owner's max_balance.
+#
+# This set is deliberately EXPLICIT rather than derived from
+# `account.user_id is not None`. That derivation was correct only while
+# `financial_wallet` was the sole user-owned guarded type. `commission_wallet`
+# is user-owned AND uncapped (spec 2026-08-26 D5: an agent may accrue any
+# amount of commission), so ownership no longer implies a ceiling. Deriving the
+# ceiling from ownership here would silently cap commission accrual — a bug no
+# commission test would catch, because it only fires once an agent's accrual
+# crosses their configured max_balance in production.
+_CEILING_GUARDED_ACCOUNT_TYPES = frozenset({ACCOUNT_TYPE_FINANCIAL_WALLET})
 
 
 @dataclass(frozen=True)
@@ -135,6 +151,9 @@ class PostTransactionRequest:
             represented in `entries` as a sender→system_fee_collected leg.
             Persisted on the transaction row so the fee is displayable
             without re-deriving it from the ledger (Pay-PRD-0260).
+        parent_commission_amount: Commission paid to the earner's PARENT
+            (spec 2026-08-26), already represented in `entries` as a second
+            commission_pool -> parent leg. Display-only on the transaction row.
         commission_amount: Commission paid to the acting agent (Pricing v2),
             already represented in `entries` as a commission_pool→agent leg.
             Display-only on the transaction row.
@@ -167,6 +186,7 @@ class PostTransactionRequest:
     base_transaction_type: str | None = None
     fee_amount: Decimal = Decimal("0")
     commission_amount: Decimal = Decimal("0")
+    parent_commission_amount: Decimal = Decimal("0")
     tax_amount: Decimal = Decimal("0")
     status: str = TXN_STATUS_COMPLETED
     is_reversal: bool = False
@@ -246,6 +266,7 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
         amount=headline_amount,
         fee_amount=request.fee_amount,
         commission_amount=request.commission_amount,
+        parent_commission_amount=request.parent_commission_amount,
         tax_amount=request.tax_amount,
         currency=request.currency.upper(),
     )
@@ -438,12 +459,19 @@ async def _enforce_balance_guard(
                     raise InsufficientFloat()
                 if account.account_type == ACCOUNT_TYPE_CASHBACK_PROVIDER:
                     raise InsufficientCashbackFunds()
+                if account.account_type == ACCOUNT_TYPE_COMMISSION_WALLET:
+                    raise InsufficientCommissionBalance()
                 raise InsufficientFunds()
         elif (
-            not request.is_reversal and not request.skip_receive_cap and account.user_id is not None
+            not request.is_reversal
+            and not request.skip_receive_cap
+            and account.account_type in _CEILING_GUARDED_ACCOUNT_TYPES
+            and account.user_id is not None
         ):
-            # A financial_wallet always has an owner; resolve their type to find
-            # the cap. The explicit None check also narrows the type for mypy.
+            # Ceiling applies to the spendable main wallet ONLY. The
+            # account_type test is what excludes commission wallets, which are
+            # user-owned but uncapped; the user_id check is kept because a
+            # capped type always has an owner and it narrows the type for mypy.
             cap = await resolve_max_balance(
                 session,
                 tenant_id=request.tenant_id,

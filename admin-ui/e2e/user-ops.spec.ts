@@ -39,6 +39,23 @@ test("maker proposes an edit to Alice's name; checker approves and it applies", 
 
   const drawer = page.getByRole("dialog");
   await expect(drawer.getByText("Edit user")).toBeVisible();
+
+  // Self-heal: an aborted earlier run can leave a PENDING edit, which blocks a
+  // new proposal (the drawer shows the open request instead of the form). The
+  // maker withdraws it under Approvals → Users, then reopens the edit drawer.
+  if (await drawer.getByText("An edit is already awaiting approval").isVisible()) {
+    await page.goto("/approvals?tab=users&status=PENDING");
+    const staleRow = page.getByRole("row").filter({ hasText: "Edit user" }).first();
+    await staleRow.getByRole("button", { name: "View" }).click();
+    const staleDrawer = page.getByRole("dialog");
+    await staleDrawer.getByRole("button", { name: "Withdraw", exact: true }).click();
+    await staleDrawer.getByRole("button", { name: "Confirm withdraw" }).click();
+    await expect(page.getByText(/withdrawn/i).first()).toBeVisible();
+    await page.goto(ALICE_LOOKUP);
+    await page.getByRole("button", { name: "Edit" }).click();
+    await expect(drawer.getByText("Edit user")).toBeVisible();
+  }
+
   await drawer.getByLabel("First name").fill(newFirst);
   await drawer.getByLabel("Last name").fill(newLast);
   await drawer.getByRole("button", { name: "Submit for approval" }).click();
@@ -51,13 +68,21 @@ test("maker proposes an edit to Alice's name; checker approves and it applies", 
   });
   const checkerPage = await checkerContext.newPage();
   try {
-    await checkerPage.goto("/approvals?tab=users&status=pending");
+    // Status values are the UPPERCASE StatusKeys (lib/approvals-filter.ts).
+    await checkerPage.goto("/approvals?tab=users&status=PENDING");
     await expect(
       checkerPage.getByRole("heading", { name: "Approvals" }),
     ).toBeVisible();
 
-    // The only pending update — open its detail drawer and approve.
-    await checkerPage.getByRole("button", { name: "View" }).first().click();
+    // Open the newest pending edit's detail drawer. Scope View to the ROW —
+    // a page-level name match would also hit the toolbar's disabled
+    // "+ Save as view" button (role-name matching is substring).
+    await checkerPage
+      .getByRole("row")
+      .filter({ hasText: "Edit user" })
+      .first()
+      .getByRole("button", { name: "View" })
+      .click();
 
     const checkerDrawer = checkerPage.getByRole("dialog");
     await checkerDrawer.getByRole("button", { name: "Approve" }).click();

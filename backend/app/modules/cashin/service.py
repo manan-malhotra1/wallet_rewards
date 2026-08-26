@@ -25,6 +25,7 @@ from app.auth import UserPrincipal
 from app.modules.accounts.service import derive_balance
 from app.modules.audit.service import record_audit_for_user
 from app.modules.cashin.schemas import CashInRequest
+from app.modules.commissions.resolution import resolve_earner_target
 from app.modules.commissions.service import calculate_commission
 from app.modules.identity.service import resolve_identifier
 from app.modules.ledger import (
@@ -51,6 +52,7 @@ from app.modules.roles.service import require_permission
 from app.modules.taxes.service import calculate_tax
 from app.shared.exceptions import (
     AccountNotFound,
+    CommissionWalletMissing,
     InsufficientFunds,
     SelfTransferNotAllowed,
     TenantNotFound,
@@ -278,7 +280,7 @@ async def cash_in(
         currency=currency,
         amount=request.amount,
     )
-    commission = await calculate_commission(
+    outcome = await calculate_commission(
         session,
         tenant_id=tenant_id,
         agent_user_id=agent_user_id,
@@ -291,8 +293,24 @@ async def cash_in(
         tenant_id=tenant_id,
         currency=currency,
         fee=fee_quote.fee,
-        commission=commission,
+        commission=outcome.self_amount,
+        parent_commission=outcome.parent_amount,
     )
+
+    # Where the earner's own commission lands (spec 2026-08-26, D6). Fails
+    # CLOSED (§7.2): a rule that resolves but has no wallet behind it is an
+    # operator error, and paying it into the spendable wallet instead would
+    # silently void the review hold the rule asked for.
+    earner_target = await resolve_earner_target(
+        session,
+        tenant_id=tenant_id,
+        earner_user_id=agent_user_id,
+        destination=outcome.destination,
+        currency=currency,
+    )
+    if outcome.self_amount > 0 and earner_target.account_id is None:
+        raise CommissionWalletMissing()
+    commission_account_id = earner_target.account_id or agent_wallet.id
 
     # 5. Resolve the system wallets and assemble the balanced legs.
     fee_account = await get_or_create_system_fee_account(
@@ -315,14 +333,17 @@ async def cash_in(
             service_tax_account_id=service_tax_account.id,
             commission_tax_account_id=commission_tax_account.id,
             commission_pool_account_id=commission_pool.id,
-            agent_account_id=agent_wallet.id,  # commission lands on the agent's float
+            agent_account_id=commission_account_id,
+            parent_account_id=outcome.parent_account_id,
         ),
         ChargeAmounts(
             principal=request.amount,
             fee=fee_quote.fee,
-            commission=commission,
+            commission=outcome.self_amount,
             fee_tax=tax.fee_tax,
             commission_tax=tax.commission_tax,
+            parent_commission=outcome.parent_amount,
+            parent_commission_tax=tax.parent_commission_tax,
         ),
         ChargeFlags(
             fee_inclusive=fee_quote.fee_inclusive,
@@ -357,6 +378,7 @@ async def cash_in(
             amount=request.amount,
             fee_amount=assembled.fee_amount,
             commission_amount=assembled.commission_amount,
+            parent_commission_amount=assembled.parent_commission_amount,
             tax_amount=assembled.tax_amount,
             # Deliberate product choice: rewards target end-user ENGAGEMENT, so
             # the reward recipient is the funded CUSTOMER — NOT the acting agent
@@ -389,6 +411,10 @@ async def cash_in(
                 "customer_user_id": str(customer_user_id),
                 "fee": str(assembled.fee_amount),
                 "commission": str(assembled.commission_amount),
+                "parent_commission": str(assembled.parent_commission_amount),
+                # Recorded so reconciliation can explain a missing parent leg
+                # without re-deriving the hierarchy (spec D10).
+                "parent_skip_reason": outcome.parent_skip_reason,
                 "tax": str(assembled.tax_amount),
                 "status": txn.status,
             },

@@ -37,12 +37,17 @@ class TaxComputation:
         fee_tax_inclusive: Axis 2 — is the fee's tax carved out of the fee
             (inclusive) or added on top (exclusive).
         commission_tax_inclusive: Axis 3 — same for the commission's tax.
+        parent_commission_tax: Tax on the PARENT's commission (spec 2026-08-26,
+            D11). Computed on its own base at the same rate, NOT as a share of
+            `commission_tax` — each leg is a separate ledger entry and each must
+            round independently, or a three-leg transaction fails to balance.
     """
 
     fee_tax: Decimal
     commission_tax: Decimal
     fee_tax_inclusive: bool
     commission_tax_inclusive: bool
+    parent_commission_tax: Decimal = Decimal("0")
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -72,6 +77,7 @@ async def calculate_tax(
     currency: str,
     fee: Decimal,
     commission: Decimal,
+    parent_commission: Decimal = Decimal("0"),
 ) -> TaxComputation:
     """Compute tax on a fee and on a commission for a (tenant, currency).
 
@@ -84,23 +90,30 @@ async def calculate_tax(
         currency: ISO 4217.
         fee: The computed fee (base for `fee_tax_pct`).
         commission: The computed commission (base for `commission_tax_pct`).
+        parent_commission: The parent's commission, taxed at the SAME rate on
+            its own base (D11). Defaults to zero so pre-parent callers are
+            unaffected.
 
     Returns:
         A `TaxComputation` with both tax amounts and the two inclusive flags.
     """
     config = await _find_tax_config(session, tenant_id=tenant_id, currency=currency)
     if config is None:
-        return TaxComputation(Decimal("0"), Decimal("0"), False, False)
+        return TaxComputation(Decimal("0"), Decimal("0"), False, False, Decimal("0"))
 
     fee_tax = (fee * Decimal(str(config.fee_tax_pct))).quantize(_SIX_DP, rounding=ROUND_HALF_UP)
     commission_tax = (commission * Decimal(str(config.commission_tax_pct))).quantize(
         _SIX_DP, rounding=ROUND_HALF_UP
     )
+    parent_commission_tax = (
+        parent_commission * Decimal(str(config.commission_tax_pct))
+    ).quantize(_SIX_DP, rounding=ROUND_HALF_UP)
     return TaxComputation(
         fee_tax=fee_tax,
         commission_tax=commission_tax,
         fee_tax_inclusive=config.fee_tax_inclusive,
         commission_tax_inclusive=config.commission_tax_inclusive,
+        parent_commission_tax=parent_commission_tax,
     )
 
 

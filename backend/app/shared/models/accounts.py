@@ -52,6 +52,13 @@ ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING = "airtime_merchant_holding"
 # the operator tops the pool up. Unguarded (may run "negative"). One per
 # (tenant, currency).
 ACCOUNT_TYPE_COMMISSION = "commission"
+# Commission wallets (spec 2026-08-26, D1). Per (tenant, user, currency), held
+# by Retail and Business users only. DISTINCT from ACCOUNT_TYPE_COMMISSION,
+# which is the tenant-level pool that FUNDS commission payouts: the pool is the
+# source, this wallet is the earner's holding account. Floored at zero but
+# uncapped and exempt from rolling receive caps (invariant #11, third shape) —
+# an agent may accrue any amount, but a disbursement may never overdraw it.
+ACCOUNT_TYPE_COMMISSION_WALLET = "commission_wallet"
 # Pricing v2 (Epic 25) — tax collectors, split so the two tax bases are
 # distinguishable. Tax charged on a SERVICE FEE credits `tax_service_collected`;
 # tax charged on an agent COMMISSION credits `tax_commission_collected`. One of
@@ -77,6 +84,7 @@ ACCOUNT_TYPES = (
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_AIRTIME_MERCHANT_HOLDING,
     ACCOUNT_TYPE_COMMISSION,
+    ACCOUNT_TYPE_COMMISSION_WALLET,
     ACCOUNT_TYPE_TAX_SERVICE,
     ACCOUNT_TYPE_TAX_COMMISSION,
     ACCOUNT_TYPE_POINTS_REDEMPTION,
@@ -108,6 +116,7 @@ class Account(Base):
             "'operator_adjustment', "
             "'airtime_merchant_holding', "
             "'commission', "
+            "'commission_wallet', "
             "'tax_service_collected', "
             "'tax_commission_collected', "
             "'points_redemption_wallet', "

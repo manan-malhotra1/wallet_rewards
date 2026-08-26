@@ -27,6 +27,14 @@ import { STORAGE_STATE } from "../playwright.config";
  */
 const PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "admin-test-pass";
 
+/**
+ * The tenant every spec's seed data lives in (scripts/seed.py). The backend
+ * lists tenants NEWEST-first and a fresh session has no tenant cookie, so a
+ * dev DB with extra tenants would otherwise default to the wrong (empty) one
+ * and every tenant-scoped spec would fail on missing data.
+ */
+const TENANT = process.env.E2E_TENANT_NAME ?? "Sasai-ZA";
+
 const ADMINS = [
   { email: "admin-test@example.test", storageState: STORAGE_STATE.maker },
   { email: "admin-approver@example.test", storageState: STORAGE_STATE.checker },
@@ -44,11 +52,23 @@ for (const admin of ADMINS) {
 
     // The server action redirects back to the originally-requested page
     // (/dashboard). Wait for the shell — the persistent "Approvals" nav link
-    // only renders once authenticated inside AuthenticatedLayout.
-    await expect(page).toHaveURL(/\/dashboard/);
+    // only renders once authenticated inside AuthenticatedLayout. The first
+    // login of a run pays the dev-server compile + Keycloak warm-up cost, so
+    // this assertion gets a longer leash than the default expect timeout.
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
     await expect(
       page.getByRole("link", { name: "Approvals" }),
     ).toBeVisible();
+
+    // Pin the active tenant to the seeded dev tenant so its cookie persists
+    // into the storageState (see TENANT above for why the default is wrong).
+    const switcher = page.getByRole("button", { name: "Switch tenant" });
+    await expect(switcher).toBeVisible();
+    if (!(await switcher.innerText()).includes(TENANT)) {
+      await switcher.click();
+      await page.getByRole("button", { name: TENANT }).click();
+      await expect(switcher).toContainText(TENANT);
+    }
 
     await page.context().storageState({ path: admin.storageState });
   });

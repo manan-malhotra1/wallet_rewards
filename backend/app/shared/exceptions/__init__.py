@@ -521,6 +521,76 @@ class InsufficientCashbackFunds(AppHTTPException):
         )
 
 
+class InsufficientCommissionBalance(AppHTTPException):
+    """A commission wallet cannot cover this debit (spec 2026-08-26, D5).
+
+    Raised at the ledger choke point when a disbursement, withdrawal or
+    clawback would drive a commission wallet below zero. Distinct from
+    InsufficientFunds so an operator reviewing a failed batch row can tell
+    "this agent never accrued that much" from "this user's spendable wallet
+    is short".
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "insufficient_commission_balance",
+            "The commission wallet does not hold enough to cover this amount.",
+        )
+
+
+class CommissionDestinationNotAvailable(AppHTTPException):
+    """A rule named the commission wallet where no such wallet can exist (D7).
+
+    Raised at config write for three cases: the tenant flag is off; the rule is
+    a catch-all (NULL user_type) band that could match a consumer; or the rule
+    is scoped to a consumer-category type. Refusing here rather than at payout
+    means an unpayable rule can never be saved, so the payout path's
+    missing-wallet branch stays a backstop rather than a live code path.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "commission_destination_not_available",
+            "Commission wallets are not available for this tenant and user type.",
+        )
+
+
+class CommissionWalletMissing(AppHTTPException):
+    """A rule pays into a commission wallet the earner does not hold (spec §7.2).
+
+    Unreachable in practice once provisioning is in place — this is a backstop.
+    It fails CLOSED rather than falling back to the main wallet: silently
+    paying spendable commission where a review hold was configured is the exact
+    failure mode this feature exists to prevent.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "commission_wallet_missing",
+            "The commission wallet for this earner and currency does not exist.",
+        )
+
+
+class CommissionFlagImmutable(AppHTTPException):
+    """`tenants.commission_wallet_enabled` was changed after creation (D3).
+
+    The flag is creation-time only. Turning it on later would require a
+    backfill with an observable half-provisioned window; turning it off would
+    strand non-zero commission balances. The sanctioned retrofit for an
+    existing tenant is `scripts/backfill_commission_wallets.py`.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            422,
+            "commission_flag_immutable",
+            "Commission wallets can only be enabled when the tenant is created.",
+        )
+
+
 class SystemPointsIssuanceMissing(AppHTTPException):
     """Tenant has no system_points_issuance account — cannot issue points rewards."""
 

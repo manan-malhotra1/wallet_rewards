@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -29,6 +30,37 @@ class CommissionConfigCreateRequest(BaseModel):
     fixed_commission: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     variable_commission_pct: Decimal = Field(default=Decimal("0"), ge=Decimal("0"), lt=Decimal("1"))
     commission_cap: Decimal | None = Field(default=None, gt=Decimal("0"))
+    # Where the commission lands (spec 2026-08-26, D6).
+    payout_destination: Literal["main_wallet", "commission_wallet"] = "main_wallet"
+    # The earner's PARENT is paid from this same row, as a percentage of the
+    # TRANSACTION AMOUNT using the same band (D8).
+    #
+    # DEVIATION FROM SPEC D8, which asked for these to be REQUIRED here so an
+    # admin must type a value even when it is zero. They default to zero
+    # instead, because `config_requests/apply.py` re-validates a STORED JSONB
+    # payload against this schema at APPROVAL time — which can be days after
+    # the maker submitted it. Required fields would make every commission
+    # config request created before this deploy permanently unappliable (a 422
+    # the checker can never clear). The "state a value explicitly" requirement
+    # is enforced in the admin UI form instead, where it actually belongs.
+    parent_fixed_commission: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    parent_variable_commission_pct: Decimal = Field(
+        default=Decimal("0"), ge=Decimal("0"), lt=Decimal("1")
+    )
+    parent_commission_cap: Decimal | None = Field(default=None, gt=Decimal("0"))
+
+    @model_validator(mode="after")
+    def _parent_cap_only_with_variable(self) -> CommissionConfigCreateRequest:
+        """A parent cap with a zero parent rate is a config the operator got wrong."""
+        if (
+            self.parent_commission_cap is not None
+            and self.parent_variable_commission_pct == 0
+        ):
+            raise ValueError(
+                "parent_commission_cap only makes sense when "
+                "parent_variable_commission_pct > 0."
+            )
+        return self
 
     @model_validator(mode="after")
     def _cap_only_with_variable(self) -> CommissionConfigCreateRequest:

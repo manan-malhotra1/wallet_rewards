@@ -52,7 +52,13 @@ async def _make_band(
 
 
 async def _commission(session: AsyncSession, tenant: Tenant, agent: User, amount: str) -> Decimal:
-    return await calculate_commission(
+    """The agent's OWN commission for one amount.
+
+    `calculate_commission` returns a CommissionOutcome (both legs plus the
+    destination) since the commission-wallet edition; these band tests are only
+    about the child leg's band resolution, so they read `self_amount`.
+    """
+    outcome = await calculate_commission(
         session,
         tenant_id=tenant.id,
         agent_user_id=agent.id,
@@ -60,6 +66,7 @@ async def _commission(session: AsyncSession, tenant: Tenant, agent: User, amount
         currency="ZAR",
         amount=Decimal(amount),
     )
+    return outcome.self_amount
 
 
 @pytest.mark.asyncio

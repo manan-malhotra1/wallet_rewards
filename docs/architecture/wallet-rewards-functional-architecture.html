@@ -1,0 +1,264 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/>
+<title>Sasai Wallet &amp; Rewards, functional architecture</title><style>
+*{box-sizing:border-box}
+body{margin:0;padding:26px 24px 44px;background:#f4f6f8;font-family:'Segoe UI',Helvetica,Arial,sans-serif;
+ color:#12283f}
+.wrap{max-width:1780px;margin:0 auto}
+.card{background:#fff;border:1px solid #dde3ea;border-radius:12px;padding:16px;margin-bottom:18px;
+ box-shadow:0 1px 3px rgba(18,40,63,.07)}
+svg{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:9px;margin:0 0 16px}
+.chip{display:flex;align-items:center;gap:8px;border:1px solid #dde3ea;border-radius:8px;background:#fff;
+ padding:8px 13px;font-size:12.4px}
+.sw{width:15px;height:15px;border-radius:4px;border:2px solid}
+h2{font-size:15.5px;margin:0 0 12px}
+table{width:100%;border-collapse:collapse;font-size:12.4px}
+th{background:#12283f;color:#fff;text-align:left;padding:8px 10px;font-size:11.4px;font-weight:600}
+td{padding:9px 10px;border-bottom:1px solid #e7ecf1;vertical-align:top;line-height:1.5}
+tr:last-child td{border-bottom:none}
+.num{width:26px;font-weight:700;color:#5c6b7a}
+.jt{width:210px;font-weight:700}
+.path{width:300px;color:#5c6b7a;font-size:11.6px}
+b.w{color:#2c5f8a} b.r{color:#b8860b} b.b{color:#6b4fa0} b.s{color:#2e7d32} b.x{color:#5c6b7a}
+.note{font-size:12.3px;color:#5c6b7a;line-height:1.65;margin:0}
+.note b{color:#12283f}
+</style></head><body><div class="wrap">
+<div class="legend">
+ <div class="chip"><span class="sw" style="background:#dbe7f3;border-color:#2c5f8a"></span>
+  <b>WALLET</b>&nbsp;real money, runs for wallet-only and both-mode tenants</div>
+ <div class="chip"><span class="sw" style="background:#fff2cc;border-color:#b8860b"></span>
+  <b>REWARDS</b>&nbsp;points, runs for rewards-only and both-mode tenants</div>
+ <div class="chip"><span class="sw" style="background:#ece4f5;border-color:#6b4fa0"></span>
+  <b>BRIDGE</b>&nbsp;where points become money, both-mode only</div>
+ <div class="chip"><span class="sw" style="background:#dcefdc;border-color:#2e7d32"></span>
+  <b>SHARED</b>&nbsp;one implementation, used by both domains</div>
+ <div class="chip"><span class="sw" style="background:#eceff2;border-color:#7d8b99"></span>
+  <b>EXTERNAL</b>&nbsp;channels and infrastructure outside the platform</div>
+</div>
+<div class="card">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1700 1205" width="1700" height="1205" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<defs><marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7d8b99"/></marker></defs>
+<rect width="1700" height="1205" fill="#ffffff"/>
+<text x="40" y="38" font-size="21" font-weight="700" fill="#12283f">Sasai Wallet &amp; Rewards, functional architecture by domain</text>
+<text x="40" y="59" font-size="11.4" fill="#5c6b7a">Colour shows which half of the platform owns a capability: blue = wallet (real money), gold = rewards (points), purple = the bridge where points become money, green = shared foundation used by both. A tenant buys wallet only, rewards only, or both, so the blue and gold halves must stand alone.</text>
+<text x="40" y="84" font-size="10.3" font-weight="700" fill="#5c6b7a" letter-spacing="1.4">CHANNELS</text>
+<rect x="40.0" y="92" width="390.0" height="70" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="52.0" y="112" font-size="12.4" font-weight="700" fill="#12283f">Mobile app</text>
+<text x="52.0" y="129.0" font-size="9.2" fill="#12283f">Expo / React Native. Consumer + agent: send, cash</text>
+<text x="52.0" y="141.0" font-size="9.2" fill="#12283f">in/out, airtime, card load, rewards, redeem.</text>
+<line x1="235.0" y1="164" x2="235.0" y2="186" stroke="#7d8b99" stroke-width="1.7" marker-end="url(#am)"/>
+<rect x="450.0" y="92" width="390.0" height="70" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="462.0" y="112" font-size="12.4" font-weight="700" fill="#12283f">Admin console</text>
+<text x="462.0" y="129.0" font-size="9.2" fill="#12283f">Next.js. Campaigns, pricing, limits, approvals,</text>
+<text x="462.0" y="141.0" font-size="9.2" fill="#12283f">treasury, users, points rates, dashboard.</text>
+<line x1="645.0" y1="164" x2="645.0" y2="186" stroke="#7d8b99" stroke-width="1.7" marker-end="url(#am)"/>
+<rect x="860.0" y="92" width="390.0" height="70" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="872.0" y="112" font-size="12.4" font-weight="700" fill="#12283f">Partner API</text>
+<text x="872.0" y="129.0" font-size="9.2" fill="#12283f">API key + HMAC signature. External fund / withdraw /</text>
+<text x="872.0" y="141.0" font-size="9.2" fill="#12283f">merchant cash-in and event ingestion.</text>
+<line x1="1055.0" y1="164" x2="1055.0" y2="186" stroke="#7d8b99" stroke-width="1.7" marker-end="url(#am)"/>
+<rect x="1270.0" y="92" width="390.0" height="70" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="1282.0" y="112" font-size="12.4" font-weight="700" fill="#12283f">Event sources</text>
+<text x="1282.0" y="129.0" font-size="9.2" fill="#12283f">Registered external systems emit transaction events</text>
+<text x="1282.0" y="141.0" font-size="9.2" fill="#12283f">with proof-of-origin for rule evaluation.</text>
+<line x1="1465.0" y1="164" x2="1465.0" y2="186" stroke="#7d8b99" stroke-width="1.7" marker-end="url(#am)"/>
+<rect x="40" y="190" width="1620" height="825.7" rx="12" fill="#f6f8fb" stroke="#0b2e4f" stroke-width="2.5"/>
+<rect x="40" y="190" width="1620" height="34" rx="12" fill="#0b2e4f"/>
+<rect x="40" y="212" width="1620" height="12" fill="#f6f8fb"/>
+<rect x="40" y="190" width="1620" height="30" fill="#0b2e4f"/>
+<text x="54" y="211" font-size="12.6" font-weight="700" fill="#fff" letter-spacing="1.2">SASAI WALLET &amp; REWARDS PLATFORM, ONE MULTI-TENANT DEPLOYMENT</text>
+<text x="1646" y="211" font-size="10.4" fill="#a9c2d8" text-anchor="end">Per-tenant business_type gates which halves are switched on</text>
+<rect x="56" y="232" width="1588" height="97.1" rx="8" fill="#dcefdc" stroke="#2e7d32" stroke-width="2"/>
+<text x="68" y="252" font-size="12.4" font-weight="700" fill="#12283f">API layer, auth and tenancy resolution</text>
+<rect x="1568.8" y="237" width="65.2" height="17" rx="8.5" fill="#2e7d32"/>
+<text x="1601.4" y="249.4" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">SHARED</text>
+<text x="68" y="271.0" font-size="9.6" fill="#12283f">Session tokens for users (PIN / OTP), Keycloak JWT for admins, API key + HMAC for partners</text>
+<text x="68" y="286.7" font-size="9.6" fill="#12283f">Every request resolves its tenant, then its role permission for the requested service, before anything else</text>
+<text x="68" y="302.4" font-size="9.6" fill="#12283f">Idempotency-Key required on every state-mutating call; a replay returns the original result, never a second effect</text>
+<rect x="56" y="351.1" width="517.3333333333334" height="469.5" rx="10" fill="#f2f7fc" stroke="#2c5f8a" stroke-width="2.5"/>
+<rect x="56" y="351.1" width="517.3333333333334" height="34" rx="10" fill="#2c5f8a"/>
+<rect x="56" y="373.1" width="517.3333333333334" height="12" fill="#f2f7fc"/>
+<rect x="56" y="351.1" width="517.3333333333334" height="26" fill="#2c5f8a"/>
+<text x="70" y="369.1" font-size="12.2" font-weight="700" fill="#fff" letter-spacing="0.8">WALLET DOMAIN, REAL MONEY</text>
+<text x="70" y="391.1" font-size="9.4" font-style="italic" fill="#5c6b7a">Runs for a wallet-only or a both-mode tenant.</text>
+<rect x="68" y="397.1" width="493.33333333333337" height="128.5" rx="8" fill="#dbe7f3" stroke="#2c5f8a" stroke-width="2"/>
+<text x="80" y="417.1" font-size="12.4" font-weight="700" fill="#12283f">Ledger and money core</text>
+<rect x="486.1" y="402.1" width="65.2" height="17" rx="8.5" fill="#2c5f8a"/>
+<text x="518.7" y="414.5" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">WALLET</text>
+<text x="80" y="436.1" font-size="9.6" fill="#12283f">Append-only double entry. Balance is SUM(entries), never a stored number</text>
+<text x="80" y="451.8" font-size="9.6" fill="#12283f">One choke point every money path funnels through, whatever initiated it</text>
+<text x="80" y="467.5" font-size="9.6" fill="#12283f">Under a row lock: overdraft floor on wallets and floats, ceiling on credits</text>
+<text x="80" y="483.2" font-size="9.6" fill="#12283f">Reversal appends opposite legs; entries are never updated or deleted</text>
+<text x="80" y="498.9" font-size="9.6" fill="#12283f">Idempotency key per transaction; a replay returns the original, never a second</text>
+<rect x="68" y="537.6" width="493.33333333333337" height="128.5" rx="8" fill="#dbe7f3" stroke="#2c5f8a" stroke-width="2"/>
+<text x="80" y="557.6" font-size="12.4" font-weight="700" fill="#12283f">Money movement</text>
+<rect x="486.1" y="542.6" width="65.2" height="17" rx="8.5" fill="#2c5f8a"/>
+<text x="518.7" y="555.0" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">WALLET</text>
+<text x="80" y="576.6" font-size="9.6" fill="#12283f">Customer: P2P send, agent cash-in and cash-out, airtime, card top-up</text>
+<text x="80" y="592.3" font-size="9.6" fill="#12283f">Operator: cash float, bank mirrors, fund / withdraw / adjust the system wallets</text>
+<text x="80" y="608.0" font-size="9.6" fill="#12283f">Fee, tax and commission pools receive their legs in the same transaction</text>
+<text x="80" y="623.7" font-size="9.6" fill="#12283f">Reserve, call the external rail after commit, then settle or reverse</text>
+<text x="80" y="639.4" font-size="9.6" fill="#12283f">Every operator money movement is maker-checker, N distinct approvers</text>
+<rect x="68" y="678.1" width="493.33333333333337" height="128.5" rx="8" fill="#dbe7f3" stroke="#2c5f8a" stroke-width="2"/>
+<text x="80" y="698.1" font-size="12.4" font-weight="700" fill="#12283f">Money controls and pricing</text>
+<rect x="486.1" y="683.1" width="65.2" height="17" rx="8.5" fill="#2c5f8a"/>
+<text x="518.7" y="695.5" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">WALLET</text>
+<text x="80" y="717.1" font-size="9.6" fill="#12283f">Rolling daily / weekly / monthly send and receive caps, count and value</text>
+<text x="80" y="732.8" font-size="9.6" fill="#12283f">Per-transaction min and max, per service, per user type, per currency</text>
+<text x="80" y="748.5" font-size="9.6" fill="#12283f">Slab pricing, agent commission, tax on both fee and commission</text>
+<text x="80" y="764.2" font-size="9.6" fill="#12283f">Step-up PIN above a threshold; access locks suspend transacting entirely</text>
+<text x="80" y="779.9" font-size="9.6" fill="#12283f">Fails closed: no pricing config or no limit config means the service cannot run</text>
+<rect x="591.3333333333334" y="351.1" width="517.3333333333334" height="329.0" rx="10" fill="#f8f5fc" stroke="#6b4fa0" stroke-width="2.5"/>
+<rect x="591.3333333333334" y="351.1" width="517.3333333333334" height="34" rx="10" fill="#6b4fa0"/>
+<rect x="591.3333333333334" y="373.1" width="517.3333333333334" height="12" fill="#f8f5fc"/>
+<rect x="591.3333333333334" y="351.1" width="517.3333333333334" height="26" fill="#6b4fa0"/>
+<text x="605.3333333333334" y="369.1" font-size="12.2" font-weight="700" fill="#fff" letter-spacing="0.8">BRIDGE, WHERE POINTS BECOME MONEY</text>
+<text x="605.3333333333334" y="391.1" font-size="9.4" font-style="italic" fill="#5c6b7a">Only meaningful for a both-mode tenant.</text>
+<rect x="603.3333333333334" y="397.1" width="493.33333333333337" height="128.5" rx="8" fill="#ece4f5" stroke="#6b4fa0" stroke-width="2"/>
+<text x="615.3333333333334" y="417.1" font-size="12.4" font-weight="700" fill="#12283f">Points to money conversion</text>
+<rect x="1021.5" y="402.1" width="65.2" height="17" rx="8.5" fill="#6b4fa0"/>
+<text x="1054.1" y="414.5" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">BRIDGE</text>
+<text x="615.3333333333334" y="436.1" font-size="9.6" fill="#12283f">Per-currency rate, maker-checker approved (100 PTS = 10.00 ZAR)</text>
+<text x="615.3333333333334" y="451.8" font-size="9.6" fill="#12283f">Fails closed: a currency with no active rate cannot be redeemed into</text>
+<text x="615.3333333333334" y="467.5" font-size="9.6" fill="#12283f">Anti-drain caps per transaction: absolute points and % of balance</text>
+<text x="615.3333333333334" y="483.2" font-size="9.6" fill="#12283f">Points burn to the redemption wallet, fiat paid from the cashback wallet</text>
+<text x="615.3333333333334" y="498.9" font-size="9.6" fill="#12283f">The pair is cross-referenced and the rate snapshotted; settles immediately</text>
+<rect x="603.3333333333334" y="537.6" width="493.33333333333337" height="128.5" rx="8" fill="#ece4f5" stroke="#6b4fa0" stroke-width="2"/>
+<text x="615.3333333333334" y="557.6" font-size="12.4" font-weight="700" fill="#12283f">Money-funded rewards</text>
+<rect x="1021.5" y="542.6" width="65.2" height="17" rx="8.5" fill="#6b4fa0"/>
+<text x="1054.1" y="555.0" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">BRIDGE</text>
+<text x="615.3333333333334" y="576.6" font-size="9.6" fill="#12283f">Cashback: a rule pays real money instead of points, budget-checked first</text>
+<text x="615.3333333333334" y="592.3" font-size="9.6" fill="#12283f">Funded from the cashback provider wallet, not the customer cash float,</text>
+<text x="615.3333333333334" y="608.0" font-size="9.6" fill="#12283f">so promo liability never drains money customers are owed</text>
+<text x="615.3333333333334" y="623.7" font-size="9.6" fill="#12283f">Pay with points: P2P and airtime take points against part of the amount</text>
+<text x="615.3333333333334" y="639.4" font-size="9.6" fill="#12283f">Redeem into the wallet first, then charge in full, so the payee is paid in full</text>
+<rect x="1126.6666666666667" y="351.1" width="517.3333333333334" height="469.5" rx="10" fill="#fffaf0" stroke="#b8860b" stroke-width="2.5"/>
+<rect x="1126.6666666666667" y="351.1" width="517.3333333333334" height="34" rx="10" fill="#b8860b"/>
+<rect x="1126.6666666666667" y="373.1" width="517.3333333333334" height="12" fill="#fffaf0"/>
+<rect x="1126.6666666666667" y="351.1" width="517.3333333333334" height="26" fill="#b8860b"/>
+<text x="1140.6666666666667" y="369.1" font-size="12.2" font-weight="700" fill="#fff" letter-spacing="0.8">REWARDS DOMAIN, POINTS</text>
+<text x="1140.6666666666667" y="391.1" font-size="9.4" font-style="italic" fill="#5c6b7a">Runs for a rewards-only or a both-mode tenant.</text>
+<rect x="1138.6666666666667" y="397.1" width="493.33333333333337" height="128.5" rx="8" fill="#fff2cc" stroke="#b8860b" stroke-width="2"/>
+<text x="1150.6666666666667" y="417.1" font-size="12.4" font-weight="700" fill="#12283f">Events and rules engine</text>
+<rect x="1548.6" y="402.1" width="73.4" height="17" rx="8.5" fill="#b8860b"/>
+<text x="1585.3" y="414.5" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">REWARDS</text>
+<text x="1150.6666666666667" y="436.1" font-size="9.6" fill="#12283f">Signed external event sources plus internal wallet activity via the outbox</text>
+<text x="1150.6666666666667" y="451.8" font-size="9.6" fill="#12283f">Ingestion log dedupes replays; rejected events audited with a reason</text>
+<text x="1150.6666666666667" y="467.5" font-size="9.6" fill="#12283f">Seven rule types: first-time, milestone, value-based, campaign, streak,</text>
+<text x="1150.6666666666667" y="483.2" font-size="9.6" fill="#12283f">composite and referral, each with rolling time windows</text>
+<text x="1150.6666666666667" y="498.9" font-size="9.6" fill="#12283f">Per-user progress, stop-after-N triggers, reset-after-trigger</text>
+<rect x="1138.6666666666667" y="537.6" width="493.33333333333337" height="128.5" rx="8" fill="#fff2cc" stroke="#b8860b" stroke-width="2"/>
+<text x="1150.6666666666667" y="557.6" font-size="12.4" font-weight="700" fill="#12283f">Issuance and campaign controls</text>
+<rect x="1548.6" y="542.6" width="73.4" height="17" rx="8.5" fill="#b8860b"/>
+<text x="1585.3" y="555.0" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">REWARDS</text>
+<text x="1150.6666666666667" y="576.6" font-size="9.6" fill="#12283f">Points credited from the tenant issuance pool to the user points account</text>
+<text x="1150.6666666666667" y="592.3" font-size="9.6" fill="#12283f">Structural idempotency: unique (user, rule, event) index, never check-then-insert</text>
+<text x="1150.6666666666667" y="608.0" font-size="9.6" fill="#12283f">Budgets, tenant-wide and per-campaign, checked under lock before issuance</text>
+<text x="1150.6666666666667" y="623.7" font-size="9.6" fill="#12283f">Bonus multipliers on points; segments bind a rule to a subset of users</text>
+<text x="1150.6666666666667" y="639.4" font-size="9.6" fill="#12283f">Outbox sweep drains anything the inline issue missed</text>
+<rect x="1138.6666666666667" y="678.1" width="493.33333333333337" height="128.5" rx="8" fill="#fff2cc" stroke="#b8860b" stroke-width="2"/>
+<text x="1150.6666666666667" y="698.1" font-size="12.4" font-weight="700" fill="#12283f">Points journey and redemption</text>
+<rect x="1548.6" y="683.1" width="73.4" height="17" rx="8.5" fill="#b8860b"/>
+<text x="1585.3" y="695.5" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">REWARDS</text>
+<text x="1150.6666666666667" y="717.1" font-size="9.6" fill="#12283f">Balance, lifetime earned and redeemed, full points ledger history</text>
+<text x="1150.6666666666667" y="732.8" font-size="9.6" fill="#12283f">Per-rule progress catalog, recent earnings, referral codes and conversions</text>
+<text x="1150.6666666666667" y="748.5" font-size="9.6" fill="#12283f">Partner redemption: reserve points, call out, settle or reverse on callback</text>
+<text x="1150.6666666666667" y="764.2" font-size="9.6" fill="#12283f">Stuck redemptions sweep to manual review; a human resolves, never a guess</text>
+<text x="1150.6666666666667" y="779.9" font-size="9.6" fill="#12283f">Points keep their own statement, separate from the money one</text>
+<rect x="56" y="842.6" width="1588" height="157.1" rx="10" fill="#f4faf4" stroke="#2e7d32" stroke-width="2.5"/>
+<rect x="56" y="842.6" width="1588" height="34" rx="10" fill="#2e7d32"/>
+<rect x="56" y="864.6" width="1588" height="12" fill="#f4faf4"/>
+<rect x="56" y="842.6" width="1588" height="26" fill="#2e7d32"/>
+<text x="70" y="860.6" font-size="12.2" font-weight="700" fill="#fff" letter-spacing="0.8">SHARED FOUNDATION, BOTH DOMAINS DEPEND ON IT</text>
+<text x="1630" y="860.6" font-size="9.6" fill="#d8ebd8" text-anchor="end">Present in every tenant whichever halves are switched on</text>
+<rect x="68.0" y="888.6" width="510.6666666666667" height="97.1" rx="8" fill="#dcefdc" stroke="#2e7d32" stroke-width="2"/>
+<text x="80.0" y="908.6" font-size="12.4" font-weight="700" fill="#12283f">Identity, access and roles</text>
+<rect x="503.5" y="893.6" width="65.2" height="17" rx="8.5" fill="#2e7d32"/>
+<text x="536.1" y="906.0" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">SHARED</text>
+<text x="80.0" y="927.6" font-size="9.6" fill="#12283f">Users, identifiers, profiles, PIN and OTP, sessions</text>
+<text x="80.0" y="943.3" font-size="9.6" fill="#12283f">Access levels: active, transactions locked, suspended, closed</text>
+<text x="80.0" y="959.0" font-size="9.6" fill="#12283f">Deny by default RBAC: a role grants named services, checked before any lookup</text>
+<rect x="594.6666666666667" y="888.6" width="510.6666666666667" height="97.1" rx="8" fill="#dcefdc" stroke="#2e7d32" stroke-width="2"/>
+<text x="606.6666666666667" y="908.6" font-size="12.4" font-weight="700" fill="#12283f">Tenancy, configuration and approvals</text>
+<rect x="1030.1" y="893.6" width="65.2" height="17" rx="8.5" fill="#2e7d32"/>
+<text x="1062.7" y="906.0" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">SHARED</text>
+<text x="606.6666666666667" y="927.6" font-size="9.6" fill="#12283f">business_type gates the halves: wallet only, rewards only, or both</text>
+<text x="606.6666666666667" y="943.3" font-size="9.6" fill="#12283f">Instruments, base and derived services, tenant provisioning</text>
+<text x="606.6666666666667" y="959.0" font-size="9.6" fill="#12283f">Config maker-checker over pricing, limits, tax, step-up and conversion rates</text>
+<rect x="1121.3333333333335" y="888.6" width="510.6666666666667" height="97.1" rx="8" fill="#dcefdc" stroke="#2e7d32" stroke-width="2"/>
+<text x="1133.3333333333335" y="908.6" font-size="12.4" font-weight="700" fill="#12283f">Audit, notifications and observability</text>
+<rect x="1556.8" y="893.6" width="65.2" height="17" rx="8.5" fill="#2e7d32"/>
+<text x="1589.4" y="906.0" font-size="9.4" font-weight="700" fill="#fff" text-anchor="middle">SHARED</text>
+<text x="1133.3333333333335" y="927.6" font-size="9.6" fill="#12283f">Immutable audit log of every config change and state transition</text>
+<text x="1133.3333333333335" y="943.3" font-size="9.6" fill="#12283f">7 year retention on ledger, transactions and audit</text>
+<text x="1133.3333333333335" y="959.0" font-size="9.6" fill="#12283f">Per-event notification templates; structured logs across both domains</text>
+<line x1="40" y1="1029.7" x2="1660" y2="1029.7" stroke="#8a8aa8" stroke-width="2" stroke-dasharray="9 6"/>
+<text x="40" y="1047.7" font-size="10.3" font-weight="700" fill="#5c6b7a" letter-spacing="1.4">OUTSIDE THE PLATFORM</text>
+<rect x="40.0" y="1057.7" width="258.3" height="84" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="52.0" y="1077.7" font-size="11.6" font-weight="700" fill="#12283f">PostgreSQL</text>
+<text x="52.0" y="1094.7" font-size="9.1" fill="#12283f">Single source of truth. Ledger,</text>
+<text x="52.0" y="1106.7" font-size="9.1" fill="#12283f">transactions, config, audit.</text>
+<rect x="312.3" y="1057.7" width="258.3" height="84" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="324.3" y="1077.7" font-size="11.6" font-weight="700" fill="#12283f">Kafka</text>
+<text x="324.3" y="1094.7" font-size="9.1" fill="#12283f">Event bus for ingestion and</text>
+<text x="324.3" y="1106.7" font-size="9.1" fill="#12283f">reward evaluation, partitioned</text>
+<text x="324.3" y="1118.7" font-size="9.1" fill="#12283f">by user.</text>
+<rect x="584.7" y="1057.7" width="258.3" height="84" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="596.7" y="1077.7" font-size="11.6" font-weight="700" fill="#12283f">Redis and Celery</text>
+<text x="596.7" y="1094.7" font-size="9.1" fill="#12283f">Sessions, rate limits,</text>
+<text x="596.7" y="1106.7" font-size="9.1" fill="#12283f">background sweeps and outbox</text>
+<text x="596.7" y="1118.7" font-size="9.1" fill="#12283f">drains.</text>
+<rect x="857.0" y="1057.7" width="258.3" height="84" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="869.0" y="1077.7" font-size="11.6" font-weight="700" fill="#12283f">Keycloak</text>
+<text x="869.0" y="1094.7" font-size="9.1" fill="#12283f">Admin identity and realm roles.</text>
+<text x="869.0" y="1106.7" font-size="9.1" fill="#12283f">Customers never touch it.</text>
+<rect x="1129.3" y="1057.7" width="258.3" height="84" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="1141.3" y="1077.7" font-size="11.6" font-weight="700" fill="#12283f">Airtime provider</text>
+<text x="1141.3" y="1094.7" font-size="9.1" fill="#12283f">MNO or aggregator. Vends the</text>
+<text x="1141.3" y="1106.7" font-size="9.1" fill="#12283f">recharge, confirms by callback.</text>
+<rect x="1401.7" y="1057.7" width="258.3" height="84" rx="8" fill="#eceff2" stroke="#7d8b99" stroke-width="2"/>
+<text x="1413.7" y="1077.7" font-size="11.6" font-weight="700" fill="#12283f">Redemption partners</text>
+<text x="1413.7" y="1094.7" font-size="9.1" fill="#12283f">Voucher and benefit providers.</text>
+<text x="1413.7" y="1106.7" font-size="9.1" fill="#12283f">HMAC-signed callbacks.</text>
+<text x="40" y="1171.7" font-size="11" font-weight="700" fill="#0b2e4f">The two halves are deliberately separable: a wallet-only tenant is provisioned no points pool, no rules engine and no redemption surface, and a rewards-only tenant never touches the money core. Everything green exists once and serves both. Everything purple only has meaning when a tenant runs both halves, and every purple block crosses the points/money boundary through the same audited ledger choke point.</text>
+</svg></div>
+<div class="card"><h2>Key journeys and which blocks carry them</h2>
+<table><thead><tr><th></th><th>Journey</th><th>Blocks involved</th><th>Domain step by step</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="jt">Send money (P2P)</td><td class="path">API layer, Money controls, Pricing, Ledger</td><td>Role check <b class="s">SHARED</b>, step-up PIN above threshold <b class="s">SHARED</b>, pricing and limits must both resolve or reject <b class="w">WALLET</b>, balanced debit and credit under lock <b class="w">WALLET</b>, reward outbox row if the tenant also runs rewards <b class="b">BRIDGE</b></td></tr>
+<tr><td class="num">2</td><td class="jt">Earn points on activity</td><td class="path">Events, Rules engine, Campaign controls, Reward issuance</td><td>Event arrives from a wallet transaction or a signed external source <b class="r">REWARDS</b>, candidate rules matched and progress advanced <b class="r">REWARDS</b>, budget and multiplier applied <b class="r">REWARDS</b>, points credited once per (user, rule, event) <b class="r">REWARDS</b></td></tr>
+<tr><td class="num">3</td><td class="jt">Earn cashback on activity</td><td class="path">Rules engine, Budgets, Cashback wallet, Ledger</td><td>Rule fires with reward type cashback <b class="r">REWARDS</b>, budget checked before any write <b class="r">REWARDS</b>, real money debited from the cashback provider wallet <b class="b">BRIDGE</b>, credited to the user wallet through the ledger choke point <b class="w">WALLET</b></td></tr>
+<tr><td class="num">4</td><td class="jt">Redeem points to wallet</td><td class="path">Conversion rates, Internal redemption, Ledger</td><td>Active rate for the currency or reject <b class="b">BRIDGE</b>, per-transaction anti-drain caps enforced under the points lock <b class="b">BRIDGE</b>, points burned to the redemption wallet <b class="r">REWARDS</b>, fiat paid out from the cashback wallet <b class="w">WALLET</b>, the pair cross-referenced</td></tr>
+<tr><td class="num">5</td><td class="jt">Redeem with a partner</td><td class="path">Redemption, Provider, Reconciliation</td><td>Points reserved as a pending burn <b class="r">REWARDS</b>, provider called after commit <b class="x">EXTERNAL</b>, callback settles or reverses <b class="r">REWARDS</b>, anything stuck sweeps to a human queue <b class="r">REWARDS</b></td></tr>
+<tr><td class="num">6</td><td class="jt">Pay with points</td><td class="path">Pay with points, Internal redemption, Payments</td><td>Points converted into the wallet first <b class="b">BRIDGE</b>, then the payment charges the full amount <b class="w">WALLET</b>, so the recipient is paid in full while the wallet is only out the remainder</td></tr>
+<tr><td class="num">7</td><td class="jt">Fund the platform</td><td class="path">Treasury, Money operations, Ledger</td><td>Operator proposes a float top-up or a customer funding <b class="w">WALLET</b>, a second admin approves, nothing moves before that <b class="s">SHARED</b>, bank mirror debited and float credited <b class="w">WALLET</b></td></tr>
+<tr><td class="num">8</td><td class="jt">Change a config</td><td class="path">Config maker-checker, Audit</td><td>Pricing, limits, tax, step-up or conversion rate proposed <b class="s">SHARED</b>, reviewed and approved by a second admin <b class="s">SHARED</b>, applied with before and after state written to the immutable audit log <b class="s">SHARED</b></td></tr>
+</tbody></table></div>
+<div class="card"><h2>How to read this</h2><p class="note">
+<b>The colours are a product boundary, not a code one.</b> A tenant is provisioned as wallet only, rewards only,
+or both. A wallet-only tenant gets no points pool, no rules engine and no redemption surface; a rewards-only
+tenant never touches the money core. That is why the blue and gold halves are drawn as separate stacks: each
+has to stand up without the other. The green foundation exists once and serves whichever halves are switched
+on.<br><br>
+<b>Purple is the interesting part, and it only exists in a both-mode tenant.</b> Points and money are different
+kinds of value, so every crossing between them is explicit: a conversion rate that fails closed when it is not
+configured, a points redemption wallet that receives burned points, and a cashback provider wallet that funds
+every payout. Nothing converts implicitly and there is no default rate.<br><br>
+<b>One ledger, one choke point.</b> Every movement of value, money or points, is an append-only double entry
+posted through a single function that holds the row locks, enforces the overdraft floor and the balance
+ceiling, and dedupes on the idempotency key. Balances are derived by summing entries, never stored and
+updated. A reversal appends opposite legs; nothing is ever edited in place. That is what lets a points burn and
+a fiat payout be reasoned about with the same rules.<br><br>
+<b>Money paths fail closed.</b> A service may only run if both a pricing config and a limit config resolve for
+the acting user. A zero fee or an unlimited cap has to be an explicitly configured row, never an implicit
+default, so a missing config stops the transaction instead of silently letting value through.<br><br>
+<b>Two different maker-checker flows, deliberately.</b> Config changes (pricing, limits, tax, step-up,
+conversion rates) go through the config change request pipeline. Money movements (fund, withdraw, adjust) go
+through money operations with N distinct approvers. Both are green because both halves rely on them, but they
+guard different things: one guards the rules, the other guards the cash.<br><br>
+<b>Points and money keep separate statements.</b> The transaction history is money only. Points earned and
+points redeemed live in the rewards history behind the points balance. When a redemption pays out, the fiat leg
+appears in the money statement because real money arrived, while the points burn appears only on the rewards
+side. The two are cross-referenced so either leg resolves to the other.
+</p></div>
+</div></body></html>

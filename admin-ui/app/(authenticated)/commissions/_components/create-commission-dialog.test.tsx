@@ -67,13 +67,14 @@ const instruments = [
 ] satisfies Instrument[];
 
 /** Render the dialog behind a trigger, open it, and return the userEvent instance. */
-async function openDialog() {
+async function openDialog(commissionWalletEnabled = false) {
   const user = userEvent.setup();
   render(
     <CreateCommissionDialog
       tenantId="tenant-1"
       services={services}
       instruments={instruments}
+      commissionWalletEnabled={commissionWalletEnabled}
       catalog={SEED_USER_TYPE_CATALOG}
       trigger={<button type="button">New commission</button>}
     />,
@@ -111,6 +112,12 @@ describe("Propose a commission schedule", () => {
         amount_to: null,
         fixed_commission: "3",
         variable_commission_pct: "0",
+        // Defaults reproduce the pre-commission-wallet behaviour exactly: paid
+        // into the spendable main wallet, with no parent share (spec D18).
+        payout_destination: "main_wallet",
+        parent_fixed_commission: "0",
+        parent_variable_commission_pct: "0",
+        parent_commission_cap: null,
         commission_cap: null,
       },
     ]);
@@ -149,5 +156,48 @@ describe("Propose a commission schedule", () => {
       await screen.findByText(/commission_conflict: A commission schedule already exists/),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+
+describe("Commission wallet payout destination (D7)", () => {
+  it("Verify the commission wallet is not offered when the tenant never opted in", async () => {
+    const user = await openDialog(false);
+
+    await user.click(screen.getByLabelText("Pay commission into"));
+    // Only the main wallet exists as a choice — the other option is ABSENT,
+    // not disabled, so the operator is not left hunting for a way to enable it.
+    expect(
+      screen.queryByRole("option", { name: /Commission wallet/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /Main wallet/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("Verify a flag-on tenant still hides it while the rule is a catch-all band", async () => {
+    // The dialog opens scoped to "all" user types, which could match a
+    // consumer — who never holds a commission wallet.
+    const user = await openDialog(true);
+
+    await user.click(screen.getByLabelText("Pay commission into"));
+    expect(
+      screen.queryByRole("option", { name: /Commission wallet/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Verify the operator is told why the option is unavailable", async () => {
+    await openDialog(false);
+    expect(
+      screen.getByText(/Commission wallets are unavailable/i),
+    ).toBeInTheDocument();
+  });
+
+  it("Verify parent commission defaults to zero rather than being left blank", async () => {
+    await openDialog(false);
+    expect(screen.getByLabelText("Parent fixed")).toHaveValue("0");
+    expect(
+      screen.getByLabelText("Parent variable (0.005 = 0.5%)"),
+    ).toHaveValue("0");
   });
 });

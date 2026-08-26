@@ -39,6 +39,11 @@ class TenantOut(BaseModel):
     base_currency: str | None
     status: str
     created_at: datetime
+    # Whether Retail/Business users on this tenant hold a separate commission
+    # wallet. Read-only after creation (spec D3) — surfaced so the admin UI can
+    # decide whether to OFFER "commission wallet" as a payout destination on a
+    # commission rule at all (D7).
+    commission_wallet_enabled: bool = False
     # Per-tenant branding — nullable; absence means "fall back to app default".
     brand_accent_color: str | None = None
     brand_light_color: str | None = None

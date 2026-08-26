@@ -106,6 +106,13 @@ export interface Tenant {
   status: string;
   created_at: string;
   /**
+   * Whether Retail / Business users on this tenant hold a separate commission
+   * wallet. Chosen at tenant creation and immutable afterwards, so the UI
+   * renders it read-only on edit. Gates whether a commission rule may offer
+   * "Commission wallet" as its payout destination at all.
+   */
+  commission_wallet_enabled: boolean;
+  /**
    * Per-tenant runtime branding. All nullable — absence means "fall back to
    * the app default palette / Sasai mark". `brand_accent_color` /
    * `brand_light_color` are hex strings the palette engine derives tokens
@@ -1205,4 +1212,62 @@ export interface NetFlowPoint {
 export interface UserTypeSlice {
   user_type: string;
   count: number;
+}
+
+
+// ---------------------------------------------------------------------------
+// Commission wallets — payout destination, parent commission, bulk batches
+// ---------------------------------------------------------------------------
+
+/** Where a commission rule pays: the spendable main wallet, or the held one. */
+export type PayoutDestination = "main_wallet" | "commission_wallet";
+
+/** Disbursement pays the earner; withdrawal claws back to the operator. */
+export type CommissionBatchType = "disbursement" | "withdrawal";
+
+/**
+ * One line of an uploaded batch as the checker sees it.
+ *
+ * `delta` is the accrued balance this run is NOT moving — the number the
+ * checker is actually evaluating. It is null when no balance was captured (a
+ * row rejected before resolution), so the UI shows a dash, never a false zero.
+ * `snapshot_at` is surfaced because the balance can drift before approval; the
+ * backend re-checks under a row lock at apply.
+ */
+export interface CommissionBatchRow {
+  id: string;
+  row_number: number;
+  msisdn: string;
+  currency: string;
+  amount: string;
+  note: string | null;
+  balance_snapshot: string | null;
+  snapshot_at: string | null;
+  delta: string | null;
+  status: "valid" | "rejected" | "posted" | "failed";
+  failure_reason: string | null;
+  transaction_id: string | null;
+}
+
+/** An uploaded batch pending N-eyes approval. */
+export interface CommissionBatch {
+  id: string;
+  tenant_id: string;
+  batch_type: CommissionBatchType;
+  status:
+    | "PENDING"
+    | "APPLIED"
+    | "APPLIED_PARTIAL"
+    | "REJECTED"
+    | "WITHDRAWN";
+  file_name: string;
+  row_count_total: number;
+  row_count_valid: number;
+  amount_total: string;
+  destination_account_id: string | null;
+  created_by_admin_id: string;
+  required_approvals: number;
+  approvals_received: number;
+  created_at: string;
+  rows: CommissionBatchRow[];
 }

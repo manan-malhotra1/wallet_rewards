@@ -130,3 +130,78 @@ export const apiPatch = <T>(path: string, body?: unknown, opts?: FetchOptions) =
 
 export const apiDelete = <T>(path: string, opts?: FetchOptions) =>
   apiFetch<T>(path, { ...opts, method: "DELETE" });
+
+
+/**
+ * POST multipart/form-data (a file upload).
+ *
+ * Separate from `apiPost` because `apiFetch` JSON-stringifies its body and sets
+ * `Content-Type: application/json`. For FormData the Content-Type header must
+ * be left UNSET so the browser/undici writes the multipart boundary itself —
+ * setting it by hand produces a body the server cannot parse.
+ */
+export async function apiPostForm<T>(
+  path: string,
+  form: FormData,
+  opts?: { query?: Record<string, string | number | undefined> },
+): Promise<T> {
+  const session = await auth();
+  if (!session?.accessToken) {
+    throw new ApiError(401, "no_session", "Not authenticated");
+  }
+  const res = await fetch(buildUrl(path, opts?.query), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${session.accessToken}`,
+    },
+    body: form,
+    cache: "no-store",
+  });
+  const text = await res.text();
+  let payload: unknown = undefined;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { error_code: "upstream_error", message: text.slice(0, 200) };
+    }
+  }
+  if (!res.ok) {
+    throw new ApiError(
+      res.status,
+      (payload as { error_code?: string } | undefined)?.error_code ??
+        "upstream_error",
+      (payload as { message?: string } | undefined)?.message ??
+        `Backend returned ${res.status}`,
+    );
+  }
+  return payload as T;
+}
+
+/**
+ * GET a response as raw text rather than JSON — used for the rejects CSV,
+ * which the operator downloads and re-uploads after fixing.
+ */
+export async function apiGetText(
+  path: string,
+  query?: Record<string, string | number | undefined>,
+): Promise<string> {
+  const session = await auth();
+  if (!session?.accessToken) {
+    throw new ApiError(401, "no_session", "Not authenticated");
+  }
+  const res = await fetch(buildUrl(path, query), {
+    method: "GET",
+    headers: {
+      Accept: "text/csv",
+      Authorization: `Bearer ${session.accessToken}`,
+    },
+    cache: "no-store",
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new ApiError(res.status, "upstream_error", text.slice(0, 200));
+  }
+  return text;
+}

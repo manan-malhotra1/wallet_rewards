@@ -29,6 +29,7 @@ const tenant: Tenant = {
   id: "tenant-1",
   name: "Acme",
   business_type: "both",
+  commission_wallet_enabled: false,
   keycloak_realm: "acme",
   base_currency: "ZAR",
   status: "active",

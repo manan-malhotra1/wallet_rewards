@@ -86,7 +86,8 @@ function renderSection(request: ConfigChangeRequest, currentAdminId: string) {
         currentAdminId={currentAdminId}
         services={services}
         instruments={instruments}
-        catalog={SEED_USER_TYPE_CATALOG}
+        commissionWalletEnabled={false}
+      catalog={SEED_USER_TYPE_CATALOG}
       />
     </TooltipProvider>,
   );

@@ -26,6 +26,7 @@ import type {
   AuditEntry,
   BonusMultiplier,
   BudgetConsumption,
+  CommissionBatch,
   CommissionConfig,
   CompositeOperator,
   ConfigChangeRequest,
@@ -45,6 +46,7 @@ import type {
   MoneyOperationStatus,
   NetFlowPoint,
   PendingItem,
+  PointsConversionRate,
   PricingConfig,
   QueueCounts,
   RedemptionProvider,
@@ -63,7 +65,6 @@ import type {
   ServiceSlice,
   SettableAccessLevel,
   StatusBucket,
-  PointsConversionRate,
   StepUpPolicy,
   SweepOutcome,
   SystemWallet,
@@ -1354,3 +1355,23 @@ export const getUsersByType = (tenant_id: string) =>
   apiGet<UserTypeSlice[]>("/api/v1/analytics/users/by-type", {
     query: { tenant_id },
   });
+
+
+/**
+ * Commission batches (spec 2026-08-26 §8). Upload is multipart, so it does not
+ * go through the JSON `apiPost` helper.
+ */
+export const listCommissionBatches = (
+  tenant_id: string,
+  params?: { batch_type?: string; status?: string },
+) => {
+  const query = new URLSearchParams({ tenant_id });
+  if (params?.batch_type) query.set("batch_type", params.batch_type);
+  if (params?.status) query.set("status", params.status);
+  return apiGet<CommissionBatch[]>(`/api/v1/commission-batches?${query}`);
+};
+
+export const getCommissionBatch = (tenant_id: string, batch_id: string) =>
+  apiGet<CommissionBatch>(
+    `/api/v1/commission-batches/${batch_id}?tenant_id=${tenant_id}`,
+  );

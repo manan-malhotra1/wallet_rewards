@@ -15,6 +15,10 @@ export const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   provider_redemption_wallet: "Provider redemption wallet",
   operator_adjustment: "Bank Mirror Account",
   commission: "Commission Funded Wallet",
+  // The tenant-level `commission` pool above FUNDS payouts; this is the
+  // per-user wallet that HOLDS them until a disbursement run. Two different
+  // things, so two clearly different labels.
+  commission_wallet: "Commission Wallet",
   tax_service_collected: "Tax Collected on Service Charges",
   tax_commission_collected: "Tax Collected on Commissions",
   airtime_merchant_holding: "Airtime merchant holding",

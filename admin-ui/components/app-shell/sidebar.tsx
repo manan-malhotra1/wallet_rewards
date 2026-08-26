@@ -5,7 +5,6 @@
 "use client";
 
 import {
-  Repeat,
   Banknote,
   Box,
   ChevronDown,
@@ -13,18 +12,21 @@ import {
   CreditCard,
   Gauge,
   GitPullRequest,
+  HandCoins,
   KeyRound,
   Layers,
   ListChecks,
   Megaphone,
   PiggyBank,
   Receipt,
+  Repeat,
   ScanLine,
   Settings2,
   ShieldAlert,
   ShieldCheck,
   Tag,
   Ticket,
+  Undo2,
   Users,
   Users2,
   Zap,
@@ -66,6 +68,18 @@ const OPERATIONS: NavItem[] = [
   { label: "Users", href: "/users", icon: Users },
   { label: "Merchants", href: "/merchants", icon: Box },
   { label: "System wallets", href: "/system-wallets", icon: Banknote },
+  // Two separate menus by design (spec D14): disbursement PAYS the earner,
+  // withdrawal CLAWS BACK to an operator account. Different business acts.
+  {
+    label: "Commission disbursement",
+    href: "/commission-disbursement",
+    icon: HandCoins,
+  },
+  {
+    label: "Commission withdrawal",
+    href: "/commission-withdrawal",
+    icon: Undo2,
+  },
   { label: "Reconciliation", href: "/reconciliation", icon: ScanLine },
 ];
 

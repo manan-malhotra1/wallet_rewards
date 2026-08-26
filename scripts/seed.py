@@ -59,6 +59,8 @@ from app.shared.models import (  # noqa: E402
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
+    ENTRY_CREDIT,
+    ENTRY_DEBIT,
     MERCHANT_CATEGORY_AIRTIME,
     MERCHANT_MODE_SIMULATOR,
     REFERRAL_TRIGGER_SIGNUP,
@@ -172,6 +174,11 @@ async def _get_or_create_tenant(session: AsyncSession) -> Tenant:
         base_currency=TENANT_CURRENCY,
         brand_accent_color=DEFAULT_BRAND_ACCENT_COLOR,
         brand_light_color=DEFAULT_BRAND_LIGHT_COLOR,
+        # Commission wallets ON for the dev tenant (spec 2026-08-26, D3 — the
+        # flag is creation-time only, so it must be set HERE or never). Gives
+        # the seeded agent and merchant a commission wallet, which the
+        # disbursement / withdrawal menus and their E2E specs need.
+        commission_wallet_enabled=True,
     )
     session.add(tenant)
     await session.commit()
@@ -1493,6 +1500,84 @@ async def seed_segment_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> 
             print(f"  - Segment group already exists: {group_name}")
 
 
+async def seed_commission_wallets(
+    session: AsyncSession, tenant: Tenant
+) -> None:
+    """Provision commission wallets and accrue an opening balance for the agent.
+
+    The disbursement / withdrawal menus (and their E2E specs) need an earner who
+    actually HOLDS accrued commission, so this posts a real pool -> wallet
+    transaction rather than inserting a ledger row by hand.
+
+    Idempotent: provisioning skips wallets that exist, and the accrual uses a
+    fixed idempotency key so re-running the seed never double-credits.
+    """
+    from app.modules.accounts.provisioning import provision_user_accounts
+    from app.modules.ledger import (
+        LedgerEntryRequest,
+        PostTransactionRequest,
+        post_transaction,
+    )
+    from app.modules.pricing.service import get_or_create_system_commission
+    from app.shared.models import ACCOUNT_TYPE_COMMISSION_WALLET
+
+    users = (
+        (await session.execute(select(User).where(User.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
+    provisioned = 0
+    for user in users:
+        provisioned += await provision_user_accounts(
+            session, tenant_id=tenant.id, user_id=user.id
+        )
+    await session.commit()
+    if provisioned:
+        print(f"  + Commission wallets: {provisioned} account(s) provisioned")
+
+    pool = await get_or_create_system_commission(
+        session, tenant_id=tenant.id, currency=TENANT_CURRENCY
+    )
+    opening = Decimal("500")
+    for user in users:
+        if user.user_type not in (USER_TYPE_AGENT, USER_TYPE_MERCHANT):
+            continue
+        wallet = (
+            await session.execute(
+                select(Account).where(
+                    Account.tenant_id == tenant.id,
+                    Account.user_id == user.id,
+                    Account.account_type == ACCOUNT_TYPE_COMMISSION_WALLET,
+                    Account.currency == TENANT_CURRENCY,
+                )
+            )
+        ).scalar_one_or_none()
+        if wallet is None:
+            continue
+        balance, _ = await derive_balance(session, wallet.id)
+        if balance > 0:
+            continue
+        await post_transaction(
+            session,
+            PostTransactionRequest(
+                tenant_id=tenant.id,
+                # Fixed per user, so a re-run replays instead of double-crediting.
+                idempotency_key=f"seed-commission-accrual:{user.id}",
+                transaction_type="commission_accrual",
+                currency=TENANT_CURRENCY,
+                amount=opening,
+                entries=[
+                    LedgerEntryRequest(pool.id, ENTRY_DEBIT, opening),
+                    LedgerEntryRequest(wallet.id, ENTRY_CREDIT, opening),
+                ],
+            ),
+        )
+        print(
+            f"  + Commission accrual: {user.user_type} {user.id} "
+            f"<- R {opening} {TENANT_CURRENCY} (held, not spendable)"
+        )
+
+
 async def seed() -> None:
     """Populate the local dev database with the canonical test data."""
     print("Seeding local development database...")
@@ -1700,6 +1785,10 @@ async def seed() -> None:
         # the evaluator's batch recompute — not this script — is what
         # actually assigns membership).
         await seed_segment_defaults(session, tenant.id)
+
+        # Commission wallets + an opening accrued balance. Last, because it
+        # provisions for EVERY seeded user and needs them all to exist.
+        await seed_commission_wallets(session, tenant)
 
     print()
     print("Seed complete.")

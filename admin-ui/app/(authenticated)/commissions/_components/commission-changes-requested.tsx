@@ -25,6 +25,7 @@ export function CommissionChangesRequested({
   services,
   instruments,
   catalog,
+  commissionWalletEnabled,
 }: {
   requests: ConfigChangeRequest[];
   tenantId: string;
@@ -33,6 +34,8 @@ export function CommissionChangesRequested({
   instruments: Instrument[];
   /** The tenant's user-type catalog, fetched by the page's server component. */
   catalog: UserTypeCatalog;
+  /** Tenant commission-wallet flag, forwarded to the dialog (spec D7). */
+  commissionWalletEnabled: boolean;
 }) {
   if (requests.length === 0) return null;
   // code → display_name so the card's Service field reads friendly, not raw.
@@ -62,6 +65,7 @@ export function CommissionChangesRequested({
             editAction={
               canEdit ? (
                 <CreateCommissionDialog
+        commissionWalletEnabled={commissionWalletEnabled}
                   tenantId={tenantId}
                   services={services}
                   instruments={instruments}

@@ -30,6 +30,8 @@ import {
   validateBands,
   type BandRow,
 } from "@/app/(authenticated)/_components/bands";
+import { canPayToCommissionWallet } from "@/lib/commission-batch";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -64,6 +66,20 @@ interface Scope {
   transaction_type: string;
   currency: string;
   user_type: string;
+  /**
+   * Where the commission lands (spec D6). Scope-level rather than per-band:
+   * the backend stores it on every band row, but an operator thinks in terms
+   * of "this rule pays into the commission wallet", not per amount tier.
+   */
+  payout_destination: string;
+  /**
+   * The earner's PARENT rate (D8) — a percentage of the TRANSACTION AMOUNT,
+   * not of the child's commission. Also scope-level and copied onto every
+   * band, for the same reason as the destination.
+   */
+  parent_fixed: string;
+  parent_variable_pct: string;
+  parent_cap: string;
 }
 
 /** Extract the band rows from a proposal payload (multi-band or legacy flat). */
@@ -101,6 +117,10 @@ function deriveInitial(
         transaction_type: str(first.transaction_type),
         currency: str(first.currency),
         user_type: first.user_type ? str(first.user_type) : "all",
+        payout_destination: str(first.payout_destination, "main_wallet"),
+        parent_fixed: str(first.parent_fixed_commission, "0"),
+        parent_variable_pct: str(first.parent_variable_commission_pct, "0"),
+        parent_cap: str(first.parent_commission_cap),
       },
       bands: rows.map((r) => ({
         amount_from: str(r.amount_from),
@@ -119,6 +139,10 @@ function deriveInitial(
         instruments[0]?.code ??
         "",
       user_type: "all",
+      payout_destination: "main_wallet",
+      parent_fixed: "0",
+      parent_variable_pct: "0",
+      parent_cap: "",
     },
     bands: [emptyBand()],
   };
@@ -144,6 +168,7 @@ export function CreateCommissionDialog({
   services,
   instruments,
   catalog,
+  commissionWalletEnabled,
   trigger,
   reviseRequest,
   editGroup,
@@ -158,6 +183,12 @@ export function CreateCommissionDialog({
    * Types are runtime data, so the scope picker reads them from here.
    */
   catalog: UserTypeCatalog;
+  /**
+   * The tenant's commission-wallet flag. Gates whether "Commission wallet" is
+   * offered as a payout destination at all (D7); chosen at tenant creation and
+   * immutable, so it is read-only context here.
+   */
+  commissionWalletEnabled: boolean;
   /** Trigger element; omit when driving the dialog via `open`/`onOpenChange`. */
   trigger?: React.ReactNode;
   reviseRequest?: ConfigChangeRequest;
@@ -181,6 +212,21 @@ export function CreateCommissionDialog({
   );
   const [scope, setScope] = React.useState<Scope>(initial.scope);
   const [bands, setBands] = React.useState<BandRow[]>(initial.bands);
+  // D7 mirrored client-side: the commission wallet must exist for this tenant
+  // AND the rule must name an explicit Retail/Business type. A catch-all band
+  // could match a consumer, who never holds one.
+  const selectedCategory = React.useMemo(
+    () =>
+      catalog.types.find((t) => t.code === scope.user_type)?.category_code ??
+      null,
+    [catalog.types, scope.user_type],
+  );
+  const commissionWalletSelectable = canPayToCommissionWallet(
+    commissionWalletEnabled,
+    scope.user_type === "all" ? null : scope.user_type,
+    selectedCategory,
+  );
+
   const [submitting, setSubmitting] = React.useState(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
   const { toast } = useToast();
@@ -195,6 +241,18 @@ export function CreateCommissionDialog({
 
   const updateScope = <K extends keyof Scope>(key: K, value: Scope[K]) =>
     setScope((prev) => ({ ...prev, [key]: value }));
+
+  // Without this the form would submit a destination the server refuses with
+  // commission_destination_not_available, and the operator would see a 422 for
+  // a control that is no longer even on screen.
+  React.useEffect(() => {
+    if (
+      !commissionWalletSelectable &&
+      scope.payout_destination === "commission_wallet"
+    ) {
+      setScope((prev) => ({ ...prev, payout_destination: "main_wallet" }));
+    }
+  }, [commissionWalletSelectable, scope.payout_destination]);
 
   const updateBand = (index: number, key: keyof BandRow, value: string) =>
     setBands((prev) =>
@@ -224,6 +282,12 @@ export function CreateCommissionDialog({
       fixed_commission: b.fixed.trim() || "0",
       variable_commission_pct: b.variable_pct.trim() || "0",
       commission_cap: orNull(b.cap),
+      // Scope-level in the form, per-row in the payload — the backend keys
+      // both legs off the same config row (D8).
+      payout_destination: scope.payout_destination,
+      parent_fixed_commission: scope.parent_fixed.trim() || "0",
+      parent_variable_commission_pct: scope.parent_variable_pct.trim() || "0",
+      parent_commission_cap: orNull(scope.parent_cap),
     }));
     setSubmitting(true);
     const result = reviseRequest
@@ -318,6 +382,87 @@ export function CreateCommissionDialog({
                 value={scope.user_type === "all" ? null : scope.user_type}
                 onChange={(code) => updateScope("user_type", code ?? "all")}
                 disabled={scopeLocked}
+              />
+            </div>
+          </div>
+
+          {/* Payout destination + parent commission (spec 2026-08-26 D6, D8). */}
+          <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="c-destination">Pay commission into</Label>
+              <Select
+                value={scope.payout_destination}
+                onValueChange={(v) => updateScope("payout_destination", v)}
+              >
+                <SelectTrigger id="c-destination">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main_wallet">
+                    Main wallet — spendable immediately
+                  </SelectItem>
+                  {/* D7: the option is ABSENT, not disabled, when it cannot
+                      exist. A disabled control invites the operator to hunt for
+                      a way to enable it; an absent one says the combination
+                      does not exist. The server enforces the same rule. */}
+                  {commissionWalletSelectable ? (
+                    <SelectItem value="commission_wallet">
+                      Commission wallet — held for review
+                    </SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
+              {!commissionWalletSelectable ? (
+                <p className="text-muted-foreground text-xs">
+                  Commission wallets are unavailable for this tenant and user
+                  type, so commission is paid into the main wallet.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="col-span-2">
+              <Label className="text-xs">
+                Parent commission — paid to the earner&apos;s supervisor
+              </Label>
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                A percentage of the transaction amount, not of the
+                earner&apos;s commission. Zero means the parent earns nothing.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="c-parent-fixed" className="text-[11px]">
+                Parent fixed
+              </Label>
+              <Input
+                id="c-parent-fixed"
+                inputMode="decimal"
+                value={scope.parent_fixed}
+                onChange={(e) => updateScope("parent_fixed", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="c-parent-var" className="text-[11px]">
+                Parent variable (0.005 = 0.5%)
+              </Label>
+              <Input
+                id="c-parent-var"
+                inputMode="decimal"
+                value={scope.parent_variable_pct}
+                onChange={(e) =>
+                  updateScope("parent_variable_pct", e.target.value)
+                }
+              />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label htmlFor="c-parent-cap" className="text-[11px]">
+                Parent cap (optional)
+              </Label>
+              <Input
+                id="c-parent-cap"
+                inputMode="decimal"
+                value={scope.parent_cap}
+                onChange={(e) => updateScope("parent_cap", e.target.value)}
+                placeholder="No cap"
               />
             </div>
           </div>

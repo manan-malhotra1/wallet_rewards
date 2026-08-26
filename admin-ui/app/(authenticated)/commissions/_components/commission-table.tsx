@@ -58,6 +58,7 @@ export function CommissionTable({
   services,
   instruments,
   catalog,
+  commissionWalletEnabled,
   canPropose,
   serviceNames,
   changeProposedKeys,
@@ -68,6 +69,8 @@ export function CommissionTable({
   instruments: Instrument[];
   /** The tenant's user-type catalog, fetched by the page's server component. */
   catalog: UserTypeCatalog;
+  /** Tenant commission-wallet flag, forwarded to the dialog (spec D7). */
+  commissionWalletEnabled: boolean;
   /** platform-admin gate — hides the Edit affordance for other admins. */
   canPropose: boolean;
   /** `{ code: display_name }` forwarded to the View drawer. */
@@ -182,6 +185,7 @@ export function CommissionTable({
                         services={services}
                         instruments={instruments}
                         catalog={catalog}
+                        commissionWalletEnabled={commissionWalletEnabled}
                         changeProposed={changeProposed}
                       />
                     )}
@@ -229,6 +233,7 @@ function EditCommissionButton({
   services,
   instruments,
   catalog,
+  commissionWalletEnabled,
   changeProposed,
 }: {
   group: CommissionConfigGroup;
@@ -237,6 +242,8 @@ function EditCommissionButton({
   instruments: Instrument[];
   /** The tenant's user-type catalog, fetched by the page's server component. */
   catalog: UserTypeCatalog;
+  /** Tenant commission-wallet flag, forwarded to the dialog (spec D7). */
+  commissionWalletEnabled: boolean;
   /** Open request on this scope → disable Edit; the maker resolves it first. */
   changeProposed: boolean;
 }) {
@@ -268,6 +275,7 @@ function EditCommissionButton({
         </Button>
       </Tooltip>
       <CreateCommissionDialog
+        commissionWalletEnabled={commissionWalletEnabled}
         tenantId={tenantId}
         services={services}
         instruments={instruments}

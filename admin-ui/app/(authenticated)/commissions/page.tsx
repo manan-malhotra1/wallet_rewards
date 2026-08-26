@@ -14,7 +14,7 @@ import {
   listInstruments,
   listServices,
 } from "@/lib/api-endpoints";
-import { getActiveTenantId } from "@/lib/active-tenant";
+import { getActiveTenant, getActiveTenantId } from "@/lib/active-tenant";
 import type {
   CommissionConfig,
   ConfigChangeRequest,
@@ -43,6 +43,11 @@ export default async function CommissionsPage() {
   const currentAdminId = session?.user?.id ?? "";
 
   const activeTenantId = await getActiveTenantId();
+  // The whole tenant, not just its id: the create dialog needs the
+  // commission-wallet flag to decide whether to OFFER that payout destination
+  // at all (spec D7).
+  const activeTenant = await getActiveTenant();
+  const commissionWalletEnabled = activeTenant?.commission_wallet_enabled ?? false;
   if (!activeTenantId) {
     return (
       <div className="p-6">
@@ -91,6 +96,7 @@ export default async function CommissionsPage() {
           canPropose ? (
             <CreateCommissionDialog
               tenantId={activeTenantId}
+              commissionWalletEnabled={commissionWalletEnabled}
               services={services}
               instruments={instruments}
               catalog={catalog}
@@ -118,6 +124,7 @@ export default async function CommissionsPage() {
           <CommissionChangesRequested
             requests={openRequests}
             tenantId={activeTenantId}
+            commissionWalletEnabled={commissionWalletEnabled}
             currentAdminId={currentAdminId}
             services={services}
             instruments={instruments}
@@ -134,6 +141,7 @@ export default async function CommissionsPage() {
           <CommissionTable
             groups={groupCommissionConfigs(configs)}
             tenantId={activeTenantId}
+            commissionWalletEnabled={commissionWalletEnabled}
             services={services}
             instruments={instruments}
             catalog={catalog}

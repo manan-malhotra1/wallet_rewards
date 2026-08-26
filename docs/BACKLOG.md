@@ -728,3 +728,469 @@ read optimisation. Also: `reward_events` has no created_at/tenant-reachable
 index (analytics + budgets loop aggregates over it), and the system-wallet
 drill-down sort would want a (account_id, created_at) ledger index — both are
 measure-first decisions on hot money-path tables, same discipline as B1.9.
+
+---
+
+## Epic B8 — Commission wallets, parent commission & disbursement · **Backlog**
+
+Raised 2026-08-23 by management review. Today an agent commission is paid
+straight into the agent's spendable working wallet: `assemble_charges` builds a
+DEBIT `commission` pool → CREDIT `financial_wallet` leg
+(`cashin/service.py:318` — "commission lands on the agent's float"), flagged
+`skip_receive_cap=True` so it lands regardless of the agent's max_balance
+(Story 20.3). The commission is therefore spendable the instant it is earned.
+
+**What the business wants instead:** commission accrues in a separate,
+non-spendable **commission wallet** held by Retail and Business users (agents,
+super-agents, merchants, head-merchants — never consumers), sits there through
+the period so fraud and clawback review can happen, and is then moved into the
+working wallet by an explicit, approved **disbursement run**.
+
+> **Depends on the in-flight user-types edition** (`feature/configurable-user-types`).
+> Eligibility is a *category* question — Retail and Business get a commission
+> wallet, Consumers do not — and categories only exist once that branch lands.
+> Do not hardcode a five-type list here; that is the exact coupling the
+> user-types work is removing.
+
+### Story B8.1 — `commission_wallet` account type, provisioned at instrument onboarding · Backlog
+
+**Description:** A new per-(tenant, user, currency) account type holding accrued
+commission. Provisioned by the instrument onboarding path that already
+provisions system accounts and backfills user wallets
+(`instruments/service.py:132` `_provision_system_accounts`, `:242`
+`_backfill_user_accounts`), so creating a currency yields commission wallets for
+every eligible user, and creating an eligible user yields one per financial
+currency.
+
+**Acceptance criteria:**
+- `ACCOUNT_TYPE_COMMISSION_WALLET` added to `ACCOUNT_TYPES` and the account-type
+  CHECK; distinct from the existing tenant-level `commission` **pool** account
+- Eligibility is read from the user-type catalog's **category** (Retail,
+  Business), never a hardcoded type list — an operator-created Business type
+  gets a commission wallet with no code change
+- Consumers get none, and asking for one is refused, not silently created
+- Provisioned on: instrument create (backfill for existing eligible users),
+  user create, and user type-change into an eligible category
+- Financial currencies only — a PTS instrument provisions no commission wallet
+- Idempotent, tenant-scoped, and safe against the lazy get-or-create paths
+  racing it (same discipline as B5.1)
+- NOT a `financial_wallet`, so the balance guard skips it — no overdraft floor
+  and no `max_balance` ceiling, matching pool/collection semantics (invariant #11)
+- `scripts/backfill_commission_wallets.py` for existing eligible users — a
+  script, not a migration (B4.8 precedent)
+- Visible on the admin user detail card as a separate balance
+- Tests: consumer → none; agent → one per financial currency; operator-created
+  Business type → one; PTS → none; re-provisioning is a no-op
+
+### Story B8.2 — Commission credits land in the commission wallet, not the working wallet · Backlog
+
+**Description:** Retarget the commission credit leg from the earner's
+`financial_wallet` to their `commission_wallet`, on every path that pays
+commission.
+
+**Acceptance criteria:**
+- The charge assembler credits the earner's commission wallet; the DEBIT side
+  (the tenant `commission` pool) and the `tax_commission_collected` leg are
+  unchanged
+- Every commission-paying path is covered (cash-in today; cash-out, airtime and
+  partner flows as configured) — no path keeps the old target
+- **Fails closed:** an earner with no commission wallet → 422 before any ledger
+  write, never a silent fallback to the working wallet (invariant #12 discipline)
+- Accrued commission is excluded from spendable balance everywhere: money-path
+  available-balance reads, limits, admin user detail, mobile balance cards
+- The ledger stays balanced and append-only; `skip_receive_cap` is no longer
+  needed on this leg once the target is unguarded (confirm and remove)
+- Commission already paid into working wallets stays there — the ledger is
+  append-only. Document it; do not migrate
+- Tests: a cash-in pays commission to the commission wallet; the agent's
+  spendable balance is unchanged by it; a consumer-acting path pays none
+
+### Story B8.3 — Parent commission in the commission configuration · Backlog
+
+**Description:** A commission config can additionally pay the earner's **parent**
+— an agent's transaction also compensates their super-agent. This is the
+"commission hierarchy roll-up across the parent chain" explicitly deferred from
+Pricing v2 (`specs/2026-07-12-pricing-v2-design.md` §Phase 2, decision D4 —
+"v1 = commission to the acting agent only"). `users.parent_user_id` already
+exists; nothing reads it for commission today.
+
+**Acceptance criteria:**
+- `commission_configs` gains parent commission terms (fixed / variable pct /
+  cap), resolved with the same precedence and band logic as the child terms
+- Resolution walks **exactly one level** via `users.parent_user_id` — never a
+  chain — consistent with the two-level cap locked as user-types D7
+- Retail (agent → super-agent) is the required case. Business (merchant →
+  head-merchant) is a **product decision to record explicitly**, not an
+  assumption
+- The parent leg credits the PARENT's commission wallet (B8.1), so it inherits
+  the hold-and-disburse treatment
+- Both legs are funded from the tenant `commission` pool, which stays unguarded
+  and may run negative — the operator tops it up
+- No parent, parent in an ineligible category, or parent without a commission
+  wallet → the child commission still pays; the parent leg is skipped and the
+  reason recorded on the transaction (fail-open on the parent leg only —
+  decision to confirm)
+- Parent == acting user is impossible by construction; assert it anyway
+- Admin UI: parent commission fields in the commission-config dialog, routed
+  through config maker-checker like every other money config
+- Tests: precedence matrix incl. parent terms; one level only; skip paths; a
+  balanced ledger with three commission legs (child, parent, tax)
+
+### Story B8.4 — Commission disbursement module · Backlog
+
+**Description:** The point of holding commission is the review window. A new
+module calculates what each eligible user accrued over a period, lets an
+operator review and hold anything suspicious, and then moves the approved
+amounts from commission wallets into working wallets. An agent cannot transact
+against commission until this runs.
+
+**Acceptance criteria:**
+- **Two phases, separated:** (a) a *collection / statement* run computing
+  per-user accrued commission for a period, with a drill-down to the
+  contributing transactions; (b) a *disbursement* posting
+  `commission_wallet` → `financial_wallet` per included user
+- Accrual totals reconcile exactly to the ledger — the statement is derived,
+  never a second source of truth
+- Per-user **hold / exclude / partial disburse** with a mandatory reason
+  (the fraud-review outcome), audited
+- A disbursement run is bulk money movement, so it goes through **maker-checker**
+  (N-eyes, mirroring treasury Epic 18) — proposed, approved, then applied
+- Idempotent per (tenant, period, user): a re-run never double-pays, and the
+  apply at quorum is idempotent
+- The credit into the working wallet is cap-exempt (an earned payout, same rule
+  as commission today)
+- Clawback: an accrual can be reversed before disbursement; after disbursement
+  it is a new append-only reversal, never an UPDATE
+- Fails closed on missing config; tenant-isolated
+- Admin UI: a disbursement-run screen — period picker, per-user table with
+  accrued totals, hold/exclude affordances, run totals, and the approval flow
+- Every action audited; the statement is exportable
+- Tests: totals reconcile; a held user is excluded and their balance stays in
+  the commission wallet; re-run is a no-op; tenant isolation; ledger invariants
+
+### Story B8.5 — `user_type` CHECK constraints block operator-created types on every money config · **Backlog · blocks the in-flight user-types edition**
+
+**Description:** Found while grounding B8.3. The five hardcoded user-type strings
+are pinned by a CHECK constraint in **four** more places besides `users`:
+
+| Constraint | Table |
+|---|---|
+| `ck_commission_configs_user_type` | `commission_configs` (`models/commissions.py:56`) |
+| `ck_pricing_configs_user_type` | `pricing_configs` (`models/pricing.py:57`) |
+| (limits) | `limit_configs` (`models/limits.py:52`) |
+| (wallet limits) | `wallet_limit_configs` (`models/limits.py:109`) |
+
+Migration `20260823_0061_configurable_user_types.py` drops only
+`ck_users_user_type`. So on that branch as written, an operator can create a
+user type and assign users to it — and then cannot give it a pricing config, a
+limit config, or a commission config, because every insert violates a CHECK.
+Invariant #12 then makes the new type **unusable on every money path**, failing
+closed with `pricing_config_missing`. The feature ships looking complete and is
+inert for its actual purpose.
+
+The user-types design's grounding table lists `pricing_configs.user_type` and
+`commission_configs.user_type` only under the precedence pattern
+(`specs/2026-08-23-configurable-user-types-design.md:35`) and does not mention
+these constraints.
+
+**Acceptance criteria:**
+- All four CHECKs dropped in the same migration that drops `ck_users_user_type`,
+  so no intermediate state exists where a type is creatable but unconfigurable
+- Validation moves to the service layer, resolved against the tenant's own
+  active types (the same `assert_user_type_valid` the identity path uses)
+- A config row referencing a retired type still resolves — retirement must never
+  silently reprice (user-types D3, spec §11)
+- Test: create a type → create a pricing, limit and commission config for it →
+  transact end to end
+- **Should be pulled into `feature/configurable-user-types` rather than
+  shipped after it**
+
+---
+
+## Epic B9 — Use-case-scoped ledger locking · **Backlog**
+
+Raised 2026-08-23. Invariant #11 funnels every money path through
+`post_transaction`, where `_enforce_balance_guard` (`ledger/service.py:360`)
+takes a `FOR UPDATE` on every guarded leg. That centralisation is correct and
+must stay. What is **not** use-case-aware is which legs get locked: the guard
+locks any account whose type is in `_OVERDRAFT_GUARDED_ACCOUNT_TYPES` and whose
+net delta is non-zero, *before* it knows whether any check will actually read
+the balance. Two distinct costs follow.
+
+> **Scope discipline:** this epic narrows *where a lock is taken*. It must not
+> weaken any check that actually runs — the M-01 check-then-act race is exactly
+> why the guard exists. Every debit keeps its lock unconditionally.
+
+### Story B9.1 — Do not lock a leg that no check will read · Backlog
+
+**Description:** For a pure **credit** leg the guard skips the cap check when
+`is_reversal` or `skip_receive_cap` is set (`ledger/service.py:443`) — but
+the lock was already acquired at `:424`, and `derive_balance` at `:429` still
+runs a full `SUM(ledger_entries)` whose result is then discarded. So a reversal,
+a refund and an agent commission credit each take a row lock held through commit
+and pay for a full-history aggregate to decide nothing.
+
+**Acceptance criteria:**
+- A leg is locked only when a check will read it: every **debit** always; a
+  **credit** only when the cap check will actually run (not a reversal, not
+  `skip_receive_cap`, and a cap resolves for the owner)
+- `derive_balance` is not called for a leg whose check is skipped
+- Canonical account-id lock ordering is preserved across the locks that remain,
+  so no new deadlock order is introduced
+- **CLAUDE.md invariant #11 is updated in the same change** — the invariant text
+  currently describes the unconditional form
+- `.claude/rules/ledger-invariants.md` updated likewise
+- Concurrency test proving the removed lock cannot admit an over-cap credit:
+  two concurrent capped credits still resolve to one success, one 409
+- Before/after measurement on a commission credit and a reversal
+
+### Story B9.2 — Shared operator accounts serialise the whole tenant · **Backlog · the redemption hotspot**
+
+**Description:** Raised directly from the redemption case. The
+`cashback_provider_wallet` that funds points-to-cash payouts is **one row per
+(tenant, currency)** (`models/accounts.py:62-68`) and it is in
+`_OVERDRAFT_GUARDED_ACCOUNT_TYPES`, so every internal redemption in the tenant
+takes `FOR UPDATE` on that same row and holds it **through commit**. Redemptions
+therefore do not run concurrently — they queue, tenant-wide, behind one lock,
+and the queue lengthens with redemption volume, which is exactly the volume a
+rewards programme is designed to produce.
+
+`system_cash_inflow` has the identical shape for the funding side: every
+cash-in, top-up and partner fund locks the single float row.
+
+Unlike B9.1 this lock **cannot simply be dropped** — both accounts carry a real
+no-negative floor (`InsufficientCashbackFunds`, `InsufficientFloat`) and the
+check is genuine. The fix is a contention strategy, not a removal.
+
+**Acceptance criteria:**
+- Measure the current ceiling first: concurrent redemptions per second per
+  tenant against the single wallet, and the same for the float on cash-in
+  (dev load testing has already shown a ~15 TPS ceiling — establish how much of
+  it is this lock)
+- A documented decision / ADR choosing the strategy, with the rejected options
+  recorded: sharded sub-accounts with a routing rule; pre-authorised balance
+  tranches; a reservation counter checked before the ledger write; or an
+  authoritative denormalised balance column
+- **Cross-reference Epic 11.1** (live balance columns on accounts) — decide
+  explicitly whether that work supersedes this one or composes with it, rather
+  than building two answers to the same question
+- The no-negative floor is preserved exactly: no strategy may permit the pool to
+  go negative, and the failure mode stays a distinct 409
+- Concurrency test at the target rate showing no lost update and no negative
+  balance
+- Applies to `cashback_provider_wallet` and `system_cash_inflow`; the tenant
+  `commission` pool joins the list if B8 ever makes it guarded
+
+### Story B9.3 — A written lock policy per account type · Backlog
+
+**Description:** The guard's behaviour is currently inferable only by reading
+`_enforce_balance_guard` end to end, and every new account type inherits the
+guard implicitly — B8.1 adds `commission_wallet`, and B4's derived services
+already showed how easily a new code inherits the wrong default. Write the
+policy down as a table so the next account type is a deliberate decision.
+
+**Acceptance criteria:**
+- One table: account type × leg direction × which checks run × locked or not ×
+  why — covering every member of `ACCOUNT_TYPES`
+- Lives in `.claude/rules/ledger-invariants.md`, referenced from CLAUDE.md
+  invariant #11
+- A test asserting the table and `_OVERDRAFT_GUARDED_ACCOUNT_TYPES` agree, so a
+  new account type cannot be added without classifying it
+
+---
+
+## Epic B10 — TPS monitoring & load-aware bulk execution · **Backlog**
+
+Raised 2026-08-26. The platform has no load signal: nothing reports requests or
+transactions per second, `/metrics` exists only as a Phase 2 intention in
+`.claude/rules/observability.md`, and there is no history to answer "what was
+the platform doing at 02:00 last Tuesday?".
+
+That gap becomes a live risk with B8. Bulk commission disbursement and bulk
+withdrawal (B8.6) post thousands of rows through `post_transaction`, which takes
+`FOR UPDATE` row locks on the wallet legs and the operator float (invariant
+#11). A 5,000-row batch launched at 09:00 on payday competes with live traffic
+for the same connection pool and the same locks — and dev load testing already
+puts the P2P money path at a ~14–15 TPS plateau that *degrades* to ~12 TPS at
+concurrency 50 (see also B9.2, which measures how much of that ceiling is the
+single-row float lock).
+
+**Design:** `docs/superpowers/specs/2026-08-26-tps-monitoring-design.md`.
+Decisions locked there: TPS counts all state-mutating API writes (not just money
+paths); both global and per-tenant scopes are recorded and the bulk gate reads
+**global**, because the pool and the locks are shared across tenants; Redis is
+the counter of record with Prometheus and Postgres both deriving from it; a
+blocked batch retries indefinitely rather than expiring.
+
+> **Stories B10.1–B10.4 have no dependency on B8** and can land while it is
+> still in review. Only B10.5 needs the `commission_batches` runner to exist.
+
+### Story B10.1 — TPS counter, write middleware, and 30-second history · Backlog
+
+**Description:** The measurement substrate. Redis per-second buckets
+(`tps:{scope}:{unix_second}`, TTL 180s) incremented by a FastAPI middleware on
+every state-mutating request and by bulk workers per posted row, plus a
+`tps_samples` table written by a Celery-beat sampler every 30 seconds.
+
+**Acceptance criteria:**
+- Middleware counts `POST/PUT/PATCH/DELETE` that reached a route handler;
+  excludes `GET/HEAD/OPTIONS`, `/healthz`, `/metrics`, `/`, and `401/403/404/405/429`
+- `409` and `5xx` **are** counted — a replay and a failure both consumed a pool
+  slot, and excluding failures would make the meter read quiet during an incident
+- Counted after `call_next`, so the tenant (resolved by an auth dependency onto
+  `request.state`) and the status code are both known
+- Redis failure on the write path is swallowed and never fails a request
+  (surfaced as `sasai_tps_counter_errors_total`); failure on the read path raises
+  so the gate can fail closed
+- Rolling read excludes the current partial second, and returns `peak_second`
+  alongside the mean — a 30s average of 20 can hide a one-second burst of 200
+- One pipeline, one round-trip on the hot path; ~0.2–0.3 ms budget
+- `tps_samples` with **two partial unique indexes** on `bucket_start` (one
+  `WHERE tenant_id IS NULL`, one `WHERE NOT NULL`) — a plain composite unique
+  will not dedupe the global rows, since Postgres treats NULLs as distinct
+- Sampler derives its bucket from the clock (aligned to absolute 30s
+  boundaries), not from when beat fired, and upserts `ON CONFLICT DO NOTHING`
+- Tenants with no writes in a window get no row; the read path zero-fills
+- Daily pruner enforces 7-day retention
+- Tests: partial-second exclusion, idempotent double-fire producing one global
+  **and** one per-tenant row, swallowed write error, raising read error
+
+### Story B10.2 — `/metrics` Prometheus exposition · Backlog
+
+**Description:** A custom `prometheus_client` collector that derives all
+families from Redis at scrape time, on a dedicated registry.
+
+**Acceptance criteria:**
+- New dependency `prometheus-client>=0.21.0`; `prometheus` service added to
+  `sasai-wallet-infra/docker-compose.yml` scraping every 15s
+- Bearer-token gated via `settings.METRICS_TOKEN`; required outside local dev
+- **No default process collectors** on the registry — they are per-uvicorn-worker
+  and actively misleading behind a load balancer. Excluding them is what makes
+  any instance a valid scrape target
+- Nothing held in process memory, so two API instances backed by one Redis
+  return identical values (asserted by test)
+- Families: `sasai_write_ops_total{source}`, `sasai_tenant_write_ops_total{tenant_id}`,
+  `sasai_tps_current{scope,tenant_id}`, `sasai_tps_peak_second`,
+  `sasai_bulk_gate_open{tenant_id}`, `sasai_bulk_batches{state}`,
+  `sasai_bulk_batch_oldest_queued_seconds`, `sasai_bulk_gate_pauses_total{reason}`,
+  `sasai_tps_counter_errors_total`
+- Postgres-backed gauges cached 15s inside the collector so a tight scrape
+  interval cannot make `/metrics` a load source of its own
+- Commented `alerts.yml` shipped (sustained-high TPS, batch starving >6h,
+  counter blind) — rules only, no receiver wired
+- `http_request_duration_seconds` and the rest of the observability-rules metric
+  set are explicitly **out of scope**; this story adds the endpoint, not the
+  full metric catalogue
+
+### Story B10.3 — `platform_settings` table and per-tenant bulk window · Backlog
+
+**Description:** Somewhere to put a platform-scoped threshold, and a per-tenant
+off-hours window. No platform-scoped config table exists today — every config
+table carries `tenant_id`.
+
+**Acceptance criteria:**
+- `platform_settings` KV table with **no** `tenant_id`, a typed key registry in
+  code (unknown key → 422, so it cannot become a dumping ground), and every
+  write audit-logged
+- Resolution order: `platform_settings` row → `settings.py` → hard-coded default,
+  so env seeds the system and stays the DR fallback
+- Redis-cached 30s (the gate reads thresholds per chunk and must not add a
+  Postgres round-trip); a write busts the cache immediately
+- **No maker-checker** — these are operational knobs, and `config_change_requests`
+  is tenant-scoped and band-shaped. Record the decision; it becomes a ninth
+  config type if the business later wants four eyes on a threshold
+- `tenants` gains `bulk_window_tz` / `bulk_window_start` / `bulk_window_end`, all
+  nullable; all-NULL falls back to the platform default, partially-set is 422
+  `bulk_window_incomplete`, `start == end` means always open
+- Window arithmetic handles midnight wrap (22:00→04:00) and DST without
+  special-casing; `tzdata` installed explicitly in the Dockerfile so a base-image
+  change cannot silently move everyone's window
+- Edited on the Tenants page, audit-logged — **not** via config maker-checker,
+  for the reason above
+- Startup validator rejects `BULK_TPS_RESUME_AT >= BULK_TPS_PAUSE_AT`; inverting
+  them silently disables the hysteresis B10.5 depends on
+
+### Story B10.4 — Dashboard TPS panel · Backlog
+
+**Description:** Current TPS plus one hour of history (120 points at 30s) on the
+admin dashboard.
+
+**Acceptance criteria:**
+- `GET /api/v1/analytics/tps?tenant_id=&window=1h` on the existing analytics
+  router, reusing `_require_finance_or_admin`
+- **`platform-admin` sees the global series; a tenant operator does not** — the
+  global number is cross-tenant information. Every role gets the derived
+  `status` chip (quiet/normal/busy), so a tenant operator learns why their batch
+  is waiting without learning how busy anyone else is
+- Response carries current, thresholds, the tenant's bulk window with
+  `open_now`, and 120 zero-filled history points
+- `window` accepts `1h` only; the parameter exists so `6h`/`24h` are additive
+  later, anything else 422
+- Panel placed with the operational surfaces near the attention strip, **not**
+  among the money KPI tiles — TPS is not a business metric
+- Drawn on the existing `chart-geometry.ts` + `plot-frame.tsx` frame: fixed
+  `VB_WIDTH=1000` viewBox, `preserveAspectRatio="none"`, therefore
+  `vectorEffect="non-scaling-stroke"` on every stroke and all text as
+  absolutely-positioned HTML overlays (`<text>` distorts under the stretch)
+- Two horizontal threshold rules and a shaded bulk-window band, so headroom and
+  the next window are visible rather than inferred
+- Polls every 30s, aligned to the sample cadence
+- Batch list renders `PAUSED` with its reason and `next_attempt_at` in plain
+  language, so a waiting batch never looks stuck
+
+### Story B10.5 — TPS-aware bulk admission gate · Backlog · **depends on B8.6**
+
+**Description:** Make the `commission_batches` runner refuse to run when the
+platform is busy or the window is shut, re-checked before every chunk.
+
+**Acceptance criteria:**
+- `check_bulk_admission` ANDs window-open with a global-TPS check, evaluated
+  window-first (free, and a shut window makes the Redis read pointless)
+- **Hysteresis:** start/resume requires TPS < `BULK_TPS_RESUME_AT` (25), while a
+  running batch continues until TPS ≥ `BULK_TPS_PAUSE_AT` (40). Without the band
+  a batch that counts its own rows pauses itself, sees the number fall, resumes,
+  and thrashes
+- Bulk rows **do** count toward TPS, tagged `source="bulk"` — otherwise two
+  concurrent batches are invisible to each other
+- Redis unreachable → refuse with `load_unknown`. Running a bulk batch blind is
+  worse than delaying it
+- `BULK_SELF_TPS_CEILING` (20 rows/s) paces the runner independently of the
+  gate, so a wrong measurement or a bad threshold still cannot exceed a known rate
+- Chunk size 50 bounds the over-run past a spike to ~2.5s against the 30s window
+- Lifecycle gains `QUEUED`, `RUNNING`, `PAUSED`; terminal states unchanged —
+  **the gate never terminates a batch**
+- Retries indefinitely (`max_retries=None`), backoff 60s doubling to 900s, reset
+  on a successful chunk. Window-closed `retry_after` is capped so a batch
+  approved at noon wakes periodically rather than sleeping 13 hours in one retry
+  a worker restart would lose
+- Starvation is handled by **visibility, not expiry**: `queued_at` →
+  `sasai_bulk_batch_oldest_queued_seconds`, alert at 6h, attention-strip entry
+- Resumption posts nothing twice — `commission_batch_rows.status` stays
+  authoritative and per-row idempotency keys absorb any overlap (invariant #2).
+  `rows_posted` is display-only progress
+- `gate_pause_count` per batch recorded as the threshold-tuning signal
+- Tests: spike mid-run → PAUSED + retry; drop → resumes and completes with no
+  double-post; worker killed mid-chunk → posted rows skipped; approved outside
+  the window → never enters RUNNING; the §7.3 hysteresis table asserted directly
+
+### Story B10.6 — Baseline the thresholds against real capacity · Backlog
+
+**Description:** The shipped defaults (40 pause / 25 resume) are **placeholders,
+not measurements**. The dev stack tops out around 15 TPS on the money path, so
+at those defaults the gate never closes locally and the feature looks like it
+works by doing nothing.
+
+**Acceptance criteria:**
+- `.env.example` ships `BULK_TPS_PAUSE_AT=8` / `BULK_TPS_RESUME_AT=5` with a
+  comment explaining why, and the seed sets a narrow bulk window on the dev
+  tenant, so the gate is actually exercised in dev
+- A multi-worker, sized-pool capacity measurement (not `make dev` — see the
+  load-testing notes in `scripts/.claude.md`), producing the real write-path
+  ceiling
+- Thresholds re-derived from that measurement and from `tps_samples` history
+  across at least one month-end, and written into `platform_settings`
+- Explicit decision recorded on whether the all-writes metric (a config write
+  weighs the same as a ledger post) is too coarse in practice; the `source`
+  label already partitions the counter if a weighted variant is needed
+- Cross-reference **B9.2** — if the float/cashback lock is the real ceiling,
+  raising it changes these numbers

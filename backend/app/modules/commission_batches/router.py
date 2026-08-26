@@ -23,9 +23,9 @@ from app.database import get_async_session
 from app.dependencies import require_admin_role
 from app.modules.commission_batches.schemas import (
     BatchOut,
-    BatchType,
     BatchRejectRequest,
     BatchRowOut,
+    BatchType,
 )
 from app.modules.commission_batches.service import (
     approve_batch,

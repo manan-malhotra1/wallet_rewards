@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -53,6 +53,10 @@ class WithdrawUserPayload(BaseModel):
     currency: str = Field(min_length=2, max_length=10)
     bank_mirror_account_id: UUID
     reason: str | None = Field(default=None, max_length=500)
+    # Which of the user's wallets to pull from (spec 2026-08-26 §9). Defaults to
+    # the main wallet so payloads STORED before the commission-wallet edition
+    # keep validating and applying exactly as they did.
+    wallet_type: Literal["main_wallet", "commission_wallet"] = "main_wallet"
 
     @model_validator(mode="after")
     def _amount_xor_withdraw_all(self) -> Self:

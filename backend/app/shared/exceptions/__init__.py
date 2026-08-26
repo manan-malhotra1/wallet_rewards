@@ -539,6 +539,39 @@ class InsufficientCommissionBalance(AppHTTPException):
         )
 
 
+class BatchNotFound(AppHTTPException):
+    """No commission batch with that id in this tenant (no existence leak)."""
+
+    def __init__(self) -> None:
+        super().__init__(404, "batch_not_found", "Commission batch not found.")
+
+
+class BatchInvalidState(AppHTTPException):
+    """The batch is not PENDING, so it can no longer be approved or rejected.
+
+    REJECTED / APPLIED / APPLIED_PARTIAL / WITHDRAWN are all terminal (D16) —
+    a rejected batch is replaced by a fresh upload, never revised in place.
+    """
+
+    def __init__(self, status: str) -> None:
+        super().__init__(
+            409,
+            "batch_invalid_state",
+            f"This batch is {status} and can no longer be actioned.",
+        )
+
+
+class BatchDuplicateApprover(AppHTTPException):
+    """This admin has already approved — one admin cannot supply two approvals."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            409,
+            "batch_duplicate_approver",
+            "You have already approved this batch.",
+        )
+
+
 class CommissionDestinationNotAvailable(AppHTTPException):
     """A rule named the commission wallet where no such wallet can exist (D7).
 

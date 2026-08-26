@@ -193,7 +193,11 @@ class ApprovalPolicy(Base):
     __table_args__ = (
         CheckConstraint(
             "operation IS NULL OR operation IN ('fund_user', 'withdraw_user', "
-            "'adjust_system_wallet', 'create_bank_mirror')",
+            "'adjust_system_wallet', 'create_bank_mirror', "
+            # Bulk commission runs (spec 2026-08-26 §4.7) — so a tenant can
+            # require six-eyes on a 5,000-row batch while keeping four-eyes on
+            # a single treasury operation.
+            "'commission_disbursement', 'commission_withdrawal')",
             name="ck_approval_policies_operation",
         ),
         CheckConstraint(

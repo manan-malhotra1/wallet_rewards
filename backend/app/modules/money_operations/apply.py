@@ -109,6 +109,7 @@ async def apply_money_operation(
             withdraw_all=withdraw_payload.withdraw_all,
             currency=withdraw_payload.currency,
             bank_mirror_account_id=withdraw_payload.bank_mirror_account_id,
+            wallet_type=withdraw_payload.wallet_type,
             reason=withdraw_payload.reason or reason_fallback,
             admin=admin,
             ip_address=ip_address,

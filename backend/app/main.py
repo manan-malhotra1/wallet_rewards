@@ -29,6 +29,7 @@ from app.modules.budgets import router as budgets_router
 from app.modules.cashin import router as cashin_router
 from app.modules.cashout import router as cashout_router
 from app.modules.catalog import router as catalog_router
+from app.modules.commission_batches import router as commission_batches_router
 from app.modules.commissions import router as commissions_router
 from app.modules.config_requests import router as config_requests_router
 from app.modules.events import router as events_router
@@ -130,6 +131,7 @@ app.include_router(external_router)
 app.include_router(redemption_router)
 app.include_router(airtime_router)
 app.include_router(cashin_router)
+app.include_router(commission_batches_router)
 app.include_router(cashout_router)
 app.include_router(pin_change_router)
 app.include_router(catalog_router)

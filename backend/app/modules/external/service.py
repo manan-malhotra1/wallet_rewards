@@ -56,7 +56,7 @@ from app.modules.treasury.schemas import FundUserResponse, WithdrawFromUserRespo
 from app.modules.treasury.service import (
     get_or_create_operator_adjustment,
     post_user_withdraw,
-    resolve_user_financial_wallet,
+    resolve_user_wallet,
     resolve_withdraw_amount,
 )
 from app.shared.exceptions import (
@@ -277,7 +277,7 @@ async def external_fund(
     """
     tenant_id = principal.tenant_id
     currency = request.currency.upper()
-    user_id, wallet = await resolve_user_financial_wallet(
+    user_id, wallet = await resolve_user_wallet(
         session, tenant_id, request.identifier_type, request.identifier_value, currency
     )
 
@@ -429,7 +429,7 @@ async def external_withdraw(
     """
     tenant_id = principal.tenant_id
     currency = request.currency.upper()
-    user_id, wallet = await resolve_user_financial_wallet(
+    user_id, wallet = await resolve_user_wallet(
         session, tenant_id, request.identifier_type, request.identifier_value, currency
     )
 
@@ -634,12 +634,12 @@ async def merchant_cashin(
     currency = request.currency.upper()
 
     # Resolve both wallets up front: the merchant (by the key's bound user id)
-    # and the consumer (by identifier). resolve_user_financial_wallet can never
+    # and the consumer (by identifier). resolve_user_wallet can never
     # return a system wallet (user_id IS NULL is excluded), mirroring fund.
     merchant_wallet = await _find_wallet_by_user_id(
         session, tenant_id=tenant_id, user_id=merchant_user_id, currency=currency
     )
-    consumer_user_id, consumer_wallet = await resolve_user_financial_wallet(
+    consumer_user_id, consumer_wallet = await resolve_user_wallet(
         session, tenant_id, request.identifier_type, request.identifier_value, currency
     )
     if consumer_user_id == merchant_user_id:

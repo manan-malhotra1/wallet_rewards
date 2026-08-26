@@ -47,8 +47,8 @@ from app.auth.keycloak import keycloak_client
 # Stable test key id — used by every signed test JWT.
 TEST_KID = "test-key-1"
 
-from app.config import settings
 from app.auth.principals import AdminPrincipal
+from app.config import settings
 from app.database import get_async_session
 from app.main import app
 from app.shared.models import (

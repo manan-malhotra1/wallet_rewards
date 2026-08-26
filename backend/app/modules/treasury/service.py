@@ -44,11 +44,13 @@ from app.shared.exceptions import (
     AppHTTPException,
     BankMirrorNameAlreadyExists,
     CurrencyMismatch,
+    InsufficientCommissionBalance,
     InsufficientFunds,
     NothingToWithdraw,
     TenantNotFound,
 )
 from app.shared.models import (
+    ACCOUNT_TYPE_COMMISSION_WALLET,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
     Account,
@@ -65,6 +67,14 @@ from app.shared.models import (
 # existed before named mirrors (Epic 26) is backfilled to this name, and the
 # lazy get-or-create path uses it so old callers keep landing on one stable row.
 BANK_MIRROR_PRIMARY_NAME = "Primary"
+
+
+# Which of a user's wallets a treasury operation targets (spec 2026-08-26 §9).
+# 'main_wallet' is the default everywhere so stored money-operation payloads
+# written before this edition keep validating and applying unchanged.
+WALLET_TYPE_MAIN = "main_wallet"
+WALLET_TYPE_COMMISSION = "commission_wallet"
+WALLET_TYPES = (WALLET_TYPE_MAIN, WALLET_TYPE_COMMISSION)
 
 
 async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
@@ -302,24 +312,37 @@ async def resolve_bank_mirror(
     return mirror
 
 
-async def resolve_user_financial_wallet(
+async def resolve_user_wallet(
     session: AsyncSession,
     tenant_id: UUID,
     identifier_type: str,
     identifier_value: str,
     currency: str,
+    wallet_type: str = WALLET_TYPE_MAIN,
 ) -> tuple[UUID, Account]:
-    """Resolve a user by identifier and return (user_id, their financial_wallet).
+    """Resolve a user by identifier and return (user_id, one of their wallets).
 
     Shared by the operator and external fund/withdraw paths. It can NEVER return
     a system wallet — system accounts have `user_id IS NULL`, so filtering by the
     resolved `user_id` guarantees a user-owned wallet. This is precisely why
     fund / withdraw / withdraw_all can never touch a system wallet.
 
+    Args:
+        wallet_type: 'main_wallet' (the default, so every existing caller and
+            every money-operation payload stored before the commission-wallet
+            edition keeps working unchanged) or 'commission_wallet' — the
+            latter lets an administrator claw back a single user's accrued
+            commission through the same Epic 18 maker-checker flow (spec §9).
+
     Raises:
         UserNotFound: identifier doesn't resolve in this tenant.
-        AccountNotFound: the user has no financial_wallet for `currency`.
+        AccountNotFound: the user has no such wallet for `currency`.
     """
+    account_type = (
+        ACCOUNT_TYPE_COMMISSION_WALLET
+        if wallet_type == WALLET_TYPE_COMMISSION
+        else ACCOUNT_TYPE_FINANCIAL_WALLET
+    )
     identifier_row = await resolve_identifier(
         session, tenant_id, cast(IdentifierType, identifier_type), identifier_value
     )
@@ -329,7 +352,7 @@ async def resolve_user_financial_wallet(
             select(Account).where(
                 Account.tenant_id == tenant_id,
                 Account.user_id == user_id,
-                Account.account_type == ACCOUNT_TYPE_FINANCIAL_WALLET,
+                Account.account_type == account_type,
                 Account.currency == currency.upper(),
             )
         )
@@ -361,7 +384,13 @@ async def resolve_withdraw_amount(
 
     Raises:
         NothingToWithdraw: withdraw_all but available <= 0.
-        InsufficientFunds: requested amount > available.
+        InsufficientFunds: requested amount > available on a MAIN wallet.
+        InsufficientCommissionBalance: ditto on a COMMISSION wallet. The error
+            differs by wallet type so an operator clawing back commission is
+            told "this agent never accrued that much" rather than the
+            sender-facing "your balance is insufficient" — the same distinction
+            the ledger floor makes (spec D5). Without this branch the advisory
+            check would pre-empt the ledger and always report the generic error.
     """
     balance, reserved = await derive_balance(session, wallet.id)
     available = balance - reserved
@@ -372,6 +401,8 @@ async def resolve_withdraw_amount(
     # The request schema guarantees a positive amount when withdraw_all is False.
     assert amount is not None
     if available < amount:
+        if wallet.account_type == ACCOUNT_TYPE_COMMISSION_WALLET:
+            raise InsufficientCommissionBalance()
         raise InsufficientFunds()
     return amount
 
@@ -621,6 +652,7 @@ async def withdraw_from_user(
     ip_address: str | None = None,
     withdraw_all: bool = False,
     idempotency_key: str | None = None,
+    wallet_type: str = WALLET_TYPE_MAIN,
 ) -> WithdrawFromUserResponse:
     """Admin debits a user's wallet and returns the funds to the operator pool.
 
@@ -664,8 +696,13 @@ async def withdraw_from_user(
     """
     await _assert_tenant_exists(session, tenant_id)
     currency = currency.upper()
-    user_id, user_wallet = await resolve_user_financial_wallet(
-        session, tenant_id, identifier_type, identifier_value, currency
+    user_id, user_wallet = await resolve_user_wallet(
+        session,
+        tenant_id,
+        identifier_type,
+        identifier_value,
+        currency,
+        wallet_type=wallet_type,
     )
     # Resolve the operator-selected counter account up front so it exists before
     # `post_user_withdraw` posts the legs. No explicit wallet lock here:

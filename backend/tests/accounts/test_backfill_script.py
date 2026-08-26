@@ -10,13 +10,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
-# `scripts/` lives at the REPO root, one level above this backend package, so
-# it is not on the path pytest builds from `rootdir`. The script itself does
-# the mirror-image insert to reach `app`.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,11 +21,20 @@ from app.shared.models import (
     Tenant,
     User,
 )
-from scripts.backfill_commission_wallets import backfill_tenant
+
+# `scripts/` lives at the REPO root, one level above this backend package, so it
+# is not on the path pytest builds from `rootdir`. The insert must precede the
+# import, hence the noqa — the same pattern the scripts themselves use to reach
+# `app`.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.backfill_commission_wallets import backfill_tenant  # noqa: E402
 
 
 async def _flag_on_with_zar(session: AsyncSession, tenant: Tenant) -> None:
-    """Turn the flag on and guarantee a live ZAR instrument."""
+    """Turn the commission flag on and guarantee a live ZAR instrument."""
     tenant.commission_wallet_enabled = True
     existing = (
         await session.execute(

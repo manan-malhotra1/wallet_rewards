@@ -1,0 +1,1068 @@
+{
+  "config": {
+    "argv": [
+      "/Users/manan/.nvm/versions/node/v22.22.2/bin/node",
+      "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/node_modules/.bin/playwright",
+      "test",
+      "--reporter=json"
+    ],
+    "configFile": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/playwright.config.ts",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "id": "setup",
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "setup",
+        "outputDir": "/Users/manan/Documents/Wallet/wallet_rewards/test-reports/e2e-artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "testDir": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/auth\\.setup\\.ts/"
+        ],
+        "timeout": 150000
+      },
+      {
+        "id": "chromium",
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "chromium",
+        "outputDir": "/Users/manan/Documents/Wallet/wallet_rewards/test-reports/e2e-artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "testDir": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/.*\\.spec\\.ts/"
+        ],
+        "timeout": 150000
+      }
+    ],
+    "quiet": false,
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "rootDir": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "webServer": {
+      "command": "npm run dev",
+      "reuseExistingServer": true,
+      "timeout": 180000,
+      "url": "http://localhost:3000"
+    },
+    "workers": 1
+  },
+  "errors": [],
+  "stats": {
+    "duration": 107512.72,
+    "expected": 15,
+    "flaky": 0,
+    "skipped": 0,
+    "startTime": "2026-08-26T20:42:58.375Z",
+    "unexpected": 2
+  },
+  "suites": [
+    {
+      "column": 0,
+      "file": "auth.setup.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 8,
+          "file": "auth.setup.ts",
+          "id": "17e3fe6f4d9d8bd79c6b-423601440cf39d2353d8",
+          "line": 44,
+          "ok": true,
+          "tags": [
+            "example.test"
+          ],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup",
+              "projectName": "setup",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/auth.setup.ts-authenticate-admin-test-example-test-setup__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/auth.setup.ts-authenticate-admin-test-example-test-setup__video.webm"
+                    }
+                  ],
+                  "duration": 5562,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:42:59.488Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 0
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "authenticate admin-test@example.test"
+        },
+        {
+          "column": 8,
+          "file": "auth.setup.ts",
+          "id": "17e3fe6f4d9d8bd79c6b-ebb0c182d12328606e0a",
+          "line": 44,
+          "ok": true,
+          "tags": [
+            "example.test"
+          ],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup",
+              "projectName": "setup",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/auth.setup.ts-authenticate-admin-approver-example-test-setup__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/auth.setup.ts-authenticate-admin-approver-example-test-setup__video.webm"
+                    }
+                  ],
+                  "duration": 4944,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:05.487Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 0
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "authenticate admin-approver@example.test"
+        }
+      ],
+      "title": "auth.setup.ts"
+    },
+    {
+      "column": 0,
+      "file": "access-lock.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "access-lock.spec.ts",
+          "id": "24f616469952dfb271da-05995c8bc1ff3739c8eb",
+          "line": 21,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/access-lock-lock-then-restore-a-user-s-login-access-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/access-lock-lock-then-restore-a-user-s-login-access-chromium__video.webm"
+                    }
+                  ],
+                  "duration": 6643,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:11.029Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "lock then restore a user's login access"
+        }
+      ],
+      "title": "access-lock.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "approvals.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "approvals.spec.ts",
+          "id": "972180bc72c2792ab3fa-9e4247fb5279480f877d",
+          "line": 15,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/approvals-approvals-page-s-66a4b-ueue-tabs-and-status-filter-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/approvals-approvals-page-s-66a4b-ueue-tabs-and-status-filter-chromium__video.webm"
+                    }
+                  ],
+                  "duration": 1230,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:17.967Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "approvals page shows the queue tabs and status filter"
+        }
+      ],
+      "title": "approvals.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "commission-disbursement.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "commission-disbursement.spec.ts",
+          "id": "e845bda4a0b226561e33-27b67abca6b15200fff5",
+          "line": 58,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-disbursement-ma-67de3--a-second-admin-approves-it-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-disbursement-ma-67de3--a-second-admin-approves-it-chromium__video.webm"
+                    },
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-disbursement-ma-67de3--a-second-admin-approves-it-chromium__test-finished-2.png"
+                    }
+                  ],
+                  "duration": 5297,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:19.215Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 300000
+            }
+          ],
+          "title": "maker uploads a mixed batch and a second admin approves it"
+        },
+        {
+          "column": 5,
+          "file": "commission-disbursement.spec.ts",
+          "id": "e845bda4a0b226561e33-3b7947a8f7c9c2ad0488",
+          "line": 114,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-disbursement-th-cffb4-not-approve-their-own-batch-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-disbursement-th-cffb4-not-approve-their-own-batch-chromium__video.webm"
+                    }
+                  ],
+                  "duration": 3358,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:24.524Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 300000
+            }
+          ],
+          "title": "the maker cannot approve their own batch"
+        },
+        {
+          "column": 5,
+          "file": "commission-disbursement.spec.ts",
+          "id": "e845bda4a0b226561e33-7a9c03a9b131974b83d5",
+          "line": 135,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-disbursement-rejecting-a-batch-is-terminal-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-disbursement-rejecting-a-batch-is-terminal-chromium__video.webm"
+                    },
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-disbursement-rejecting-a-batch-is-terminal-chromium__test-finished-2.png"
+                    }
+                  ],
+                  "duration": 4765,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:27.893Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 300000
+            }
+          ],
+          "title": "rejecting a batch is terminal"
+        }
+      ],
+      "title": "commission-disbursement.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "commission-wallet-balance.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "commission-wallet-balance.spec.ts",
+          "id": "6333d0eb74cde3fd74d3-45a7011e3c53e114a08d",
+          "line": 19,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-wallet-balance--74d02-tely-from-their-main-wallet-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-wallet-balance--74d02-tely-from-their-main-wallet-chromium__video.webm"
+                    }
+                  ],
+                  "duration": 1486,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:32.674Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "an agent's commission wallet is listed separately from their main wallet"
+        }
+      ],
+      "title": "commission-wallet-balance.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "commission-withdrawal.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "commission-withdrawal.spec.ts",
+          "id": "4ab74697b2df99bb59e1-77c5ac02bf1524ea8fd3",
+          "line": 33,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-withdrawal-a-cl-4e7d1--then-applies-once-approved-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-withdrawal-a-cl-4e7d1--then-applies-once-approved-chromium__video.webm"
+                    },
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-withdrawal-a-cl-4e7d1--then-applies-once-approved-chromium__test-finished-2.png"
+                    }
+                  ],
+                  "duration": 5975,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:34.175Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 300000
+            }
+          ],
+          "title": "a clawback needs a destination, then applies once approved"
+        },
+        {
+          "column": 5,
+          "file": "commission-withdrawal.spec.ts",
+          "id": "4ab74697b2df99bb59e1-f4af99312d9e464484a2",
+          "line": 89,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-withdrawal-disb-b8bfa-appear-in-each-other-s-menu-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/commission-withdrawal-disb-b8bfa-appear-in-each-other-s-menu-chromium__video.webm"
+                    }
+                  ],
+                  "duration": 1526,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:40.162Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 300000
+            }
+          ],
+          "title": "disbursement and withdrawal batches do not appear in each other's menu"
+        }
+      ],
+      "title": "commission-withdrawal.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "config-approval.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "config-approval.spec.ts",
+          "id": "8d0513e02143b8e3b131-4d0a39c72cb8a840cdbb",
+          "line": 26,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/config-approval-maker-prop-1398b-ker-approves-and-it-applies-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/config-approval-maker-prop-1398b-ker-approves-and-it-applies-chromium__video.webm"
+                    },
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/config-approval-maker-prop-1398b-ker-approves-and-it-applies-chromium__test-finished-2.png"
+                    }
+                  ],
+                  "duration": 5032,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:41.703Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "maker proposes a ZAR tax-rate change; checker approves and it applies"
+        }
+      ],
+      "title": "config-approval.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "dashboard.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "dashboard.spec.ts",
+          "id": "90cda532ab82d274b30b-f252be9d1c58c6d6560c",
+          "line": 14,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/dashboard-dashboard-loads-with-the-app-shell-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/dashboard-dashboard-loads-with-the-app-shell-chromium__video.webm"
+                    }
+                  ],
+                  "duration": 1853,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:46.750Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "dashboard loads with the app shell"
+        }
+      ],
+      "title": "dashboard.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "fund-user.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "fund-user.spec.ts",
+          "id": "9edde80c8f143303d789-43c86a674c46ef204e61",
+          "line": 52,
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/fund-user-maker-proposes-f-dc432-roves-and-her-balance-rises-chromium__test-failed-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/fund-user-maker-proposes-f-dc432-roves-and-her-balance-rises-chromium__video.webm"
+                    },
+                    {
+                      "contentType": "text/markdown",
+                      "name": "error-context",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/fund-user-maker-proposes-f-dc432-roves-and-her-balance-rises-chromium__error-context.md"
+                    },
+                    {
+                      "contentType": "application/zip",
+                      "name": "trace",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/fund-user-maker-proposes-f-dc432-roves-and-her-balance-rises-chromium__trace.zip"
+                    }
+                  ],
+                  "duration": 16677,
+                  "error": {
+                    "location": {
+                      "column": 21,
+                      "file": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/fund-user.spec.ts",
+                      "line": 46
+                    },
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('row').filter({ hasText: 'Financial wallet' }).filter({ hasText: 'ZAR' })\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('row').filter({ hasText: 'Financial wallet' }).filter({ hasText: 'ZAR' })\u001b[22m\n",
+                    "snippet": "  44 |     .filter({ hasText: \"Financial wallet\" })\n  45 |     .filter({ hasText: \"ZAR\" });\n> 46 |   await expect(row).toBeVisible();\n     |                     ^\n  47 |   // The Available cell is the row's only font-semibold cell.\n  48 |   const text = await row.locator(\"td.font-semibold\").innerText();\n  49 |   return parseFloat(text.replace(/[^0-9.]/g, \"\"));",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('row').filter({ hasText: 'Financial wallet' }).filter({ hasText: 'ZAR' })\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('row').filter({ hasText: 'Financial wallet' }).filter({ hasText: 'ZAR' })\u001b[22m\n\n    at readAliceZarAvailable (/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/fund-user.spec.ts:46:21)\n    at /Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/fund-user.spec.ts:58:25"
+                  },
+                  "errorLocation": {
+                    "column": 21,
+                    "file": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/fund-user.spec.ts",
+                    "line": 46
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "column": 21,
+                        "file": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/fund-user.spec.ts",
+                        "line": 46
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('row').filter({ hasText: 'Financial wallet' }).filter({ hasText: 'ZAR' })\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('row').filter({ hasText: 'Financial wallet' }).filter({ hasText: 'ZAR' })\u001b[22m\n\n\n  44 |     .filter({ hasText: \"Financial wallet\" })\n  45 |     .filter({ hasText: \"ZAR\" });\n> 46 |   await expect(row).toBeVisible();\n     |                     ^\n  47 |   // The Available cell is the row's only font-semibold cell.\n  48 |   const text = await row.locator(\"td.font-semibold\").innerText();\n  49 |   return parseFloat(text.replace(/[^0-9.]/g, \"\"));\n    at readAliceZarAvailable (/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/fund-user.spec.ts:46:21)\n    at /Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/fund-user.spec.ts:58:25"
+                    }
+                  ],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:43:48.616Z",
+                  "status": "failed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 1
+                }
+              ],
+              "status": "unexpected",
+              "timeout": 150000
+            }
+          ],
+          "title": "maker proposes funding Alice; checker approves and her balance rises"
+        }
+      ],
+      "title": "fund-user.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "identifier.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "identifier.spec.ts",
+          "id": "1fbb212155c1f110958c-ff4f32a0397e019c7b48",
+          "line": 23,
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/identifier-add-an-account-number-identifier-then-verify-it-chromium__test-failed-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/identifier-add-an-account-number-identifier-then-verify-it-chromium__video.webm"
+                    },
+                    {
+                      "contentType": "text/markdown",
+                      "name": "error-context",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/identifier-add-an-account-number-identifier-then-verify-it-chromium__error-context.md"
+                    },
+                    {
+                      "contentType": "application/zip",
+                      "name": "trace",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/identifier-add-an-account-number-identifier-then-verify-it-chromium__trace.zip"
+                    }
+                  ],
+                  "duration": 16914,
+                  "error": {
+                    "location": {
+                      "column": 70,
+                      "file": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/identifier.spec.ts",
+                      "line": 28
+                    },
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('button', { name: 'Add identifier' })\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Add identifier' })\u001b[22m\n",
+                    "snippet": "  26 |\n  27 |   await page.goto(ALICE_LOOKUP);\n> 28 |   await expect(page.getByRole(\"button\", { name: \"Add identifier\" })).toBeVisible();\n     |                                                                      ^\n  29 |\n  30 |   // ---- Add an unverified account-number identifier -----------------------\n  31 |   await page.getByRole(\"button\", { name: \"Add identifier\" }).click();",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('button', { name: 'Add identifier' })\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Add identifier' })\u001b[22m\n\n    at /Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/identifier.spec.ts:28:70"
+                  },
+                  "errorLocation": {
+                    "column": 70,
+                    "file": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/identifier.spec.ts",
+                    "line": 28
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "column": 70,
+                        "file": "/Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/identifier.spec.ts",
+                        "line": 28
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('button', { name: 'Add identifier' })\nExpected: visible\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Add identifier' })\u001b[22m\n\n\n  26 |\n  27 |   await page.goto(ALICE_LOOKUP);\n> 28 |   await expect(page.getByRole(\"button\", { name: \"Add identifier\" })).toBeVisible();\n     |                                                                      ^\n  29 |\n  30 |   // ---- Add an unverified account-number identifier -----------------------\n  31 |   await page.getByRole(\"button\", { name: \"Add identifier\" }).click();\n    at /Users/manan/Documents/Wallet/wallet_rewards/admin-ui/e2e/identifier.spec.ts:28:70"
+                    }
+                  ],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:44:06.000Z",
+                  "status": "failed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 2
+                }
+              ],
+              "status": "unexpected",
+              "timeout": 150000
+            }
+          ],
+          "title": "add an account-number identifier, then verify it"
+        }
+      ],
+      "title": "identifier.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "step-up.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "step-up.spec.ts",
+          "id": "a56506f00744adafa68b-8509d0c94bf4b32c61a9",
+          "line": 23,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/step-up-maker-proposes-a-s-7a602--change-checker-approves-it-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/step-up-maker-proposes-a-s-7a602--change-checker-approves-it-chromium__video.webm"
+                    },
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/step-up-maker-proposes-a-s-7a602--change-checker-approves-it-chromium__test-finished-2.png"
+                    }
+                  ],
+                  "duration": 6094,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:44:23.840Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 3
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "maker proposes a step-up threshold change; checker approves it"
+        }
+      ],
+      "title": "step-up.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "treasury-adjust.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "treasury-adjust.spec.ts",
+          "id": "5958b9783d35be4a5324-4cf4fff8f2e08c1e6c18",
+          "line": 53,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/treasury-adjust-maker-prop-5159c-pproves-and-the-float-rises-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/treasury-adjust-maker-prop-5159c-pproves-and-the-float-rises-chromium__video.webm"
+                    },
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/treasury-adjust-maker-prop-5159c-pproves-and-the-float-rises-chromium__test-finished-2.png"
+                    }
+                  ],
+                  "duration": 9645,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:44:30.229Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 3
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "maker proposes a cash-float top-up; checker approves and the float rises"
+        }
+      ],
+      "title": "treasury-adjust.spec.ts"
+    },
+    {
+      "column": 0,
+      "file": "user-ops.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 5,
+          "file": "user-ops.spec.ts",
+          "id": "7bc0d3b05bed8ad6fed2-e85460cf81ac69878033",
+          "line": 27,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/user-ops-maker-proposes-an-5cae6-ker-approves-and-it-applies-chromium__test-finished-1.png"
+                    },
+                    {
+                      "contentType": "video/webm",
+                      "name": "video",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/user-ops-maker-proposes-an-5cae6-ker-approves-and-it-applies-chromium__video.webm"
+                    },
+                    {
+                      "contentType": "image/png",
+                      "name": "screenshot",
+                      "path": "e2e-runs/2026-08-26T20-42-58/media/user-ops-maker-proposes-an-5cae6-ker-approves-and-it-applies-chromium__test-finished-2.png"
+                    }
+                  ],
+                  "duration": 5878,
+                  "errors": [],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-08-26T20:44:39.893Z",
+                  "status": "passed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 3
+                }
+              ],
+              "status": "expected",
+              "timeout": 150000
+            }
+          ],
+          "title": "maker proposes an edit to Alice's name; checker approves and it applies"
+        }
+      ],
+      "title": "user-ops.spec.ts"
+    }
+  ]
+}

@@ -5,32 +5,21 @@
 import type { UserTransaction } from "@/lib/api-endpoints";
 
 /**
- * Names the system or provider account behind transaction types whose other
- * leg has no owning user, so the column reads as a real counterparty rather
- * than an empty cell. Types absent here (p2p, merchant_cashin, cash_in,
- * cashout) always transact user-to-user, so the backend resolves a real name
- * and no label is needed.
- */
-const SYSTEM_COUNTERPARTY_LABEL: Record<string, string> = {
-  withdraw: "Operator float",
-  airtime_recharge: "Airtime merchant",
-  redemption: "Redemption provider",
-  reward_issuance: "Rewards engine",
-  fund: "System cash inflow",
-  treasury_adjust: "Operator adjustment",
-};
-
-/**
  * Render the other party in a transaction: their name on the primary line and
  * their phone number beneath it.
  *
- * Falls back to a label naming the system/provider account when there is no
- * owning user (a fund comes from the cash float, a redemption from a
- * provider). Never falls back to the service name — that is its own column,
- * and repeating it here would read as if the user transacted with the service.
+ * The BACKEND resolves the label now — a person's name, else what the other
+ * account IS ("Cash float", "Bank mirror · Primary", "Commission wallet").
+ * This component used to keep its own per-transaction-type label map, which
+ * meant every new type needed a new entry and any type nobody remembered fell
+ * back to an empty cell — exactly how the commission rows regressed to "—".
+ * Deriving it from the actual account removes that maintenance trap.
+ *
+ * Never falls back to the service name — that is its own column, and repeating
+ * it here would read as if the user transacted with the service.
  */
 export function CounterpartyCell({ txn }: { txn: UserTransaction }) {
-  const name = txn.counterparty_name ?? SYSTEM_COUNTERPARTY_LABEL[txn.transaction_type];
+  const name = txn.counterparty_name;
   // A user with no profile name resolves to their identifier, which is the
   // phone — showing it twice reads as a rendering bug.
   const phone =

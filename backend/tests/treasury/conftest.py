@@ -14,15 +14,9 @@ from collections.abc import Callable
 import pytest
 from httpx import AsyncClient, Response
 
-# Re-exported so the commission-wallet withdrawal tests can reuse the batch
-# fixture (a flag-on tenant with a real accrued balance) rather than duplicating
-# ~100 lines of setup. Fixtures are directory-scoped in pytest, so a conftest
-# must bind the name for it to resolve here.
-from tests.commission_batches.conftest import (  # noqa: F401
-    BatchFixture,
-    batch_fixture,
-    maker_admin,
-)
+# `batch_fixture` / `maker_admin` are registered in the ROOT conftest now; only
+# the type needs importing here.
+from tests.fixtures.commission import BatchFixture  # noqa: F401
 
 # A treasury-approver whose sub differs from admin_auth_header's default maker
 # sub (00000000-0000-4000-8000-000000000001) so approvals are by a distinct admin.

@@ -71,6 +71,12 @@ from app.shared.models import (
 
 # Mirrors the seed in `alembic/versions/20260823_0061_configurable_user_types.py`.
 # (code, label, display_order, supports_hierarchy)
+from tests.fixtures.commission import (
+    BatchFixture,
+    build_batch_fixture,
+    build_maker_admin,
+)
+
 SEED_USER_TYPE_CATEGORIES = [
     ("consumer", "Consumers", 1, False),
     ("retail", "Retail", 2, True),
@@ -399,6 +405,23 @@ async def other_tenant(db_session: AsyncSession) -> Tenant:
     await prefund_float(db_session, tenant.id, currency="ZAR")
     await prefund_cashback_wallet(db_session, tenant.id, currency="ZAR")
     return tenant
+
+
+@pytest_asyncio.fixture
+async def batch_fixture(db_session: AsyncSession, test_tenant: Tenant) -> BatchFixture:
+    """A flag-on tenant whose agent holds R500 of REAL accrued commission.
+
+    Registered here rather than in one suite's conftest because three suites
+    now need it (commission_batches, treasury, identity) and pytest fixtures
+    are directory-scoped.
+    """
+    return await build_batch_fixture(db_session, test_tenant)
+
+
+@pytest.fixture
+def maker_admin() -> AdminPrincipal:
+    """The batch maker — distinct from `checker_principal`."""
+    return build_maker_admin()
 
 
 @pytest.fixture

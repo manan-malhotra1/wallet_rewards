@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.commission_batches.csv_io import ParsedRow
 from app.modules.commission_batches.validation import validate_rows
-from tests.commission_batches.conftest import BatchFixture
+from tests.fixtures.commission import BatchFixture
 
 
 def _row(n: int, msisdn: str, currency: str = "ZAR", amount: str | None = "10") -> ParsedRow:

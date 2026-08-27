@@ -17,7 +17,7 @@ from app.shared.models import (
     ACCOUNT_TYPE_COMMISSION_WALLET,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
 )
-from tests.commission_batches.conftest import BatchFixture
+from tests.fixtures.commission import BatchFixture
 
 
 @pytest.mark.asyncio

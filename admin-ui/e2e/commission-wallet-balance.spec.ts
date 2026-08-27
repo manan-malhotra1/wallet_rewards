@@ -35,7 +35,7 @@ test("an agent's commission wallet is listed separately from their main wallet",
 
   const mainRow = page
     .getByRole("row")
-    .filter({ hasText: "Financial wallet" })
+    .filter({ hasText: "Main wallet" })
     .filter({ hasText: "ZAR" });
   await expect(mainRow).toBeVisible();
 

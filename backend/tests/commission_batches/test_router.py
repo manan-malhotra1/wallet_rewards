@@ -13,7 +13,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.models import Tenant
-from tests.commission_batches.conftest import BatchFixture
+from tests.fixtures.commission import BatchFixture
 
 
 def _csv(*lines: str) -> str:

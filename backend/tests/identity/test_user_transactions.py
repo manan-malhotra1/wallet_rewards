@@ -280,14 +280,22 @@ async def test_counterparty_phone_is_returned_for_admins(
 
 
 @pytest.mark.asyncio
-async def test_system_funded_transaction_has_no_counterparty_name(
+async def test_system_funded_transaction_names_the_system_account(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
     admin_auth_header: dict[str, str],
 ) -> None:
-    """Verify a system-funded transaction shows no counterparty name"""
+    """Verify a system-funded transaction names the account that funded it
+
+    This assertion is INVERTED from what it originally checked. It used to
+    require `counterparty_name is None` whenever the other leg had no owning
+    user — which is what left a blank Counterparty cell on funds, clawbacks and
+    merchant collections, reported twice. A transaction has two sides and the
+    statement should name both, so a system leg now resolves to what the
+    account IS rather than to nothing.
+    """
     await _seed_wallet_with_credit(db_session, test_tenant, test_user, amount=Decimal("100"))
 
     resp = await async_client.get(
@@ -298,8 +306,11 @@ async def test_system_funded_transaction_has_no_counterparty_name(
     assert resp.status_code == 200, resp.text
     rows = resp.json()["items"]
     assert rows[0]["transaction_type"] == "fund"
-    # The other leg is the system cash float (user_id IS NULL) — nothing to name.
-    assert rows[0]["counterparty_name"] is None
+    # The other leg is the system cash float (user_id IS NULL) — no PERSON to
+    # name, so it is named by what it is.
+    assert rows[0]["counterparty_name"] == "Cash float"
+    # Still never the service name: "fund" must not leak into this column.
+    assert "fund" not in rows[0]["counterparty_name"].lower()
 
 
 @pytest.mark.asyncio

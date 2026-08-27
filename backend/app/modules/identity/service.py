@@ -94,6 +94,7 @@ from app.shared.models import (
     UserIdentifier,
     UserProfile,
 )
+from app.shared.utils.account_labels import account_label
 from app.shared.utils.normalize import normalize_identifier
 
 log = structlog.get_logger()
@@ -1384,15 +1385,35 @@ async def _build_recent_txns_payload(
                 other_account_ids.add(e.account_id)
 
     user_id_by_account: dict[UUID, UUID] = {}
+    # Label for every OTHER-side account, user-owned or not. A system pool or a
+    # merchant collection account has no owning user and so can never produce a
+    # name — without a label it left the counterparty column blank, which is
+    # what made a commission withdrawal or a merchant cash-in read as "—".
+    label_by_account: dict[UUID, str] = {}
     if other_account_ids:
         cp_rows = await session.execute(
-            select(Account.id, Account.user_id).where(
+            select(Account.id, Account.user_id, Account.account_type, Account.name).where(
                 Account.id.in_(other_account_ids),
                 Account.tenant_id == tenant_id,
-                Account.user_id.is_not(None),
             )
         )
-        user_id_by_account = {acct_id: owner_id for acct_id, owner_id in cp_rows.all()}
+        for acct_id, owner_id, acct_type, acct_name in cp_rows.all():
+            label_by_account[acct_id] = account_label(acct_type, acct_name)
+            if owner_id is not None:
+                user_id_by_account[acct_id] = owner_id
+
+    # The viewer's own accounts, labelled too: a commission disbursement moves
+    # between two wallets of the SAME user, so the only meaningful counterparty
+    # is the other wallet.
+    own_rows = await session.execute(
+        select(Account.id, Account.account_type, Account.name).where(
+            Account.id.in_(account_ids)
+        )
+    )
+    own_label_by_account = {
+        acct_id: account_label(acct_type, acct_name)
+        for acct_id, acct_type, acct_name in own_rows.all()
+    }
 
     counterparty_user_ids = set(user_id_by_account.values())
     name_by_user = await _resolve_counterparty_names(
@@ -1415,15 +1436,30 @@ async def _build_recent_txns_payload(
         if user_entry is not None:
             direction = "in" if user_entry.entry_type == "CREDIT" else "out"
 
-        # No transaction_type gate here: `user_id_by_account` only holds
-        # accounts with an owning user, so a system / provider leg can never
-        # produce a name. Any user-to-user type (p2p, merchant_cashin,
-        # cash_in, cashout) therefore names its counterparty automatically.
+        # No transaction_type gate here. `user_id_by_account` holds only
+        # accounts with an owning user, so a real NAME still comes solely from
+        # a user-to-user leg (p2p, merchant_cashin, cash_in, cashout). What is
+        # new is that a leg WITHOUT an owner no longer means an empty cell —
+        # `label_by_account` names the account itself as the fallback.
         counterparty_name: str | None = None
         counterparty_phone: str | None = None
+        # Best available label for the other side, in descending specificity:
+        # a real person or business name, then whatever that account IS.
+        #
+        # The fallback follows the LARGEST other-side leg, not the first one:
+        # a cash-out carries fee and tax legs alongside the principal, and
+        # naming the counterparty "Fees collected" because that entry happened
+        # to be read first would be actively misleading.
+        fallback_label: str | None = None
+        fallback_amount = Decimal("-1")
         for e in entries:
             if e.account_id in own_account_set:
                 continue
+            label = label_by_account.get(e.account_id)
+            amount = Decimal(str(e.amount))
+            if label is not None and amount > fallback_amount:
+                fallback_label = label
+                fallback_amount = amount
             owner_id = user_id_by_account.get(e.account_id)
             if owner_id is None:
                 continue
@@ -1431,6 +1467,26 @@ async def _build_recent_txns_payload(
             counterparty_phone = phone_by_user.get(owner_id)
             if counterparty_name or counterparty_phone:
                 break
+
+        if counterparty_name is None:
+            # No other PARTY — either the other leg is a system / merchant
+            # account, or every leg belongs to this same user (a commission
+            # disbursement). Name the account instead of leaving the column
+            # blank: every transaction has two sides and the operator is
+            # entitled to see both.
+            if fallback_label is None and user_entry is not None:
+                other_own = next(
+                    (
+                        e
+                        for e in entries
+                        if e.account_id in own_account_set
+                        and e.account_id != user_entry.account_id
+                    ),
+                    None,
+                )
+                if other_own is not None:
+                    fallback_label = own_label_by_account.get(other_own.account_id)
+            counterparty_name = fallback_label
 
         # Perspective rule: fee + tax are paid by the INITIATOR (the p2p sender,
         # the airtime buyer, the customer in cash_in / cashout); commission is

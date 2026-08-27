@@ -1,11 +1,17 @@
 /**
  * Behaviour tests for the Counterparty column of the user Transactions table.
  *
- * The motivating bug: every non-P2P row rendered "—" because the backend only
- * resolved a counterparty for `p2p`. The fix resolves any user-owned other
- * side, so these lock in what the column may and may not say — in particular
- * that it NEVER shows a service name (the Service column already carries
- * that), and that a phone equal to the name is not printed twice.
+ * The column has regressed to "—" twice. First because the backend resolved a
+ * counterparty only for `p2p`; then because the frontend patch for that was a
+ * per-transaction-type label map, so any type nobody remembered to add — the
+ * commission types — fell straight back to an empty cell.
+ *
+ * The label is now derived in the BACKEND from the account on the other leg,
+ * which is why this component no longer carries a map. These tests cover what
+ * the cell does with what it is given: it never shows a service name (the
+ * Service column already carries that), and never prints a phone twice.
+ * That every transaction actually GETS a counterparty is asserted where it is
+ * now decided — backend/tests/identity/test_transaction_counterparty.py.
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -51,14 +57,30 @@ describe("CounterpartyCell", () => {
     expect(screen.getAllByText("+27825550001")).toHaveLength(1);
   });
 
-  it("names the system account behind a fund", () => {
-    render(<CounterpartyCell txn={txn({ transaction_type: "fund" })} />);
-    expect(screen.getByText("System cash inflow")).toBeInTheDocument();
+  it("renders a system account label supplied by the backend", () => {
+    // The backend names the other leg by what the account IS when it has no
+    // owning user, so the cell just renders it.
+    render(
+      <CounterpartyCell
+        txn={txn({ transaction_type: "commission_withdrawal", counterparty_name: "Bank mirror · Primary" })}
+      />,
+    );
+    expect(screen.getByText("Bank mirror · Primary")).toBeInTheDocument();
+  });
+
+  it("renders the other wallet for a movement between the user's own accounts", () => {
+    render(
+      <CounterpartyCell
+        txn={txn({ transaction_type: "commission_disbursement", counterparty_name: "Commission wallet" })}
+      />,
+    );
+    expect(screen.getByText("Commission wallet")).toBeInTheDocument();
   });
 
   it("never labels the counterparty with the service name", () => {
-    // merchant_cashin has no system-account label: with nothing resolved the
-    // cell must stay empty rather than echo "Merchant Cashin" / "Cash-in".
+    // With nothing resolved the cell must stay empty rather than echo
+    // "Merchant Cashin" / "Cash-in". The backend now always supplies a label,
+    // so this is the last-resort guard, not the normal path.
     render(<CounterpartyCell txn={txn()} />);
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.queryByText(/cash.?in/i)).not.toBeInTheDocument();

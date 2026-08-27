@@ -21,7 +21,7 @@ from app.shared.models import (
     ROW_STATUS_VALID,
     CommissionBatchRow,
 )
-from tests.commission_batches.conftest import BatchFixture
+from tests.fixtures.commission import BatchFixture
 
 
 def _csv(*lines: str) -> str:

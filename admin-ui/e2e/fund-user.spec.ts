@@ -41,7 +41,7 @@ async function readAliceZarAvailable(page: Page): Promise<number> {
   // Alice holds both a ZAR and an INR financial wallet — scope to ZAR.
   const row = page
     .getByRole("row")
-    .filter({ hasText: "Financial wallet" })
+    .filter({ hasText: "Main wallet" })
     .filter({ hasText: "ZAR" });
   await expect(row).toBeVisible();
   // The Available cell is the row's only font-semibold cell.

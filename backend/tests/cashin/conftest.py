@@ -196,6 +196,10 @@ async def worked_example_configs(db_session: AsyncSession, test_tenant: Tenant) 
     await create_commission_config(
         db_session,
         CommissionConfigCreateRequest(
+            # Required since spec D8: zero is a decision, not an omission.
+            # These tests are about the CHILD leg, so the parent earns nothing.
+            parent_fixed_commission=Decimal("0"),
+            parent_variable_commission_pct=Decimal("0"),
             tenant_id=test_tenant.id,
             transaction_type="cash_in",
             currency="ZAR",

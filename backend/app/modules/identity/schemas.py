@@ -368,12 +368,22 @@ class WalletTransactionOut(BaseModel):
 
     `direction` is derived from the ledger entry on one of the caller's
     own accounts: CREDIT → "in" (money/points arrived), DEBIT → "out".
-    `counterparty_name` is the other party's display name whenever that
-    side is a user-owned account (p2p, merchant_cashin, cash_in, cashout):
-    a merchant's business name, else the person's full name. Null when the
-    other side is a system/provider account with no owning user (funds,
-    reward issuance, redemptions) — the client then shows a category label.
-    It is never a service name; `transaction_type` already carries that.
+    `counterparty_name` names the OTHER side of the transaction, and is now
+    always populated — a transaction has two sides and a statement row should
+    be able to name both. It resolves in descending specificity:
+
+      1. the other party's display name when that side is a user-owned account
+         (p2p, merchant_cashin, cash_in, cashout) — a merchant's business name,
+         else the person's full name;
+      2. what the account IS, when the other side has no owning user (a system
+         pool, a bank mirror, a merchant collection account) — e.g. "Cash float"
+         or "Bank mirror · Primary";
+      3. the caller's OWN other wallet, when every leg belongs to them — a
+         commission disbursement moves between two of their own wallets, so
+         the counterparty is "Commission wallet".
+
+    Before this, cases 2 and 3 rendered an empty cell. It is never a service
+    name; `transaction_type` already carries that.
     """
 
     model_config = ConfigDict(from_attributes=True)

@@ -33,20 +33,19 @@ class CommissionConfigCreateRequest(BaseModel):
     # Where the commission lands (spec 2026-08-26, D6).
     payout_destination: Literal["main_wallet", "commission_wallet"] = "main_wallet"
     # The earner's PARENT is paid from this same row, as a percentage of the
-    # TRANSACTION AMOUNT using the same band (D8).
+    # TRANSACTION AMOUNT using the same band (spec D8).
     #
-    # DEVIATION FROM SPEC D8, which asked for these to be REQUIRED here so an
-    # admin must type a value even when it is zero. They default to zero
-    # instead, because `config_requests/apply.py` re-validates a STORED JSONB
-    # payload against this schema at APPROVAL time — which can be days after
-    # the maker submitted it. Required fields would make every commission
-    # config request created before this deploy permanently unappliable (a 422
-    # the checker can never clear). The "state a value explicitly" requirement
-    # is enforced in the admin UI form instead, where it actually belongs.
-    parent_fixed_commission: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
-    parent_variable_commission_pct: Decimal = Field(
-        default=Decimal("0"), ge=Decimal("0"), lt=Decimal("1")
-    )
+    # REQUIRED with no default, deliberately: zero is a decision the operator
+    # must make, not an omission. A default here would let a caller ship a rule
+    # whose parent leg silently pays nothing when they meant it to pay
+    # something, and nothing downstream could tell the two apart.
+    #
+    # `config_requests/apply.py` re-validates STORED payloads against this
+    # schema at APPROVAL time, so payloads written before these fields existed
+    # would 422 forever. Migration 0069 backfills every non-terminal commission
+    # request's payload with explicit zeros, which is what makes this safe.
+    parent_fixed_commission: Decimal = Field(ge=Decimal("0"))
+    parent_variable_commission_pct: Decimal = Field(ge=Decimal("0"), lt=Decimal("1"))
     parent_commission_cap: Decimal | None = Field(default=None, gt=Decimal("0"))
 
     @model_validator(mode="after")

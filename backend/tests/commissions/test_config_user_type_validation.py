@@ -29,6 +29,10 @@ BOGUS = "no_such_type"
 def _request(tenant: Tenant, user_type: str | None) -> CommissionConfigCreateRequest:
     """Build a minimal cashin/ZAR commission request for the given type scope."""
     return CommissionConfigCreateRequest(
+     # Required since spec D8: zero is a decision, not an omission.
+     # These tests are about the CHILD leg, so the parent earns nothing.
+     parent_fixed_commission=Decimal("0"),
+     parent_variable_commission_pct=Decimal("0"),
         tenant_id=tenant.id,
         transaction_type="cashin",
         currency="ZAR",

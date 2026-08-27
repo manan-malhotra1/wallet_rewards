@@ -118,6 +118,10 @@ def _pricing_request(tenant: Tenant, user_type: str) -> PricingConfigCreateReque
 def _commission_request(tenant: Tenant, user_type: str) -> CommissionConfigCreateRequest:
     """Build a cashin/ZAR commission request scoped to `user_type`."""
     return CommissionConfigCreateRequest(
+     # Required since spec D8: zero is a decision, not an omission.
+     # These tests are about the CHILD leg, so the parent earns nothing.
+     parent_fixed_commission=Decimal("0"),
+     parent_variable_commission_pct=Decimal("0"),
         tenant_id=tenant.id,
         transaction_type="cashin",
         currency="ZAR",

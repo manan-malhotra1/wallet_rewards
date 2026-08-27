@@ -34,7 +34,7 @@ from app.shared.models import (
     CommissionBatchRow,
     LedgerEntry,
 )
-from tests.commission_batches.conftest import BatchFixture
+from tests.fixtures.commission import BatchFixture
 
 
 def _csv(*lines: str) -> str:

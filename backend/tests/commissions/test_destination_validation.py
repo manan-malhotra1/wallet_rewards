@@ -31,6 +31,10 @@ def _request(tenant_id: UUID, **overrides: Any) -> CommissionConfigCreateRequest
         "fixed_commission": Decimal("1"),
         "variable_commission_pct": Decimal("0.01"),
         "payout_destination": "commission_wallet",
+        # Required since D8 — these tests are about the DESTINATION rule, so
+        # the parent leg is explicitly zero rather than absent.
+        "parent_fixed_commission": Decimal("0"),
+        "parent_variable_commission_pct": Decimal("0"),
     }
     payload.update(overrides)
     return CommissionConfigCreateRequest(**payload)

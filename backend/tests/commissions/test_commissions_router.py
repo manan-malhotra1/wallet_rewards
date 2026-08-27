@@ -25,6 +25,10 @@ async def _seed(session: AsyncSession, tenant_id, transaction_type: str = "cash_
     await create_commission_config(
         session,
         CommissionConfigCreateRequest(
+            # Required since spec D8: zero is a decision, not an omission.
+            # These tests are about the CHILD leg, so the parent earns nothing.
+            parent_fixed_commission=Decimal("0"),
+            parent_variable_commission_pct=Decimal("0"),
             tenant_id=tenant_id,
             transaction_type=transaction_type,
             currency="ZAR",

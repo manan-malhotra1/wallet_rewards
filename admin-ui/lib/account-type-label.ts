@@ -7,7 +7,10 @@
 
 /** account_type → operator-facing label. Keep in sync with new account types. */
 export const ACCOUNT_TYPE_LABEL: Record<string, string> = {
-  financial_wallet: "Financial wallet",
+  // "Main wallet" is the operator's own term for it, and the one the
+  // commission screens use — the two must not drift into separate names for
+  // the same account.
+  financial_wallet: "Main wallet",
   points_account: "Points",
   system_cash_inflow: "Cash float",
   system_points_issuance: "Points issuance pool",

@@ -397,7 +397,19 @@ class WalletTransactionOut(BaseModel):
     # unless the transaction was made on a derived service (spec §12.1).
     base_transaction_type: str
     status: str
+    # The CALLER'S OWN movement on `wallet_account_id` — never the
+    # transaction's headline. A supervisor earning R0.50 of parent commission
+    # on a R100 cash-in reads R0.50 here.
     amount: str
+    # The transaction's headline principal, kept separate so it can never
+    # stand in for `amount` again.
+    transaction_amount: str = "0"
+    # Which of the caller's wallets moved. One transaction yields one row PER
+    # wallet it touches, so an agent's cash-in produces a main-wallet row for
+    # what they paid and a commission-wallet row for what they earned.
+    wallet_account_id: UUID | None = None
+    wallet_account_type: str | None = None
+    wallet_label: str | None = None
     fee_amount: str
     # Display-only charge siblings (Epic 20): the commission paid to an agent and
     # the tax collected on this transaction. These are PER-PARTY figures — each is

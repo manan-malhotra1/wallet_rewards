@@ -71,6 +71,7 @@ export function UserTransactionsPanel({
   initialItems,
   initialTotal,
   currencies,
+  hasCommissionWallet = false,
 }: {
   tenantId: string;
   userId: string;
@@ -79,11 +80,18 @@ export function UserTransactionsPanel({
   initialTotal: number;
   /** The user's own wallet currencies; PTS is appended when they hold points. */
   currencies: string[];
+  /**
+   * Whether this user actually holds a commission wallet. The wallet filter is
+   * hidden entirely when false — a consumer can never earn commission, and an
+   * empty toggle would imply they have some.
+   */
+  hasCommissionWallet?: boolean;
 }) {
   const [items, setItems] = React.useState(initialItems);
   const [total, setTotal] = React.useState(initialTotal);
   const [offset, setOffset] = React.useState(0);
   const [currency, setCurrency] = React.useState<string | null>(null);
+  const [walletType, setWalletType] = React.useState<string | null>(null);
   // `query` is what the operator is typing; `search` is what's been submitted.
   // Keeping them apart means we hit the server on Enter / clear, not per key.
   const [query, setQuery] = React.useState("");
@@ -105,6 +113,7 @@ export function UserTransactionsPanel({
       limit: PAGE_SIZE,
       offset,
       ...(currency ? { currency } : {}),
+      ...(walletType ? { wallet_type: walletType } : {}),
       ...(search ? { q: search } : {}),
     }).then((res) => {
       if (cancelled) return;
@@ -119,11 +128,17 @@ export function UserTransactionsPanel({
     return () => {
       cancelled = true;
     };
-  }, [tenantId, userId, offset, currency, search]);
+  }, [tenantId, userId, offset, currency, walletType, search]);
 
   /** Any filter change resets to page 1 — page 3 of the old result is meaningless. */
   function applyCurrency(next: string | null) {
     setCurrency(next);
+    setOffset(0);
+  }
+
+  /** Same reset rule as the currency chips — a filtered page 3 is meaningless. */
+  function applyWalletType(next: string | null) {
+    setWalletType(next);
     setOffset(0);
   }
 
@@ -162,6 +177,30 @@ export function UserTransactionsPanel({
               onClick={() => applyCurrency(c)}
             />
           ))}
+
+          {/* Wallet filter (B13.3). Absent — not disabled — for a user who
+              cannot hold a commission wallet: an empty toggle would imply they
+              have commission they do not. */}
+          {hasCommissionWallet ? (
+            <>
+              <span className="mx-1 h-4 w-px self-center bg-border" aria-hidden="true" />
+              <CurrencyChip
+                label="All wallets"
+                active={walletType === null}
+                onClick={() => applyWalletType(null)}
+              />
+              <CurrencyChip
+                label="Main wallet"
+                active={walletType === "financial_wallet"}
+                onClick={() => applyWalletType("financial_wallet")}
+              />
+              <CurrencyChip
+                label="Commission wallet"
+                active={walletType === "commission_wallet"}
+                onClick={() => applyWalletType("commission_wallet")}
+              />
+            </>
+          ) : null}
         </div>
         <form onSubmit={submitSearch} className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -189,7 +228,7 @@ export function UserTransactionsPanel({
         <p className="text-sm text-destructive">{error}</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          {search || currency
+          {search || currency || walletType
             ? "No transactions match these filters."
             : "No transactions yet on this user's wallets."}
         </p>
@@ -201,6 +240,7 @@ export function UserTransactionsPanel({
                 <TableHeaderCell>When</TableHeaderCell>
                 <TableHeaderCell>Service</TableHeaderCell>
                 <TableHeaderCell>Direction</TableHeaderCell>
+                <TableHeaderCell>Wallet</TableHeaderCell>
                 <TableHeaderCell>Counterparty</TableHeaderCell>
                 <TableHeaderCell className="text-right">Amount</TableHeaderCell>
                 <TableHeaderCell className="text-right">Service charge</TableHeaderCell>
@@ -214,7 +254,7 @@ export function UserTransactionsPanel({
                 const isIn = t.direction === "in";
                 const isPoints = t.currency === "PTS";
                 return (
-                  <TableRow key={t.id}>
+                  <TableRow key={`${t.id}:${t.wallet_account_id ?? "na"}`}>
                     <TableCell className="whitespace-nowrap text-[11px] text-muted-foreground">
                       {formatTimestamp(t.created_at)}
                     </TableCell>
@@ -232,6 +272,27 @@ export function UserTransactionsPanel({
                       >
                         {isIn ? "IN" : "OUT"}
                       </span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {t.wallet_label ? (
+                        <span
+                          className={
+                            "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium " +
+                            (t.wallet_account_type === "commission_wallet"
+                              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                              : "bg-muted text-muted-foreground")
+                          }
+                          title={
+                            t.wallet_account_type === "commission_wallet"
+                              ? "Held commission — not spendable until a disbursement run moves it"
+                              : undefined
+                          }
+                        >
+                          {t.wallet_label}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       <CounterpartyCell txn={t} />
@@ -273,7 +334,7 @@ export function UserTransactionsPanel({
       {total > 0 ? (
         <div className="flex items-center justify-between pt-1">
           <p className="text-xs text-muted-foreground">
-            {from}–{to} of {total}
+            {from}–{to} of {total} transaction{total === 1 ? "" : "s"}
           </p>
           <div className="flex items-center gap-2">
             <button

@@ -356,7 +356,14 @@ function toProposeResult(err: unknown): ProposeActionResult {
 export async function fetchUserTransactionsAction(
   tenantId: string,
   userId: string,
-  opts: { limit?: number; offset?: number; currency?: string; q?: string },
+  opts: {
+    limit?: number;
+    offset?: number;
+    currency?: string;
+    q?: string;
+    /** Restrict to one of the user's wallets — main vs held commission. */
+    wallet_type?: string;
+  },
 ): Promise<
   | { ok: true; items: UserTransaction[]; total: number }
   | { ok: false; errorCode: string; message: string }

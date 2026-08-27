@@ -11,6 +11,7 @@ identifier resolution (Phase F.4):
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -254,10 +255,13 @@ async def get_user_transactions(
     offset: int = Query(default=0, ge=0),
     currency: str | None = Query(default=None, max_length=10),
     q: str | None = Query(default=None, max_length=64),
+    wallet_type: Literal["financial_wallet", "commission_wallet"] | None = Query(
+        default=None
+    ),
     admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
     session: AsyncSession = Depends(get_async_session),
 ) -> AdminUserTransactionsPage:
-    """One page of a user's transactions — admin user-detail panel.
+    """One page of a user's wallet MOVEMENTS — admin user-detail panel.
 
     Shares the mobile /me/wallet payload builder, so the type + direction +
     counterparty logic stays in one place; this admin view additionally
@@ -269,7 +273,13 @@ async def get_user_transactions(
       - `currency` — exact match ("ZAR" / "INR" / "PTS");
       - `q` — case-insensitive substring of the customer-facing reference
         (e.g. "S_20260820180829019411");
-      - `limit` / `offset` — the page window; `total` counts every match.
+      - `wallet_type` — restrict to one of the user's wallets. Held commission
+        and spendable money live in separate wallets of the same currency, so
+        the currency filter alone cannot separate them.
+      - `limit` / `offset` — the page window; `total` counts matching
+        TRANSACTIONS. A transaction touching two of the user's wallets yields a
+        row each, so `len(items)` can exceed `limit` — the rows are movements,
+        the total is transactions.
     """
     _ = admin
     rows, total = await list_user_transactions(
@@ -280,6 +290,7 @@ async def get_user_transactions(
         offset=offset,
         currency=currency,
         reference=q,
+        wallet_type=wallet_type,
     )
     return AdminUserTransactionsPage(
         items=[AdminUserTransactionOut.model_validate(r) for r in rows],

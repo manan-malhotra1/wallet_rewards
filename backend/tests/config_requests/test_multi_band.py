@@ -146,6 +146,11 @@ def _commission_band(tenant_id, frm, to, fixed):
         "amount_from": frm,
         "amount_to": to,
         "fixed_commission": fixed,
+        # Required since spec D8. This payload is PROPOSED through
+        # maker-checker and re-validated against the schema at APPLY, so a
+        # maker must state the parent rate the same way the admin form does.
+        "parent_fixed_commission": "0",
+        "parent_variable_commission_pct": "0",
     }
 
 

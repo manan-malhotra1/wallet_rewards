@@ -76,21 +76,22 @@ from app.shared.exceptions import (
     UserNotFound,
 )
 from app.shared.models import (
+    ACCOUNT_TYPE_COMMISSION_WALLET,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
-    REFERRAL_STATUS_PENDING,
-    SERVICE_STATUS_ACTIVE,
-    USER_STATUS_ACTIVE,
-    USER_STATUS_CLOSED,
-    USER_STATUS_SUSPENDED,
-    USER_STATUS_TXN_LOCKED,
     AuthAttempt,
     MerchantProfile,
     OtpRequest,
     Referral,
+    REFERRAL_STATUS_PENDING,
     ReferralCode,
     Service,
+    SERVICE_STATUS_ACTIVE,
     Tenant,
     User,
+    USER_STATUS_ACTIVE,
+    USER_STATUS_CLOSED,
+    USER_STATUS_SUSPENDED,
+    USER_STATUS_TXN_LOCKED,
     UserIdentifier,
     UserProfile,
 )
@@ -1288,6 +1289,74 @@ async def _count_user_txns(
     return int((await session.execute(select(sa_func.count()).select_from(inner))).scalar_one())
 
 
+def _resolve_row_counterparty(
+    *,
+    entries: list[Any],
+    own_account_set: set[UUID],
+    label_by_account: dict[UUID, str],
+    user_id_by_account: dict[UUID, UUID],
+    name_by_user: dict[UUID, str],
+    phone_by_user: dict[UUID, str],
+    own_label_by_account: dict[UUID, str],
+) -> tuple[str | None, str | None]:
+    """Name the OTHER side of one transaction, from the caller's perspective.
+
+    Resolves in descending specificity:
+      1. the other party's display name, when a leg belongs to a different user;
+      2. what the other account IS, when no leg has an owning user (a system
+         pool, a bank mirror, a merchant collection account);
+      3. the caller's own other wallet, when every leg is theirs — a commission
+         disbursement moves between two of their own wallets.
+
+    The account fallback follows the LARGEST other-side leg, not the first: a
+    cash-out carries fee and tax legs beside the principal, and naming the
+    counterparty "Fees collected" because that entry was read first would be
+    actively misleading.
+
+    Returns:
+        `(name, phone)`. The phone is only ever populated when the caller asked
+        for it (admin surfaces) AND the other side resolved to a real user.
+    """
+    counterparty_name: str | None = None
+    counterparty_phone: str | None = None
+    fallback_label: str | None = None
+    fallback_amount = Decimal("-1")
+
+    for e in entries:
+        if e.account_id in own_account_set:
+            continue
+        label = label_by_account.get(e.account_id)
+        amount = Decimal(str(e.amount))
+        if label is not None and amount > fallback_amount:
+            fallback_label = label
+            fallback_amount = amount
+        owner_id = user_id_by_account.get(e.account_id)
+        if owner_id is None:
+            continue
+        counterparty_name = name_by_user.get(owner_id)
+        counterparty_phone = phone_by_user.get(owner_id)
+        if counterparty_name or counterparty_phone:
+            break
+
+    if counterparty_name is not None:
+        return counterparty_name, counterparty_phone
+
+    if fallback_label is None:
+        # No other-side leg at all — every leg is the caller's own. Name the
+        # wallet that is NOT the one this row reports on; with two legs there
+        # is exactly one other, which is the disbursement case.
+        own_legs = [e for e in entries if e.account_id in own_account_set]
+        distinct = {e.account_id for e in own_legs}
+        if len(distinct) == 2:
+            # Deterministic: sorted, so the pair always resolves the same way.
+            for acct_id in sorted(distinct):
+                fallback_label = own_label_by_account.get(acct_id)
+                if fallback_label is not None:
+                    break
+
+    return fallback_label, counterparty_phone
+
+
 async def _build_recent_txns_payload(
     session: AsyncSession,
     *,
@@ -1299,12 +1368,25 @@ async def _build_recent_txns_payload(
     currency: str | None = None,
     reference: str | None = None,
     include_counterparty_phone: bool = False,
+    movement_account_ids: list[UUID] | None = None,
+    scope_account_ids: list[UUID] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build the recent-transactions list for /me/wallet.
+    """Build the recent wallet-MOVEMENT list for /me/wallet.
 
-    Loads up to 20 recent transactions touching the caller's accounts,
-    then for each one derives:
-      - `direction`: CREDIT on the user's account → "in"; DEBIT → "out".
+    Loads recent transactions touching the caller's accounts and emits one row
+    per (transaction, caller wallet). That shape is what the panel already
+    promises — "movements on this user's wallets" — and it is the only one in
+    which the amount, the direction and the wallet are each unambiguous:
+
+      - `amount`: the caller's NET movement on THAT wallet. Never the
+        transaction's headline, which for a supervisor earning parent
+        commission on a large cash-in overstated their receipt by orders of
+        magnitude.
+      - `direction`: the sign of that wallet's net. Previously read off
+        whichever leg the ledger query returned first, which was ambiguous the
+        moment a user could own two legs of one transaction.
+      - `wallet_account_type` / `wallet_label`: which wallet moved, so held
+        commission is never mistaken for spendable money.
       - `counterparty_name`: the OTHER side's display name whenever that
         side is a user-owned account (p2p, merchant_cashin, cash_in,
         cashout) — a merchant's business name, else the person's full name
@@ -1335,6 +1417,17 @@ async def _build_recent_txns_payload(
         include_counterparty_phone: Admin surfaces only. Adds
             `counterparty_phone` to each row; leave False for user-facing
             callers so no customer sees another customer's number.
+        movement_account_ids: Restrict which of the caller's wallets produce
+            ROWS (the Main / Commission wallet filter). Deliberately separate
+            from `account_ids`, which stays the full set: ownership decides
+            what counts as the caller's own leg, and narrowing it would make
+            the caller's OTHER wallet look like an external counterparty — a
+            cash-in filtered to the commission wallet would name "Main wallet"
+            as the counterparty instead of the customer.
+        scope_account_ids: Which accounts decide WHICH TRANSACTIONS are worth
+            fetching. Narrowed alongside `movement_account_ids` so a filtered
+            page is not mostly empty, and so the page total agrees with what is
+            rendered. Defaults to `account_ids`.
 
     Returns:
         List of dicts shaped to match `WalletTransactionOut`.
@@ -1348,7 +1441,7 @@ async def _build_recent_txns_payload(
         _user_txns_stmt(
             select(Transaction),
             tenant_id=tenant_id,
-            account_ids=account_ids,
+            account_ids=scope_account_ids if scope_account_ids is not None else account_ids,
             currency=currency,
             reference=reference,
         )
@@ -1405,14 +1498,22 @@ async def _build_recent_txns_payload(
     # The viewer's own accounts, labelled too: a commission disbursement moves
     # between two wallets of the SAME user, so the only meaningful counterparty
     # is the other wallet.
-    own_rows = await session.execute(
-        select(Account.id, Account.account_type, Account.name).where(
-            Account.id.in_(account_ids)
+    own_rows = (
+        await session.execute(
+            select(
+                Account.id, Account.account_type, Account.name, Account.currency
+            ).where(Account.id.in_(account_ids))
         )
-    )
+    ).all()
     own_label_by_account = {
         acct_id: account_label(acct_type, acct_name)
-        for acct_id, acct_type, acct_name in own_rows.all()
+        for acct_id, acct_type, acct_name, _ in own_rows
+    }
+    own_type_by_account = {acct_id: acct_type for acct_id, acct_type, _, _ in own_rows}
+    # The row reports the movement on ONE wallet, so its currency is that
+    # wallet's — not the transaction's, which can differ on a mixed-unit flow.
+    own_currency_by_account = {
+        acct_id: currency for acct_id, _, _, currency in own_rows
     }
 
     counterparty_user_ids = set(user_id_by_account.values())
@@ -1425,104 +1526,118 @@ async def _build_recent_txns_payload(
             session, tenant_id=tenant_id, user_ids=counterparty_user_ids
         )
 
+    movement_filter = set(movement_account_ids) if movement_account_ids is not None else None
+
     payload: list[dict[str, Any]] = []
     for t in txns:
         entries = entries_by_txn.get(t.id, [])
-        user_entry = next((e for e in entries if e.account_id in own_account_set), None)
-        # Default to "out" if we somehow couldn't find a side; the user
-        # would never see this row otherwise but the type system needs
-        # a literal value.
-        direction = "out"
-        if user_entry is not None:
-            direction = "in" if user_entry.entry_type == "CREDIT" else "out"
 
-        # No transaction_type gate here. `user_id_by_account` holds only
-        # accounts with an owning user, so a real NAME still comes solely from
-        # a user-to-user leg (p2p, merchant_cashin, cash_in, cashout). What is
-        # new is that a leg WITHOUT an owner no longer means an empty cell —
-        # `label_by_account` names the account itself as the fallback.
-        counterparty_name: str | None = None
-        counterparty_phone: str | None = None
-        # Best available label for the other side, in descending specificity:
-        # a real person or business name, then whatever that account IS.
-        #
-        # The fallback follows the LARGEST other-side leg, not the first one:
-        # a cash-out carries fee and tax legs alongside the principal, and
-        # naming the counterparty "Fees collected" because that entry happened
-        # to be read first would be actively misleading.
-        fallback_label: str | None = None
-        fallback_amount = Decimal("-1")
+        # NET the caller's movement PER OWN ACCOUNT. One transaction can touch
+        # several of their wallets — an agent's cash-in DEBITs their main wallet
+        # for the principal and CREDITs their commission wallet with what they
+        # earned — and it can hit the same account twice (principal + fee). One
+        # row per wallet is what the panel already promises ("movements on this
+        # user's wallets") and is the only shape in which the amount, the
+        # direction and the wallet are each unambiguous.
+        net_by_account: dict[UUID, Decimal] = {}
         for e in entries:
-            if e.account_id in own_account_set:
+            if e.account_id not in own_account_set:
                 continue
-            label = label_by_account.get(e.account_id)
-            amount = Decimal(str(e.amount))
-            if label is not None and amount > fallback_amount:
-                fallback_label = label
-                fallback_amount = amount
-            owner_id = user_id_by_account.get(e.account_id)
-            if owner_id is None:
-                continue
-            counterparty_name = name_by_user.get(owner_id)
-            counterparty_phone = phone_by_user.get(owner_id)
-            if counterparty_name or counterparty_phone:
-                break
+            signed = Decimal(str(e.amount)) if e.entry_type == "CREDIT" else -Decimal(str(e.amount))
+            net_by_account[e.account_id] = net_by_account.get(e.account_id, Decimal("0")) + signed
 
-        if counterparty_name is None:
-            # No other PARTY — either the other leg is a system / merchant
-            # account, or every leg belongs to this same user (a commission
-            # disbursement). Name the account instead of leaving the column
-            # blank: every transaction has two sides and the operator is
-            # entitled to see both.
-            if fallback_label is None and user_entry is not None:
-                other_own = next(
-                    (
-                        e
-                        for e in entries
-                        if e.account_id in own_account_set
-                        and e.account_id != user_entry.account_id
-                    ),
-                    None,
-                )
-                if other_own is not None:
-                    fallback_label = own_label_by_account.get(other_own.account_id)
-            counterparty_name = fallback_label
+        # A transaction reached here because it touches an account of theirs, so
+        # an empty map means every leg netted to zero — nothing moved, nothing
+        # to show.
+        movements = [(acct_id, net) for acct_id, net in net_by_account.items() if net != 0]
+        if movement_filter is not None:
+            movements = [m for m in movements if m[0] in movement_filter]
+        if not movements:
+            continue
 
-        # Perspective rule: fee + tax are paid by the INITIATOR (the p2p sender,
-        # the airtime buyer, the customer in cash_in / cashout); commission is
-        # EARNED by the agent, never by the initiator. Show each amount only to
-        # the party it actually affected — everyone else sees "0".
-        is_initiator = t.initiated_by == user_id
-        fee_out = str(t.fee_amount) if is_initiator else "0"
-        tax_out = str(t.tax_amount) if is_initiator else "0"
-        # Commission goes to the agent side:
-        #  - cash_in: the agent INITIATES the deposit and earns the commission.
-        #  - cashout: the agent RECEIVES the cashed-out leg (direction "in") + it.
-        # ("cash_in" / "cashout" match CASH_IN_SERVICE_CODE / CASH_OUT_SERVICE_CODE.)
-        if t.transaction_type == "cash_in" and is_initiator:
-            commission_out = str(t.commission_amount)
-        elif t.transaction_type == "cashout" and direction == "in":
-            commission_out = str(t.commission_amount)
-        else:
-            commission_out = "0"
-
-        payload.append(
-            {
-                "id": t.id,
-                "reference": t.reference,
-                "transaction_type": t.transaction_type,
-                "base_transaction_type": t.base_transaction_type,
-                "status": t.status,
-                "amount": str(t.amount),
-                "fee_amount": fee_out,
-                "commission_amount": commission_out,
-                "tax_amount": tax_out,
-                "currency": t.currency,
-                "created_at": t.created_at,
-                "direction": direction,
-                "counterparty_name": counterparty_name,
-            }
+        counterparty_name, counterparty_phone = _resolve_row_counterparty(
+            entries=entries,
+            own_account_set=own_account_set,
+            label_by_account=label_by_account,
+            user_id_by_account=user_id_by_account,
+            name_by_user=name_by_user,
+            phone_by_user=phone_by_user,
+            own_label_by_account=own_label_by_account,
         )
+
+        # Perspective rule: fee + tax are borne by the INITIATOR; commission is
+        # EARNED. Each is now attached to the WALLET it actually moved through,
+        # so a cash-in reports the fee against the wallet that paid it and the
+        # commission against the wallet that received it.
+        is_initiator = t.initiated_by == user_id
+        # Did this transaction credit one of the caller's COMMISSION wallets?
+        # If so the commission has a leg of its own and needs no type map.
+        earned_into_commission_wallet = any(
+            own_type_by_account.get(acct_id) == ACCOUNT_TYPE_COMMISSION_WALLET and net > 0
+            for acct_id, net in movements
+        )
+
+        for account_id, net in movements:
+            account_type = own_type_by_account.get(account_id, "")
+            is_commission_wallet = account_type == ACCOUNT_TYPE_COMMISSION_WALLET
+
+            # Charges ride the wallet that bore them, never the earning wallet.
+            fee_out = str(t.fee_amount) if is_initiator and not is_commission_wallet else "0"
+            tax_out = str(t.tax_amount) if is_initiator and not is_commission_wallet else "0"
+
+            if is_commission_wallet and net > 0:
+                # The leg IS the commission — no need to guess from the service
+                # code, and this is what finally surfaces a supervisor's parent
+                # commission, which the old cash_in/cashout map never covered.
+                commission_out = str(net)
+            elif earned_into_commission_wallet:
+                # Already reported on its own row above; don't double-count it
+                # against the wallet that merely paid the principal.
+                commission_out = "0"
+            elif t.transaction_type == "cash_in" and is_initiator:
+                # A rule paying into the MAIN wallet has no separate leg, so the
+                # pre-commission-wallet attribution still applies:
+                #  - cash_in: the agent INITIATES the deposit and earns it.
+                #  - cashout: the agent RECEIVES the cashed-out leg + it.
+                commission_out = str(t.commission_amount)
+            elif t.transaction_type == "cashout" and net > 0:
+                commission_out = str(t.commission_amount)
+            else:
+                commission_out = "0"
+
+            payload.append(
+                {
+                    "id": t.id,
+                    "reference": t.reference,
+                    "transaction_type": t.transaction_type,
+                    "base_transaction_type": t.base_transaction_type,
+                    "status": t.status,
+                    # The caller's OWN movement on this wallet — NOT the
+                    # transaction's headline. A supervisor earning R0.50 of
+                    # parent commission on a R100 cash-in must read R0.50.
+                    "amount": str(abs(net)),
+                    # The headline principal, kept but clearly separate so it
+                    # can never stand in for the amount again.
+                    "transaction_amount": str(t.amount),
+                    "fee_amount": fee_out,
+                    "commission_amount": commission_out,
+                    "tax_amount": tax_out,
+                    "currency": own_currency_by_account.get(account_id, t.currency),
+                    "created_at": t.created_at,
+                    # Derived from THIS wallet's net, so it no longer depends on
+                    # which leg the ledger query happened to return first.
+                    "direction": "in" if net > 0 else "out",
+                    "wallet_account_id": account_id,
+                    "wallet_account_type": account_type,
+                    "wallet_label": own_label_by_account.get(account_id),
+                    "counterparty_name": counterparty_name,
+                    **(
+                        {"counterparty_phone": counterparty_phone}
+                        if include_counterparty_phone
+                        else {}
+                    ),
+                }
+            )
         if include_counterparty_phone:
             payload[-1]["counterparty_phone"] = counterparty_phone
     return payload
@@ -1537,8 +1652,9 @@ async def list_user_transactions(
     offset: int = 0,
     currency: str | None = None,
     reference: str | None = None,
+    wallet_type: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Return one page of a user's transactions + the total matching count.
+    """Return one page of a user's wallet movements + the total matching count.
 
     Resolves the user's accounts then delegates to the same payload
     builder the mobile /me/wallet endpoint uses, so the response shape
@@ -1554,9 +1670,15 @@ async def list_user_transactions(
         reference: Optional case-insensitive reference substring search.
 
     Returns:
-        `(rows, total)` — the page shaped to match `AdminUserTransactionOut`
-        (including `counterparty_phone`, which the user-facing feed omits),
-        and the total number of rows matching the filters across all pages.
+        `(rows, total)`, where `rows` are WALLET MOVEMENTS shaped to match
+        `AdminUserTransactionOut` (including `counterparty_phone`, which the
+        user-facing feed omits) and `total` counts TRANSACTIONS.
+
+        The two differ deliberately. Pagination is over transactions — one page
+        is `limit` transactions — but a transaction that touches several of the
+        caller's wallets yields one row each, so `len(rows) >= limit` is normal
+        and `total` is not a row count. A caller rendering a footer should say
+        "of N transactions", not "of N rows".
 
     Raises:
         UserNotFound: user_id is unknown or belongs to a different tenant.
@@ -1569,10 +1691,26 @@ async def list_user_transactions(
     if user_q.scalar_one_or_none() is None:
         raise UserNotFound()
 
-    accounts_q = await session.execute(
-        select(Account.id).where(Account.tenant_id == tenant_id, Account.user_id == user_id)
-    )
-    account_ids = list(accounts_q.scalars().all())
+    accounts_q_rows = (
+        await session.execute(
+            select(Account.id, Account.account_type).where(
+                Account.tenant_id == tenant_id, Account.user_id == user_id
+            )
+        )
+    ).all()
+    account_ids = [acct_id for acct_id, _ in accounts_q_rows]
+
+    # The Main / Commission wallet filter narrows which of the caller's wallets
+    # may produce rows, and which transactions are worth fetching at all — but
+    # NOT what counts as the caller's own leg (see `movement_account_ids`).
+    movement_account_ids: list[UUID] | None = None
+    scope_ids = account_ids
+    if wallet_type is not None:
+        movement_account_ids = [
+            acct_id for acct_id, acct_type in accounts_q_rows if acct_type == wallet_type
+        ]
+        scope_ids = movement_account_ids
+
     rows = await _build_recent_txns_payload(
         session,
         tenant_id=tenant_id,
@@ -1585,11 +1723,13 @@ async def list_user_transactions(
         # Admin surface: operators tracing a transfer need the counterparty's
         # number. The user-facing /me/wallet feed leaves this off.
         include_counterparty_phone=True,
+        movement_account_ids=movement_account_ids,
+        scope_account_ids=scope_ids,
     )
     total = await _count_user_txns(
         session,
         tenant_id=tenant_id,
-        account_ids=account_ids,
+        account_ids=scope_ids,
         currency=currency,
         reference=reference,
     )

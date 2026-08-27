@@ -319,7 +319,22 @@ export interface UserTransaction {
   reference: string | null;
   transaction_type: string;
   status: string;
+  /**
+   * The CALLER'S OWN movement on `wallet_account_id` — never the transaction's
+   * headline. A supervisor earning R0.50 of parent commission on a R100
+   * cash-in reads R0.50 here.
+   */
   amount: string;
+  /** The transaction's headline principal, kept separate from `amount`. */
+  transaction_amount?: string;
+  /**
+   * Which of the user's wallets moved. One transaction yields one row PER
+   * wallet it touches, so an agent's cash-in produces a main-wallet row for
+   * what they paid and a commission-wallet row for what they earned.
+   */
+  wallet_account_id?: string | null;
+  wallet_account_type?: string | null;
+  wallet_label?: string | null;
   /** Service charge debited with this transaction. "0" when none applied. */
   fee_amount: string;
   currency: string;
@@ -335,7 +350,13 @@ export interface UserTransaction {
   counterparty_phone: string | null;
 }
 
-/** One page of a user's transactions + the total matching the same filters. */
+/**
+ * One page of a user's wallet MOVEMENTS, plus the total matching the filters.
+ *
+ * `total` counts TRANSACTIONS, not rows: a transaction touching two of the
+ * user's wallets yields a row each, so `items.length` can exceed the page
+ * limit. A footer should read "of N transactions".
+ */
 export interface UserTransactionsPage {
   items: UserTransaction[];
   total: number;
@@ -352,7 +373,18 @@ export interface UserTransactionsPage {
 export const listUserTransactions = (
   tenant_id: string,
   user_id: string,
-  opts: { limit?: number; offset?: number; currency?: string; q?: string } = {},
+  opts: {
+    limit?: number;
+    offset?: number;
+    currency?: string;
+    q?: string;
+    /**
+     * Restrict to one of the user's wallets. Held commission and spendable
+     * money share a currency, so the currency filter alone cannot separate
+     * them.
+     */
+    wallet_type?: string;
+  } = {},
 ) =>
   apiGet<UserTransactionsPage>(
     `/api/v1/identity/users/${user_id}/transactions`,
@@ -362,6 +394,7 @@ export const listUserTransactions = (
         limit: opts.limit ?? 20,
         offset: opts.offset ?? 0,
         ...(opts.currency ? { currency: opts.currency } : {}),
+        ...(opts.wallet_type ? { wallet_type: opts.wallet_type } : {}),
         ...(opts.q ? { q: opts.q } : {}),
       },
     },

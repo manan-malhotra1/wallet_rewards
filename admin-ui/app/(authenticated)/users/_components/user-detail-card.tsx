@@ -427,6 +427,12 @@ export function UserDetailCard({
                   initialItems={transactions}
                   initialTotal={transactionsTotal}
                   currencies={txnCurrencies}
+                  // Derived from the wallets the user actually holds, not from
+                  // their type: an operator-created Business type earns
+                  // commission with no code change here.
+                  hasCommissionWallet={detail.accounts.some(
+                    (a) => a.account_type === "commission_wallet",
+                  )}
                 />
               </>
             ),

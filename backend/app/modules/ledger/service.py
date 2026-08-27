@@ -378,6 +378,53 @@ async def _load_and_assert_accounts(
     return accounts
 
 
+def _needs_lock(
+    account: Account, delta: Decimal, *, is_reversal: bool, skip_receive_cap: bool
+) -> bool:
+    """Will a guard actually FIRE on this account? Lock it only if so (B15).
+
+    The lock used to be taken for any non-zero delta on a guarded type, credits
+    included. But the checks below are asymmetric: the floor applies only to a
+    net DEBIT, and the ceiling only to `financial_wallet`. A credit into an
+    uncapped guarded wallet — a commission wallet, the float, the cashback
+    wallet — therefore took a `FOR UPDATE` row lock held through commit and was
+    then checked against nothing.
+
+    That was not merely wasted work, because of WHOSE row it is. Parent
+    commission credits the same super-agent's commission wallet on every
+    cash-in and cash-out their downline performs, so an entire downline
+    serialised on one row — contention scaling with the shape of the hierarchy
+    rather than the transaction rate.
+
+    Dropping those locks cannot breach a floor. A credit only ever INCREASES a
+    balance, so a concurrent debit that reads without seeing an uncommitted
+    credit sees LESS than the truth and errs toward rejecting — conservative,
+    never permissive. Two credits racing on a CAPPED wallet still both lock,
+    which is what preserves the M-01 max_balance race.
+
+    Args:
+        account: The account this leg touches.
+        delta: Its NET movement in this transaction (CREDIT positive).
+        is_reversal / skip_receive_cap: The request flags that disable the
+            ceiling. When the ceiling cannot fire, a credit needs no lock.
+
+    Returns:
+        True when a floor or ceiling check will run against this account.
+    """
+    if delta < 0:
+        return account.account_type in _OVERDRAFT_GUARDED_ACCOUNT_TYPES
+    if delta > 0:
+        # Mirror the ceiling branch's own conditions exactly — locking for a
+        # check that is about to be skipped is the bug this function fixes.
+        return (
+            account.account_type in _CEILING_GUARDED_ACCOUNT_TYPES
+            and not is_reversal
+            and not skip_receive_cap
+            and account.user_id is not None
+        )
+    return False
+
+
 async def _enforce_balance_guard(
     session: AsyncSession,
     request: PostTransactionRequest,
@@ -434,7 +481,12 @@ async def _enforce_balance_guard(
     guarded = sorted(
         account_id
         for account_id, delta in deltas.items()
-        if delta != 0 and accounts[account_id].account_type in _OVERDRAFT_GUARDED_ACCOUNT_TYPES
+        if _needs_lock(
+            accounts[account_id],
+            delta,
+            is_reversal=request.is_reversal,
+            skip_receive_cap=request.skip_receive_cap,
+        )
     )
     if not guarded:
         return

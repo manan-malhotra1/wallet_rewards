@@ -121,3 +121,38 @@ _CEILING_GUARDED_ACCOUNT_TYPES = frozenset({ACCOUNT_TYPE_FINANCIAL_WALLET})
 deliberately, and give it a DISTINCT floor exception so an operator can tell
 which account needs replenishing. Never let a type inherit a guard by accident
 of having (or not having) a `user_id`.
+
+### Which rows are locked (amended 2026-08-27 — B15)
+
+The guarded SET says which account types *have* a guard. It is not the same as
+which rows get **locked** on a given transaction. A row is locked only when a
+check will actually fire on it:
+
+| Leg | Locked? |
+|---|---|
+| net DEBIT on a floor-guarded type | yes — the floor runs |
+| net CREDIT on `financial_wallet` | yes — `max_balance` runs |
+| net CREDIT on `financial_wallet`, but `is_reversal` or `skip_receive_cap` | **no** — the ceiling is skipped |
+| net CREDIT on any other guarded type | **no** — uncapped, nothing to check |
+| any leg on an unguarded type | no |
+
+Before this, any non-zero delta on a guarded type was locked. That meant a
+credit into an uncapped wallet took a `FOR UPDATE` held through commit and was
+then checked against nothing — and because parent commission credits the same
+super-agent's commission wallet on every downline cash-in, an entire downline
+serialised on one row.
+
+**Why dropping those locks is safe.** A credit only ever INCREASES a balance, so
+a concurrent debit that reads without seeing an uncommitted credit sees LESS
+than the truth and errs toward rejecting. Conservative, never permissive — a
+floor cannot be breached by a lock that was not taken on a credit. Two credits
+racing on a CAPPED wallet still both lock, which is what preserves the M-01
+`max_balance` race.
+
+Locks are still acquired in canonical account-id order. Narrowing the set cannot
+introduce a deadlock cycle that a larger set did not already have.
+
+**Rule:** if you add a guard, decide which SIDE it fires on and make
+`_needs_lock` say so. Locking a leg no check will read is contention with no
+safety value, and the row you are locking may belong to someone with a large
+downline.

@@ -1537,7 +1537,7 @@ amount is wrong just presents the wrong number more clearly.
 
 ---
 
-## Epic B15 — The ledger locks rows it can never reject · **Backlog**
+## Epic B15 — The ledger locks rows it can never reject · **Delivered 2026-08-27**
 
 Raised 2026-08-27 while mapping money flows. `post_transaction` locks every
 guarded account with a non-zero delta:
@@ -1569,7 +1569,7 @@ Measured on a live commission-paying cash-in: 4 locked rows across 3 users, of
 which **2 can never reject** (the agent's and the super-agent's commission
 wallet credits).
 
-### Story B15.1 — Lock only where a check can fire · Backlog
+### Story B15.1 — Lock only where a check can fire · Delivered
 
 **Description:** Take the row lock on a net DEBIT always, and on a net CREDIT
 only for a type in `_CEILING_GUARDED_ACCOUNT_TYPES`.

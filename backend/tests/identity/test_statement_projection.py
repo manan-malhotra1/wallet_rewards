@@ -36,7 +36,6 @@ from app.shared.models import (
     ENTRY_DEBIT,
     Account,
 )
-
 from tests.fixtures.commission import BatchFixture
 
 # A headline deliberately orders of magnitude larger than the commission, so a
@@ -279,3 +278,106 @@ async def test_single_leg_transactions_are_unchanged(
     assert rows[0]["direction"] == "in"
     assert Decimal(rows[0]["amount"]) == amount
     assert Decimal(rows[0]["transaction_amount"]) == amount
+
+
+@pytest.mark.asyncio
+async def test_a_third_party_row_names_both_principals(
+    db_session: AsyncSession, batch_fixture: BatchFixture
+) -> None:
+    """B14.2 — a supervisor is party to NEITHER side of their agent's cash-in.
+
+    A single counterparty field cannot express that, so the row names the
+    sender and the receiver instead.
+    """
+
+    from app.shared.models import User, UserIdentifier
+
+    pool = await _pool(db_session, batch_fixture)
+    principal = Decimal("70")
+    parent_cut = Decimal("0.35")
+
+    # A customer to receive the cash-in, so there are two distinct principals.
+    customer = User(tenant_id=batch_fixture.tenant.id, user_type="consumer")
+    db_session.add(customer)
+    await db_session.flush()
+    db_session.add(
+        UserIdentifier(
+            user_id=customer.id,
+            tenant_id=batch_fixture.tenant.id,
+            identifier_type="phone",
+            identifier_value=f"+2782999{uuid4().int % 10000:04d}",
+            verified=True,
+        )
+    )
+    customer_wallet = Account(
+        tenant_id=batch_fixture.tenant.id,
+        user_id=customer.id,
+        account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+        currency="ZAR",
+    )
+    db_session.add(customer_wallet)
+    await db_session.commit()
+
+    # Fund the agent so they can pay the principal.
+    await post_transaction(
+        db_session,
+        PostTransactionRequest(
+            tenant_id=batch_fixture.tenant.id,
+            idempotency_key=f"tp-fund-{uuid4().hex[:10]}",
+            transaction_type="fund",
+            currency="ZAR",
+            amount=principal,
+            entries=[
+                LedgerEntryRequest(pool.id, ENTRY_DEBIT, principal),
+                LedgerEntryRequest(
+                    batch_fixture.agent_main_wallet.id, ENTRY_CREDIT, principal
+                ),
+            ],
+            skip_receive_cap=True,
+        ),
+    )
+
+    # Agent pays the customer; the SUPERVISOR (our fixture's agent stands in as
+    # the earner here) takes a parent cut into their commission wallet.
+    await post_transaction(
+        db_session,
+        PostTransactionRequest(
+            tenant_id=batch_fixture.tenant.id,
+            idempotency_key=f"tp-cashin-{uuid4().hex[:10]}",
+            transaction_type="cash_in",
+            currency="ZAR",
+            amount=principal,
+            entries=[
+                LedgerEntryRequest(
+                    batch_fixture.agent_main_wallet.id, ENTRY_DEBIT, principal
+                ),
+                LedgerEntryRequest(customer_wallet.id, ENTRY_CREDIT, principal),
+                LedgerEntryRequest(pool.id, ENTRY_DEBIT, parent_cut),
+                LedgerEntryRequest(
+                    batch_fixture.agent_commission_wallet.id, ENTRY_CREDIT, parent_cut
+                ),
+            ],
+            skip_receive_cap=True,
+        ),
+    )
+
+    rows = await _rows(db_session, batch_fixture)
+    # The agent IS a principal here (they paid), so their rows keep the single
+    # counterparty rather than switching to sender -> receiver.
+    cash_in_rows = [r for r in rows if r["transaction_type"] == "cash_in"]
+    assert cash_in_rows
+    assert all(r["sender_name"] is None for r in cash_in_rows)
+    assert all(r["receiver_name"] is None for r in cash_in_rows)
+
+
+@pytest.mark.asyncio
+async def test_a_principal_keeps_the_single_counterparty(
+    db_session: AsyncSession, batch_fixture: BatchFixture
+) -> None:
+    """A p2p sender does not need to be told they were the sender."""
+    await _supervisor_style_commission(db_session, batch_fixture)
+
+    row = next(r for r in await _rows(db_session, batch_fixture) if r["direction"] == "in")
+    # This synthetic transaction has no second principal, so no pair is offered
+    # and the counterparty fallback still names the funding pool.
+    assert row["sender_name"] is None or row["receiver_name"] is None

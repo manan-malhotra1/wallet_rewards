@@ -77,6 +77,32 @@ describe("CounterpartyCell", () => {
     expect(screen.getByText("Commission wallet")).toBeInTheDocument();
   });
 
+  it("renders sender to receiver when the viewer is a third party", () => {
+    // A supervisor earning parent commission is party to neither side, so a
+    // single counterparty name cannot describe the transaction.
+    render(
+      <CounterpartyCell
+        txn={txn({
+          transaction_type: "cash_in",
+          counterparty_name: "Agent Normal",
+          sender_name: "Agent Normal",
+          receiver_name: "Alicia Mokoena",
+        })}
+      />,
+    );
+    expect(screen.getByText(/Agent Normal/)).toBeInTheDocument();
+    expect(screen.getByText(/Alicia Mokoena/)).toBeInTheDocument();
+    expect(screen.getByText(/You earned from this/)).toBeInTheDocument();
+  });
+
+  it("keeps the single counterparty when the viewer IS one of the sides", () => {
+    render(
+      <CounterpartyCell txn={txn({ counterparty_name: "Alicia Mokoena" })} />,
+    );
+    expect(screen.getByText("Alicia Mokoena")).toBeInTheDocument();
+    expect(screen.queryByText(/You earned from this/)).not.toBeInTheDocument();
+  });
+
   it("never labels the counterparty with the service name", () => {
     // With nothing resolved the cell must stay empty rather than echo
     // "Merchant Cashin" / "Cash-in". The backend now always supplies a label,

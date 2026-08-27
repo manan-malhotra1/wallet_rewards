@@ -421,6 +421,13 @@ class WalletTransactionOut(BaseModel):
     created_at: datetime
     direction: Literal["in", "out"]
     counterparty_name: str | None = None
+    # The two principals, populated ONLY when the caller is a THIRD PARTY to
+    # the transaction. A supervisor earns parent commission from a transaction
+    # between their agent and a customer and is neither side, so a single
+    # counterparty cannot express it — the row reads "agent -> customer".
+    # Null whenever the caller is one of the two sides.
+    sender_name: str | None = None
+    receiver_name: str | None = None
 
 
 class AdminUserTransactionOut(WalletTransactionOut):

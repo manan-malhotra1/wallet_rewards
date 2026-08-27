@@ -15,10 +15,34 @@ import type { UserTransaction } from "@/lib/api-endpoints";
  * back to an empty cell — exactly how the commission rows regressed to "—".
  * Deriving it from the actual account removes that maintenance trap.
  *
+ * Where the viewer is a THIRD PARTY — a supervisor earning parent commission
+ * from a transaction between two other people — a single name cannot express
+ * what happened, so the cell renders sender → receiver instead.
+ *
  * Never falls back to the service name — that is its own column, and repeating
  * it here would read as if the user transacted with the service.
  */
 export function CounterpartyCell({ txn }: { txn: UserTransaction }) {
+  // A transaction the viewer is not a party to cannot be described by one
+  // name: a supervisor earns from their agent paying a customer, and is
+  // neither side. The backend fills these only in that case.
+  if (txn.sender_name || txn.receiver_name) {
+    return (
+      <div className="flex flex-col leading-tight">
+        <span>
+          {txn.sender_name ?? "—"}
+          <span className="mx-1 text-muted-foreground" aria-label="to">
+            →
+          </span>
+          {txn.receiver_name ?? "—"}
+        </span>
+        <span className="text-[11px] text-muted-foreground">
+          You earned from this
+        </span>
+      </div>
+    );
+  }
+
   const name = txn.counterparty_name;
   // A user with no profile name resolves to their identifier, which is the
   // phone — showing it twice reads as a rendering bug.

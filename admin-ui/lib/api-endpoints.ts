@@ -346,6 +346,14 @@ export interface UserTransaction {
    * (funds, reward issuance, redemption), never a service name.
    */
   counterparty_name: string | null;
+  /**
+   * The two principals, populated ONLY when the user is a THIRD PARTY to the
+   * transaction — a supervisor earning parent commission from a transaction
+   * between their agent and a customer. Null when the user is one of the sides,
+   * where `counterparty_name` already says what they need.
+   */
+  sender_name?: string | null;
+  receiver_name?: string | null;
   /** The same party's phone number. Admin-only — absent from the mobile feed. */
   counterparty_phone: string | null;
 }

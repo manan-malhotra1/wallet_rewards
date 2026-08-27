@@ -78,20 +78,20 @@ from app.shared.exceptions import (
 from app.shared.models import (
     ACCOUNT_TYPE_COMMISSION_WALLET,
     ACCOUNT_TYPE_FINANCIAL_WALLET,
-    AuthAttempt,
-    MerchantProfile,
-    OtpRequest,
-    Referral,
     REFERRAL_STATUS_PENDING,
-    ReferralCode,
-    Service,
     SERVICE_STATUS_ACTIVE,
-    Tenant,
-    User,
     USER_STATUS_ACTIVE,
     USER_STATUS_CLOSED,
     USER_STATUS_SUSPENDED,
     USER_STATUS_TXN_LOCKED,
+    AuthAttempt,
+    MerchantProfile,
+    OtpRequest,
+    Referral,
+    ReferralCode,
+    Service,
+    Tenant,
+    User,
     UserIdentifier,
     UserProfile,
 )
@@ -1357,6 +1357,60 @@ def _resolve_row_counterparty(
     return fallback_label, counterparty_phone
 
 
+def _resolve_principals(
+    *,
+    entries: list[Any],
+    user_id_by_account: dict[UUID, UUID],
+    name_by_user: dict[UUID, str],
+    own_account_set: set[UUID],
+) -> tuple[str | None, str | None, bool]:
+    """Name the SENDER and RECEIVER of a transaction, and say whether the
+    caller is one of them.
+
+    A single counterparty field assumes the viewer is one of the two sides.
+    Parent commission breaks that: a supervisor earns from a transaction
+    between their agent and a customer, and is a party to neither side. Such a
+    row reads as "Agent Normal -> Alicia Mokoena" instead of naming one of them
+    arbitrarily.
+
+    The principals are the LARGEST user-owned debit and the LARGEST user-owned
+    credit. Size is what separates the principal from the incidentals — a
+    cash-in carries fee, tax and commission legs beside the money actually
+    being moved, and any of them could otherwise be mistaken for a party.
+
+    Returns:
+        `(sender_name, receiver_name, caller_is_principal)`. Names are None
+        when that side has no owning user (a system pool funds it).
+    """
+    sender_account: UUID | None = None
+    receiver_account: UUID | None = None
+    sender_amount = Decimal("-1")
+    receiver_amount = Decimal("-1")
+
+    for e in entries:
+        owner = user_id_by_account.get(e.account_id)
+        if owner is None and e.account_id not in own_account_set:
+            continue  # system / pool leg — never a party
+        amount = Decimal(str(e.amount))
+        if e.entry_type == "DEBIT":
+            if amount > sender_amount:
+                sender_account, sender_amount = e.account_id, amount
+        elif amount > receiver_amount:
+            receiver_account, receiver_amount = e.account_id, amount
+
+    caller_is_principal = (
+        sender_account in own_account_set or receiver_account in own_account_set
+    )
+
+    def name_of(account_id: UUID | None) -> str | None:
+        if account_id is None:
+            return None
+        owner = user_id_by_account.get(account_id)
+        return name_by_user.get(owner) if owner is not None else None
+
+    return name_of(sender_account), name_of(receiver_account), caller_is_principal
+
+
 async def _build_recent_txns_payload(
     session: AsyncSession,
     *,
@@ -1555,6 +1609,16 @@ async def _build_recent_txns_payload(
         if not movements:
             continue
 
+        # Sender / receiver, so a row the caller is NOT a party to can still be
+        # read. Only surfaced in that case — a p2p sender does not need to be
+        # told they were the sender.
+        sender_name, receiver_name, caller_is_principal = _resolve_principals(
+            entries=entries,
+            user_id_by_account=user_id_by_account,
+            name_by_user=name_by_user,
+            own_account_set=own_account_set,
+        )
+
         counterparty_name, counterparty_phone = _resolve_row_counterparty(
             entries=entries,
             own_account_set=own_account_set,
@@ -1631,6 +1695,11 @@ async def _build_recent_txns_payload(
                     "wallet_account_type": account_type,
                     "wallet_label": own_label_by_account.get(account_id),
                     "counterparty_name": counterparty_name,
+                    # Populated ONLY when the caller is a third party to the
+                    # transaction — the parent-commission case. Otherwise the
+                    # single counterparty already says what they need.
+                    "sender_name": None if caller_is_principal else sender_name,
+                    "receiver_name": None if caller_is_principal else receiver_name,
                     **(
                         {"counterparty_phone": counterparty_phone}
                         if include_counterparty_phone

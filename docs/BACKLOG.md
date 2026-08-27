@@ -1456,3 +1456,81 @@ figure never reaches the screen.
 **Related:** B13.1 (wallet column) and B13.2 (direction) are prerequisites —
 this story is the reason all three exist, and shipping it alone would surface a
 commission row whose direction is still decided by ledger ordering.
+
+---
+
+## Epic B14 — A supervisor's statement misstates what they received · **Backlog**
+
+Raised 2026-08-27 from a super-agent's Transactions tab. Two defects on the same
+row, one of them a **financial misstatement on an operator-facing screen**.
+
+### Story B14.1 — AMOUNT shows the transaction's headline, not the viewer's movement · Backlog
+
+**Description:** The row reports `transactions.amount` — the headline principal —
+rather than the ledger movement on the *viewer's own* account. Verified against
+the two rows on the reported screen:
+
+| Reference | Statement shows | Super-agent's actual leg |
+|---|---|---|
+| `S_20260827164802020449` | **+ZAR 200.00 IN** | CREDIT **1.000000** commission_wallet |
+| `S_20260827164212020448` | **+ZAR 100.00 IN** | CREDIT **0.500000** commission_wallet |
+
+A supervisor who earned R0.50 is shown "+ZAR 100.00 IN" — overstated **200×**,
+with an IN direction that makes it read as money received. Nothing on the screen
+contradicts it.
+
+Cause is `identity/service.py`, which emits `"amount": str(t.amount)` verbatim.
+For every party that existed before parent commission this coincided with their
+own leg — a p2p sender moves the headline, a cash-in customer receives it — so
+the shortcut was invisible. A parent-commission earner is the first party whose
+leg is a small fraction of the headline, and the shortcut becomes a lie.
+
+**This is the most severe of B11-B14. Treat it as a correctness defect on a
+money surface, not a display polish item.**
+
+**Acceptance criteria:**
+- The amount reported is the NET movement on the viewer's own account(s) for
+  that transaction, derived from the ledger, signed to match `direction`
+- The transaction's headline principal may still be shown, but must be a
+  SEPARATE, clearly-labelled figure — never the number in the amount column
+- A parent-commission row on a supervisor's statement reports their actual
+  credit (R0.50), not the principal (R100.00)
+- Existing single-leg parties are unchanged: a p2p sender, a cash-in customer
+  and a funded user all still see the same figures they see today
+- Backend test asserting the supervisor case explicitly, with a headline
+  deliberately orders of magnitude larger than the commission, so a regression
+  that reverts to `t.amount` cannot pass
+- Audit the same substitution wherever else a transaction's headline stands in
+  for a party's movement — the mobile `/me/wallet` feed shares this payload
+
+### Story B14.2 — COUNTERPARTY cannot express a transaction the viewer is not party to · Backlog
+
+**Description:** Reported as "the counterparty is not understandable". On a
+super-agent's statement a downline cash-in shows counterparty "Agent Normal",
+which says nothing about what happened: the agent paid, Alice received, and the
+super-agent merely earned from it.
+
+A single counterparty field assumes the viewer is one of the two sides. For
+parent commission that assumption breaks — the supervisor is a third party to a
+transaction between two other people.
+
+**Acceptance criteria:**
+- A transaction the viewer is not a principal party to reports **sender** and
+  **receiver** rather than a single counterparty, so a supervisor reads "Agent
+  Normal → Alicia Mokoena" and understands it
+- Where the viewer IS one of the two sides, the existing single-counterparty
+  presentation is kept — a p2p sender does not need to be told they were the
+  sender
+- Sender / receiver are derived from the ledger's principal legs, not from
+  `transaction_type` — the same rule the counterparty fallback already follows
+- Consistent with B13.3's per-party perspective rule: a supervisor seeing their
+  downline's transaction must not thereby see figures that belong to the
+  customer, only the parties and their own earning
+- Frontend test: a row carrying sender and receiver renders both; a row with a
+  plain counterparty renders as it does today
+- Backend test: a super-agent's parent-commission row names the acting agent as
+  sender and the funded customer as receiver
+
+**Related:** B13.1 / B13.2 / B13.3 are the same statement surface. B14.1 should
+be sequenced first — a wallet column and a sender/receiver pair on a row whose
+amount is wrong just presents the wrong number more clearly.

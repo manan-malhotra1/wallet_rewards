@@ -1197,7 +1197,7 @@ works by doing nothing.
 
 ---
 
-## Epic B11 — Commission approval drawer hides the money terms it approves · **Backlog**
+## Epic B11 — Commission approval drawer hides the money terms it approves · **Delivered 2026-08-27**
 
 Raised 2026-08-27 from the Commission approvals screen. The commission-wallet
 edition added four money-affecting fields to `commission_configs`
@@ -1224,7 +1224,7 @@ value spec D8 deliberately forces the maker to state explicitly.
 This is a maker-checker integrity gap, not cosmetics: four-eyes means the second
 pair of eyes can actually see what it is signing off.
 
-### Story B11.1 — Show destination + parent commission in the review drawer · Backlog
+### Story B11.1 — Show destination + parent commission in the review drawer · Delivered
 
 **Description:** Render the four fields in `config-detail.tsx` for
 `config_type = "commission"`, and make sure the same values appear in the
@@ -1254,7 +1254,7 @@ table for everyone.
 
 ---
 
-## Epic B12 — The agent hierarchy is invisible from both ends · **Backlog**
+## Epic B12 — The agent hierarchy is invisible from both ends · **Delivered 2026-08-27**
 
 Raised 2026-08-27 from the Users screen. `users.parent_user_id` drives who a
 supervisor is, and since the commission-wallet edition it also decides **who
@@ -1266,7 +1266,7 @@ Verified against the dev database, not inferred: the agent on `+27655555556`
 and `get_user_detail` returns both `parent_user_id` and `parent_name`. The data
 is correct and the API serves it. Only the UI is at fault.
 
-### Story B12.1 — "Reports to" is rendered in the Address tab · Backlog
+### Story B12.1 — "Reports to" is rendered in the Address tab · Delivered
 
 **Description:** `user-detail-card.tsx:320-326` renders the supervisor inside
 the **"Address & country"** tab:
@@ -1296,7 +1296,7 @@ says it exists "so the UI shows 'Reports to: <name>' instead of a bare id".
 - Frontend test: a detail payload with `parent_name` renders it on the header;
   one without renders no supervisor element
 
-### Story B12.2 — A supervisor cannot see who reports to them · Backlog
+### Story B12.2 — A supervisor cannot see who reports to them · Delivered
 
 **Description:** There is no children / downline surface anywhere — no endpoint
 and no UI. Opening a `super_agent` shows nothing about the agents beneath them.
@@ -1330,7 +1330,7 @@ that; changing it does.
 
 ---
 
-## Epic B13 — A statement row does not say which wallet moved · **Backlog**
+## Epic B13 — A statement row does not say which wallet moved · **Delivered 2026-08-27**
 
 Raised 2026-08-27 from the user Transactions tab. A user now holds **two**
 wallets per financial currency — a spendable main wallet and a held commission
@@ -1347,7 +1347,7 @@ The data is already in hand. `_build_recent_txns_payload` computes
 `own_label_by_account`, mapping every one of the user's accounts to a label.
 Neither reaches the response.
 
-### Story B13.1 — Add the wallet the movement touched · Backlog
+### Story B13.1 — Add the wallet the movement touched · Delivered
 
 **Description:** Surface the caller's own side of the ledger on each row, so an
 operator can tell a commission accrual from a cash-in at a glance.
@@ -1364,7 +1364,7 @@ operator can tell a commission accrual from a cash-in at a glance.
 - Backend test: a commission accrual row names the commission wallet, a cash-in
   names the main wallet, and neither is derived from the transaction type
 
-### Story B13.2 — `direction` is arbitrary when the user owns both legs · Backlog
+### Story B13.2 — `direction` is arbitrary when the user owns both legs · Delivered
 
 **Description:** A correctness bug, not a display gap, and newly reachable
 because the commission wallet made **same-user two-leg** transactions ordinary.
@@ -1400,7 +1400,7 @@ so the same transaction can legitimately render IN or OUT on different loads.
 **Related:** B13.1 supplies the wallet label this needs. Doing B13.1 alone
 would leave a row that names a wallet while its direction was picked at random.
 
-### Story B13.3 — An earned commission never appears on the statement · Backlog
+### Story B13.3 — An earned commission never appears on the statement · Delivered
 
 **Description:** Reported 2026-08-27 against a real cash-in. **The money path is
 correct** — verified leg by leg on transaction `S_20260827164212020448`:
@@ -1459,12 +1459,12 @@ commission row whose direction is still decided by ledger ordering.
 
 ---
 
-## Epic B14 — A supervisor's statement misstates what they received · **Backlog**
+## Epic B14 — A supervisor's statement misstates what they received · **Delivered 2026-08-27**
 
 Raised 2026-08-27 from a super-agent's Transactions tab. Two defects on the same
 row, one of them a **financial misstatement on an operator-facing screen**.
 
-### Story B14.1 — AMOUNT shows the transaction's headline, not the viewer's movement · Backlog
+### Story B14.1 — AMOUNT shows the transaction's headline, not the viewer's movement · Delivered
 
 **Description:** The row reports `transactions.amount` — the headline principal —
 rather than the ledger movement on the *viewer's own* account. Verified against
@@ -1503,7 +1503,7 @@ money surface, not a display polish item.**
 - Audit the same substitution wherever else a transaction's headline stands in
   for a party's movement — the mobile `/me/wallet` feed shares this payload
 
-### Story B14.2 — COUNTERPARTY cannot express a transaction the viewer is not party to · Backlog
+### Story B14.2 — COUNTERPARTY cannot express a transaction the viewer is not party to · Delivered
 
 **Description:** Reported as "the counterparty is not understandable". On a
 super-agent's statement a downline cash-in shows counterparty "Agent Normal",

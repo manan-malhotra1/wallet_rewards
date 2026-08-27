@@ -1534,3 +1534,63 @@ transaction between two other people.
 **Related:** B13.1 / B13.2 / B13.3 are the same statement surface. B14.1 should
 be sequenced first — a wallet column and a sender/receiver pair on a row whose
 amount is wrong just presents the wrong number more clearly.
+
+---
+
+## Epic B15 — The ledger locks rows it can never reject · **Backlog**
+
+Raised 2026-08-27 while mapping money flows. `post_transaction` locks every
+guarded account with a non-zero delta:
+
+```python
+guarded = sorted(
+    account_id for account_id, delta in deltas.items()
+    if delta != 0 and accounts[account_id].account_type in _OVERDRAFT_GUARDED_ACCOUNT_TYPES
+)
+for account_id in guarded:
+    await lock_account_for_update(session, account_id)
+```
+
+`delta != 0` includes CREDITS. It then checks a floor only on a net debit, and
+a ceiling only for `financial_wallet` (the explicit `_CEILING_GUARDED_ACCOUNT_TYPES`
+set added with commission wallets). A credit into an uncapped guarded wallet —
+`commission_wallet`, `system_cash_inflow`, `cashback_provider_wallet` — therefore
+takes a `FOR UPDATE` row lock held through commit and is then checked against
+nothing at all.
+
+**Why it is not merely wasted work.** The row belongs to a *supervisor*. Parent
+commission credits the same super-agent's commission wallet on every cash-in and
+cash-out their downline performs, so fifty agents under one supervisor serialise
+on a single row. The contention scales with the SHAPE OF THE HIERARCHY, not with
+the transaction rate — a fan-in bottleneck that load testing against many
+independent users would never surface.
+
+Measured on a live commission-paying cash-in: 4 locked rows across 3 users, of
+which **2 can never reject** (the agent's and the super-agent's commission
+wallet credits).
+
+### Story B15.1 — Lock only where a check can fire · Backlog
+
+**Description:** Take the row lock on a net DEBIT always, and on a net CREDIT
+only for a type in `_CEILING_GUARDED_ACCOUNT_TYPES`.
+
+**Acceptance criteria:**
+- A credit into an uncapped guarded wallet takes no lock; a credit into a
+  `financial_wallet` still does, because `max_balance` is enforced under it
+- Every existing floor and ceiling rejection is unchanged — this narrows WHICH
+  rows are locked, never what is enforced
+- Canonical account-id lock ordering is preserved on the rows still locked;
+  reducing the set must not reintroduce the inverse-order deadlock the ordering
+  exists to prevent
+- Concurrency test: two cash-ins by different agents under the SAME super-agent
+  no longer serialise on the supervisor's commission wallet, and both parent
+  commissions still land
+- Concurrency test: two concurrent disbursements from one commission wallet
+  still serialise, and the floor still holds — the debit path must not weaken
+- Measure before and after against B10's TPS harness. This is a change to the
+  choke point every money path funnels through; it should be justified by a
+  number, not by the argument above
+
+**Related:** B9 (use-case-scoped ledger locking) is the broader version of this
+question. B15.1 is the narrow, provable subset — it removes locks that protect
+nothing, without changing what any guard enforces.

@@ -1194,3 +1194,60 @@ works by doing nothing.
   label already partitions the counter if a weighted variant is needed
 - Cross-reference **B9.2** — if the float/cashback lock is the real ceiling,
   raising it changes these numbers
+
+---
+
+## Epic B11 — Commission approval drawer hides the money terms it approves · **Backlog**
+
+Raised 2026-08-27 from the Commission approvals screen. The commission-wallet
+edition added four money-affecting fields to `commission_configs`
+(`payout_destination`, `parent_fixed_commission`,
+`parent_variable_commission_pct`, `parent_commission_cap`). The CREATE dialog
+writes all four and the backend stores and applies all four — but the
+maker-checker REVIEW drawer renders none of them.
+
+`admin-ui/app/(authenticated)/_components/config-detail.tsx` builds the band
+table from exactly three keys per band (`:131-133`):
+
+```ts
+fixedKey: isPricing ? "fixed_fee" : "fixed_commission",
+varKey:   isPricing ? "variable_fee_pct" : "variable_commission_pct",
+capKey:   isPricing ? "fee_cap" : "commission_cap",
+```
+
+so the drawer shows BAND / FIXED / VARIABLE % / CAP and stops. A checker
+approving a commission schedule therefore cannot see **where the commission
+pays** (spendable main wallet vs held commission wallet) or **what the
+supervisor earns** — both of which move real money, and the parent rate is a
+value spec D8 deliberately forces the maker to state explicitly.
+
+This is a maker-checker integrity gap, not cosmetics: four-eyes means the second
+pair of eyes can actually see what it is signing off.
+
+### Story B11.1 — Show destination + parent commission in the review drawer · Backlog
+
+**Description:** Render the four fields in `config-detail.tsx` for
+`config_type = "commission"`, and make sure the same values appear in the
+before/after diff a checker reads on an UPDATE.
+
+**Acceptance criteria:**
+- The drawer shows the payout destination for a commission request, worded as
+  the operator picked it ("Main wallet" / "Commission wallet"), not the raw key
+- The band table gains parent fixed / parent variable % / parent cap columns, or
+  the parent terms render as their own labelled block — parent terms are
+  scope-level in the create dialog even though they are stored per band, so the
+  layout should not imply they can differ between bands
+- `config-compare.tsx` diffs the four fields on an UPDATE, so a checker sees a
+  changed parent rate highlighted the way a changed fee already is
+- A zero parent rate renders as an explicit "0", never a blank — D8's whole
+  point is that zero is a stated decision, and a blank cell would erase the
+  distinction between "stated zero" and "not set"
+- Frontend test: a commission request payload carrying all four fields renders
+  them; a legacy payload backfilled by migration 0069 renders explicit zeros
+- E2E: propose a commission rule with a non-zero parent rate, open it in the
+  Configuration approvals queue, and assert the parent rate is on screen before
+  the Approve button is pressed
+
+**Related:** the same drawer is shared with pricing, which has no parent concept
+— gate the new columns on `config_type` rather than widening the shared band
+table for everyone.

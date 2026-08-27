@@ -1367,8 +1367,10 @@ operator can tell a commission accrual from a cash-in at a glance.
 ### Story B13.2 — `direction` is arbitrary when the user owns both legs · Backlog
 
 **Description:** A correctness bug, not a display gap, and newly reachable
-because commission disbursement is the platform's first **same-user two-leg**
-transaction.
+because the commission wallet made **same-user two-leg** transactions ordinary.
+Commission disbursement is the obvious case, but an everyday cash-in is one too
+— see B13.3, where the acting agent holds both a `financial_wallet` DEBIT and a
+`commission_wallet` CREDIT in the same transaction.
 
 `identity/service.py:1431` picks the caller's leg with:
 
@@ -1377,11 +1379,11 @@ user_entry = next((e for e in entries if e.account_id in own_account_set), None)
 direction = "in" if user_entry.entry_type == "CREDIT" else "out"
 ```
 
-For every other transaction type the user owns exactly one leg, so `next()` is
-unambiguous. A commission disbursement moves `commission_wallet → financial_wallet`
-and the user owns **both**, so `direction` is decided by whichever leg the query
-happened to return first. Entry order is not guaranteed, so the same transaction
-can legitimately render IN or OUT on different loads.
+Before commission wallets a user owned exactly one leg of any transaction, so
+`next()` was unambiguous. That is no longer true — both a disbursement and a
+commission-earning cash-in give the user two legs — so `direction` is decided by
+whichever leg the query happened to return first. Entry order is not guaranteed,
+so the same transaction can legitimately render IN or OUT on different loads.
 
 **Acceptance criteria:**
 - Direction for a same-user movement is chosen deliberately, not by enumeration
@@ -1397,3 +1399,60 @@ can legitimately render IN or OUT on different loads.
 
 **Related:** B13.1 supplies the wallet label this needs. Doing B13.1 alone
 would leave a row that names a wallet while its direction was picked at random.
+
+### Story B13.3 — An earned commission never appears on the statement · Backlog
+
+**Description:** Reported 2026-08-27 against a real cash-in. **The money path is
+correct** — verified leg by leg on transaction `S_20260827164212020448`:
+
+```
+DEBIT  102.3858  financial_wallet          AGENT      (principal + fee + tax)
+CREDIT 100.0000  financial_wallet          customer
+CREDIT   2.0000  system_fee_collected      SYSTEM
+CREDIT   0.3858  tax_service_collected     SYSTEM
+DEBIT    5.7500  commission                SYSTEM
+CREDIT   5.0000  commission_wallet         AGENT      <- earned, invisible
+CREDIT   0.7500  tax_commission_collected  SYSTEM
+DEBIT    0.5750  commission                SYSTEM
+CREDIT   0.5000  commission_wallet         super-agent <- earned, invisible
+CREDIT   0.0750  tax_commission_collected  SYSTEM
+```
+
+The agent earned R5.00 and their super-agent R0.50, both credited to the right
+commission wallets, both taxed, and the whole transaction balances. The
+statement shows a single row — "Cash In · OUT · −ZAR 100.00" — and the
+commission leg is nowhere.
+
+Cause is B13.2's: the row is built from ONE of the caller's legs
+(`user_entry = next(...)`), and the acting agent holds two here — the
+`financial_wallet` debit they paid, and the `commission_wallet` credit they
+earned. Whichever is enumerated first wins and the other vanishes.
+
+`transactions.commission_amount` is populated (5.000000) and the payload carries
+it, but the admin table renders only SERVICE CHARGE, so even the display-only
+figure never reaches the screen.
+
+**Acceptance criteria:**
+- A transaction that credits the caller's commission wallet surfaces that
+  movement — as its own row, or as a row that reports both of the caller's legs.
+  Decide which deliberately; a cash-in that shows only the debit reads as though
+  the agent worked for nothing
+- The super-agent's statement shows the parent commission they earned, on the
+  same terms. Today their downline's cash-in produces a leg into their
+  commission wallet that appears on no screen at all
+- A **wallet filter** on the Transactions tab — All / Main wallet / Commission
+  wallet — so an operator can read the two apart. This is what B13.1's wallet
+  column is for; the filter is the natural second half
+- The filter is **absent** for a user whose category cannot hold a commission
+  wallet: a consumer has no commission and must not be shown an empty toggle
+  implying they do
+- Commission columns render only for the party the commission actually affected,
+  preserving the existing per-party perspective rule — a customer must not see
+  the agent's earnings on their own copy of the transaction
+- Backend test: after a cash-in with a non-zero commission, the ACTING agent's
+  statement reports the commission-wallet credit, the SUPER-AGENT's reports the
+  parent credit, and the CUSTOMER's reports neither
+
+**Related:** B13.1 (wallet column) and B13.2 (direction) are prerequisites —
+this story is the reason all three exist, and shipping it alone would surface a
+commission row whose direction is still decided by ledger ordering.

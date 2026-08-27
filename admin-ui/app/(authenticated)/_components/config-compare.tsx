@@ -35,6 +35,18 @@ export interface ComparePayload {
   data: Row | null;
 }
 
+/**
+ * The commission-only fields that must count toward "did this band change?".
+ * Harmless for pricing: those payloads never carry these keys, so both sides
+ * read undefined and compare equal.
+ */
+const COMMISSION_TERM_KEYS = [
+  "payout_destination",
+  "parent_fixed_commission",
+  "parent_variable_commission_pct",
+  "parent_commission_cap",
+] as const;
+
 /** Per-band diff verdict when aligning two schedules. */
 type BandStatus = "added" | "removed" | "changed" | "unchanged";
 
@@ -280,7 +292,12 @@ function BandsCompare({
     else if (
       sameValue(fixedKey, l[fixedKey], r[fixedKey]) &&
       sameValue(varKey, l[varKey], r[varKey]) &&
-      sameValue(capKey, l[capKey], r[capKey])
+      sameValue(capKey, l[capKey], r[capKey]) &&
+      // Commission carries three more money-affecting fields. Leaving them out
+      // meant a maker could change WHERE the commission pays, or what the
+      // supervisor earns, and the band still rendered "unchanged" — a checker
+      // would approve an edit with nothing on screen to review.
+      COMMISSION_TERM_KEYS.every((k) => sameValue(k, l[k], r[k]))
     ) {
       status = "unchanged";
     } else {

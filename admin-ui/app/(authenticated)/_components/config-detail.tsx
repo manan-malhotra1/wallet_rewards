@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ConfigType, UserType } from "@/lib/api-types";
+import { payoutDestinationLabel } from "@/lib/commission-batch";
 import { serviceLabel } from "@/lib/service-label";
 import { formatAmount } from "@/lib/utils";
 
@@ -43,6 +44,10 @@ const MONEY_KEYS = new Set([
   "fee_cap",
   "fixed_commission",
   "commission_cap",
+  // The parent's terms are money too, and must read the same way as the
+  // child's — "0.50", not a raw "0.5" beside a formatted sibling.
+  "parent_fixed_commission",
+  "parent_commission_cap",
   "min_amount",
   "max_amount",
   "max_balance",
@@ -59,6 +64,10 @@ const FIELD_LABELS: Record<string, string> = {
   commission_tax_pct: "Commission tax",
   fee_tax_inclusive: "Fee tax inclusive",
   commission_tax_inclusive: "Commission tax inclusive",
+  payout_destination: "Pays into",
+  parent_fixed_commission: "Parent fixed",
+  parent_variable_commission_pct: "Parent variable",
+  parent_commission_cap: "Parent cap",
   min_amount: "Min amount",
   max_amount: "Max amount",
   max_balance: "Max balance",
@@ -236,6 +245,92 @@ function ScopeFields({
 }
 
 /** Render the bands table (from/to/fixed/variable%/cap). */
+/**
+ * Commission-only terms a checker approves but could not previously see: where
+ * the commission pays, and what the earner's supervisor gets.
+ *
+ * Rendered as its own block rather than extra band columns. The create dialog
+ * treats these as SCOPE-level (one set for the whole schedule) even though the
+ * backend stores them per row, so columns would wrongly imply they can differ
+ * between bands. If a payload ever does disagree across bands the mismatch is
+ * surfaced rather than silently showing the first band's value.
+ */
+function CommissionTerms({ bands }: { bands: Row[] }) {
+  const first = bands[0] ?? {};
+  const destination = String(first.payout_destination ?? "main_wallet");
+
+  const term = (key: string) => String(first[key] ?? "0");
+  const inconsistent = bands.some(
+    (b) =>
+      String(b.payout_destination ?? "main_wallet") !== destination ||
+      String(b.parent_fixed_commission ?? "0") !== term("parent_fixed_commission") ||
+      String(b.parent_variable_commission_pct ?? "0") !==
+        term("parent_variable_commission_pct"),
+  );
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-card p-4">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Pays into
+        </span>
+        <span
+          className={
+            "rounded px-1.5 py-0.5 text-xs font-medium " +
+            (destination === "commission_wallet"
+              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+              : "bg-muted text-foreground")
+          }
+        >
+          {payoutDestinationLabel(destination)}
+        </span>
+        {destination === "commission_wallet" ? (
+          <span className="text-xs text-muted-foreground">
+            held for review, not spendable on payout
+          </span>
+        ) : null}
+      </div>
+
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Parent commission
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Paid to the earner&apos;s supervisor, as a percentage of the
+          transaction amount.
+        </p>
+        <dl className="mt-2 grid grid-cols-3 gap-3 text-sm">
+          {[
+            ["Fixed", "parent_fixed_commission"],
+            ["Variable %", "parent_variable_commission_pct"],
+            ["Cap", "parent_commission_cap"],
+          ].map(([label, key]) => (
+            <div key={key}>
+              <dt className="text-xs text-muted-foreground">{label}</dt>
+              {/* Zero renders as an explicit "0", never blank: stating zero is
+                  a decision the maker is required to make, and a blank cell
+                  would erase the difference between "stated zero" and "not
+                  set". A cap is genuinely optional, so it may read "—". */}
+              <dd className="tabular-nums">
+                {key === "parent_commission_cap"
+                  ? formatValue("commission_cap", first[key])
+                  : formatValue(key, first[key] ?? "0")}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      {inconsistent ? (
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          These terms differ between bands in this payload — open each band
+          before approving.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function BandsTable({ configType, bands }: { configType: ConfigType; bands: Row[] }) {
   const { fixedKey, varKey, capKey } = bandFieldKeys(configType);
   return (
@@ -328,6 +423,7 @@ export function ConfigDetail({
           scope={bands[0]}
           serviceNames={serviceNames}
         />
+        {configType === "commission" ? <CommissionTerms bands={bands} /> : null}
         <BandsTable configType={configType} bands={bands} />
       </div>
     );

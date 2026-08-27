@@ -1327,3 +1327,73 @@ commission?" except by querying the database.
 deferred — whether re-parenting a live agent changes commission attribution on
 historical transactions. Displaying the hierarchy does not require answering
 that; changing it does.
+
+---
+
+## Epic B13 — A statement row does not say which wallet moved · **Backlog**
+
+Raised 2026-08-27 from the user Transactions tab. A user now holds **two**
+wallets per financial currency — a spendable main wallet and a held commission
+wallet — but a statement row carries only `currency`. So "+ZAR 100.00 · IN"
+does not say whether that money is spendable or sitting held awaiting a
+disbursement run.
+
+That is the one distinction the commission-wallet edition exists to make, and
+the statement erases it.
+
+The data is already in hand. `_build_recent_txns_payload` computes
+`user_entry` — the ledger leg on one of the caller's own accounts — to derive
+`direction`, and since the counterparty work it also builds
+`own_label_by_account`, mapping every one of the user's accounts to a label.
+Neither reaches the response.
+
+### Story B13.1 — Add the wallet the movement touched · Backlog
+
+**Description:** Surface the caller's own side of the ledger on each row, so an
+operator can tell a commission accrual from a cash-in at a glance.
+
+**Acceptance criteria:**
+- Each row names the caller's wallet ("Main wallet" / "Commission wallet"),
+  sourced from the ledger leg, not inferred from `transaction_type` — inferring
+  it would rebuild the per-type map that B11 and the counterparty fix both
+  removed
+- The admin Transactions table shows it as its own column; `currency` stays
+  separate, because a user can hold the same currency in both wallets
+- Present on the mobile `/me/wallet` feed too — the payload is shared, and a
+  customer has the same question about their own money
+- Backend test: a commission accrual row names the commission wallet, a cash-in
+  names the main wallet, and neither is derived from the transaction type
+
+### Story B13.2 — `direction` is arbitrary when the user owns both legs · Backlog
+
+**Description:** A correctness bug, not a display gap, and newly reachable
+because commission disbursement is the platform's first **same-user two-leg**
+transaction.
+
+`identity/service.py:1431` picks the caller's leg with:
+
+```python
+user_entry = next((e for e in entries if e.account_id in own_account_set), None)
+direction = "in" if user_entry.entry_type == "CREDIT" else "out"
+```
+
+For every other transaction type the user owns exactly one leg, so `next()` is
+unambiguous. A commission disbursement moves `commission_wallet → financial_wallet`
+and the user owns **both**, so `direction` is decided by whichever leg the query
+happened to return first. Entry order is not guaranteed, so the same transaction
+can legitimately render IN or OUT on different loads.
+
+**Acceptance criteria:**
+- Direction for a same-user movement is chosen deliberately, not by enumeration
+  order. Options to decide between, explicitly: render it as a single
+  "transfer" row naming both wallets (from → to), or render the leg matching the
+  wallet the row is filtered to
+- The existing single-leg behaviour is unchanged — this must not perturb p2p,
+  cash-in, cash-out or funds
+- Backend test: a commission disbursement renders the SAME direction across
+  repeated loads, and the assertion does not depend on ledger entry ordering
+- If the "transfer" shape is chosen, the currency filter still works: both legs
+  share a currency, so the row must not appear twice under one filter
+
+**Related:** B13.1 supplies the wallet label this needs. Doing B13.1 alone
+would leave a row that names a wallet while its direction was picked at random.

@@ -13,12 +13,39 @@ The two never collect each other's files (`testMatch: /.*\.spec\.ts/` here,
 
 ## What's covered
 
+19 tests across 14 specs (2 auth setup + 17 scenarios). Every maker-checker
+flow opens a second browser context as a *different* admin, because a maker
+approving their own proposal is exactly what the pipeline must refuse.
+
 | Spec | Flow |
 |---|---|
 | `dashboard.spec.ts` | Authenticated `/` redirects to `/dashboard`; app shell + nav render. |
 | `approvals.spec.ts` | `/approvals` shows the role-gated tabs (Configuration / Transactions / Users) + status filter. |
-| `step-up.spec.ts` | **Maker-checker**: maker edits a step-up threshold → Propose → "pending approval"; proposal shows in the Configuration queue; a *different* admin approves → APPLIED. |
-| `access-lock.spec.ts` | Look up seeded Alice on `/users`, Lock login (confirm dialog) → "Login locked" pill, then Restore access → pill clears. |
+| `config-approval.spec.ts` | **Maker-checker**: ZAR tax-rate edit → Propose → checker approves → the new rate shows on `/taxes`. |
+| `step-up.spec.ts` | **Maker-checker**: step-up threshold change proposed, then approved by a different admin. |
+| `treasury-adjust.spec.ts` | **Maker-checker**: cash-float top-up proposed and approved; the float balance rises. |
+| `fund-user.spec.ts` | **Maker-checker**: fund Alice; her ZAR wallet available balance rises by the exact amount. |
+| `user-ops.spec.ts` | **Maker-checker**: edit Alice's name through the Users queue. |
+| `user-types.spec.ts` | **Maker-checker**: propose a Retail user type under `super_agent`, approve, and it appears Active. Also pins the two-level depth cap (D7) — the parent dropdown never offers a child type. |
+| `access-lock.spec.ts` | Lock Alice's login (confirm dialog) → "Login locked" pill, then Restore access. |
+| `identifier.spec.ts` | Add an account-number identifier to Alice, then verify it. |
+| `commission-disbursement.spec.ts` | Mixed batch upload + approval; self-approval refused; rejection is terminal. |
+| `commission-withdrawal.spec.ts` | Clawback requires a destination and applies once approved; batch menus stay separated. |
+| `commission-wallet-balance.spec.ts` | An agent's commission wallet is listed separately from their main wallet. |
+
+### Gotcha: the user-detail sections are collapsed tabs
+
+`/users/<id>` renders Personal & KYC, Address & country, KYC documents,
+Accounts & balances and Transactions as a single row of tabs that all start
+**closed** (`section-tabs.tsx`, `defaultOpenId = null`). Nothing inside a
+closed tab is in the DOM. Any spec touching a user's wallets or identifiers
+must click its tab first — `getByRole("tab", { name: "Accounts & balances" })`.
+Two specs broke silently when that layout landed; this is why.
+
+### Known gaps
+
+No coverage yet for pricing, limits, campaigns/rules, segments, redemption
+rates, services, API keys, merchants, instruments or reconciliation.
 
 ## Auth model (important)
 

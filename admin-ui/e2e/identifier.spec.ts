@@ -25,6 +25,9 @@ test("add an account-number identifier, then verify it", async ({ page }) => {
   const accountNumber = `ZA-E2E-${token}`;
 
   await page.goto(ALICE_LOOKUP);
+  // The user-detail sections are collapsible tabs and start closed, so the
+  // identifier controls are not in the DOM until their tab is opened.
+  await page.getByRole("tab", { name: "Personal & KYC" }).click();
   await expect(page.getByRole("button", { name: "Add identifier" })).toBeVisible();
 
   // ---- Add an unverified account-number identifier -----------------------

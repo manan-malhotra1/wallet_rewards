@@ -38,6 +38,7 @@ function uniqueAmount(): string {
 /** Read Alice's ZAR financial-wallet AVAILABLE balance as a number. */
 async function readAliceZarAvailable(page: Page): Promise<number> {
   await page.goto(ALICE_LOOKUP);
+  await page.getByRole("tab", { name: "Accounts & balances" }).click();
   // Alice holds both a ZAR and an INR financial wallet — scope to ZAR.
   const row = page
     .getByRole("row")

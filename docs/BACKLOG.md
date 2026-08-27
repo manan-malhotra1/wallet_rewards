@@ -1251,3 +1251,79 @@ before/after diff a checker reads on an UPDATE.
 **Related:** the same drawer is shared with pricing, which has no parent concept
 — gate the new columns on `config_type` rather than widening the shared band
 table for everyone.
+
+---
+
+## Epic B12 — The agent hierarchy is invisible from both ends · **Backlog**
+
+Raised 2026-08-27 from the Users screen. `users.parent_user_id` drives who a
+supervisor is, and since the commission-wallet edition it also decides **who
+gets paid parent commission**. An operator cannot see that relationship from
+either direction.
+
+Verified against the dev database, not inferred: the agent on `+27655555556`
+**does** carry `parent_user_id = aa937b1e-…` pointing at a live `super_agent`,
+and `get_user_detail` returns both `parent_user_id` and `parent_name`. The data
+is correct and the API serves it. Only the UI is at fault.
+
+### Story B12.1 — "Reports to" is rendered in the Address tab · Backlog
+
+**Description:** `user-detail-card.tsx:320-326` renders the supervisor inside
+the **"Address & country"** tab:
+
+```tsx
+{detail.parent_user_id ? (
+  <p …>Reports to <span className="font-mono">{detail.parent_name ?? shortId(…)}</span></p>
+) : null}
+```
+
+A supervisor is identity, not an address. Nobody opens "Address & country" — a
+tab whose only other content is "No address on file" — to find out who an agent
+reports to, so the relationship reads as absent even when it is set.
+
+The backend already intended otherwise: the `parent_name` field's own docstring
+says it exists "so the UI shows 'Reports to: <name>' instead of a bare id".
+
+**Acceptance criteria:**
+- The supervisor renders on the identity header, beside the user-type badge,
+  where the type and status already are — not inside a content tab
+- It is a link to the supervisor's own user page; an operator reconciling
+  commission needs to get there in one click
+- Absent supervisor renders nothing at all (no empty "Reports to —"): most
+  users legitimately have none and a blank label would read as a defect
+- A supervisor whose name does not resolve still renders, falling back to the
+  short id as it does today
+- Frontend test: a detail payload with `parent_name` renders it on the header;
+  one without renders no supervisor element
+
+### Story B12.2 — A supervisor cannot see who reports to them · Backlog
+
+**Description:** There is no children / downline surface anywhere — no endpoint
+and no UI. Opening a `super_agent` shows nothing about the agents beneath them.
+
+Unlike B12.1 this was never specified. The configurable-user-types spec
+(`specs/2026-08-23-configurable-user-types-design.md`) deferred *attaching or
+changing* a supervisor after onboarding (§7.5, and again in its out-of-scope
+list) but never covered *displaying* the downline in either direction.
+
+It matters more now than it did then: parent commission pays a supervisor off
+this hierarchy, so an operator reconciling a commission run — or investigating a
+disbursement — has no way to answer "which agents feed this super-agent's
+commission?" except by querying the database.
+
+**Acceptance criteria:**
+- A hierarchy-bearing user's detail page lists the users whose
+  `parent_user_id` points at them: name, type, status, and their own link
+- Only rendered for a type in a category that supports hierarchy — a consumer
+  can never have children and should not show an empty panel
+- Paginated, and tenant-scoped like every other user query (NFR-0220)
+- Backend test: a super-agent with three agents lists exactly those three; a
+  cross-tenant child never appears
+- Reconciliation view: the list carries each child's accrued commission
+  contribution, or explicitly does not and says why — decide deliberately rather
+  than shipping a bare name list that stops one question short
+
+**Related:** §7.5 of the user-types spec still owns the harder question it
+deferred — whether re-parenting a live agent changes commission attribution on
+historical transactions. Displaying the hierarchy does not require answering
+that; changing it does.

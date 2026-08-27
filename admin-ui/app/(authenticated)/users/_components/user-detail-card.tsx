@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/table";
 import { accountTypeLabel } from "@/lib/account-type-label";
 import type { UserDetail, UserType, UserTypeCatalog } from "@/lib/api-types";
-import type { UserTransaction } from "@/lib/api-endpoints";
+import type { UserReport, UserTransaction } from "@/lib/api-endpoints";
 import { transactionTypeLabel } from "@/lib/transaction-type-label";
 import { formatTimestamp, shortId } from "@/lib/utils";
 
@@ -43,6 +43,9 @@ import { EditUserDrawer, type OpenUpdateRequest } from "./edit-user-drawer";
 import { LockoutBadge } from "./lockout-badge";
 import { ResetPinButton } from "./reset-pin-button";
 import { UnlockButton } from "./unlock-button";
+import Link from "next/link";
+
+import { UserReportsPanel } from "./user-reports-panel";
 import { UserTypeBadge } from "./user-type-badge";
 import { VerifyIdentifierButton } from "./verify-identifier-button";
 import { WalletBalances } from "./wallet-balances";
@@ -86,6 +89,9 @@ export interface UserDetailCardProps {
   transactions: UserTransaction[];
   /** Total transactions across all pages — drives the pager's "of N". */
   transactionsTotal: number;
+  /** The users reporting to this one, and how many there are in total. */
+  reports?: UserReport[];
+  reportsTotal?: number;
   resolvedIdentifierValue: string | null;
   resolvedIdentifierType: string;
   /** An update request already awaiting review, so Edit can surface it. */
@@ -100,12 +106,24 @@ export function UserDetailCard({
   detail,
   transactions,
   transactionsTotal,
+  reports,
+  reportsTotal,
   resolvedIdentifierValue,
   resolvedIdentifierType,
   openUpdate,
   canManageLockout,
   catalog,
 }: UserDetailCardProps) {
+  // The user's category decides whether a downline is even possible, so an
+  // operator-created Business type gets the tab with no code change.
+  const supportsHierarchy = (() => {
+    const type = catalog?.types.find((t) => t.code === detail.user_type);
+    const category = catalog?.categories.find(
+      (c) => c.code === type?.category_code,
+    );
+    return category?.supports_hierarchy ?? false;
+  })();
+
   const name = fullName(detail);
   const primaryIdentifier =
     resolvedIdentifierValue ?? detail.identifiers[0]?.identifier_value ?? "—";
@@ -147,6 +165,22 @@ export function UserDetailCard({
                   <LockoutBadge unlocksInSeconds={detail.unlocks_in_seconds} />
                 )}
                 <AccessLevelPill level={detail.access_level} />
+                {/* The supervisor is IDENTITY, not an address. It used to be
+                    rendered inside the "Address & country" tab, whose only
+                    other content is "No address on file" — so the relationship
+                    read as absent even when it was set. */}
+                {detail.parent_user_id ? (
+                  <Link
+                    href={`/users?user_id=${detail.parent_user_id}`}
+                    className="inline-flex items-center gap-1 rounded bg-white/15 px-1.5 py-0.5 text-xs underline-offset-4 hover:underline"
+                    title="Open this user's supervisor"
+                  >
+                    <span className="opacity-80">Reports to</span>
+                    <span className="font-medium">
+                      {detail.parent_name ?? shortId(detail.parent_user_id, "usr")}
+                    </span>
+                  </Link>
+                ) : null}
               </div>
               <p className="mt-2 font-mono text-sm text-primary-foreground/80">
                 {primaryIdentifier}
@@ -317,14 +351,6 @@ export function UserDetailCard({
             description: "Residential address and country of residence.",
             content: (
               <>
-                {detail.parent_user_id ? (
-                  <p className="mb-2 text-sm text-muted-foreground">
-                    Reports to{" "}
-                    <span className="font-mono">
-                      {detail.parent_name ?? shortId(detail.parent_user_id, "usr")}
-                    </span>
-                  </p>
-                ) : null}
                 <p className="text-sm text-muted-foreground">
                   No address on file — address capture is not part of registration yet.
                 </p>
@@ -437,6 +463,25 @@ export function UserDetailCard({
               </>
             ),
           },
+          // Only for a category that actually supports a hierarchy — a
+          // consumer can never have reports, and an empty panel would imply
+          // the feature simply has no data rather than not applying.
+          ...(supportsHierarchy
+            ? [
+                {
+                  id: "reports",
+                  label: "Reports to this user",
+                  description:
+                    "Users who report to this one, and the commission each has accrued.",
+                  content: (
+                    <UserReportsPanel
+                      reports={reports ?? []}
+                      total={reportsTotal ?? 0}
+                    />
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
     </div>

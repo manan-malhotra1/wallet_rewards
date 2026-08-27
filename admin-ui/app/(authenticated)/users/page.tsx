@@ -13,11 +13,13 @@ import {
   getUserDetail,
   getUserTypeCatalog,
   listUserOperations,
+  listUserReports,
   listUserTransactions,
   resolveIdentifier,
   type UserTransaction,
 } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
+import type { UserReport } from "@/lib/api-endpoints";
 import type { UserOperation, UserTypeCatalog } from "@/lib/api-types";
 
 import type { OpenUpdateRequest } from "./_components/edit-user-drawer";
@@ -34,7 +36,16 @@ import { CreateUserDialog } from "./_components/create-user-dialog";
 export const dynamic = "force-dynamic";
 
 interface UsersPageProps {
-  searchParams: Promise<{ type?: string; value?: string }>;
+  searchParams: Promise<{
+    type?: string;
+    value?: string;
+    /**
+     * Open a user directly by id, skipping identifier resolution. Needed by
+     * the in-app hierarchy links (a supervisor, and each of their reports),
+     * which know a user's id but not which identifier to look them up by.
+     */
+    user_id?: string;
+  }>;
 }
 
 /** Does this update op still block a new edit (awaiting review)? */
@@ -104,24 +115,35 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   let detail: Awaited<ReturnType<typeof getUserDetail>> | null = null;
   let transactions: UserTransaction[] = [];
   let transactionsTotal = 0;
+  let reports: UserReport[] = [];
+  let reportsTotal = 0;
   let resolvedIdentifierValue: string | null = null;
   let openUpdate: OpenUpdateRequest | null = null;
   let error: ApiError | null = null;
-  if (params.type && params.value) {
+  if (params.user_id || (params.type && params.value)) {
     try {
-      const resolved = await resolveIdentifier(
-        activeTenantId,
-        params.type,
-        params.value,
-      );
-      resolvedIdentifierValue = params.value;
-      const [detailRes, txnPage] = await Promise.all([
+      // A direct id skips resolution; an identifier lookup resolves first.
+      let userId = params.user_id ?? null;
+      if (userId === null) {
+        const resolved = await resolveIdentifier(
+          activeTenantId,
+          params.type as string,
+          params.value as string,
+        );
+        userId = resolved.user_id;
+        resolvedIdentifierValue = params.value ?? null;
+      }
+      const resolved = { user_id: userId };
+      const [detailRes, txnPage, reportsPage] = await Promise.all([
         getUserDetail(activeTenantId, resolved.user_id),
         listUserTransactions(activeTenantId, resolved.user_id, { limit: 20 }),
+        listUserReports(activeTenantId, resolved.user_id, { limit: 50 }),
       ]);
       detail = detailRes;
       transactions = txnPage.items;
       transactionsTotal = txnPage.total;
+      reports = reportsPage.items;
+      reportsTotal = reportsPage.total;
       openUpdate = await findOpenUpdateRequest(activeTenantId, resolved.user_id);
     } catch (err) {
       if (err instanceof ApiError) error = err;
@@ -163,6 +185,8 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
             detail={detail}
             transactions={transactions}
             transactionsTotal={transactionsTotal}
+            reports={reports}
+            reportsTotal={reportsTotal}
             resolvedIdentifierValue={resolvedIdentifierValue}
             resolvedIdentifierType={params.type ?? "phone"}
             openUpdate={openUpdate}

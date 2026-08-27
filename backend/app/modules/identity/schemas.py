@@ -605,3 +605,27 @@ class AuthStartResponse(BaseModel):
     """
 
     status: Literal["needs_otp", "needs_pin"]
+
+
+class UserReportOut(BaseModel):
+    """One user who reports to a supervisor (spec B12.2)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    # None when the child has no profile name and no resolvable identifier.
+    name: str | None = None
+    user_type: str
+    status: str
+    created_at: datetime
+    # Accrued commission per currency, so a supervisor's page answers both
+    # "who feeds this?" and "by how much?" — the reconciliation question a bare
+    # name list stops one step short of.
+    accrued_commission: dict[str, str] = {}
+
+
+class UserReportsPage(BaseModel):
+    """One page of a supervisor's downline."""
+
+    items: list[UserReportOut]
+    total: int

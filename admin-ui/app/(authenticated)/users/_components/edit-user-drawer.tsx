@@ -37,6 +37,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { UserTypeSelect } from "@/components/user-type-select";
 import type { UserIdentifier, UserType, UserTypeCatalog } from "@/lib/api-types";
+import { heroActionButtonClass } from "./hero-action-button";
 
 /** An open update request already awaiting review for this user. */
 export interface OpenUpdateRequest {
@@ -143,7 +144,7 @@ export function EditUserDrawer({
         variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
-        className="gap-1.5 border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
+        className={heroActionButtonClass}
       >
         <Pencil className="h-3.5 w-3.5" />
         Edit

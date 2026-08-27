@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { useToast } from "@/components/ui/toast";
+import { heroActionButtonClass } from "./hero-action-button";
 
 type Stage = "confirm" | "result";
 
@@ -74,7 +75,7 @@ export function ResetPinButton({
         variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
-        className="gap-1.5"
+        className={heroActionButtonClass}
       >
         <KeyRound className="h-3.5 w-3.5" />
         Reset PIN

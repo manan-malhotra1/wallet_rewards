@@ -51,6 +51,8 @@ from app.modules.identity.schemas import (
     SessionTokenResponse,
     UserDetailOut,
     UserOut,
+    UserReportOut,
+    UserReportsPage,
     WalletOut,
 )
 from app.modules.identity.service import (
@@ -64,6 +66,7 @@ from app.modules.identity.service import (
     get_my_wallet,
     get_services_for_user,
     get_user_detail,
+    list_user_reports,
     list_user_transactions,
     resolve_identifier,
     send_otp,
@@ -567,3 +570,33 @@ async def post_me_rewards_seen(
         session, tenant_id=user.tenant_id, user_id=user.id, reward_event_ids=body.reward_event_ids
     )
     return {"marked": n}
+
+@router.get("/users/{user_id}/reports", response_model=UserReportsPage)
+async def get_user_reports(
+    user_id: UUID,
+    tenant_id: UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    admin: AdminPrincipal = Depends(require_admin_role("platform-admin")),
+    session: AsyncSession = Depends(get_async_session),
+) -> UserReportsPage:
+    """The users who report to this one — their downline.
+
+    The hierarchy was only readable upwards until now. Parent commission pays a
+    supervisor off this same link, so an operator reconciling a commission run
+    needs to see which users feed it.
+
+    Tenant-scoped: a user in another tenant returns 404, and a child in another
+    tenant can never appear in the list.
+    """
+    _ = admin
+    rows, total = await list_user_reports(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+    )
+    return UserReportsPage(
+        items=[UserReportOut.model_validate(r) for r in rows], total=total
+    )

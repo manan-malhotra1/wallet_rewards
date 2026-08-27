@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { useToast } from "@/components/ui/toast";
+import { heroActionButtonClass } from "./hero-action-button";
 import type { AccessLevel, SettableAccessLevel } from "@/lib/api-types";
 
 /** Per-target confirm-dialog copy and success toast, keyed by the level to set. */
@@ -118,7 +119,7 @@ export function AccessLockControl({
               key={t}
               variant="outline"
               size="sm"
-              className="gap-1.5"
+              className={heroActionButtonClass}
               onClick={() => {
                 setError(null);
                 setTarget(t);

@@ -14,7 +14,7 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1803,6 +1803,108 @@ async def list_user_transactions(
         reference=reference,
     )
     return rows, total
+
+
+async def list_user_reports(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    user_id: UUID,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """The users who report to `user_id` — their downline (spec B12.2).
+
+    The hierarchy was only ever readable upwards: a user knew their supervisor,
+    but a supervisor could not see who fed them. That matters more since parent
+    commission started paying supervisors off this same link — an operator
+    reconciling a commission run had no way to answer "which agents feed this
+    super-agent?" without querying the database.
+
+    Args:
+        session: Async DB session (read-only).
+        tenant_id: Tenant scope. A child in another tenant can never appear
+            (NFR-0220) — `parent_user_id` carries no tenant of its own, so the
+            filter is what enforces isolation here.
+        user_id: The supervisor.
+        limit / offset: Page window.
+
+    Returns:
+        `(rows, total)` — each row carries the child's id, display name, type
+        and status, plus their accrued commission per currency so a supervisor's
+        page answers "who feeds this?" and "by how much?" together.
+
+    Raises:
+        UserNotFound: 404 — unknown user, or one in another tenant.
+    """
+    from app.modules.accounts.service import derive_balance
+    from app.shared.models import ACCOUNT_TYPE_COMMISSION_WALLET, Account, User
+
+    parent = (
+        await session.execute(
+            select(User).where(User.id == user_id, User.tenant_id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if parent is None:
+        raise UserNotFound()
+
+    base = select(User).where(
+        User.tenant_id == tenant_id, User.parent_user_id == user_id
+    )
+    total = (
+        await session.execute(
+            select(func.count()).select_from(base.subquery())
+        )
+    ).scalar_one()
+
+    children = list(
+        (
+            await session.execute(
+                base.order_by(User.created_at.desc()).offset(offset).limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not children:
+        return [], total
+
+    child_ids = [c.id for c in children]
+    names = await resolve_user_names(session, tenant_id=tenant_id, user_ids=set(child_ids))
+
+    # Accrued commission per child, so the list answers the reconciliation
+    # question rather than stopping one step short of it.
+    wallets = (
+        await session.execute(
+            select(Account).where(
+                Account.tenant_id == tenant_id,
+                Account.user_id.in_(child_ids),
+                Account.account_type == ACCOUNT_TYPE_COMMISSION_WALLET,
+            )
+        )
+    ).scalars().all()
+    accrued: dict[UUID, dict[str, str]] = {}
+    for wallet in wallets:
+        # `Account.user_id` is nullable on the model (system accounts have
+        # none). The query filters to child ids so it is never None here, but
+        # skip rather than assert — a system account creeping in should drop
+        # out of a per-user total, not crash the page.
+        if wallet.user_id is None:
+            continue
+        balance, reserved = await derive_balance(session, wallet.id)
+        accrued.setdefault(wallet.user_id, {})[wallet.currency] = str(balance - reserved)
+
+    return [
+        {
+            "id": child.id,
+            "name": names.get(child.id),
+            "user_type": child.user_type,
+            "status": child.status,
+            "created_at": child.created_at,
+            "accrued_commission": accrued.get(child.id, {}),
+        }
+        for child in children
+    ], total
 
 
 async def admin_reset_pin(

@@ -1416,3 +1416,39 @@ export const getCommissionBatch = (tenant_id: string, batch_id: string) =>
   apiGet<CommissionBatch>(
     `/api/v1/commission-batches/${batch_id}?tenant_id=${tenant_id}`,
   );
+
+
+/** One user who reports to a supervisor. */
+export interface UserReport {
+  id: string;
+  name: string | null;
+  user_type: string;
+  status: string;
+  created_at: string;
+  /** Accrued commission per currency — what this child has fed upward. */
+  accrued_commission: Record<string, string>;
+}
+
+/** One page of a supervisor's downline. */
+export interface UserReportsPage {
+  items: UserReport[];
+  total: number;
+}
+
+/**
+ * The users reporting to this one. The hierarchy was only readable upwards
+ * until now, which left an operator reconciling parent commission unable to
+ * see which users fed it.
+ */
+export const listUserReports = (
+  tenant_id: string,
+  user_id: string,
+  opts: { limit?: number; offset?: number } = {},
+) =>
+  apiGet<UserReportsPage>(`/api/v1/identity/users/${user_id}/reports`, {
+    query: {
+      tenant_id,
+      limit: opts.limit ?? 50,
+      offset: opts.offset ?? 0,
+    },
+  });

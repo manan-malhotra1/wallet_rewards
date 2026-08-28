@@ -49,14 +49,15 @@ async function loadWalletSafely(user: UserKey): Promise<{
 }
 
 export default async function HomePage() {
-  const [alice, bob, agent, merchant] = await Promise.all([
+  const [alice, bob, agent, agent2, merchant] = await Promise.all([
     loadWalletSafely("alice"),
     loadWalletSafely("bob"),
     loadWalletSafely("agent"),
+    loadWalletSafely("agent2"),
     loadWalletSafely("merchant"),
   ]);
   const firstError =
-    alice.error ?? bob.error ?? agent.error ?? merchant.error;
+    alice.error ?? bob.error ?? agent.error ?? agent2.error ?? merchant.error;
 
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
@@ -119,6 +120,15 @@ export default async function HomePage() {
           loggedIn={agent.loggedIn}
         >
           <CashInForm agent="agent" />
+        </WalletPane>
+        {/* Second agent — same cash-in capability, a separate till. */}
+        <WalletPane
+          user="agent2"
+          phone={config.users.agent2.phone}
+          wallet={agent2.wallet}
+          loggedIn={agent2.loggedIn}
+        >
+          <CashInForm agent="agent2" />
         </WalletPane>
         {/* Airtime merchant — read-only: shows the recharges run against its
             holding account. No action forms. */}

@@ -43,6 +43,13 @@ export const config = {
       phone: process.env.SASAI_AGENT_PHONE ?? "+27825558001",
       pin: process.env.SASAI_AGENT_PIN,
     },
+    // A second agent, so cash-in can be driven from two different tills and the
+    // commission split between them is visible. Seeded as "Agent Normal".
+    agent2: {
+      label: "Agent Normal",
+      phone: process.env.SASAI_AGENT2_PHONE ?? "+27655555556",
+      pin: process.env.SASAI_AGENT2_PIN,
+    },
     merchant: {
       label: "Airtime Merchant",
       phone: process.env.SASAI_MERCHANT_PHONE ?? "+27825559001",
@@ -76,7 +83,7 @@ export const config = {
   },
 } as const;
 
-export type UserKey = "alice" | "bob" | "agent" | "merchant";
+export type UserKey = "alice" | "bob" | "agent" | "agent2" | "merchant";
 
 /** The P2P counterparty for alice/bob (the two consumer wallets). */
 export function otherUser(u: UserKey): UserKey {

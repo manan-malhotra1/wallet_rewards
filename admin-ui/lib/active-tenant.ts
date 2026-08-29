@@ -6,6 +6,7 @@
  */
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 
 import { ApiError } from "@/lib/api";
@@ -15,32 +16,30 @@ import type { Tenant } from "@/lib/api-types";
 const TENANT_COOKIE = "sasai_active_tenant";
 
 /**
+ * The tenants this operator can access, memoised for the current request.
+ *
+ * The API client sets `cache: "no-store"`, so Next's own fetch deduplication
+ * does not apply — without this memo each resolver call below would be its own
+ * round trip, and the authenticated layout would fetch the list a second time.
+ *
+ * Errors propagate deliberately: the layout distinguishes "backend
+ * unreachable" from "operator lacks tenant access", so it must see the throw.
+ */
+export const getAccessibleTenants = cache(listTenants);
+
+/**
  * Resolve the active tenant ID for the current operator.
  *
- * Reads the `sasai_active_tenant` cookie first. On first login the cookie
- * is absent, so we fall back to the first tenant the operator can access —
- * mirroring the layout's switcher default so tenant-scoped pages (e.g.
- * system wallets) render real data instead of an empty "no tenant" state.
+ * Thin projection of {@link getActiveTenant} so the id used to scope queries
+ * can never diverge from the tenant the shell displays — see that function
+ * for the cookie-validation rule.
  *
  * Returns:
  *   The active tenant UUID, or null only when the operator has no tenants
  *   (or the backend is unreachable).
  */
 export async function getActiveTenantId(): Promise<string | null> {
-  const store = await cookies();
-  const fromCookie = store.get(TENANT_COOKIE)?.value;
-  if (fromCookie) return fromCookie;
-
-  // No cookie yet (first login): default to the operator's first tenant.
-  // Swallow API errors here so a backend hiccup degrades to "no tenant"
-  // rather than crashing every authenticated page.
-  try {
-    const tenants = await listTenants();
-    return tenants[0]?.id ?? null;
-  } catch (err) {
-    if (err instanceof ApiError) return null;
-    throw err;
-  }
+  return (await getActiveTenant())?.id ?? null;
 }
 
 /**
@@ -56,14 +55,20 @@ export async function getActiveTenantId(): Promise<string | null> {
  *   The active Tenant, or null when the operator has no tenants (or the
  *   backend is unreachable).
  */
-export async function getActiveTenant(): Promise<Tenant | null> {
+export const getActiveTenant = cache(async (): Promise<Tenant | null> => {
   const store = await cookies();
   const fromCookie = store.get(TENANT_COOKIE)?.value;
 
   // Swallow API errors so a backend hiccup degrades to "no tenant" rather
-  // than crashing every authenticated page (mirrors getActiveTenantId).
+  // than crashing every authenticated page. This is the single resolution
+  // point: getActiveTenantId() projects the id off whatever we return.
   try {
-    const tenants = await listTenants();
+    const tenants = await getAccessibleTenants();
+    // Validate the cookie against the tenants this operator can actually
+    // reach. The cookie carries a 30-day TTL on a fixed origin, so one left
+    // by an earlier deployment (a re-seeded local DB mints new tenant ids)
+    // would otherwise scope every query to a tenant that does not exist here
+    // — rendering empty "not found" pages under a valid-looking tenant name.
     if (fromCookie) {
       return tenants.find((t) => t.id === fromCookie) ?? tenants[0] ?? null;
     }
@@ -72,4 +77,4 @@ export async function getActiveTenant(): Promise<Tenant | null> {
     if (err instanceof ApiError) return null;
     throw err;
   }
-}
+});

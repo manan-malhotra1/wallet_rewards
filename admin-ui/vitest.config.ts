@@ -35,6 +35,10 @@ export default defineConfig({
     alias: {
       // Mirror tsconfig `paths`: "@/*" -> "./*" (the admin-ui project root).
       "@": aliasRootFromTsconfig(),
+      // `server-only` is not an installed package — Next aliases it at build
+      // time. Without this, any test importing a server module fails to
+      // resolve the specifier. See vitest.stubs/server-only.ts.
+      "server-only": resolve(projectRoot, "vitest.stubs/server-only.ts"),
     },
   },
   test: {

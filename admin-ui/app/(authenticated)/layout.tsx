@@ -12,13 +12,12 @@ import { AppShell } from "@/components/app-shell/app-shell";
 import { ServiceUnavailable } from "@/components/branding/service-unavailable";
 import { TenantThemeStyle } from "@/components/branding/tenant-theme-style";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { getActiveTenantId } from "@/lib/active-tenant";
+import { getAccessibleTenants, getActiveTenantId } from "@/lib/active-tenant";
 import { tenantHasRewards } from "@/lib/tenant-mode";
 import {
   getConfigRequestCounts,
   getMoneyOperationCounts,
   getUserOperationCounts,
-  listTenants,
 } from "@/lib/api-endpoints";
 import { ApiError } from "@/lib/api";
 import { isBackendUnreachable } from "@/lib/is-backend-unreachable";
@@ -35,9 +34,9 @@ export default async function AuthenticatedLayout({
     redirect("/login");
   }
 
-  let tenants: Awaited<ReturnType<typeof listTenants>> = [];
+  let tenants: Awaited<ReturnType<typeof getAccessibleTenants>> = [];
   try {
-    tenants = await listTenants();
+    tenants = await getAccessibleTenants();
   } catch (err) {
     // Backend fully unreachable (process down, DNS, refused connection) —
     // render the branded maintenance panel and stop here. Returning instead

@@ -22,17 +22,15 @@ from app.modules.segments.criteria import ALL_METRICS
 from app.modules.segments.metrics import METRIC_BUILDERS, NEVER_TRANSACTED_DAYS, compute_metric
 from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
-    ACCOUNT_TYPE_PROVIDER_REDEMPTION,
+    ACCOUNT_TYPE_POINTS_REDEMPTION,
     ENTRY_CREDIT,
     ENTRY_DEBIT,
     ENTRY_STATUS_COMPLETED,
-    REDEMPTION_STATUS_COMPLETED,
     REFERRAL_STATUS_REWARDED,
     TXN_STATUS_COMPLETED,
     Account,
+    InternalRedemption,
     LedgerEntry,
-    Redemption,
-    RedemptionProvider,
     Referral,
     RewardEvent,
     Rule,
@@ -459,7 +457,7 @@ async def test_points_balance_nets_completed_credits_and_debits(
     """points_balance sums CREDIT minus DEBIT over the user's PTS account."""
     other_points = Account(
         tenant_id=test_tenant.id,
-        account_type=ACCOUNT_TYPE_PROVIDER_REDEMPTION,
+        account_type=ACCOUNT_TYPE_POINTS_REDEMPTION,
         currency="PTS",
     )
     db_session.add(other_points)
@@ -492,51 +490,54 @@ async def test_points_balance_nets_completed_credits_and_debits(
 
 
 @pytest.mark.asyncio
-async def test_points_redeemed_sums_completed_redemptions(
+async def test_points_redeemed_sums_internal_redemptions(
     db_session: AsyncSession, test_tenant: Tenant, test_user: User, user_points: Account
 ) -> None:
-    """points_redeemed sums COMPLETED Redemption.points_amount per user."""
-    provider_wallet = Account(
-        tenant_id=test_tenant.id,
-        account_type=ACCOUNT_TYPE_PROVIDER_REDEMPTION,
-        currency="PTS",
-    )
-    db_session.add(provider_wallet)
-    await db_session.flush()
-    provider = RedemptionProvider(
-        tenant_id=test_tenant.id,
-        name="Test Provider",
-        redemption_wallet_account_id=provider_wallet.id,
-    )
-    db_session.add(provider)
-    await db_session.flush()
+    """points_redeemed sums InternalRedemption.points_amount per user.
 
-    txn = Transaction(
-        tenant_id=test_tenant.id,
-        idempotency_key=f"k-{uuid4()}",
-        transaction_type="redemption",
-        status=TXN_STATUS_COMPLETED,
-        initiated_by=test_user.id,
-        amount=Decimal("50"),
-        currency="PTS",
-    )
-    db_session.add(txn)
-    await db_session.flush()
-    db_session.add(
-        Redemption(
-            tenant_id=test_tenant.id,
-            user_id=test_user.id,
-            provider_id=provider.id,
-            transaction_id=txn.id,
-            points_amount=Decimal("50"),
-            status=REDEMPTION_STATUS_COMPLETED,
-            idempotency_key=f"redeem-{uuid4()}",
+    Internal redemptions settle synchronously inside one transaction, so every
+    row is a completed one — there is no status to filter on, which is why this
+    no longer seeds a PENDING row to be excluded.
+    """
+
+    async def _redeem(points: str, fiat: str) -> None:
+        """Insert one settled points-to-wallet redemption for the test user."""
+        legs = []
+        for kind, amount, currency in (("redemption", points, "PTS"), ("payout", fiat, "ZAR")):
+            txn = Transaction(
+                tenant_id=test_tenant.id,
+                idempotency_key=f"{kind}-{uuid4()}",
+                transaction_type=kind,
+                status=TXN_STATUS_COMPLETED,
+                initiated_by=test_user.id,
+                amount=Decimal(amount),
+                currency=currency,
+            )
+            db_session.add(txn)
+            legs.append(txn)
+        await db_session.flush()
+        db_session.add(
+            InternalRedemption(
+                tenant_id=test_tenant.id,
+                user_id=test_user.id,
+                points_transaction_id=legs[0].id,
+                payout_transaction_id=legs[1].id,
+                currency="ZAR",
+                points_amount=Decimal(points),
+                fiat_amount=Decimal(fiat),
+                points_per_unit=Decimal("100"),
+                value_per_unit=Decimal("10"),
+                idempotency_key=f"redeem-{uuid4()}",
+            )
         )
-    )
-    await db_session.flush()
+        await db_session.flush()
+
+    # Two redemptions, so the metric is proven to SUM rather than take the last.
+    await _redeem("50", "5.00")
+    await _redeem("30", "3.00")
 
     values = await compute_metric(db_session, test_tenant.id, "points_redeemed")
-    assert values[test_user.id] == Decimal(50)
+    assert values[test_user.id] == Decimal(80)
 
 
 @pytest.mark.asyncio

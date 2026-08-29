@@ -421,7 +421,7 @@ def main() -> None:
     print(f"     -d password={DEV_ADMIN_PASSWORD} \\")
     print("     | python3 -c 'import sys,json;print(json.load(sys.stdin)[\"access_token\"])')")
     print()
-    print("   curl -H \"Authorization: Bearer $TOKEN\" http://localhost:8000/api/v1/reconciliation/pending?tenant_id=...")
+    print("   curl -H \"Authorization: Bearer $TOKEN\" http://localhost:8000/api/v1/audit?tenant_id=...")
     print()
 
 

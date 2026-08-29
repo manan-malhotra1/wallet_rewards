@@ -1,8 +1,8 @@
 """Customer rewards summary and redemption history.
 
 Phase F.4: catalog endpoints are user-only. tenant_id + user_id come from
-the session token — there is no longer a `/{user_id}/` path. Provider
-register + redemption confirm in setup helpers stay admin-only.
+the session token — there is no longer a `/{user_id}/` path. Redemptions in
+the setup helpers go through the internal (points to wallet) path.
 """
 
 from __future__ import annotations
@@ -16,7 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.rewards.service import issue_points_reward
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
     Account,
+    PointsConversionRate,
     Rule,
     StepUpPolicy,
     Tenant,
@@ -105,14 +107,14 @@ async def test_summary_reflects_lifetime_redeemed(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    admin_auth_header: dict[str, str],
     user_points: Account,
     system_points_account: Account,
 ) -> None:
     """Verify a customer's summary shows the total points they have redeemed.
 
-    Mixes auth contexts: admin for provider + confirm, user for initiate +
-    catalog read.
+    Backed by an internal (points to wallet) redemption — the provider path is
+    gone, so the burn settles synchronously and the summary reflects it right
+    after the call returns.
     """
     await _seed_reward(db_session, test_tenant, test_user, Decimal("200"), key="r1")
 
@@ -128,29 +130,34 @@ async def test_summary_reflects_lifetime_redeemed(
             threshold_amount=Decimal("1000"),
         )
     )
-    await db_session.commit()
-    pr = await async_client.post(
-        "/api/v1/redemption/providers",
-        headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "name": "P"},
+    # Internal redemption needs a conversion rate for the payout currency and a
+    # ZAR wallet to pay into; the tenant fixture prefunds the cashback wallet.
+    db_session.add(
+        PointsConversionRate(
+            tenant_id=test_tenant.id,
+            currency="ZAR",
+            points_per_unit=Decimal("100"),
+            value_per_unit=Decimal("10"),
+            status="active",
+        )
     )
-    provider_id = pr.json()["id"]
+    db_session.add(
+        Account(
+            tenant_id=test_tenant.id,
+            user_id=test_user.id,
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+        )
+    )
+    await db_session.commit()
 
     user_header = await _user_header(test_user)
-    init = await async_client.post(
-        "/api/v1/redemption/initiate",
+    redeem = await async_client.post(
+        "/api/v1/redemption/internal",
         headers={**user_header, "Idempotency-Key": uuid4().hex},
-        json={
-            "provider_id": provider_id,
-            "points_amount": "80",
-        },
+        json={"points_amount": "80", "currency": "ZAR"},
     )
-    redemption_id = init.json()["id"]
-    await async_client.post(
-        f"/api/v1/redemption/{redemption_id}/confirm",
-        headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id)},
-    )
+    assert redeem.status_code == 201, redeem.text
 
     response = await async_client.get(
         "/api/v1/catalog/me/summary",
@@ -168,11 +175,13 @@ async def test_redemption_history_returns_user_redemptions(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    admin_auth_header: dict[str, str],
     user_points: Account,
     system_points_account: Account,
 ) -> None:
-    """Verify a customer's redemption history lists their most recent redeems first."""
+    """Verify a customer's redemption history lists their most recent redeems first.
+
+    Backed by internal (points to wallet) redemptions — the provider path is gone.
+    """
     await _seed_reward(db_session, test_tenant, test_user, Decimal("100"), key="h")
     await seed_redemption_service_config(db_session, test_tenant)
     # Step-up is fail-closed (no policy → PIN for any amount); test_user has no
@@ -187,24 +196,39 @@ async def test_redemption_history_returns_user_redemptions(
         )
     )
     await db_session.commit()
-    pr = await async_client.post(
-        "/api/v1/redemption/providers",
-        headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "name": "P"},
+    # Internal redemption needs a conversion rate for the payout currency, a ZAR
+    # wallet to pay into, and a funded cashback wallet to pay from.
+    db_session.add(
+        PointsConversionRate(
+            tenant_id=test_tenant.id,
+            currency="ZAR",
+            points_per_unit=Decimal("100"),
+            value_per_unit=Decimal("10"),
+            status="active",
+        )
     )
-    provider_id = pr.json()["id"]
+    db_session.add(
+        Account(
+            tenant_id=test_tenant.id,
+            user_id=test_user.id,
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+        )
+    )
+    await db_session.commit()
+    # The tenant fixture already prefunds the cashback wallet (conftest), and
+    # the helper is not idempotent, so calling it again here would 409.
 
     user_header = await _user_header(test_user)
-    # Two redemptions.
+    # Two redemptions, smallest first, so the newest-first assertion below is
+    # about ordering rather than about which amount happens to be larger.
     for amount in ("10", "20"):
-        await async_client.post(
-            "/api/v1/redemption/initiate",
+        response = await async_client.post(
+            "/api/v1/redemption/internal",
             headers={**user_header, "Idempotency-Key": uuid4().hex},
-            json={
-                "provider_id": provider_id,
-                "points_amount": amount,
-            },
+            json={"points_amount": amount, "currency": "ZAR"},
         )
+        assert response.status_code == 201, response.text
 
     response = await async_client.get(
         "/api/v1/catalog/me/redemption-history",
@@ -216,3 +240,7 @@ async def test_redemption_history_returns_user_redemptions(
     # Newest first.
     assert Decimal(items[0]["points_amount"]) == Decimal("20")
     assert Decimal(items[1]["points_amount"]) == Decimal("10")
+    # The history now reports what actually landed in the wallet: at
+    # 100 PTS = 10 ZAR, 20 points is R2.00.
+    assert items[0]["currency"] == "ZAR"
+    assert Decimal(items[0]["fiat_amount"]) == Decimal("2.00")

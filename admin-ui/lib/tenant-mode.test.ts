@@ -26,7 +26,7 @@ describe("REWARDS_ONLY_NAV", () => {
       "/budgets",
       "/campaigns",
       "/multipliers",
-      "/redemption",
+      "/redemption-rates",
       "/segments",
     ]);
   });

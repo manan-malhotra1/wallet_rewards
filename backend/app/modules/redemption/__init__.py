@@ -1,9 +1,10 @@
-"""Redemption module — convert user points into cash via external providers.
+"""Redemption module — convert user points into cash in the user's own wallet.
 
-Implements PRD Module 11 (Pay-PRD-0660 to 0740). Phase D delivers the
-synchronous initiate / confirm / fail / lookup endpoints. Reconciliation
-sweep (Pay-PRD-0750) and the actual external provider HTTP call are
-deferred — confirm/fail are simulated by admin/test endpoints in Phase D.
+Implements PRD Module 11b (Pay-PRD-1200-1290): the points burn plus the fiat
+payout, settled synchronously at the tenant's configured conversion rate. The
+provider-fulfilled route that once sat alongside it (Pay-PRD-0660 to 0740) was
+removed — points are already monetised into real money here, so a second,
+externally-fulfilled path was redundant.
 """
 
 from app.modules.redemption.router import router

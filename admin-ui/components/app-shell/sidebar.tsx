@@ -9,7 +9,6 @@ import {
   Box,
   ChevronDown,
   Coins,
-  CreditCard,
   Gauge,
   GitPullRequest,
   HandCoins,
@@ -20,7 +19,6 @@ import {
   PiggyBank,
   Receipt,
   Repeat,
-  ScanLine,
   Settings2,
   ShieldAlert,
   ShieldCheck,
@@ -80,7 +78,6 @@ const OPERATIONS: NavItem[] = [
     href: "/commission-withdrawal",
     icon: Undo2,
   },
-  { label: "Reconciliation", href: "/reconciliation", icon: ScanLine },
 ];
 
 const CONFIG: NavEntry[] = [
@@ -100,7 +97,6 @@ const CONFIG: NavEntry[] = [
     ],
   },
   { label: "Approvals", href: "/approvals", icon: GitPullRequest },
-  { label: "Redemption", href: "/redemption", icon: CreditCard },
   { label: "Points rates", href: "/redemption-rates", icon: Repeat },
   { label: "Services", href: "/services", icon: Tag },
   { label: "Instruments", href: "/instruments", icon: Ticket },
@@ -225,12 +221,10 @@ function NavGroup({ title, items }: { title: string; items: NavEntry[] }) {
 }
 
 export function Sidebar({
-  pendingCount,
   approvalsPendingCount,
   brandIconUrl,
   showRewards = true,
 }: {
-  pendingCount?: number;
   approvalsPendingCount?: number;
   brandIconUrl?: string | null;
   /**
@@ -242,11 +236,6 @@ export function Sidebar({
    */
   showRewards?: boolean;
 }) {
-  const operations = OPERATIONS.map((item) =>
-    item.href === "/reconciliation" && pendingCount
-      ? { ...item, badge: pendingCount }
-      : item,
-  );
   // Surface the total count of PENDING requests awaiting review across the
   // approval queues this admin can see (config + money + user). Rewards-only
   // sections are dropped first for a tenant with no points programme (B6.1).
@@ -291,7 +280,7 @@ export function Sidebar({
         </span>
       </div>
       <nav className="flex-1 overflow-y-auto py-2">
-        <NavGroup title="Operations" items={operations} />
+        <NavGroup title="Operations" items={OPERATIONS} />
         <NavGroup title="Configuration" items={config} />
         <NavGroup title="Audit" items={AUDIT} />
       </nav>

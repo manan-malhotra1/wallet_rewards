@@ -57,7 +57,6 @@ const ACTION_LABELS: Record<string, string> = {
   "treasury.withdraw_from_user": "User debited to treasury",
   "treasury.create_bank_mirror": "Bank mirror created",
   "treasury.rename_bank_mirror": "Bank mirror renamed",
-  "redemption.initiated": "Redemption initiated",
   // Ledger / accounts
   "account.created": "Account created",
   // Rules & rewards
@@ -84,7 +83,6 @@ const ACTION_LABELS: Record<string, string> = {
   "service.created": "Service created",
   "service.updated": "Service updated",
   "service.deleted": "Service deleted",
-  "provider.registered": "Provider registered",
   "event_source.registered": "Event source registered",
   "tenant.updated": "Tenant updated",
 };

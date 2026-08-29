@@ -61,7 +61,7 @@ async def _get_audit(
 ) -> list[dict[str, object]]:
     """GET the audit list for a tenant, asserting 200, returning the rows."""
     response = await async_client.get(
-        "/api/v1/reconciliation/audit",
+        "/api/v1/audit",
         params={"tenant_id": str(tenant.id), **params},
     )
     assert response.status_code == 200, response.text

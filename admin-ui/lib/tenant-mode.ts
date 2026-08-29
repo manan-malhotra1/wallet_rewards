@@ -21,5 +21,5 @@ export const REWARDS_ONLY_NAV = new Set([
   "/segments",
   "/multipliers",
   "/budgets",
-  "/redemption",
+  "/redemption-rates",
 ]);

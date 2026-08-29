@@ -1,6 +1,6 @@
 """Role tests — pre-authed async_client with platform-admin JWT.
 
-Same pattern as `tests/reconciliation/conftest.py`. Every role CRUD endpoint
+Same pattern as `tests/audit/conftest.py`. Every role CRUD endpoint
 requires the `platform-admin` realm role (Phase F.1 gate), so the default
 client must carry that token.
 """

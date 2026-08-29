@@ -30,8 +30,8 @@ from app.shared.models import (
     ENTRY_STATUS_COMPLETED,
     RULE_TYPE_CAMPAIGN,
     Account,
+    InternalRedemption,
     LedgerEntry,
-    Redemption,
     RewardEvent,
     Rule,
     Transaction,
@@ -57,16 +57,31 @@ async def _find_user_points_account(
     return result.scalar_one_or_none()
 
 
-async def _sum_by_transaction_type(
+async def _sum_by_base_transaction_type(
     session: AsyncSession,
     account_id: UUID,
     entry_type: str,
-    transaction_type: str,
+    base_transaction_type: str,
 ) -> Decimal:
-    """SUM(ledger_entries.amount) filtered by entry_type + parent txn type.
+    """SUM(ledger_entries.amount) filtered by entry_type + parent BASE txn type.
 
     Used for "lifetime earned" (CREDIT + reward_issuance) and
     "lifetime redeemed" (DEBIT + redemption, status=COMPLETED).
+
+    Matches on `base_transaction_type`, not `transaction_type`: that column
+    exists precisely so a total can group by FLOW without enumerating every
+    derived code (spec §12.1). Internal redemption posts its burn as
+    `redemption_internal` under base `redemption`, so filtering on the raw type
+    would silently report zero redeemed points.
+
+    Args:
+        session: Async DB session.
+        account_id: The account whose entries are summed.
+        entry_type: ENTRY_CREDIT or ENTRY_DEBIT.
+        base_transaction_type: The base flow, e.g. "redemption".
+
+    Returns:
+        The summed amount, or Decimal("0") when nothing matches.
     """
     # SUM in SQL — a user's lifetime ledger grows for 7 years, so pulling
     # every row into Python to add them up scales with account history (B7.3).
@@ -77,7 +92,7 @@ async def _sum_by_transaction_type(
             LedgerEntry.account_id == account_id,
             LedgerEntry.entry_type == entry_type,
             LedgerEntry.status == ENTRY_STATUS_COMPLETED,
-            Transaction.transaction_type == transaction_type,
+            Transaction.base_transaction_type == base_transaction_type,
         )
     )
     return Decimal(result.scalar_one())
@@ -102,10 +117,10 @@ async def get_user_summary(
         return CatalogSummaryResponse(user_id=user_id, tenant_id=tenant_id, points=None)
 
     balance, reserved = await derive_balance(session, points_account.id)
-    lifetime_earned = await _sum_by_transaction_type(
+    lifetime_earned = await _sum_by_base_transaction_type(
         session, points_account.id, ENTRY_CREDIT, "reward_issuance"
     )
-    lifetime_redeemed = await _sum_by_transaction_type(
+    lifetime_redeemed = await _sum_by_base_transaction_type(
         session, points_account.id, ENTRY_DEBIT, "redemption"
     )
 
@@ -132,12 +147,12 @@ async def get_user_redemption_history(
     fixed window never duplicates or drops same-instant rows.
     """
     result = await session.execute(
-        select(Redemption)
+        select(InternalRedemption)
         .where(
-            Redemption.tenant_id == tenant_id,
-            Redemption.user_id == user_id,
+            InternalRedemption.tenant_id == tenant_id,
+            InternalRedemption.user_id == user_id,
         )
-        .order_by(Redemption.created_at.desc(), Redemption.id.desc())
+        .order_by(InternalRedemption.created_at.desc(), InternalRedemption.id.desc())
         .offset(offset)
         .limit(limit)
     )

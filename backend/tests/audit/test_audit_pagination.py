@@ -11,7 +11,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.models import Tenant
-from tests.reconciliation.test_audit_enrichment import _add_audit_row, _get_audit
+from tests.audit.test_audit_enrichment import _add_audit_row, _get_audit
 
 
 async def _seed_rows(db_session: AsyncSession, tenant: Tenant, count: int) -> list[str]:
@@ -50,7 +50,7 @@ async def test_audit_offset_windows_newest_first(
 async def test_audit_offset_bounds_422(async_client: AsyncClient, test_tenant: Tenant) -> None:
     """Verify a negative offset is rejected with 422, not clamped."""
     resp = await async_client.get(
-        "/api/v1/reconciliation/audit",
+        "/api/v1/audit",
         params={"tenant_id": str(test_tenant.id), "offset": -1},
     )
     assert resp.status_code == 422

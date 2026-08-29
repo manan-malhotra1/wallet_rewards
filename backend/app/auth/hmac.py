@@ -1,9 +1,8 @@
 """HMAC-SHA256 signature verification for third-party callbacks (Phase F.5).
 
 Used by:
-- `POST /redemption/{id}/callback` to verify the provider's signature
-  against `redemption_providers.shared_secret_encrypted` (decrypted at
-  request time).
+- `POST /airtime/{id}/callback` to verify the merchant's signature against
+  `merchant_profiles.callback_secret_encrypted` (decrypted at request time).
 - Kafka consumer of `wallet.events.external` to verify the producer's
   signature against `external_event_sources.shared_secret_encrypted`
   (decrypted at request time).

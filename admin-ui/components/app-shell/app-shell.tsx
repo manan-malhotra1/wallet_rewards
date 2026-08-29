@@ -14,7 +14,6 @@ export interface AppShellProps {
   user: TopbarUser;
   /** Active tenant's logo URL, or null to fall back to the Sasai mark. */
   brandIconUrl?: string | null;
-  pendingReconciliationCount?: number;
   approvalsPendingCount?: number;
   /** Active tenant's mode includes a points programme (B6.1 nav gate). */
   showRewards?: boolean;
@@ -26,7 +25,6 @@ export function AppShell({
   activeTenantId,
   user,
   brandIconUrl,
-  pendingReconciliationCount,
   approvalsPendingCount,
   showRewards,
   children,
@@ -35,7 +33,6 @@ export function AppShell({
     // bg-transparent (not bg-background) so the body atmosphere shows through.
     <div className="flex h-screen w-screen overflow-hidden bg-transparent text-foreground">
       <Sidebar
-        pendingCount={pendingReconciliationCount}
         approvalsPendingCount={approvalsPendingCount}
         brandIconUrl={brandIconUrl}
         showRewards={showRewards}

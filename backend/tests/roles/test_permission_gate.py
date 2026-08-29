@@ -318,7 +318,6 @@ async def test_redemption_initiate_also_gated(
     async_client: AsyncClient,
     db_session: AsyncSession,
     test_tenant: Tenant,
-    admin_auth_header: dict[str, str],
 ) -> None:
     """Verify a customer without redemption permission cannot redeem points.
 
@@ -381,22 +380,13 @@ async def test_redemption_initiate_also_gated(
         reward_value=Decimal("100"),
     )
 
-    # Provider register requires admin (Phase F.4).
-    provider_resp = await async_client.post(
-        "/api/v1/redemption/providers",
-        headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "name": "P"},
-    )
-    provider_id = provider_resp.json()["id"]
-
     # Alice attempts to redeem with her own session — role check rejects.
+    # No conversion rate or wallet is seeded on purpose: `require_permission`
+    # runs first, so the 403 must land before any of that would be missed.
     response = await async_client.post(
-        "/api/v1/redemption/initiate",
+        "/api/v1/redemption/internal",
         headers={**(await _user_header(alice)), "Idempotency-Key": uuid4().hex},
-        json={
-            "provider_id": provider_id,
-            "points_amount": "10",
-        },
+        json={"points_amount": "10", "currency": "ZAR"},
     )
     assert response.status_code == 403
     assert response.json()["error_code"] == "not_authorised"

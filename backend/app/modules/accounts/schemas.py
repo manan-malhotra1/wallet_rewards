@@ -12,7 +12,6 @@ AccountType = Literal[
     "financial_wallet",
     "points_account",
     "system_points_issuance",
-    "provider_redemption_wallet",
 ]
 
 
@@ -20,8 +19,7 @@ class CreateAccountRequest(BaseModel):
     """Test-only account creation payload.
 
     Either `user_id` or `merchant_id` is set for user/merchant accounts; both
-    omitted for system-owned accounts (`system_points_issuance`,
-    `provider_redemption_wallet`).
+    omitted for system-owned accounts (`system_points_issuance`).
     """
 
     tenant_id: UUID

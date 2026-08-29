@@ -4,8 +4,8 @@ Covers the Pay-PRD-1200-1290 acceptance criteria: the happy path posts a
 cross-referenced burn/payout pair at the configured rate; the flow FAILS
 CLOSED on a missing conversion rate and on missing pricing/limit configs;
 an underfunded cashback wallet 409s and the burn is compensated (points come
-back); replays are idempotent. Reuses the external-redemption test helpers
-(points seeding, config seeding, user session auth).
+back); replays are idempotent. Shared seeding helpers (points, configs, user
+session auth) live in this package's conftest.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from app.shared.models import (
     Transaction,
     User,
 )
-from tests.redemption.test_initiate_redemption import (
+from tests.redemption.conftest import (
     _credit_user_points,
     _seed_redemption_configs,
     _user_auth_header,

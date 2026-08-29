@@ -171,7 +171,7 @@ class UserDetailOut(BaseModel):
 
     Surfaces the data the admin UI needs to render the user drawer:
     identifiers, profile, accounts with balances. Transactions /
-    redemptions arrive via the audit log + reconciliation surfaces.
+    redemptions arrive via the audit log and the statement surfaces.
     """
 
     id: UUID

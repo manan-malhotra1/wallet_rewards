@@ -15,7 +15,6 @@ export const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   system_cash_inflow: "Cash float",
   system_points_issuance: "Points issuance pool",
   system_fee_collected: "Fees collected",
-  provider_redemption_wallet: "Provider redemption wallet",
   operator_adjustment: "Bank Mirror Account",
   commission: "Commission Funded Wallet",
   // The tenant-level `commission` pool above FUNDS payouts; this is the

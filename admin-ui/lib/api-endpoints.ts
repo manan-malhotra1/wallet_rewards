@@ -39,17 +39,14 @@ import type {
   ExternalEventSource,
   Instrument,
   LimitConfig,
-  ManualReviewItem,
   MemberCounts,
   MetricsTimeseries,
   MoneyOperation,
   MoneyOperationStatus,
   NetFlowPoint,
-  PendingItem,
   PointsConversionRate,
   PricingConfig,
   QueueCounts,
-  RedemptionProvider,
   ReferralTrigger,
   RevenueServiceSlice,
   RewardBudget,
@@ -66,7 +63,6 @@ import type {
   SettableAccessLevel,
   StatusBucket,
   StepUpPolicy,
-  SweepOutcome,
   SystemWallet,
   SystemWalletTransaction,
   TaxConfig,
@@ -524,21 +520,6 @@ export const getRulePerformance = (rule_id: string, tenant_id: string) =>
     query: { tenant_id },
   });
 
-// ---- Redemption ----------------------------------------------------------
-
-export interface RegisterProviderPayload {
-  tenant_id: string;
-  name: string;
-  status_check_url?: string;
-  max_retries?: number;
-  retry_interval_secs?: number;
-  escalate_after_mins?: number;
-  shared_secret?: string;
-}
-
-export const registerProvider = (payload: RegisterProviderPayload) =>
-  apiPost<RedemptionProvider>("/api/v1/redemption/providers", payload);
-
 // ---- Events --------------------------------------------------------------
 
 export interface RegisterEventSourcePayload {
@@ -552,29 +533,6 @@ export interface RegisterEventSourcePayload {
 export const registerEventSource = (payload: RegisterEventSourcePayload) =>
   apiPost<ExternalEventSource>("/api/v1/events/sources", payload);
 
-// ---- Reconciliation -----------------------------------------------------
-
-export const listPendingRedemptions = (
-  tenant_id: string,
-  threshold_minutes = 5,
-) =>
-  apiGet<PendingItem[]>("/api/v1/reconciliation/pending", {
-    query: { tenant_id, threshold_minutes },
-  });
-
-export const listManualReview = (tenant_id: string) =>
-  apiGet<ManualReviewItem[]>("/api/v1/reconciliation/manual-review", {
-    query: { tenant_id },
-  });
-
-export interface SweepRequest {
-  tenant_id: string;
-  threshold_minutes?: number;
-}
-
-export const triggerSweep = (payload: SweepRequest) =>
-  apiPost<SweepOutcome>("/api/v1/reconciliation/sweep", payload);
-
 // ---- Audit log -----------------------------------------------------------
 
 export interface AuditQuery {
@@ -587,7 +545,7 @@ export interface AuditQuery {
 }
 
 export const queryAuditLog = (q: AuditQuery) =>
-  apiGet<AuditEntry[]>("/api/v1/reconciliation/audit", {
+  apiGet<AuditEntry[]>("/api/v1/audit", {
     query: {
       tenant_id: q.tenant_id,
       entity_type: q.entity_type,

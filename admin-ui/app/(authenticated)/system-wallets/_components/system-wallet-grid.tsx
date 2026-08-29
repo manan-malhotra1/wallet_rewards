@@ -65,10 +65,6 @@ const TYPE_META: Record<
     icon: Coins,
     description: "Where every service-charge fee is collected.",
   },
-  provider_redemption_wallet: {
-    icon: Wallet,
-    description: "Points settled to a redemption provider (e.g. voucher partner).",
-  },
   operator_adjustment: {
     icon: Landmark,
     description:

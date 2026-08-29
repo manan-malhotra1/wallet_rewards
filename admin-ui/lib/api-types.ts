@@ -583,32 +583,6 @@ export interface AdjustSystemWalletResponse {
   new_balance: string;
 }
 
-export interface RedemptionProvider {
-  id: string;
-  tenant_id: string;
-  name: string;
-  redemption_wallet_account_id: string;
-  status_check_url: string | null;
-  max_retries: number;
-  retry_interval_secs: number;
-  escalate_after_mins: number;
-  status: string;
-}
-
-export interface Redemption {
-  id: string;
-  tenant_id: string;
-  user_id: string;
-  provider_id: string;
-  transaction_id: string;
-  points_amount: string;
-  status: string;
-  external_reference: string | null;
-  failure_reason: string | null;
-  completed_at: string | null;
-  created_at: string;
-}
-
 export interface ExternalEventSource {
   id: string;
   tenant_id: string;
@@ -634,33 +608,6 @@ export interface AuditEntry {
   ip_address: string | null;
   note: string | null;
   created_at: string;
-}
-
-export interface PendingItem {
-  redemption_id: string;
-  tenant_id: string;
-  amount: string;
-  age_minutes: number;
-  retry_count: number;
-  status: string;
-}
-
-export interface ManualReviewItem {
-  redemption_id: string;
-  tenant_id: string;
-  user_id: string;
-  /** Resolved user display name; null when unresolvable — fall back to a short id. */
-  user_name: string | null;
-  amount: string;
-  retry_count: number;
-  failure_reason: string | null;
-}
-
-export interface SweepOutcome {
-  scanned_count: number;
-  bumped_count: number;
-  escalated_count: number;
-  audit_entry_count: number;
 }
 
 export interface Role {

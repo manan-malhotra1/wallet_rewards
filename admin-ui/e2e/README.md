@@ -45,7 +45,7 @@ Two specs broke silently when that layout landed; this is why.
 ### Known gaps
 
 No coverage yet for pricing, limits, campaigns/rules, segments, redemption
-rates, services, API keys, merchants, instruments or reconciliation.
+rates, services, API keys, merchants or instruments.
 
 ## Auth model (important)
 

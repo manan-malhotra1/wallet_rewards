@@ -30,8 +30,8 @@ from app.shared.models import (
     ENTRY_STATUS_COMPLETED,
     RULE_TYPE_CAMPAIGN,
     Account,
+    InternalRedemption,
     LedgerEntry,
-    Redemption,
     RewardEvent,
     Rule,
     Transaction,
@@ -132,12 +132,12 @@ async def get_user_redemption_history(
     fixed window never duplicates or drops same-instant rows.
     """
     result = await session.execute(
-        select(Redemption)
+        select(InternalRedemption)
         .where(
-            Redemption.tenant_id == tenant_id,
-            Redemption.user_id == user_id,
+            InternalRedemption.tenant_id == tenant_id,
+            InternalRedemption.user_id == user_id,
         )
-        .order_by(Redemption.created_at.desc(), Redemption.id.desc())
+        .order_by(InternalRedemption.created_at.desc(), InternalRedemption.id.desc())
         .offset(offset)
         .limit(limit)
     )

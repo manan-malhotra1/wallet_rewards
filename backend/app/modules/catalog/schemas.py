@@ -28,17 +28,21 @@ class CatalogSummaryResponse(BaseModel):
 
 
 class RedemptionHistoryItem(BaseModel):
-    """One row in the user's redemption history (Pay-PRD-1030)."""
+    """One row in the user's redemption history (Pay-PRD-1030).
+
+    Backed by `internal_redemptions`: points converted to money in the user's
+    own wallet at the tenant's configured rate. There is no status, provider or
+    failure reason, because an internal redemption settles synchronously inside
+    one transaction — it either committed or it never existed. `fiat_amount` is
+    what the customer actually received, which is the number they care about.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    provider_id: UUID
     points_amount: Decimal
-    status: str
-    external_reference: str | None
-    failure_reason: str | None
-    completed_at: datetime | None
+    currency: str
+    fiat_amount: Decimal
     created_at: datetime
 
 

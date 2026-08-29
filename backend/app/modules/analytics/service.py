@@ -48,15 +48,14 @@ from app.shared.models import (
     ENTRY_DEBIT,
     ENTRY_STATUS_COMPLETED,
     INSTRUMENT_STATUS_ACTIVE,
-    REDEMPTION_STATUS_COMPLETED,
     REWARD_TYPE_POINTS,
     TXN_STATUS_COMPLETED,
     TXN_STATUS_FAILED,
     TXN_STATUS_PENDING,
     Account,
     Instrument,
+    InternalRedemption,
     LedgerEntry,
-    Redemption,
     RewardEvent,
     Rule,
     Tenant,
@@ -380,12 +379,15 @@ async def _points_issued(session: AsyncSession, tenant_id: UUID, window: Window)
 
 
 async def _points_redeemed(session: AsyncSession, tenant_id: UUID, window: Window) -> Decimal:
-    """Points redeemed via COMPLETED redemptions in the window."""
-    stmt = select(func.coalesce(func.sum(Redemption.points_amount), 0)).where(
-        Redemption.tenant_id == tenant_id,
-        Redemption.status == REDEMPTION_STATUS_COMPLETED,
-        Redemption.created_at >= window.start,
-        Redemption.created_at < window.end,
+    """Points redeemed into customer wallets in the window.
+
+    Internal redemptions settle synchronously, so every row is a completed one
+    and no status filter is needed.
+    """
+    stmt = select(func.coalesce(func.sum(InternalRedemption.points_amount), 0)).where(
+        InternalRedemption.tenant_id == tenant_id,
+        InternalRedemption.created_at >= window.start,
+        InternalRedemption.created_at < window.end,
     )
     return Decimal((await session.execute(stmt)).scalar_one())
 
@@ -673,17 +675,16 @@ async def rewards_timeseries(
         )
         .group_by(issued_bucket)
     )
-    redeemed_bucket = func.date_trunc(granularity, Redemption.created_at)
+    redeemed_bucket = func.date_trunc(granularity, InternalRedemption.created_at)
     redeemed_stmt = (
         select(
             redeemed_bucket.label("bucket"),
-            func.coalesce(func.sum(Redemption.points_amount), 0).label("v"),
+            func.coalesce(func.sum(InternalRedemption.points_amount), 0).label("v"),
         )
         .where(
-            Redemption.tenant_id == tenant_id,
-            Redemption.status == REDEMPTION_STATUS_COMPLETED,
-            Redemption.created_at >= current.start,
-            Redemption.created_at < current.end,
+            InternalRedemption.tenant_id == tenant_id,
+            InternalRedemption.created_at >= current.start,
+            InternalRedemption.created_at < current.end,
         )
         .group_by(redeemed_bucket)
     )
@@ -714,9 +715,8 @@ async def rewards_timeseries(
     total_redeemed = Decimal(
         (
             await session.execute(
-                select(func.coalesce(func.sum(Redemption.points_amount), 0)).where(
-                    Redemption.tenant_id == tenant_id,
-                    Redemption.status == REDEMPTION_STATUS_COMPLETED,
+                select(func.coalesce(func.sum(InternalRedemption.points_amount), 0)).where(
+                    InternalRedemption.tenant_id == tenant_id,
                 )
             )
         ).scalar_one()

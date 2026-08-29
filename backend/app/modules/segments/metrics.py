@@ -60,12 +60,11 @@ from app.shared.models import (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
     ENTRY_STATUS_COMPLETED,
-    REDEMPTION_STATUS_COMPLETED,
     REFERRAL_STATUS_REWARDED,
     TXN_STATUS_COMPLETED,
     Account,
+    InternalRedemption,
     LedgerEntry,
-    Redemption,
     Referral,
     RewardEvent,
     Tenant,
@@ -340,15 +339,22 @@ async def points_redeemed(
     now: datetime,
     **_: object,
 ) -> dict[UUID, Decimal]:
-    """COMPLETED redemption points per user."""
+    """Redeemed points per user, from internal (points to wallet) redemptions.
+
+    Internal redemptions settle synchronously, so every row counts and there is
+    no status to filter on.
+    """
     stmt = (
-        select(Redemption.user_id, func.coalesce(func.sum(Redemption.points_amount), 0))
-        .where(Redemption.tenant_id == tenant_id, Redemption.status == REDEMPTION_STATUS_COMPLETED)
-        .group_by(Redemption.user_id)
+        select(
+            InternalRedemption.user_id,
+            func.coalesce(func.sum(InternalRedemption.points_amount), 0),
+        )
+        .where(InternalRedemption.tenant_id == tenant_id)
+        .group_by(InternalRedemption.user_id)
     )
     start = _window_start(now, window_days)
     if start is not None:
-        stmt = stmt.where(Redemption.created_at >= start)
+        stmt = stmt.where(InternalRedemption.created_at >= start)
     return await _rows_to_map(session, stmt)
 
 

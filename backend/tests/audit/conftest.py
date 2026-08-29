@@ -1,8 +1,8 @@
-"""Accounts tests override `async_client` to be pre-authed with a
-platform-admin JWT — every accounts endpoint is admin-only after Phase F.4.
+"""Audit-log tests share an async_client pre-authed with a platform-admin JWT.
 
-Mirrors `tests/audit/conftest.py`. End-user balance lookups go
-through the catalog `/me/summary` endpoint, tested separately.
+`GET /api/v1/audit` accepts `finance-reviewer` or `platform-admin`; defaulting
+to the admin header keeps each test to the assertion it is actually about.
+Role-gate coverage lives in tests/auth/.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ async def async_client(
     admin_auth_header: dict[str, str],
 ) -> AsyncIterator[AsyncClient]:
     """Pre-authed httpx client — every request sends the admin JWT by default."""
+    # Lazy import to avoid loading test infrastructure at collection time.
     from tests.conftest import TestSessionLocal
 
     async def _override_session() -> AsyncIterator[AsyncSession]:

@@ -16,7 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.rewards.service import issue_points_reward
 from app.shared.models import (
+    ACCOUNT_TYPE_FINANCIAL_WALLET,
     Account,
+    PointsConversionRate,
     Rule,
     StepUpPolicy,
     Tenant,
@@ -120,7 +122,6 @@ async def test_points_history_orders_newest_first(
     db_session: AsyncSession,
     test_tenant: Tenant,
     test_user: User,
-    admin_auth_header: dict[str, str],
     user_points: Account,
     system_points_account: Account,
 ) -> None:
@@ -157,24 +158,34 @@ async def test_points_history_orders_newest_first(
             threshold_amount=Decimal("1000"),
         )
     )
+    # Internal redemption needs a conversion rate for the payout currency and a
+    # ZAR wallet to pay into; the tenant fixture prefunds the cashback wallet.
+    db_session.add(
+        PointsConversionRate(
+            tenant_id=test_tenant.id,
+            currency="ZAR",
+            points_per_unit=Decimal("100"),
+            value_per_unit=Decimal("10"),
+            status="active",
+        )
+    )
+    db_session.add(
+        Account(
+            tenant_id=test_tenant.id,
+            user_id=test_user.id,
+            account_type=ACCOUNT_TYPE_FINANCIAL_WALLET,
+            currency="ZAR",
+        )
+    )
     await db_session.commit()
 
-    # Provider register (admin) + initiate (user).
-    pr = await async_client.post(
-        "/api/v1/redemption/providers",
-        headers=admin_auth_header,
-        json={"tenant_id": str(test_tenant.id), "name": "P"},
-    )
-    provider_id = pr.json()["id"]
     user_header = await _user_header(test_user)
-    await async_client.post(
-        "/api/v1/redemption/initiate",
+    redeem = await async_client.post(
+        "/api/v1/redemption/internal",
         headers={**user_header, "Idempotency-Key": uuid4().hex},
-        json={
-            "provider_id": provider_id,
-            "points_amount": "30",
-        },
+        json={"points_amount": "30", "currency": "ZAR"},
     )
+    assert redeem.status_code == 201, redeem.text
 
     response = await async_client.get(
         "/api/v1/catalog/me/points-history",
@@ -184,10 +195,13 @@ async def test_points_history_orders_newest_first(
     # 3 entries on the user's points_account: 2 CREDIT (rewards) + 1 DEBIT (redemption).
     assert len(items) == 3
 
-    # Newest first — the redemption DEBIT happened last.
-    assert items[0]["transaction_type"] == "redemption"
+    # Newest first — the redemption DEBIT happened last. History reports the
+    # concrete service code (`redemption_internal`) rather than its base flow,
+    # and internal redemption settles synchronously, so the burn is already
+    # COMPLETED (the provider path's PENDING hold is gone).
+    assert items[0]["transaction_type"] == "redemption_internal"
     assert items[0]["direction"] == "DEBIT"
-    assert items[0]["status"] == "PENDING"
+    assert items[0]["status"] == "COMPLETED"
 
     # Followed by the second reward, then the first.
     assert items[1]["rule_name"] == "Second"

@@ -29,7 +29,6 @@ from app.shared.models.base import Base, created_at_col, updated_at_col, uuid_pk
 ACCOUNT_TYPE_FINANCIAL_WALLET = "financial_wallet"
 ACCOUNT_TYPE_POINTS = "points_account"
 ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE = "system_points_issuance"
-ACCOUNT_TYPE_PROVIDER_REDEMPTION = "provider_redemption_wallet"
 # system_cash_inflow is the debit-side master for any money entering the system
 # from outside (funds, mobile money receipts). One per (tenant, currency).
 # See docs/06-data-architecture.md §4 addendum (Phase B).
@@ -78,7 +77,6 @@ ACCOUNT_TYPES = (
     ACCOUNT_TYPE_FINANCIAL_WALLET,
     ACCOUNT_TYPE_POINTS,
     ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
-    ACCOUNT_TYPE_PROVIDER_REDEMPTION,
     ACCOUNT_TYPE_SYSTEM_CASH_INFLOW,
     ACCOUNT_TYPE_SYSTEM_FEE_COLLECTED,
     ACCOUNT_TYPE_OPERATOR_ADJUSTMENT,
@@ -97,7 +95,7 @@ class Account(Base):
 
     Either `user_id` OR `merchant_id` is set for user/merchant-owned accounts;
     both are NULL for system-owned accounts (system_points_issuance,
-    provider_redemption_wallet).
+    points_redemption_wallet).
 
     Balance is NOT stored here — it is derived from `ledger_entries`. The
     `account_balance_snapshots` table caches it for read performance.
@@ -110,7 +108,6 @@ class Account(Base):
             "'financial_wallet', "
             "'points_account', "
             "'system_points_issuance', "
-            "'provider_redemption_wallet', "
             "'system_cash_inflow', "
             "'system_fee_collected', "
             "'operator_adjustment', "

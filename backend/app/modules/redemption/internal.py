@@ -33,12 +33,13 @@ from app.modules.audit.service import record_audit_for_user
 from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
 from app.modules.redemption.rates import resolve_active_rate
 from app.modules.redemption.schemas import InternalRedemptionRequest
-from app.modules.redemption.service import _assert_tenant_exists, _find_user_points_account
 from app.modules.roles.service import require_permission
 from app.shared.exceptions import (
     AccountNotFound,
     InsufficientFunds,
     RedemptionTxnCapExceeded,
+    TenantNotFound,
+    UserPointsAccountMissing,
 )
 from app.shared.models import (
     ACCOUNT_TYPE_CASHBACK_PROVIDER,
@@ -50,12 +51,37 @@ from app.shared.models import (
     Account,
     InternalRedemption,
     PointsConversionRate,
+    Tenant,
     Transaction,
 )
 
 # Base flow code for both legs — pricing/limits and step-up are scoped to the
 # points side ("redemption", PTS), matching the external flow.
 _BASE_SERVICE = "redemption"
+
+
+async def _assert_tenant_exists(session: AsyncSession, tenant_id: UUID) -> None:
+    """Reject if the tenant_id is unknown."""
+    result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+    if result.scalar_one_or_none() is None:
+        raise TenantNotFound()
+
+
+async def _find_user_points_account(
+    session: AsyncSession, tenant_id: UUID, user_id: UUID
+) -> Account:
+    """Return the user's points_account in this tenant, or raise."""
+    result = await session.execute(
+        select(Account).where(
+            Account.tenant_id == tenant_id,
+            Account.user_id == user_id,
+            Account.account_type == ACCOUNT_TYPE_POINTS,
+        )
+    )
+    account = result.scalar_one_or_none()
+    if account is None:
+        raise UserPointsAccountMissing()
+    return account
 
 
 async def get_or_create_system_account(

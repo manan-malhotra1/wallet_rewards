@@ -7,7 +7,6 @@ Idempotent — safe to re-run. Creates:
   Users          : Alice (+27 82 555 0001) and Bob (+27 82 555 0002)
                    Each user gets 1 financial_wallet (ZAR) + 1 points_account (PTS)
   System accounts: 1 system_points_issuance (PTS) — the master reward source
-                   1 provider_redemption_wallet (PTS) — sample redemption partner
   Segments       : 3 default system groups (Customer Loyalty, Transaction
                    Value, Engagement), each with 3 tiered dynamic segments
 
@@ -43,8 +42,6 @@ from app.auth.secret_box import decrypt_secret, encrypt_secret  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.modules.accounts.service import derive_balance  # noqa: E402
 from app.modules.payments.service import fund  # noqa: E402
-from app.modules.redemption.schemas import ProviderRegistrationRequest  # noqa: E402
-from app.modules.redemption.service import register_provider  # noqa: E402
 from app.modules.roles.service import assign_default_role  # noqa: E402
 from app.modules.segments.criteria import SegmentCriteria  # noqa: E402
 from app.modules.step_up.schemas import STEP_UP_TRANSACTION_TYPES  # noqa: E402
@@ -74,7 +71,6 @@ from app.shared.models import (  # noqa: E402
     LimitConfig,
     MerchantProfile,
     PricingConfig,
-    RedemptionProvider,
     ReferralCode,
     Rule,
     Segment,
@@ -371,34 +367,6 @@ async def _get_or_create_account(
     await session.refresh(account)
     print(f"  + Created account: {label} ({account_type}/{currency}) -> {account.id}")
     return account
-
-
-async def _get_or_create_redemption_provider(
-    session: AsyncSession, tenant: Tenant, *, name: str
-) -> RedemptionProvider:
-    """Idempotently register a sample redemption provider.
-
-    Re-uses the existing row if one with the same (tenant, name) exists.
-    Otherwise calls the service which auto-creates the wallet.
-    """
-    result = await session.execute(
-        select(RedemptionProvider).where(
-            RedemptionProvider.tenant_id == tenant.id,
-            RedemptionProvider.name == name,
-        )
-    )
-    provider = result.scalar_one_or_none()
-    if provider is not None:
-        return provider
-    provider = await register_provider(
-        session,
-        ProviderRegistrationRequest(tenant_id=tenant.id, name=name),
-    )
-    print(
-        f"  + Created redemption provider: {name} -> {provider.id} "
-        f"(wallet: {provider.redemption_wallet_account_id})"
-    )
-    return provider
 
 
 async def _get_or_create_step_up_policy(
@@ -1616,9 +1584,8 @@ async def seed() -> None:
         # script used to write. Only the bank mirror is created here: a mirror
         # represents a real bank account, so production operators create it
         # explicitly with real details, and this seeded "Primary" mirror is the
-        # dev stand-in for that step. provider_redemption_wallet is auto-created
-        # by `register_provider()` later (Pay-PRD-0730), and
-        # airtime_merchant_holding is merchant-owned (Epic 17), not here.
+        # dev stand-in for that step. airtime_merchant_holding is
+        # merchant-owned (Epic 17), not here.
         await _get_or_create_account(
             session,
             tenant,
@@ -1702,13 +1669,6 @@ async def seed() -> None:
                     phone=spec["phone"],
                     target=opening,
                 )
-
-        # Phase D — sample redemption provider (auto-creates its wallet).
-        await _get_or_create_redemption_provider(
-            session,
-            tenant,
-            name="Mukuru Voucher (sample)",
-        )
 
         # Epic 17 — default airtime merchant (user_type=merchant) + its holding
         # account + demo airtime pricing/limits, so the airtime vertical works

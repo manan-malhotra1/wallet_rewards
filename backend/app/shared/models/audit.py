@@ -1,12 +1,11 @@
 """AuditLog model — PRD §6.13.
 
-Immutable audit trail for every administrator action, state transition, and
-reconciliation event (NFR-0160, NFR-0250). The table has NO `updated_at`
-column — entries are written once and never modified.
+Immutable audit trail for every administrator action and state transition
+(NFR-0160, NFR-0250). The table has NO `updated_at` column — entries are
+written once and never modified.
 
-In Phase E.1 the only writer is the reconciliation service. Phase F will add
-audit writes from every state-changing endpoint (user suspension, rule
-activation, redemption confirm/fail, etc.).
+Every state-changing endpoint writes here via `app.modules.audit.service`;
+`app.modules.audit.query` serves the admin read side.
 """
 
 import uuid
@@ -30,20 +29,14 @@ ACTOR_USER = "user"
 ACTOR_ADMIN = "admin"
 ACTOR_SYSTEM = "system"
 
-# Common action names — convention: "<entity>.<verb>".
-ACTION_RECON_SWEPT = "recon.swept"
-ACTION_RECON_ESCALATED = "recon.escalated"
-ACTION_RECON_RESOLVED_COMPLETED = "recon.resolved.completed"
-ACTION_RECON_RESOLVED_REVERSED = "recon.resolved.reversed"
-
 
 class AuditLog(Base):
     """One row per administratively interesting event.
 
     The before_state and after_state JSONB columns hold a snapshot of the
     affected entity. For state transitions, this lets reviewers see exactly
-    what changed (e.g. redemption.status went PENDING -> MANUAL_REVIEW with
-    retry_count 3 -> 4).
+    what changed (e.g. user.status went active -> suspended, with the
+    operator's reason in `note`).
     """
 
     __tablename__ = "audit_log"

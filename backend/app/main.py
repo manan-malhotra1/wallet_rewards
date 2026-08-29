@@ -25,6 +25,7 @@ from app.modules.accounts import router as accounts_router
 from app.modules.airtime import router as airtime_router
 from app.modules.analytics.router import router as analytics_router
 from app.modules.api_keys import router as api_keys_router
+from app.modules.audit.router import router as audit_router
 from app.modules.budgets import router as budgets_router
 from app.modules.cashin import router as cashin_router
 from app.modules.cashout import router as cashout_router
@@ -42,7 +43,6 @@ from app.modules.multipliers import router as multipliers_router
 from app.modules.payments import router as payments_router
 from app.modules.pin_change import router as pin_change_router
 from app.modules.pricing import router as pricing_router
-from app.modules.reconciliation import router as reconciliation_router
 from app.modules.redemption import router as redemption_router
 from app.modules.roles import router as roles_router
 from app.modules.rules import router as rules_router
@@ -138,7 +138,7 @@ app.include_router(catalog_router)
 app.include_router(config_requests_router)
 app.include_router(money_operations_router)
 app.include_router(user_operations_router)
-app.include_router(reconciliation_router)
+app.include_router(audit_router)
 app.include_router(roles_router)
 app.include_router(tenants_router)
 app.include_router(api_keys_router)

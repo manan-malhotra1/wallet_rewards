@@ -285,6 +285,27 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
             )
         )
 
+    # Fold this transaction into the cached balances, in THIS transaction so the
+    # cache can never be durably out of step with the entries above. Flush first:
+    # an account with no snapshot row yet falls back to deriving from the ledger,
+    # which needs these rows visible. See ledger/snapshots.py.
+    from app.modules.ledger.snapshots import apply_deltas, entry_deltas
+
+    await session.flush()
+    await apply_deltas(
+        session,
+        entry_deltas(
+            [
+                (
+                    e.account_id,
+                    e.amount if e.entry_type == ENTRY_CREDIT else -e.amount,
+                )
+                for e in request.entries
+            ],
+            status=entry_status,
+        ),
+    )
+
     # Internal wallet → rewards trigger (spec 2026-08-03). Written atomically
     # with the ledger commit so the intent can never be lost. Gated to `both`
     # tenants; only money services pass reward_trigger, so reward issuance

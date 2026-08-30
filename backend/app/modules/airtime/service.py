@@ -47,6 +47,7 @@ from app.modules.audit.service import (
     record_audit_for_user,
 )
 from app.modules.ledger import LedgerEntryRequest, PostTransactionRequest, post_transaction
+from app.modules.ledger.snapshots import apply_deltas, deltas_for_status_flip
 from app.modules.rewards.outbox import issue_immediate_points
 from app.modules.roles.service import require_permission
 from app.shared.exceptions import (
@@ -508,6 +509,12 @@ async def _apply_completed(
         session — persisted by the caller's commit, so the reward rides the
         successful-vend commit (never the reservation, never a reversal).
     """
+    # Settling moves money without inserting an entry, so the cached balances
+    # must move with it. Deltas are read BEFORE the flip, while the rows are
+    # still PENDING, and applied in this same transaction.
+    snapshot_deltas = await deltas_for_status_flip(
+        session, recharge.transaction_id, to_status=ENTRY_STATUS_COMPLETED
+    )
     # The `status == PENDING` guards make a double-finalise a no-op at the DB
     # level (defence-in-depth alongside the row-lock claim in the callers, S7 A1).
     await session.execute(
@@ -518,6 +525,7 @@ async def _apply_completed(
         )
         .values(status=ENTRY_STATUS_COMPLETED)
     )
+    await apply_deltas(session, snapshot_deltas)
     await session.execute(
         update(Transaction)
         .where(
@@ -542,6 +550,11 @@ async def _apply_reversed(
     REVERSED entries are excluded from `derive_balance`, so the user's wallet —
     including any fee legs — is made whole immediately.
     """
+    # Releasing the reservation frees held funds without inserting an entry, so
+    # the cache moves with it. Read before the flip, while the rows are PENDING.
+    snapshot_deltas = await deltas_for_status_flip(
+        session, recharge.transaction_id, to_status=ENTRY_STATUS_REVERSED
+    )
     # See _apply_completed: PENDING guards keep a double-finalise idempotent.
     await session.execute(
         update(LedgerEntry)
@@ -551,6 +564,7 @@ async def _apply_reversed(
         )
         .values(status=ENTRY_STATUS_REVERSED)
     )
+    await apply_deltas(session, snapshot_deltas)
     await session.execute(
         update(Transaction)
         .where(

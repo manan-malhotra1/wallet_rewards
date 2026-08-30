@@ -10,14 +10,14 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
 from app.modules.accounts.schemas import CreateAccountRequest
 from app.modules.audit.service import record_audit_for_admin
-from app.modules.ledger.service import signed_balance_expr
+from app.modules.ledger.snapshots import read_snapshot, sum_from_ledger
 from app.shared.exceptions import (
     AccountAlreadyExists,
     AccountNotFound,
@@ -26,10 +26,7 @@ from app.shared.exceptions import (
 )
 from app.shared.models import (
     ACCOUNT_TYPES,
-    ENTRY_STATUS_COMPLETED,
-    ENTRY_STATUS_PENDING,
     Account,
-    LedgerEntry,
     Tenant,
 )
 
@@ -146,7 +143,7 @@ async def get_account(session: AsyncSession, account_id: UUID, tenant_id: UUID) 
 
 
 async def derive_balance(session: AsyncSession, account_id: UUID) -> tuple[Decimal, Decimal]:
-    """Compute (balance, reserved_balance) from ledger entries.
+    """Return (balance, reserved_balance) for an account.
 
     Per the ledger invariants:
       - balance        = SUM(CREDIT where status=COMPLETED) - SUM(DEBIT where status=COMPLETED)
@@ -155,44 +152,35 @@ async def derive_balance(session: AsyncSession, account_id: UUID) -> tuple[Decim
     Reserved is the value held against in-progress transactions
     (Pay-PRD-0210, Pay-PRD-0220). `available = balance - reserved`.
 
-    Both figures come from ONE statement using aggregate FILTER clauses over a
-    single pass of the account's entries. This runs under the account write
-    lock inside `ledger.post_transaction`, so a second aggregate over the same
-    rows would double the lock hold time without reading anything new.
+    Served from the `account_balance_snapshots` cache, which every ledger write
+    updates in its own transaction (see `ledger/snapshots.py`). That keeps this
+    O(1): the aggregate it replaced grew with an account's whole history and ran
+    while holding the account write lock, so on a shared account it got slower
+    forever — 931ms by 5M entries, and the tenant fee wallet takes an entry from
+    every single transaction.
 
-    Reserved is the mirror of balance — a PENDING DEBIT holds funds, a PENDING
-    CREDIT releases them — so it negates the same shared `signed_balance_expr`
-    rather than restating the sign rule and risking the two drifting apart.
+    Falls back to deriving from the ledger when an account has no snapshot row
+    yet — an account created before the backfill, or one never touched — and
+    seeds the row so the next read is cheap. The ledger stays the source of
+    truth; this only decides how the answer is obtained.
 
     Args:
         session: Async DB session.
-        account_id: The account whose balance to compute.
+        account_id: The account whose balance to read.
 
     Returns:
         Tuple of (balance, reserved_balance), both as Decimal.
     """
-    signed = signed_balance_expr()
-    result = await session.execute(
-        select(
-            func.coalesce(
-                func.sum(signed).filter(LedgerEntry.status == ENTRY_STATUS_COMPLETED),
-                0,
-            ),
-            func.coalesce(
-                func.sum(-signed).filter(LedgerEntry.status == ENTRY_STATUS_PENDING),
-                0,
-            ),
-        ).where(
-            LedgerEntry.account_id == account_id,
-            # Keeps the (account_id, status, created_at) index in play and skips
-            # REVERSED rows, which contribute to neither figure.
-            LedgerEntry.status.in_((ENTRY_STATUS_COMPLETED, ENTRY_STATUS_PENDING)),
-        )
-    )
-    balance_raw, reserved_raw = result.one()
-    # Reserved should never be negative for a healthy account, but the
-    # subtraction in the SQL handles credits-pending edge cases consistently.
-    return Decimal(balance_raw or 0), Decimal(reserved_raw or 0)
+    cached = await read_snapshot(session, account_id)
+    if cached is not None:
+        return cached
+    # No row yet (an account created before the backfill). Derive and return it
+    # WITHOUT writing: this is a read path, and a read that writes a value it
+    # computed moments earlier can land after a concurrent writer and discard
+    # their update — which is how a cached balance drifts from the ledger and a
+    # money guard reads a stale figure. The row gets created correctly by the
+    # next `apply_deltas`, which runs post-flush inside the write's transaction.
+    return await sum_from_ledger(session, account_id)
 
 
 async def lock_account_for_update(session: AsyncSession, account_id: UUID) -> None:

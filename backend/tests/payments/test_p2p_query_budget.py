@@ -47,10 +47,10 @@ def _count(statements: list[str], fragment: str) -> int:
     return sum(1 for s in statements if fragment in s)
 
 
-async def _transfer(session: AsyncSession, tenant: Tenant) -> list[str]:
-    """Run one full P2P transfer, returning the SQL it issued."""
+async def _setup(session: AsyncSession, tenant: Tenant):
+    """Seed p2p config, a funded sender and a recipient. Returns the sender."""
     await _seed_p2p_config(session, tenant.id)
-    sender, _sender_wallet = await _make_user_with_wallet(
+    sender, _wallet = await _make_user_with_wallet(
         session, tenant, phone="+27820000101", with_points=True
     )
     await _make_user_with_wallet(session, tenant, phone="+27820000102")
@@ -62,7 +62,11 @@ async def _transfer(session: AsyncSession, tenant: Tenant) -> list[str]:
         currency="ZAR",
         idempotency_key="budget-fund-1",
     )
+    return sender
 
+
+async def _run_transfer(session: AsyncSession, tenant: Tenant, sender, key: str) -> list[str]:
+    """Run one transfer, returning the SQL it issued."""
     with capture_sql() as statements:
         await p2p_transfer(
             session,
@@ -72,9 +76,15 @@ async def _transfer(session: AsyncSession, tenant: Tenant) -> list[str]:
             recipient_identifier_value="+27820000102",
             amount=Decimal("25"),
             currency="ZAR",
-            idempotency_key="budget-p2p-1",
+            idempotency_key=key,
         )
     return statements
+
+
+async def _transfer(session: AsyncSession, tenant: Tenant) -> list[str]:
+    """Run one full P2P transfer from a cold start, returning the SQL it issued."""
+    sender = await _setup(session, tenant)
+    return await _run_transfer(session, tenant, sender, "budget-p2p-1")
 
 
 @pytest.mark.asyncio
@@ -109,28 +119,29 @@ async def test_transfer_reads_wallet_limit_config_once(
 
 
 @pytest.mark.asyncio
-async def test_transfer_runs_one_statement_per_balance_read(
+async def test_a_settled_account_needs_no_ledger_aggregate_to_read_its_balance(
     db_session: AsyncSession, test_tenant: Tenant
 ) -> None:
-    """Verify each balance read costs ONE aggregate over ledger_entries
+    """Verify a transfer between known accounts never scans ledger history
 
-    A transfer legitimately derives three balances: the advisory overdraft check
-    on the sender, the recipient's max_balance check, and the authoritative
-    re-check under the account write lock. Each used to issue two aggregates
-    (completed, then pending) for six in total; they now issue one apiece.
+    A transfer derives three balances: the advisory overdraft check on the
+    sender, the recipient's max_balance, and the authoritative re-check under the
+    account write lock. Each used to aggregate the account's whole history — six
+    statements per transfer, the authoritative one while holding the lock — so
+    the cost grew forever on a shared account.
 
-    Each aggregate is O(entries on the account) and the authoritative one runs
-    while holding the write lock, so a second pass over the same rows costs lock
-    hold time and buys nothing.
+    The FIRST transfer against a brand-new account still aggregates once per
+    account, to seed its snapshot; migration 0071 does that for every account
+    that already exists, so in a live system this is the steady state, not the
+    exception. Asserting on the second transfer is what models production.
     """
-    statements = await _transfer(db_session, test_tenant)
-    # Only balance aggregates — the limits engine also sums `transactions` for
-    # its rolling windows, which is a different query with a different cost.
-    balance_reads = [s for s in statements if "coalesce(sum(" in s and "ledger_entries" in s]
+    sender = await _setup(db_session, test_tenant)
+    await _run_transfer(db_session, test_tenant, sender, "budget-warm")
 
-    assert len(balance_reads) == 3, (
-        f"expected 3 single-statement balance reads, got {len(balance_reads)}"
-    )
-    assert all("FILTER" in s for s in balance_reads), (
-        "every balance read should resolve completed and reserved in one pass"
+    statements = await _run_transfer(db_session, test_tenant, sender, "budget-measured")
+
+    ledger_aggregates = [s for s in statements if "coalesce(sum(" in s and "ledger_entries" in s]
+    assert ledger_aggregates == [], (
+        "balance reads should hit the snapshot, not aggregate ledger_entries:\n"
+        + "\n".join(ledger_aggregates)
     )

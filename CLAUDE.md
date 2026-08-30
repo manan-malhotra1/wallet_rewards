@@ -108,12 +108,14 @@ npm run dev       # :3000
 | [code-review](.claude/agents/code-review/SKILL.md) | **Reviews every change before commit.** Checks coding guidelines, architecture rules, ledger invariants, security, test coverage, PRD traceability. |
 | [automation-testing](.claude/agents/automation-testing/SKILL.md) | **Writes all backend tests** (API + Kafka + ledger). Frontend tests deferred. |
 | [security](.claude/agents/security/SKILL.md) | **VAPT + threat modeling specialist.** Adversarial. Owns STRIDE threat models, OWASP API Top 10 testing, fintech-specific exploit scenarios, dependency CVE scanning, crypto review. |
+| [performance](.claude/agents/performance/SKILL.md) | **Measures, never guesses.** Per-request SQL counts, repeat reads, queries that degrade with data growth, and API p50/p95/p99. Reports ranked findings; does not fix. |
 
 ### When the review / testing / security agents trigger automatically
 
 - **`code-review`** runs before every commit of feature work; on any change touching >3 files; on any change touching ledger / payments / redemption / auth / external APIs; on user request.
 - **`automation-testing`** runs after every new endpoint, every new Kafka consumer/producer, every new model with state transitions, every new rule type; when `code-review` flags missing coverage; on user request.
 - **`security`** runs on every new module touching auth / money / PII; on every auth or session flow change; on every new external integration; on every dependency major-version bump; quarterly full sweep; post-incident; on user request.
+- **`performance`** runs on user request ("test performance"); before sizing/scale decisions; on any change to a money-path query, an index, or a Celery beat interval; when a balance/aggregate read is added to a hot path.
 
 ## Rules (path-scoped)
 

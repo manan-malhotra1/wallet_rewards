@@ -300,6 +300,22 @@ def _wallet_windows(direction: str) -> tuple[tuple[str, str, str, timedelta], ..
     )
 
 
+# Key under which the per-session wallet-limit-config memo lives in
+# `Session.info`. Scoped to one session, i.e. one request.
+_WALLET_LIMIT_MEMO_KEY = "wallet_limit_config_memo"
+
+
+def invalidate_wallet_limit_configs(session: AsyncSession) -> None:
+    """Drop the memoised wallet limit configs for this session.
+
+    Called by the admin create/replace/delete paths so a config written and then
+    re-read on the same session is never served from a stale memo. Clears the
+    whole namespace rather than one key: mutations are rare and admin-initiated,
+    so precision buys nothing and risks missing a scope.
+    """
+    session.info.pop(_WALLET_LIMIT_MEMO_KEY, None)
+
+
 async def _find_wallet_limit_config(
     session: AsyncSession, *, tenant_id: UUID, currency: str, user_type: str
 ) -> WalletLimitConfig | None:
@@ -307,7 +323,20 @@ async def _find_wallet_limit_config(
 
     Exact-type row beats the `user_type IS NULL` default; None when neither
     exists (pass-through).
+
+    Memoised per session (one request). A single money move enforces the daily,
+    weekly and monthly windows through separate helpers that each resolved this
+    same row — three identical round trips per transfer. One request should also
+    enforce all three windows against ONE config, not three reads that an admin
+    edit could land between.
     """
+    memo: dict[tuple[UUID, str, str], WalletLimitConfig | None] = session.info.setdefault(
+        _WALLET_LIMIT_MEMO_KEY, {}
+    )
+    memo_key = (tenant_id, currency.upper(), user_type)
+    if memo_key in memo:
+        return memo[memo_key]
+
     result = await session.execute(
         select(WalletLimitConfig)
         .where(
@@ -321,7 +350,9 @@ async def _find_wallet_limit_config(
         .order_by(WalletLimitConfig.user_type.nulls_last())
         .limit(1)
     )
-    return result.scalar_one_or_none()
+    config = result.scalar_one_or_none()
+    memo[memo_key] = config
+    return config
 
 
 async def _user_financial_wallet_id(
@@ -1052,6 +1083,7 @@ async def create_wallet_limit_config(
     )
     config = _new_wallet_limit_config(request)
     session.add(config)
+    invalidate_wallet_limit_configs(session)
     try:
         await session.flush()
     except IntegrityError as exc:
@@ -1122,6 +1154,7 @@ async def replace_wallet_limit_config_for_scope(
 
     new_config = _new_wallet_limit_config(first)
     session.add(new_config)
+    invalidate_wallet_limit_configs(session)
     await session.flush()
 
     if admin is not None:
@@ -1183,6 +1216,7 @@ async def delete_wallet_limit_config_for_scope(
     before = [_wallet_limit_config_state(c) for c in existing]
     for row in existing:
         await session.delete(row)
+    invalidate_wallet_limit_configs(session)
     if admin is not None:
         record_audit_for_admin(
             session,

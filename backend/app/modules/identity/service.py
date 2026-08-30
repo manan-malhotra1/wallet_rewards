@@ -97,6 +97,7 @@ from app.shared.models import (
 )
 from app.shared.utils.account_labels import account_label
 from app.shared.utils.normalize import normalize_identifier
+from app.shared.utils.user_types import invalidate_user_type
 
 log = structlog.get_logger()
 
@@ -754,6 +755,9 @@ async def change_user_type(
     }
     user.user_type = request.new_type
     user.parent_user_id = request.parent_user_id
+    # The type just changed under this session; drop the request-scoped memo so
+    # any later read on this session sees the new type, not the old one.
+    invalidate_user_type(session, user.tenant_id, user.id)
     after = {
         "user_type": request.new_type,
         "parent_user_id": str(request.parent_user_id) if request.parent_user_id else None,
@@ -870,6 +874,7 @@ async def admin_update_user(
         user.status = status
     if user_type is not None:
         user.user_type = user_type
+        invalidate_user_type(session, user.tenant_id, user.id)
     after = {
         "first_name": profile.first_name if profile else None,
         "last_name": profile.last_name if profile else None,

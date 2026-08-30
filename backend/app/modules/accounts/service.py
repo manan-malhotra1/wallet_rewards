@@ -10,13 +10,14 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AdminPrincipal
 from app.modules.accounts.schemas import CreateAccountRequest
 from app.modules.audit.service import record_audit_for_admin
+from app.modules.ledger.service import signed_balance_expr
 from app.shared.exceptions import (
     AccountAlreadyExists,
     AccountNotFound,
@@ -25,8 +26,6 @@ from app.shared.exceptions import (
 )
 from app.shared.models import (
     ACCOUNT_TYPES,
-    ENTRY_CREDIT,
-    ENTRY_DEBIT,
     ENTRY_STATUS_COMPLETED,
     ENTRY_STATUS_PENDING,
     Account,
@@ -156,6 +155,15 @@ async def derive_balance(session: AsyncSession, account_id: UUID) -> tuple[Decim
     Reserved is the value held against in-progress transactions
     (Pay-PRD-0210, Pay-PRD-0220). `available = balance - reserved`.
 
+    Both figures come from ONE statement using aggregate FILTER clauses over a
+    single pass of the account's entries. This runs under the account write
+    lock inside `ledger.post_transaction`, so a second aggregate over the same
+    rows would double the lock hold time without reading anything new.
+
+    Reserved is the mirror of balance — a PENDING DEBIT holds funds, a PENDING
+    CREDIT releases them — so it negates the same shared `signed_balance_expr`
+    rather than restating the sign rule and risking the two drifting apart.
+
     Args:
         session: Async DB session.
         account_id: The account whose balance to compute.
@@ -163,45 +171,28 @@ async def derive_balance(session: AsyncSession, account_id: UUID) -> tuple[Decim
     Returns:
         Tuple of (balance, reserved_balance), both as Decimal.
     """
-    completed_balance = await session.execute(
+    signed = signed_balance_expr()
+    result = await session.execute(
         select(
             func.coalesce(
-                func.sum(
-                    case(
-                        (LedgerEntry.entry_type == ENTRY_CREDIT, LedgerEntry.amount),
-                        else_=-LedgerEntry.amount,
-                    )
-                ),
+                func.sum(signed).filter(LedgerEntry.status == ENTRY_STATUS_COMPLETED),
                 0,
-            )
-        ).where(
-            LedgerEntry.account_id == account_id,
-            LedgerEntry.status == ENTRY_STATUS_COMPLETED,
-        )
-    )
-    balance = Decimal(completed_balance.scalar_one() or 0)
-
-    pending_reserved = await session.execute(
-        select(
+            ),
             func.coalesce(
-                func.sum(
-                    case(
-                        (LedgerEntry.entry_type == ENTRY_DEBIT, LedgerEntry.amount),
-                        else_=-LedgerEntry.amount,
-                    )
-                ),
+                func.sum(-signed).filter(LedgerEntry.status == ENTRY_STATUS_PENDING),
                 0,
-            )
+            ),
         ).where(
             LedgerEntry.account_id == account_id,
-            LedgerEntry.status == ENTRY_STATUS_PENDING,
+            # Keeps the (account_id, status, created_at) index in play and skips
+            # REVERSED rows, which contribute to neither figure.
+            LedgerEntry.status.in_((ENTRY_STATUS_COMPLETED, ENTRY_STATUS_PENDING)),
         )
     )
-    reserved = Decimal(pending_reserved.scalar_one() or 0)
+    balance_raw, reserved_raw = result.one()
     # Reserved should never be negative for a healthy account, but the
     # subtraction in the SQL handles credits-pending edge cases consistently.
-
-    return balance, reserved
+    return Decimal(balance_raw or 0), Decimal(reserved_raw or 0)
 
 
 async def lock_account_for_update(session: AsyncSession, account_id: UUID) -> None:

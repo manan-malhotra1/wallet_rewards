@@ -21,7 +21,11 @@ celery_app = Celery(
     backend=settings.REDIS_URL,
     # Modules holding @shared_task definitions — imported on worker startup so
     # the tasks are registered against this app.
-    include=["app.modules.rewards.outbox", "app.modules.segments.tasks"],
+    include=[
+        "app.modules.rewards.outbox",
+        "app.modules.segments.tasks",
+        "app.modules.ledger.reconciliation",
+    ],
 )
 
 # Periodic schedule (Celery beat). Keys are human-readable schedule names.
@@ -38,6 +42,14 @@ celery_app.conf.beat_schedule = {
     "segments-recompute": {
         "task": "segments.recompute_all",
         "schedule": float(settings.SEGMENT_RECOMPUTE_INTERVAL_SECS),
+    },
+    # Cached-balance reconciliation: re-derives recently touched snapshots from
+    # ledger_entries and repairs any that disagree. The guards in
+    # post_transaction read the cache, so drift is a money bug — this is the
+    # runtime safety net behind the CI invariant test.
+    "snapshot-drift-sweep": {
+        "task": "ledger.snapshot_drift_sweep",
+        "schedule": float(settings.SNAPSHOT_DRIFT_SWEEP_INTERVAL_SECS),
     },
 }
 celery_app.conf.timezone = "UTC"

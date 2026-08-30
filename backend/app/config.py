@@ -63,6 +63,16 @@ class Settings(BaseSettings):
     # needs faster tiering; an admin can always force one via the recompute
     # endpoint.
     SEGMENT_RECOMPUTE_INTERVAL_SECS: int = 604_800
+    # Celery beat interval (seconds) for ledger.snapshot_drift_sweep — the
+    # cached-balance vs ledger reconciliation. Every 15 minutes.
+    #
+    # Deliberately NOT the 60s recon cadence: verifying one account costs an
+    # aggregate over its whole history, which is the O(rows) work the snapshot
+    # exists to keep off the hot path. A bounded batch on a slow beat catches a
+    # bad writer within minutes without reintroducing that cost.
+    SNAPSHOT_DRIFT_SWEEP_INTERVAL_SECS: int = 900
+    # Accounts verified per sweep, newest-touched first.
+    SNAPSHOT_DRIFT_BATCH: int = 200
 
 
 settings = Settings()  # type: ignore[call-arg]

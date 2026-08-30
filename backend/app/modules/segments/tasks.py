@@ -148,7 +148,7 @@ async def _recompute_all(session: AsyncSession) -> None:
 def recompute_all_segments() -> None:
     """Celery entrypoint: recompute dynamic segment membership for every tenant.
 
-    Scheduled by Celery beat (see `app/celery_app.py`, default hourly,
+    Scheduled by Celery beat (see `app/celery_app.py`, default weekly,
     overridable via `SEGMENT_RECOMPUTE_INTERVAL_SECS`). Each beat run gets a
     FRESH event loop via `asyncio.run`, so — exactly like
     `rewards.recon_sweep` — this builds a dedicated NullPool asyncpg engine

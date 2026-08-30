@@ -33,7 +33,7 @@ celery_app.conf.beat_schedule = {
         "task": "rewards.recon_sweep",
         "schedule": 60.0,
     },
-    # Dynamic segment membership refresh (segmentation spec §4). Hourly default;
+    # Dynamic segment membership refresh (segmentation spec §4). Weekly default;
     # override via SEGMENT_RECOMPUTE_INTERVAL_SECS.
     "segments-recompute": {
         "task": "segments.recompute_all",

@@ -53,8 +53,16 @@ class Settings(BaseSettings):
     # outside local dev — these routes return 404 when unset.
     SIMULATOR_DEV_MODE: bool = False
     # Celery beat interval (seconds) for segments.recompute_all — the dynamic
-    # segment membership refresh (segmentation spec §4). Hourly default.
-    SEGMENT_RECOMPUTE_INTERVAL_SECS: int = 3600
+    # segment membership refresh (segmentation spec §4). Weekly default.
+    #
+    # The sweep's per-user balance metric aggregates the tenant's WHOLE ledger
+    # with no time bound, so its cost grows with total ledger size rather than
+    # with how much changed. Membership in a loyalty/value tier does not move
+    # meaningfully within an hour, so paying that scan 168x a week bought
+    # freshness nobody consumes. Lower it per-environment if a tenant genuinely
+    # needs faster tiering; an admin can always force one via the recompute
+    # endpoint.
+    SEGMENT_RECOMPUTE_INTERVAL_SECS: int = 604_800
 
 
 settings = Settings()  # type: ignore[call-arg]

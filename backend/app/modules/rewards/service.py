@@ -75,8 +75,9 @@ async def _get_or_create_user_points_account(
         created in `POINTS_CURRENCY`.
 
     Concurrency-safe: a first-ever race on the INSERT hits the
-    `uq_accounts_user_scoped` unique index; the loser rolls back and re-reads the
-    winner's row rather than surfacing a raw IntegrityError.
+    `uq_accounts_user_scoped` unique index; the loser releases only its own
+    SAVEPOINT and re-reads the winner's row, so nothing the caller had already
+    staged in this session is lost.
     """
     # Filter by currency too: the accounts unique index is
     # (tenant_id, user_id, account_type, currency), so a user MAY hold more than
@@ -98,11 +99,17 @@ async def _get_or_create_user_points_account(
         account_type=ACCOUNT_TYPE_POINTS,
         currency=POINTS_CURRENCY,
     )
-    session.add(account)
+    # SAVEPOINT, not a session rollback. `session.rollback()` here discards
+    # everything the CALLER had staged too — `issue_points_reward` provisions the
+    # user's points account first, so a lost race on THIS insert used to destroy
+    # that account and make `post_transaction` fail with AccountNotFound
+    # (measured: ~25% of concurrent first-rewards under contention). A nested
+    # transaction rolls back only the insert that actually conflicted.
     try:
-        await session.flush()
+        async with session.begin_nested():
+            session.add(account)
+            await session.flush()
     except IntegrityError:
-        await session.rollback()
         return (await session.execute(stmt)).scalar_one()
     return account
 
@@ -126,8 +133,9 @@ async def get_or_create_system_points_issuance(
         The existing or newly-inserted (flushed, not committed) Account.
 
     Concurrency-safe: a first-ever race on the INSERT hits the
-    `uq_accounts_system_scoped` unique index; the loser rolls back and re-reads
-    the winner's row rather than surfacing a raw IntegrityError.
+    `uq_accounts_system_scoped` unique index; the loser releases only its own
+    SAVEPOINT and re-reads the winner's row, so nothing the caller had already
+    staged in this session is lost.
     """
     currency = currency.upper()
     stmt = select(Account).where(
@@ -144,11 +152,17 @@ async def get_or_create_system_points_issuance(
         account_type=ACCOUNT_TYPE_SYSTEM_POINTS_ISSUANCE,
         currency=currency,
     )
-    session.add(account)
+    # SAVEPOINT, not a session rollback. `session.rollback()` here discards
+    # everything the CALLER had staged too — `issue_points_reward` provisions the
+    # user's points account first, so a lost race on THIS insert used to destroy
+    # that account and make `post_transaction` fail with AccountNotFound
+    # (measured: ~25% of concurrent first-rewards under contention). A nested
+    # transaction rolls back only the insert that actually conflicted.
     try:
-        await session.flush()
+        async with session.begin_nested():
+            session.add(account)
+            await session.flush()
     except IntegrityError:
-        await session.rollback()
         return (await session.execute(stmt)).scalar_one()
     return account
 

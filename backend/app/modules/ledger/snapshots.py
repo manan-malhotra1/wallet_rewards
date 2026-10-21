@@ -168,7 +168,13 @@ async def apply_deltas(session: AsyncSession, deltas: dict[UUID, tuple[Decimal, 
     Side effects:
         Updates or creates one `account_balance_snapshots` row per account.
     """
-    for account_id, (balance_delta, reserved_delta) in deltas.items():
+    # Canonical account-id order, exactly as `_enforce_balance_guard` sorts the
+    # accounts it locks (invariant #11). Each UPDATE below takes a row lock, so
+    # iterating in request order lets two concurrent transfers touching the same
+    # pair of accounts grab them in opposite orders and deadlock. Observed under
+    # a mixed-service load run: every participant in the Postgres deadlock report
+    # was this statement.
+    for account_id, (balance_delta, reserved_delta) in sorted(deltas.items()):
         if not balance_delta and not reserved_delta:
             continue
         # Fast path: the row exists (every account has one after the 0071

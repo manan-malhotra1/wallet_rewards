@@ -27,7 +27,7 @@ from uuid import UUID
 
 import structlog
 from celery import shared_task
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.ledger.snapshots import rebuild_snapshot, sum_from_ledger
@@ -57,14 +57,21 @@ class Drift:
 async def find_drift(session: AsyncSession, *, batch: int = DEFAULT_BATCH) -> list[Drift]:
     """Re-derive the most recently touched snapshots and report disagreements.
 
-    Ordered by `snapshot_at` descending: a bad writer shows up on accounts that
-    are actually moving, so the newest rows are where drift appears first. This
-    is a sample, not a proof of global consistency — a full audit is
-    `tests/invariants/test_balance_snapshots_match_ledger.py`, or this sweep with
-    a batch larger than the account count.
+    Ordered by `last_verified_at` ascending (never-verified is `-infinity`), so
+    coverage is round-robin: every account is reached within
+    `ceil(total / batch)` sweeps no matter how busy it is.
+
+    Ordering by `snapshot_at DESC` — most recently written first — was the
+    original design and is subtly wrong: an account that drifts and then goes
+    quiet sinks out of the window and is never re-checked, while the sweep keeps
+    reporting no drift. That was observed live, with a known-drifted account
+    sitting at rank 344 of 422 and skipped by every run.
+
+    Marks every account it examines as verified, so this is NOT read-only — the
+    caller must commit for the round-robin to advance.
 
     Args:
-        session: Async DB session (read-only).
+        session: Async DB session.
         batch: Maximum number of accounts to verify this pass.
 
     Returns:
@@ -78,13 +85,24 @@ async def find_drift(session: AsyncSession, *, batch: int = DEFAULT_BATCH) -> li
                     AccountBalanceSnapshot.balance,
                     AccountBalanceSnapshot.reserved_balance,
                 )
-                .order_by(desc(AccountBalanceSnapshot.snapshot_at))
+                .order_by(
+                    AccountBalanceSnapshot.last_verified_at.asc(),
+                    desc(AccountBalanceSnapshot.snapshot_at),
+                )
                 .limit(batch)
             )
         )
         .tuples()
         .all()
     )
+
+    if rows:
+        # Advance the round-robin for everything examined, drifted or not.
+        await session.execute(
+            update(AccountBalanceSnapshot)
+            .where(AccountBalanceSnapshot.account_id.in_([r[0] for r in rows]))
+            .values(last_verified_at=func.now())
+        )
 
     drifted: list[Drift] = []
     for account_id, cached_balance, cached_reserved in rows:
@@ -152,6 +170,9 @@ async def drift_sweep_async(
     async with session_factory() as session:
         drifted = await find_drift(session, batch=batch)
         if not drifted:
+            # Commit even with nothing to repair: find_drift advanced
+            # last_verified_at, and losing that would restart the round-robin.
+            await session.commit()
             log.info("balance_snapshot_drift_none", checked=batch)
             return 0
         repaired = await repair_drift(session, drifted)

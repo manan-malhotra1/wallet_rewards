@@ -61,7 +61,12 @@ async def _post(
 
 
 async def _corrupt(
-    session: AsyncSession, account_id, balance: str, *, age_seconds: int = 0
+    session: AsyncSession,
+    account_id,
+    balance: str,
+    *,
+    age_seconds: int = 0,
+    verified_secs_ago: int | None = None,
 ) -> None:
     """Force a snapshot to disagree with the ledger.
 
@@ -75,6 +80,8 @@ async def _corrupt(
         "balance": Decimal(balance),
         "snapshot_at": datetime.now(UTC) - timedelta(seconds=age_seconds),
     }
+    if verified_secs_ago is not None:
+        values["last_verified_at"] = datetime.now(UTC) - timedelta(seconds=verified_secs_ago)
     await session.execute(
         update(AccountBalanceSnapshot)
         .where(AccountBalanceSnapshot.account_id == account_id)
@@ -190,3 +197,38 @@ async def test_sweep_batch_bounds_the_work_it_does(
     assert [d.account_id for d in newest_only] == [user_wallet.id]
 
     assert len(await find_drift(db_session, batch=50)) == 2
+
+
+@pytest.mark.asyncio
+async def test_sweep_prefers_the_least_recently_verified_account(
+    db_session: AsyncSession,
+    test_tenant: Tenant,
+    user_wallet: Account,
+    system_points_account: Account,
+) -> None:
+    """Verify coverage is round-robin, so a quiet drifted account is still reached
+
+    The original ordering was `snapshot_at DESC` — most recently written first —
+    which permanently skipped exactly this case: drift stops an account being
+    written to, so it sinks out of the window while the sweep keeps reporting no
+    drift. Observed live, with a known-drifted account at rank 344 of 422 and
+    missed by every run.
+
+    Here every other account was verified a moment ago and the drifted one was
+    verified longest ago, so a one-account batch must pick the drifted one. Under
+    the old ordering it would never be looked at.
+    """
+    await _post(db_session, test_tenant, system_points_account, user_wallet, "sweep-rr")
+
+    # Everything looks freshly verified...
+    await db_session.execute(
+        update(AccountBalanceSnapshot).values(last_verified_at=datetime.now(UTC))
+    )
+    # ...except the drifted account, which is both stale and longest unverified.
+    await _corrupt(db_session, user_wallet.id, "1", age_seconds=86_400, verified_secs_ago=86_400)
+
+    found = await find_drift(db_session, batch=1)
+
+    assert [d.account_id for d in found] == [user_wallet.id]
+    assert found[0].cached_balance == Decimal("1")
+    assert found[0].ledger_balance == Decimal("100")

@@ -24,6 +24,12 @@ from sqlalchemy import ColumnElement, case, func, select, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Imported at module scope on purpose. This runs on every money movement, and a
+# function-local import is resolved per call: under concurrent load Python can
+# hand back a partially initialized module and raise ImportError from the middle
+# of a transaction. One such failure was observed on this path in a load run.
+# `snapshots` imports back from here only inside a function, so there is no cycle.
+from app.modules.ledger.snapshots import apply_deltas, entry_deltas
 from app.shared.exceptions import (
     AccountNotFound,
     DuplicateIdempotencyKey,
@@ -289,8 +295,6 @@ async def post_transaction(session: AsyncSession, request: PostTransactionReques
     # cache can never be durably out of step with the entries above. Flush first:
     # an account with no snapshot row yet falls back to deriving from the ledger,
     # which needs these rows visible. See ledger/snapshots.py.
-    from app.modules.ledger.snapshots import apply_deltas, entry_deltas
-
     await session.flush()
     await apply_deltas(
         session,

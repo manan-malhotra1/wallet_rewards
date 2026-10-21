@@ -203,6 +203,10 @@ class AccountBalanceSnapshot(Base):
     """
 
     __tablename__ = "account_balance_snapshots"
+    __table_args__ = (
+        # Serves the drift sweep's round-robin ORDER BY (oldest verified first).
+        Index("ix_account_balance_snapshots_last_verified", "last_verified_at"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     account_id: Mapped[uuid.UUID] = mapped_column(
@@ -221,4 +225,13 @@ class AccountBalanceSnapshot(Base):
     )
     last_ledger_entry_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
+    )
+    # When the drift sweep last re-derived this row from the ledger. The sweep
+    # orders by it ascending, so coverage is round-robin — ordering by
+    # `snapshot_at` instead would permanently skip any account that drifted and
+    # then went quiet. `-infinity` (never verified) sorts first under a plain
+    # ascending index; a nullable column would need NULLS FIRST, which no btree
+    # scan direction serves.
+    last_verified_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("'-infinity'")
     )
